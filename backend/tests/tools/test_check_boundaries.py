@@ -38,8 +38,15 @@ def test_clean_tree_has_no_violations(tmp_path):
         "from dawam.platform.db import x\n"
         "from . import tables\n"
         "from .internal import helpers\n"
-        "from dawam.modules.alpha.tables import T\n",
+        "from dawam.modules.alpha.tables import T\n"
+        "import dawam.modules.beta as b\n"
+        "b.Service()\n"
+        "beta.Service()\n"
+        "dawam.modules.beta.Service()\n"
+        "import dawam.modules.alpha\n"
+        "dawam.modules.alpha.tables.T\n",
     )
+    write(src, "dawam/platform/db.py", "import dawam\nversion = dawam.__version__\n")
     assert check(src) == []
 
 
@@ -86,6 +93,65 @@ def test_platform_may_not_import_modules_at_all(tmp_path):
     violations = check(src)
     assert len(violations) == 1
     assert "platform" in violations[0]
+
+
+def test_attribute_access_into_internals_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(
+        src,
+        "dawam/modules/alpha/service.py",
+        "import dawam.modules.beta\n\nx = dawam.modules.beta.tables.BetaTable\n",
+    )
+    violations = check(src)
+    assert len(violations) == 1
+    assert "dawam/modules/alpha/service.py:3" in violations[0]
+    assert "dawam.modules.beta.tables" in violations[0]
+
+
+def test_attribute_access_through_an_alias_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/modules/alpha/service.py", "import dawam.modules.beta as b\nb.tables.T\n")
+    violations = check(src)
+    assert len(violations) == 1
+    assert "dawam.modules.beta.tables" in violations[0]
+
+
+def test_attribute_access_from_an_imported_package_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(
+        src,
+        "dawam/modules/alpha/service.py",
+        "from dawam import modules\n"
+        "from dawam.modules import beta as b\n"
+        "modules.beta.internal.helpers.h()\n"
+        "b.tables.T\n",
+    )
+    violations = check(src)
+    assert len(violations) == 2
+    assert "dawam.modules.beta.internal" in violations[0]
+    assert "dawam.modules.beta.tables" in violations[1]
+
+
+def test_platform_may_not_reach_modules_by_attribute_access(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/platform/db.py", "import dawam\nx = dawam.modules.alpha.Service\n")
+    violations = check(src)
+    assert len(violations) == 1
+    assert "platform" in violations[0]
+
+
+def test_public_interface_may_not_re_export_its_tables(tmp_path):
+    src = make_tree(tmp_path)
+    for source in (
+        "from .tables import BetaTable\n",
+        "from . import tables\n",
+        "from dawam.modules.beta.tables import BetaTable\n",
+    ):
+        write(src, "dawam/modules/beta/__init__.py", "from .service import Service\n" + source)
+        violations = check(src)
+        assert len(violations) == 1, source
+        assert "dawam/modules/beta/__init__.py:2" in violations[0]
+        assert "tables" in violations[0]
 
 
 def test_main_exit_code_reflects_violations(tmp_path, capsys):

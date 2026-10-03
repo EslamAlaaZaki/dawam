@@ -24,12 +24,16 @@ the job runner port and its inline implementation from `service.py`.
 1. **Import another module only through its package.**
    `from dawam.modules.workspaces import WorkspaceService` is fine;
    `from dawam.modules.workspaces.tables import Workspace` or
-   `from dawam.modules.workspaces import tables` is not. Inside a module, import
-   your own submodules freely.
+   `from dawam.modules.workspaces import tables` is not, and neither is reaching
+   a submodule by attribute access (`import dawam.modules.workspaces as ws`, then
+   `ws.tables.Workspace`). Inside a module, use your own submodules freely.
 2. **A module's tables are private.** Only that module reads or writes them. To
    point at another module's rows, store the id (a database foreign key by table
    name, e.g. `sa.ForeignKey("workspaces.id")`, is fine), but never map an ORM
-   `relationship()` to another module's class or query its tables.
+   `relationship()` to another module's class or query its tables. The public
+   interface never exports table classes: `__init__.py` must not import from
+   `tables`. The module's own code (`service.py`, `internal/`) imports `tables`,
+   so importing the package still registers the tables for Alembic.
 3. **`dawam.platform` is the shared kernel**: config, db, errors, logging,
    migrations and email, plus the app-wide HTTP plumbing that belongs to no
    module (request context middleware, the `/healthz` and `/readyz` probes, and
@@ -39,17 +43,30 @@ the job runner port and its inline implementation from `service.py`.
    modules together and choose concrete implementations (e.g. which
    `EmailSender`); they too use only modules' public interfaces.
 
-Rules 1 and 3 are enforced by `tools/check_boundaries.py`, which CI runs:
+`tools/check_boundaries.py`, which CI runs, enforces:
+
+- **rule 1**: any import of another module's submodule (absolute or relative),
+  and any attribute chain on an imported `dawam` package that reaches one;
+- **rule 2, in part**: a module's `__init__.py` must not import its own `tables`;
+- **rule 3**: nothing in `dawam.platform` imports or reaches `dawam.modules` or
+  `dawam.app`.
 
 ```
 cd backend && python tools/check_boundaries.py
 ```
 
+The rest of rule 2 is left to code review. The checker reads
+imports and attribute chains only, so it does not see raw SQL naming another
+module's tables, `importlib` / `__import__`, lookups such as
+`Base.metadata.tables["workspaces"]`, `relationship("Workspace")` string targets,
+or a table class re-exported indirectly (e.g. via `service.py`).
+
 ## Adding a module
 
 1. Create `dawam/modules/<name>/` with an `__init__.py` that defines `__all__`.
 2. Add it to `ALL_MODULES` in `dawam/modules/__init__.py`. The app mounts its
-   `router` (if it has one) under `/api/v1`, and Alembic sees its tables.
+   `router` (if it has one) under `/api/v1`, and Alembic sees its tables
+   (imported by its service code, never by `__init__.py`; see rule 2).
 3. If it has tables: `cd backend && alembic revision --autogenerate -m "add <name>"`
    (with `DAWAM_DATABASE_URL` pointing at a migrated database), then review the
    generated revision in `dawam/migrations/versions/`.
