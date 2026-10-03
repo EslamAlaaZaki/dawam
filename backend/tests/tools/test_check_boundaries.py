@@ -1,0 +1,96 @@
+"""The module-boundary checker enforces the convention in src/dawam/modules/README.md."""
+
+from pathlib import Path
+
+from tools.check_boundaries import check, main
+
+
+def write(root: Path, rel: str, source: str = "") -> None:
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+
+
+def make_tree(tmp_path: Path) -> Path:
+    """A tiny dawam package with two modules, `alpha` and `beta`."""
+    src = tmp_path / "src"
+    write(src, "dawam/__init__.py")
+    write(src, "dawam/platform/__init__.py")
+    write(src, "dawam/platform/db.py")
+    write(src, "dawam/modules/__init__.py")
+    for name in ("alpha", "beta"):
+        write(src, f"dawam/modules/{name}/__init__.py", "from .service import Service\n")
+        write(src, f"dawam/modules/{name}/service.py", "class Service: ...\n")
+        write(src, f"dawam/modules/{name}/tables.py", "")
+        write(src, f"dawam/modules/{name}/internal/__init__.py", "")
+        write(src, f"dawam/modules/{name}/internal/helpers.py", "")
+    return src
+
+
+def test_clean_tree_has_no_violations(tmp_path):
+    src = make_tree(tmp_path)
+    write(
+        src,
+        "dawam/modules/alpha/service.py",
+        "import dawam.modules.beta\n"
+        "from dawam.modules import beta\n"
+        "from dawam.modules.beta import Service\n"
+        "from dawam.platform.db import x\n"
+        "from . import tables\n"
+        "from .internal import helpers\n"
+        "from dawam.modules.alpha.tables import T\n",
+    )
+    assert check(src) == []
+
+
+def test_importing_another_modules_internals_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(
+        src, "dawam/modules/alpha/service.py", "from dawam.modules.beta.tables import BetaTable\n"
+    )
+    violations = check(src)
+    assert len(violations) == 1
+    assert "dawam/modules/alpha/service.py:1" in violations[0]
+    assert "dawam.modules.beta.tables" in violations[0]
+
+
+def test_plain_import_of_internals_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/modules/alpha/service.py", "import dawam.modules.beta.internal.helpers\n")
+    assert len(check(src)) == 1
+
+
+def test_from_package_import_of_a_submodule_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/modules/alpha/service.py", "from dawam.modules.beta import tables\n")
+    violations = check(src)
+    assert len(violations) == 1
+    assert "dawam.modules.beta.tables" in violations[0]
+
+
+def test_relative_import_into_another_module_is_a_violation(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/modules/alpha/service.py", "from ..beta.tables import BetaTable\n")
+    assert len(check(src)) == 1
+
+
+def test_code_outside_modules_may_not_reach_into_internals(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/app.py", "from dawam.modules.alpha.internal.helpers import h\n")
+    assert len(check(src)) == 1
+
+
+def test_platform_may_not_import_modules_at_all(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/platform/db.py", "from dawam.modules import alpha\n")
+    violations = check(src)
+    assert len(violations) == 1
+    assert "platform" in violations[0]
+
+
+def test_main_exit_code_reflects_violations(tmp_path, capsys):
+    src = make_tree(tmp_path)
+    assert main([str(src)]) == 0
+    write(src, "dawam/modules/alpha/service.py", "from dawam.modules.beta.tables import T\n")
+    assert main([str(src)]) == 1
+    assert "dawam.modules.beta.tables" in capsys.readouterr().out
