@@ -1,6 +1,5 @@
 """``python -m dawam``: the entry point of the app, worker and OpenAPI export."""
 
-import base64
 import json
 
 from dawam.__main__ import main, openapi_spec
@@ -17,7 +16,7 @@ def test_openapi_command_writes_the_apps_spec(tmp_path):
     assert text.endswith("}\n")
     unused = Settings(
         database_url="postgresql+psycopg://unused@localhost/unused",
-        encryption_key=base64.b64encode(bytes(32)).decode(),  # type: ignore[arg-type]
+        encryption_key=bytes(32),  # type: ignore[arg-type]
     )
     app = create_app(unused)
     assert json.loads(text) == app.openapi()

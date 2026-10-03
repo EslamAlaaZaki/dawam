@@ -11,7 +11,7 @@ import base64
 import binascii
 from pathlib import Path
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretBytes, ValidationError, field_validator
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -35,8 +35,14 @@ class ConfigError(Exception):
 
 
 def decode_encryption_key(value: str) -> bytes:
-    """The raw key from its base64 text (standard or URL-safe alphabet, padded)."""
+    """The raw key from its base64 text.
+
+    Either alphabet (standard or URL-safe), with or without ``=`` padding, and
+    surrounding whitespace is ignored. Raises ``ValueError`` unless it decodes to
+    exactly 32 bytes.
+    """
     text = value.strip().replace("-", "+").replace("_", "/")
+    text += "=" * (-len(text) % 4)
     try:
         key = base64.b64decode(text, validate=True)
     except (binascii.Error, ValueError):
@@ -46,14 +52,24 @@ def decode_encryption_key(value: str) -> bytes:
     return key
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DAWAM_", env_file=".env", extra="ignore")
+class DatabaseSettings(BaseSettings):
+    """Just what reaching the database needs; Alembic's command line reads only this."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="DAWAM_",
+        env_file=".env",
+        extra="ignore",
+        hide_input_in_errors=True,  # errors must never carry a secret
+    )
 
     database_url: str
     """SQLAlchemy URL, e.g. ``postgresql+psycopg://dawam:dawam@db:5432/dawam``."""
 
-    encryption_key: SecretStr
-    """32 random bytes, base64-encoded: the AES-256-GCM key for stored credentials (§6.3)."""
+
+class Settings(DatabaseSettings):
+    encryption_key: SecretBytes
+    """The 32-byte AES-256-GCM key for stored credentials (§6.3), decoded from
+    ``DAWAM_ENCRYPTION_KEY`` (base64). ``get_secret_value()`` returns the raw bytes."""
 
     log_level: str = "INFO"
     run_migrations_on_startup: bool = True
@@ -69,18 +85,24 @@ class Settings(BaseSettings):
     """Proxies whose ``X-Forwarded-Proto``/``-For`` uvicorn trusts (comma-separated IPs or
     networks, or ``*``). Only then does a request a TLS proxy forwards count as HTTPS."""
 
-    @field_validator("encryption_key")
+    @field_validator("encryption_key", mode="before")
     @classmethod
-    def _check_encryption_key(cls, value: SecretStr) -> SecretStr:
+    def _decode_encryption_key(cls, value: object) -> object:
+        """Base64 text (from the environment) becomes the raw key; raw bytes must be 32."""
+        if isinstance(value, SecretBytes):
+            value = value.get_secret_value()
         try:
-            decode_encryption_key(value.get_secret_value())
+            if isinstance(value, str):
+                return decode_encryption_key(value)
+            if isinstance(value, bytes) and len(value) == ENCRYPTION_KEY_BYTES:
+                return value
         except ValueError:
-            # Never put the value itself into the error.
-            raise PydanticCustomError(
-                "invalid_encryption_key",
-                f"must be {ENCRYPTION_KEY_BYTES} bytes, base64-encoded (44 characters)",
-            ) from None
-        return value
+            pass
+        # The message never includes the value itself.
+        raise PydanticCustomError(
+            "invalid_encryption_key",
+            f"must be {ENCRYPTION_KEY_BYTES} bytes, base64-encoded (43 or 44 characters)",
+        )
 
 
 def load_settings() -> Settings:
@@ -88,14 +110,23 @@ def load_settings() -> Settings:
 
     Raises ``ConfigError`` listing every missing or invalid ``DAWAM_*`` variable.
     """
+    return _load(Settings)
+
+
+def load_database_url() -> str:
+    """Read only ``DAWAM_DATABASE_URL`` (for Alembic's command line); no secrets needed."""
+    return _load(DatabaseSettings).database_url
+
+
+def _load[T: DatabaseSettings](settings_class: type[T]) -> T:
     try:
-        return Settings()  # type: ignore[call-arg]  # required fields come from the environment
+        return settings_class()  # type: ignore[call-arg]  # required fields come from the env
     except ValidationError as exc:
         raise ConfigError(_describe(exc)) from None
 
 
 def _describe(exc: ValidationError) -> str:
-    lines = ["DAWAM cannot start: fix these environment variables (or your .env file):"]
+    lines = ["DAWAM is not configured: fix these environment variables (or your .env file):"]
     for error in exc.errors(include_input=False):
         field = str(error["loc"][0]) if error["loc"] else ""
         name = f"DAWAM_{field.upper()}"

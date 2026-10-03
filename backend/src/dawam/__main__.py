@@ -20,7 +20,6 @@ from dawam.platform.config import ConfigError, Settings, load_settings
 
 # The spec never touches the database or the key; they only satisfy Settings.
 _OPENAPI_PLACEHOLDER_DB = "postgresql+psycopg://openapi@localhost/openapi"
-_OPENAPI_PLACEHOLDER_KEY = "A" * 43 + "="  # 32 zero bytes
 
 
 def openapi_spec() -> str:
@@ -28,7 +27,7 @@ def openapi_spec() -> str:
 
     settings = Settings(
         database_url=_OPENAPI_PLACEHOLDER_DB,
-        encryption_key=_OPENAPI_PLACEHOLDER_KEY,  # type: ignore[arg-type]
+        encryption_key=bytes(32),  # type: ignore[arg-type]
     )
     app = create_app(settings)
     return json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n"

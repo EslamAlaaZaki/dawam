@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import context
 
 import dawam.modules  # noqa: F401  (importing the modules registers their tables)
-from dawam.platform.config import load_settings
+from dawam.platform.config import load_database_url
 from dawam.platform.db import Base
 
 config = context.config
@@ -20,7 +20,8 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    return config.get_main_option("sqlalchemy.url") or load_settings().database_url
+    # Only the URL: migrating needs no secrets such as DAWAM_ENCRYPTION_KEY.
+    return config.get_main_option("sqlalchemy.url") or load_database_url()
 
 
 def _run(connection: sa.Connection) -> None:

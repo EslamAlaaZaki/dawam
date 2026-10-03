@@ -5,9 +5,13 @@ import os
 import secrets
 
 import pytest
+from alembic import command
+from pydantic import ValidationError
 
 from dawam.__main__ import main
-from dawam.platform.config import ConfigError, load_settings
+from dawam.platform.config import ConfigError, Settings, decode_encryption_key, load_settings
+from dawam.platform.db import create_engine
+from dawam.platform.migrations import alembic_config, current_revisions, head_revisions
 
 DATABASE_URL = "postgresql+psycopg://dawam:dawam@localhost:5432/dawam"
 
@@ -35,7 +39,7 @@ def test_settings_are_read_from_the_environment(monkeypatch):
     settings = load_settings()
 
     assert settings.database_url == DATABASE_URL
-    assert settings.encryption_key.get_secret_value() == key
+    assert settings.encryption_key.get_secret_value() == base64.urlsafe_b64decode(key)
     assert settings.hsts_max_age_seconds == 600
 
 
@@ -45,8 +49,19 @@ def test_the_encryption_key_is_never_shown_in_the_settings(monkeypatch):
 
     settings = load_settings()
 
-    assert key not in repr(settings)
-    assert key not in str(settings.model_dump())
+    raw = settings.encryption_key.get_secret_value()
+    for shown in (repr(settings), str(settings), str(settings.model_dump())):
+        assert key not in shown
+        assert str(raw) not in shown
+
+
+def test_a_rejected_key_is_not_shown_in_validation_errors():
+    bad_key = new_key(size=31)
+    with pytest.raises(ValidationError) as raised:
+        Settings(database_url=DATABASE_URL, encryption_key=bad_key)  # type: ignore[arg-type]
+
+    assert bad_key not in str(raised.value)
+    assert bad_key not in repr(raised.value)
 
 
 @pytest.mark.parametrize("urlsafe", [True, False])
@@ -54,6 +69,50 @@ def test_a_32_byte_base64_key_is_accepted(monkeypatch, urlsafe):
     monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key(urlsafe=urlsafe))
 
     load_settings()
+
+
+def test_the_settings_hold_the_decoded_32_byte_key(monkeypatch):
+    raw = secrets.token_bytes(32)
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", base64.b64encode(raw).decode())
+
+    assert load_settings().encryption_key.get_secret_value() == raw
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "{std}",
+        "{url}",
+        "{std_unpadded}",
+        "{url_unpadded}",
+        "  {url}\n",
+        "\t{url_unpadded} ",
+    ],
+)
+def test_keys_decode_with_or_without_padding_and_surrounding_whitespace(text):
+    raw = secrets.token_bytes(32)
+    forms = {
+        "std": base64.b64encode(raw).decode(),
+        "url": base64.urlsafe_b64encode(raw).decode(),
+    }
+    forms |= {f"{name}_unpadded": value.rstrip("=") for name, value in dict(forms).items()}
+
+    assert decode_encryption_key(text.format(**forms)) == raw
+
+
+def test_a_token_urlsafe_key_is_accepted():
+    text = secrets.token_urlsafe(32)  # 43 characters, no padding
+
+    assert len(decode_encryption_key(text)) == 32
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "   ", "not a key!", new_key(size=31).rstrip("="), new_key(size=33), "a b" * 15],
+)
+def test_anything_but_exactly_32_decoded_bytes_is_rejected(text):
+    with pytest.raises(ValueError):
+        decode_encryption_key(text)
 
 
 def test_startup_fails_clearly_without_the_encryption_key():
@@ -116,3 +175,28 @@ def test_serve_trusts_proxy_headers_only_from_the_configured_addresses(monkeypat
     (options,) = calls
     assert options["proxy_headers"] is True
     assert options["forwarded_allow_ips"] == "10.0.0.0/8"
+
+
+def test_migrations_from_the_command_line_need_only_the_database_url(
+    monkeypatch, fresh_database_url
+):
+    """``alembic upgrade head`` in backend/ never touches the encryption key."""
+    monkeypatch.setenv("DAWAM_DATABASE_URL", fresh_database_url)
+
+    command.upgrade(alembic_config(), "head")  # env.py reads DAWAM_DATABASE_URL itself
+
+    engine = create_engine(fresh_database_url)
+    try:
+        assert current_revisions(engine) == head_revisions()
+    finally:
+        engine.dispose()
+
+
+def test_migrations_from_the_command_line_fail_clearly_without_the_database_url(monkeypatch):
+    monkeypatch.delenv("DAWAM_DATABASE_URL")
+
+    with pytest.raises(ConfigError) as raised:
+        command.upgrade(alembic_config(), "head")
+
+    assert "DAWAM_DATABASE_URL is not set" in str(raised.value)
+    assert "DAWAM_ENCRYPTION_KEY" not in str(raised.value)
