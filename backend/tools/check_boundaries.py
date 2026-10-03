@@ -83,7 +83,7 @@ def _imported_names(src: Path, path: Path, tree: ast.AST) -> Iterator[tuple[int,
                     yield node.lineno, target
 
 
-def _violation(src: Path, path: Path, this: str, line: int, imported: str) -> str | None:
+def _violation(this: str, imported: str) -> str | None:
     if _is_within(this, PLATFORM_PACKAGE):
         for forbidden in PLATFORM_FORBIDDEN:
             if _is_within(imported, forbidden):
@@ -109,7 +109,7 @@ def check(src: Path) -> list[str]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         this = _module_name(src, path)
         for line, imported in _imported_names(src, path, tree):
-            problem = _violation(src, path, this, line, imported)
+            problem = _violation(this, imported)
             if problem:
                 location = f"{path.relative_to(src).as_posix()}:{line}"
                 violations.append(f"{location}: {problem}")
