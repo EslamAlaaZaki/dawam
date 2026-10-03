@@ -132,6 +132,60 @@ def test_attribute_access_from_an_imported_package_is_a_violation(tmp_path):
     assert "dawam.modules.beta.tables" in violations[1]
 
 
+def test_local_names_shadowing_an_imported_module_are_not_the_module(tmp_path):
+    src = make_tree(tmp_path)
+    write(
+        src,
+        "dawam/modules/alpha/service.py",
+        "from dawam.modules import beta\n"
+        "def by_parameter(beta):\n"
+        "    return beta.internal\n"
+        "def by_assignment():\n"
+        "    beta = object()\n"
+        "    return beta.tables\n"
+        "def by_loop(items):\n"
+        "    for beta in items:\n"
+        "        beta.tables\n"
+        "by_lambda = lambda beta: beta.tables\n"
+        "by_comprehension = [beta.tables for beta in ()]\n"
+        "class Holder:\n"
+        "    beta = None\n"
+        "    def method(self, beta=beta):\n"
+        "        return beta.internal\n",
+    )
+    assert check(src) == []
+
+
+def test_shadowing_is_limited_to_its_own_scope(tmp_path):
+    src = make_tree(tmp_path)
+    write(
+        src,
+        "dawam/modules/alpha/service.py",
+        "from dawam.modules import beta\n"
+        "def shadowed(beta):\n"
+        "    return beta.tables\n"
+        "def not_shadowed():\n"
+        "    return beta.tables\n"
+        "def inner_import():\n"
+        "    from dawam.modules import beta as b\n"
+        "    return b.internal\n"
+        "def uses_global():\n"
+        "    global beta\n"
+        "    return beta.tables\n"
+        "def default_is_outer(x=beta.internal):\n"
+        "    beta = None\n"
+        "first_iterable_is_outer = [beta for beta in beta.tables.rows]\n",
+    )
+    violations = check(src)
+    assert [v.split(": ")[0] for v in violations] == [
+        "dawam/modules/alpha/service.py:5",
+        "dawam/modules/alpha/service.py:8",
+        "dawam/modules/alpha/service.py:11",
+        "dawam/modules/alpha/service.py:12",
+        "dawam/modules/alpha/service.py:14",
+    ]
+
+
 def test_platform_may_not_reach_modules_by_attribute_access(tmp_path):
     src = make_tree(tmp_path)
     write(src, "dawam/platform/db.py", "import dawam\nx = dawam.modules.alpha.Service\n")
