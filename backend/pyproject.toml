@@ -21,8 +21,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2",
-    "httpx>=0.27",
-    "testcontainers[postgres]>=4.8",
+    "httpx2>=2.13",
+    "testcontainers[postgres]>=4.15",
     "ruff>=0.6",
 ]
 
