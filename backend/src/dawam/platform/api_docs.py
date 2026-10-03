@@ -54,23 +54,25 @@ def _docs_csp(html: str) -> str:
 
 
 def install_api_docs(app: FastAPI, path: str) -> None:
-    """Serve Swagger UI for ``app``'s OpenAPI spec at ``path`` (use with ``docs_url=None``)."""
-    assert app.openapi_url, "the app must publish an OpenAPI spec"
-    openapi_url = app.openapi_url
-    title = f"{app.title} - Swagger UI"
+    """Serve Swagger UI for ``app``'s OpenAPI spec at ``path`` (use with ``docs_url=None``).
+
+    The page and its policy are built once, here: the page links the spec under the
+    app's ``root_path``, which is fixed when the app is built.
+    """
+    if not app.openapi_url:
+        raise ValueError("install_api_docs needs an app that publishes its spec (openapi_url)")
+    page = get_swagger_ui_html(
+        openapi_url=app.root_path.rstrip("/") + app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        swagger_js_url=SWAGGER_JS_URL,
+        swagger_css_url=SWAGGER_CSS_URL,
+        swagger_favicon_url=SWAGGER_FAVICON_URL,
+        swagger_ui_parameters={"validatorUrl": None},
+    )
+    html = bytes(page.body).decode()
+    headers = {"Content-Security-Policy": _docs_csp(html)}
 
     async def api_docs(request: Request) -> HTMLResponse:
-        root_path = request.scope.get("root_path", "").rstrip("/")
-        page = get_swagger_ui_html(
-            openapi_url=root_path + openapi_url,
-            title=title,
-            swagger_js_url=SWAGGER_JS_URL,
-            swagger_css_url=SWAGGER_CSS_URL,
-            swagger_favicon_url=SWAGGER_FAVICON_URL,
-            swagger_ui_parameters={"validatorUrl": None},
-        )
-        html = bytes(page.body).decode()
-        page.headers["Content-Security-Policy"] = _docs_csp(html)
-        return page
+        return HTMLResponse(html, headers=headers)
 
     app.add_route(path, api_docs, include_in_schema=False)

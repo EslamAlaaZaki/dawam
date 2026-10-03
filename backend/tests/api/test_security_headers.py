@@ -15,6 +15,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from dawam.app import create_app
+from dawam.platform.api_docs import install_api_docs
 
 APP_CSP_DIRECTIVES = {
     "default-src": ["'self'"],
@@ -171,3 +172,16 @@ def test_hsts_can_be_turned_off(settings, services):
 
     assert "Strict-Transport-Security" not in response.headers
     assert_baseline_headers(response)
+
+
+def test_api_docs_need_an_openapi_spec():
+    with pytest.raises(ValueError, match="openapi_url"):
+        install_api_docs(FastAPI(openapi_url=None, docs_url=None), "/docs")
+
+
+def test_the_api_docs_page_is_the_same_on_every_request(anonymous_client):
+    first = anonymous_client.get("/api/v1/docs")
+    second = anonymous_client.get("/api/v1/docs")
+
+    assert first.text == second.text
+    assert first.headers["Content-Security-Policy"] == second.headers["Content-Security-Policy"]
