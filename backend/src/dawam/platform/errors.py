@@ -22,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 class ErrorBody(BaseModel):
     code: str = Field(description="Stable, machine-readable error code, e.g. `not_found`.")
     message: str = Field(description="Human-readable explanation.")
-    details: dict[str, Any] = Field(default_factory=dict, description="Code-specific extras.")
+    details: dict[str, Any] = Field(description="Code-specific extras; may be empty.")
 
 
 class ErrorResponse(BaseModel):
