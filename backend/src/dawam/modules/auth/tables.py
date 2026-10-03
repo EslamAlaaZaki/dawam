@@ -1,0 +1,42 @@
+"""The auth module's tables. Private: only this module reads or writes them."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+import sqlalchemy as sa
+from sqlalchemy.orm import Mapped, mapped_column
+
+from dawam.platform.db import Base
+
+
+class UserRecord(Base):
+    __tablename__ = "users"
+    __table_args__ = (sa.CheckConstraint("system_role IN ('admin', 'user')", name="system_role"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(sa.String(320), unique=True)
+    """Stored trimmed and lower-cased, so lookups are case-insensitive."""
+    display_name: Mapped[str] = mapped_column(sa.String(200))
+    password_hash: Mapped[str] = mapped_column(sa.String(255))
+    """An argon2id hash in PHC string format (``$argon2id$...``)."""
+    system_role: Mapped[str] = mapped_column(sa.String(16))
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class SessionRecord(Base):
+    """A signed-in browser. The cookie holds a random token; only its SHA-256 is stored."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    token_hash: Mapped[str] = mapped_column(sa.String(64), unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    """When the user signed in; the absolute timeout counts from here."""
+    last_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    """The last request on this session (updated at most once a minute); the idle
+    timeout counts from here."""

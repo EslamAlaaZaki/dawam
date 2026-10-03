@@ -10,14 +10,17 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 
 import dawam
 from dawam.modules import ALL_MODULES
+from dawam.modules.auth import AuthService
 from dawam.modules.jobs import InlineJobRunner, JobRunner
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
+from dawam.platform.clock import Clock, system_clock
 from dawam.platform.config import Settings, load_settings
+from dawam.platform.csrf import CsrfCookieMiddleware, require_csrf
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
@@ -34,6 +37,7 @@ API_PREFIX = "/api/v1"
 class Services:
     email: EmailSender
     jobs: JobRunner
+    clock: Clock = system_clock
 
 
 def default_services() -> Services:
@@ -51,6 +55,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.run_migrations_on_startup:
             upgrade_to_head(engine)
+        AuthService(engine, settings, clock=services.clock).ensure_bootstrap_admin()
         yield
         engine.dispose()
 
@@ -65,15 +70,20 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
+    app.state.clock = services.clock
 
     install_error_handlers(app)
+    app.add_middleware(CsrfCookieMiddleware)
     app.add_middleware(RequestContextMiddleware)
     # Added last, so it is outermost and also covers the 500s RequestContextMiddleware renders.
     app.add_middleware(
         SecurityHeadersMiddleware, hsts_max_age_seconds=settings.hsts_max_age_seconds
     )
 
-    api = APIRouter(prefix=API_PREFIX, responses=ERROR_RESPONSES)
+    # Every state-changing API request needs the double-submit CSRF token.
+    api = APIRouter(
+        prefix=API_PREFIX, responses=ERROR_RESPONSES, dependencies=[Depends(require_csrf)]
+    )
     api.include_router(meta.router)
     for module in ALL_MODULES:
         router = getattr(module, "router", None)

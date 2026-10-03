@@ -11,7 +11,14 @@ import base64
 import binascii
 from pathlib import Path
 
-from pydantic import Field, SecretBytes, ValidationError, field_validator
+from pydantic import (
+    Field,
+    SecretBytes,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -104,6 +111,22 @@ class Settings(DatabaseSettings):
             f"must be {ENCRYPTION_KEY_BYTES} bytes, base64-encoded (43 or 44 characters)",
         )
 
+    admin_email: str | None = None
+    admin_password: SecretStr | None = None
+    """The first admin (the spec's ``ADMIN_EMAIL`` / ``ADMIN_PASSWORD``): created at
+    startup only if no admin exists yet. Set both or neither."""
+
+    session_idle_timeout_hours: float = Field(default=8, gt=0)
+    """A session ends after this long without a request."""
+    session_absolute_timeout_days: float = Field(default=14, gt=0)
+    """A session ends this long after sign-in, however active it is."""
+
+    @model_validator(mode="after")
+    def _admin_email_and_password_together(self) -> Settings:
+        if (self.admin_email is None) != (self.admin_password is None):
+            raise ValueError("set both DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD, or neither")
+        return self
+
 
 def load_settings() -> Settings:
     """Read the settings from the environment.
@@ -128,7 +151,10 @@ def _load[T: DatabaseSettings](settings_class: type[T]) -> T:
 def _describe(exc: ValidationError) -> str:
     lines = ["DAWAM is not configured: fix these environment variables (or your .env file):"]
     for error in exc.errors(include_input=False):
-        field = str(error["loc"][0]) if error["loc"] else ""
+        if not error["loc"]:  # a rule across several variables; its message names them
+            lines.append(f"  - {error['msg'].removeprefix('Value error, ')}.")
+            continue
+        field = str(error["loc"][0])
         name = f"DAWAM_{field.upper()}"
         problem = "is not set" if error["type"] == "missing" else f"is invalid: {error['msg']}"
         hint = _HINTS.get(field)

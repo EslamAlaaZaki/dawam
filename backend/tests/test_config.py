@@ -200,3 +200,15 @@ def test_migrations_from_the_command_line_fail_clearly_without_the_database_url(
 
     assert "DAWAM_DATABASE_URL is not set" in str(raised.value)
     assert "DAWAM_ENCRYPTION_KEY" not in str(raised.value)
+
+
+def test_the_admin_email_without_its_password_is_explained(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "admin@example.com")
+
+    with pytest.raises(ConfigError) as raised:
+        load_settings()
+
+    assert "  - set both DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD, or neither." in str(
+        raised.value
+    )
