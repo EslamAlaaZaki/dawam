@@ -75,6 +75,8 @@ or a table class re-exported indirectly (e.g. via `service.py`).
 2. Add it to `ALL_MODULES` in `dawam/modules/__init__.py`. The app mounts its
    `router` (if it has one) under `/api/v1`, and Alembic sees its tables
    (imported by its service code, never by `__init__.py`; see rule 2).
+   `tests/test_module_tables_registered.py` fails if importing `dawam.modules`
+   leaves any module's `tables.py` unimported.
 3. If it has tables: `cd backend && alembic revision --autogenerate -m "add <name>"`
    (with `DAWAM_DATABASE_URL` pointing at a migrated database), then review the
    generated revision in `dawam/migrations/versions/`.
