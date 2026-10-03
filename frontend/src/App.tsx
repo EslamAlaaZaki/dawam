@@ -1,27 +1,20 @@
-import { useApiVersion } from "./api/queries";
+import { Navigate, Route, Routes } from "react-router";
 
-function ApiStatus() {
-  const version = useApiVersion();
-  if (version.isPending) {
-    return <span>Connecting to the API…</span>;
-  }
-  if (version.isError) {
-    return <span role="alert">API unavailable: {version.error.message}</span>;
-  }
-  return <span>API version {version.data.version}</span>;
-}
+import { HomePage } from "./HomePage";
+import { Layout } from "./Layout";
+import { LoginPage } from "./auth/LoginPage";
+import { RequireSignIn } from "./auth/RequireSignIn";
 
 export function App() {
   return (
-    <div className="shell">
-      <header className="shell-header">
-        <h1>DAWAM</h1>
-        <p>Data Analysis &amp; Warehouse Architecture Modeler</p>
-      </header>
-      <main className="shell-main" />
-      <footer className="shell-footer">
-        <ApiStatus />
-      </footer>
-    </div>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<RequireSignIn />}>
+          <Route index element={<HomePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Route>
+    </Routes>
   );
 }
