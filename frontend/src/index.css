@@ -1,0 +1,46 @@
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1f2933;
+  background: #f5f7fa;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.shell-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: #102a43;
+  color: #f0f4f8;
+}
+
+.shell-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.shell-header p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #bcccdc;
+}
+
+.shell-main {
+  flex: 1;
+}
+
+.shell-footer {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.8125rem;
+  color: #52606d;
+  border-top: 1px solid #d9e2ec;
+}
