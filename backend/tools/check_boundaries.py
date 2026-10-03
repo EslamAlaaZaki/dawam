@@ -283,17 +283,40 @@ def _violation(this: str, imported: str) -> str | None:
     return None
 
 
+def _submodule_name_clashes(src: Path, path: Path, tree: ast.Module) -> Iterator[tuple[int, str]]:
+    """Yield (line, problem) for each public name of a module that reuses a submodule name.
+
+    After ``api = ...`` in ``dawam/modules/beta/__init__.py``, ``beta.api`` would be
+    either the object or the submodule, so the attribute-chain part of rule 1 could
+    not tell whether it reaches an internal. Binding the submodule itself is fine.
+    """
+    this = _module_name(src, path)
+    owner = _owning_module(this)
+    if owner is None or this != f"{MODULES_PACKAGE}.{owner}":
+        return  # not a module's public interface
+    for name, line, module in _bindings(src, this, tree):
+        if _is_submodule(src, this, name) and module != f"{this}.{name}":
+            problem = (
+                f"the public interface of module '{owner}' binds '{name}', the name of its "
+                f"submodule {this}.{name}; public names must not reuse submodule names (rule 1)"
+            )
+            yield line, problem
+
+
 def check(src: Path) -> list[str]:
     src = Path(src)
     violations: list[str] = []
     for path in sorted((src / ROOT_PACKAGE).rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         this = _module_name(src, path)
-        for line, imported in sorted(_used_modules(src, path, tree)):
-            problem = _violation(this, imported)
-            if problem:
-                location = f"{path.relative_to(src).as_posix()}:{line}"
-                violations.append(f"{location}: {problem}")
+        problems = [
+            (line, problem)
+            for line, imported in _used_modules(src, path, tree)
+            if (problem := _violation(this, imported))
+        ]
+        problems += _submodule_name_clashes(src, path, tree)
+        location = path.relative_to(src).as_posix()
+        violations += [f"{location}:{line}: {problem}" for line, problem in sorted(problems)]
     return violations
 
 

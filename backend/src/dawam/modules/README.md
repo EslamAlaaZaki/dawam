@@ -27,6 +27,11 @@ the job runner port and its inline implementation from `service.py`.
    `from dawam.modules.workspaces import tables` is not, and neither is reaching
    a submodule by attribute access (`import dawam.modules.workspaces as ws`, then
    `ws.tables.Workspace`). Inside a module, use your own submodules freely.
+   A module's public names must not reuse its own submodule names: its
+   `__init__.py` must not define or import anything called `api`, `service`,
+   `tables`, `internal`, … other than that submodule itself. Python would make the
+   two collide anyway (importing a submodule sets the package attribute of that
+   name), and it keeps `workspaces.api` meaning the submodule, never an object.
 2. **A module's tables are private.** Only that module reads or writes them. To
    point at another module's rows, store the id (a database foreign key by table
    name, e.g. `sa.ForeignKey("workspaces.id")`, is fine), but never map an ORM
@@ -46,7 +51,10 @@ the job runner port and its inline implementation from `service.py`.
 `tools/check_boundaries.py`, which CI runs, enforces:
 
 - **rule 1**: any import of another module's submodule (absolute or relative),
-  and any attribute chain on an imported `dawam` package that reaches one;
+  and any attribute chain on an imported `dawam` package that reaches one
+  (names a function, lambda, class or comprehension binds locally shadow the
+  import there, as in Python); and any public name in a module's `__init__.py`
+  that reuses one of its submodule names;
 - **rule 2, in part**: a module's `__init__.py` must not import its own `tables`;
 - **rule 3**: nothing in `dawam.platform` imports or reaches `dawam.modules` or
   `dawam.app`.

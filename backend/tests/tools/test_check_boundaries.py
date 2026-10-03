@@ -208,6 +208,42 @@ def test_public_interface_may_not_re_export_its_tables(tmp_path):
         assert "tables" in violations[0]
 
 
+def test_public_names_may_not_reuse_submodule_names(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/modules/beta/api.py", "api = object()\n")
+    for source in (
+        "from .api import api\n",
+        "from .service import Service as internal\n",
+        "service = Service()\n",
+        "def api(): ...\n",
+        "import dawam.modules.alpha as api\n",
+    ):
+        write(src, "dawam/modules/beta/__init__.py", "from .service import Service\n" + source)
+        violations = check(src)
+        assert len(violations) == 1, source
+        assert "dawam/modules/beta/__init__.py:2" in violations[0]
+        assert "submodule" in violations[0]
+
+
+def test_public_interface_may_bind_its_submodules_themselves(tmp_path):
+    src = make_tree(tmp_path)
+    write(src, "dawam/modules/beta/api.py", "router = object()\n")
+    write(
+        src,
+        "dawam/modules/beta/__init__.py",
+        "from . import api\n"
+        "from dawam.modules.beta import service\n"
+        "from .api import router\n"
+        "def build(api):\n"
+        "    service = api\n"
+        "    return service\n",
+    )
+    write(src, "dawam/modules/alpha/service.py", "from dawam.modules import beta\nbeta.api\n")
+    violations = check(src)
+    assert len(violations) == 1  # alpha reaching beta.api; nothing in beta/__init__.py
+    assert "dawam/modules/alpha/service.py:2" in violations[0]
+
+
 def test_main_exit_code_reflects_violations(tmp_path, capsys):
     src = make_tree(tmp_path)
     assert main([str(src)]) == 0
