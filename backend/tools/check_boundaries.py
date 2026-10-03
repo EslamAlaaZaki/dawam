@@ -1,18 +1,8 @@
 """Module-boundary check for the DAWAM backend.
 
-Rules, numbered as in src/dawam/modules/README.md:
-
-1. Code may use another module only through its public interface: the package
-   itself (``dawam.modules.<name>``), never a submodule such as
-   ``dawam.modules.<name>.tables`` or ``dawam.modules.<name>.internal``, whether
-   it imports the submodule or reaches it by attribute access on an imported
-   package (``dawam.modules.<name>.tables.Foo``, ``alias.internal.helpers``).
-   A module may use its own submodules freely.
-2. A module's tables are private. Checked only in part: a module's public
-   interface (its package ``__init__``) must not import its own ``tables``, so it
-   cannot re-export table classes. Everything else about rule 2 is left to review.
-3. The shared kernel ``dawam.platform`` must not import ``dawam.modules`` or the
-   composition root (``dawam.app``) at all.
+Enforces the rules in src/dawam/modules/README.md (cited by number in its messages),
+which is the single source for them and also lists what this check does and does not
+cover.
 
 Usage: ``python tools/check_boundaries.py [SRC_DIR]`` (default: ``src``).
 Exits 1 and prints one line per violation if any rule is broken.

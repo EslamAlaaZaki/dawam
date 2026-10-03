@@ -16,8 +16,9 @@ dawam/modules/<name>/
 ```
 
 Every module has `__init__.py` and `service.py`; the rest exist only when needed.
-`dawam/modules/jobs/` is the smallest real example: just `__init__.py`, re-exporting
-the job runner port and its inline implementation from `service.py`.
+`dawam/modules/jobs/` is the smallest real example: its `service.py` holds the job
+runner port and its inline implementation, which `__init__.py` re-exports; it has
+nothing else.
 
 ## The rules
 
@@ -40,13 +41,18 @@ the job runner port and its inline implementation from `service.py`.
    `tables`. The module's own code (`service.py`, `internal/`) imports `tables`,
    so importing the package still registers the tables for Alembic.
 3. **`dawam.platform` is the shared kernel**: config, db, errors, logging,
-   migrations and email, plus the app-wide HTTP plumbing that belongs to no
-   module (request context middleware, the `/healthz` and `/readyz` probes, and
-   `GET /api/v1/version`). Every module may use it; it must never import
-   `dawam.modules` or `dawam.app`.
-4. **Composition roots** (`dawam.app`, `dawam.worker`, `dawam.__main__`) wire
-   modules together and choose concrete implementations (e.g. which
-   `EmailSender`); they too use only modules' public interfaces.
+   email and running migrations (`dawam.platform.migrations` drives Alembic and
+   points it at the scripts by path; the scripts themselves live in
+   `dawam.migrations`, a composition root, not in the kernel), plus the app-wide
+   HTTP plumbing that belongs to no module (request context middleware, the
+   `/healthz` and `/readyz` probes, and `GET /api/v1/version`). Every module may
+   use it; it must never import `dawam.modules` or `dawam.app`.
+4. **Composition roots** (`dawam.app`, `dawam.worker`, `dawam.__main__` and
+   `dawam.migrations`) may import `dawam.modules`; they wire modules together and
+   choose concrete implementations (e.g. which `EmailSender`), using only
+   modules' public interfaces. `dawam/migrations/env.py` imports `dawam.modules`
+   so that every module's tables are registered on `Base.metadata` before Alembic
+   compares or migrates.
 
 `tools/check_boundaries.py`, which CI runs, enforces:
 
@@ -63,11 +69,18 @@ the job runner port and its inline implementation from `service.py`.
 cd backend && python tools/check_boundaries.py
 ```
 
-The rest of rule 2 is left to code review. The checker reads
-imports and attribute chains only, so it does not see raw SQL naming another
-module's tables, `importlib` / `__import__`, lookups such as
-`Base.metadata.tables["workspaces"]`, `relationship("Workspace")` string targets,
-or a table class re-exported indirectly (e.g. via `service.py`).
+The rest of rule 2 is left to code review, and so is everything the checker
+cannot see. It reads imports and attribute chains only, so it misses:
+
+- raw SQL naming another module's tables, lookups such as
+  `Base.metadata.tables["workspaces"]`, and `relationship("Workspace")` string
+  targets;
+- a table class re-exported indirectly (e.g. via `service.py`);
+- dynamic access: `importlib` / `__import__`, `getattr(workspaces, "tables")`,
+  `sys.modules["dawam.modules.workspaces.tables"]`;
+- a module object rebound by assignment (`ws = workspaces`, then `ws.tables`);
+  a name a scope both imports and rebinds counts as shadowed in that scope;
+- string annotations (`"workspaces.tables.Workspace"`).
 
 ## Adding a module
 
