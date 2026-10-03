@@ -11,8 +11,16 @@ Licensed under the [Apache License 2.0](LICENSE).
 
 You need Docker with Docker Compose v2.24 or newer.
 
+Every setting has a default except `DAWAM_ENCRYPTION_KEY`, the key that encrypts the
+credentials DAWAM stores: neither Compose nor DAWAM starts without it. Like every
+secret, it is read only from the environment (or `.env`). Generate one per
+installation, keep it secret and back it up; stored credentials cannot be read
+without it.
+
 ```sh
-cp .env.example .env   # optional: every setting has a default; see the comments inside
+cp .env.example .env   # see the comments inside
+# set DAWAM_ENCRYPTION_KEY in .env to the output of:
+python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
 docker compose up --build
 ```
 
@@ -77,6 +85,7 @@ To run the API outside Docker, point it at any PostgreSQL 16 server, for example
 docker run -d --name dawam-dev-db -p 5432:5432 \
   -e POSTGRES_USER=dawam -e POSTGRES_PASSWORD=dawam postgres:16
 export DAWAM_DATABASE_URL=postgresql+psycopg://dawam:dawam@localhost:5432/dawam
+export DAWAM_ENCRYPTION_KEY=...   # a key you generated once (see above); keep reusing it
 python -m dawam serve     # API on :8000, migrates on startup
 python -m dawam worker    # background worker
 ```

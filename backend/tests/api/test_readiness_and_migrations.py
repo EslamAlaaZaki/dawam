@@ -37,17 +37,19 @@ def test_there_is_exactly_one_migration_head():
     assert len(head_revisions()) == 1
 
 
-def test_startup_migrates_an_empty_database_to_head(fresh_database_url, services):
+def test_startup_migrates_an_empty_database_to_head(fresh_database_url, settings, services):
     assert applied_revisions(fresh_database_url) == set()
 
-    with client_for(Settings(database_url=fresh_database_url), services):
+    with client_for(settings.model_copy(update={"database_url": fresh_database_url}), services):
         pass
 
     assert applied_revisions(fresh_database_url) == head_revisions()
 
 
-def test_startup_can_skip_migrations(fresh_database_url, services):
-    settings = Settings(database_url=fresh_database_url, run_migrations_on_startup=False)
+def test_startup_can_skip_migrations(fresh_database_url, settings, services):
+    settings = settings.model_copy(
+        update={"database_url": fresh_database_url, "run_migrations_on_startup": False}
+    )
 
     with client_for(settings, services) as client:
         response = client.get("/readyz")
@@ -83,8 +85,10 @@ def test_readyz_fails_when_migrations_are_behind(app: FastAPI, anonymous_client,
     }
 
 
-def test_readyz_fails_when_the_database_is_unreachable(services):
-    settings = Settings(database_url=UNREACHABLE_DB, run_migrations_on_startup=False)
+def test_readyz_fails_when_the_database_is_unreachable(settings, services):
+    settings = settings.model_copy(
+        update={"database_url": UNREACHABLE_DB, "run_migrations_on_startup": False}
+    )
 
     with client_for(settings, services) as client:
         ready = client.get("/readyz")

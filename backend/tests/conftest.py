@@ -14,6 +14,8 @@ The container starts lazily, so tests that need no database don't pay for it.
 
 from __future__ import annotations
 
+import base64
+import secrets
 import uuid
 from collections.abc import Iterator
 
@@ -30,6 +32,8 @@ from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
 
 POSTGRES_IMAGE = "postgres:16"
+TEST_ENCRYPTION_KEY = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+"""A fresh DAWAM_ENCRYPTION_KEY per test run; tests never need the real one."""
 
 
 @pytest.fixture(scope="session")
@@ -60,7 +64,11 @@ def fresh_database_url(database_url: str) -> Iterator[str]:
 
 @pytest.fixture
 def settings(database_url: str) -> Settings:
-    return Settings(database_url=database_url, frontend_dist=None)
+    return Settings(
+        database_url=database_url,
+        encryption_key=TEST_ENCRYPTION_KEY,  # type: ignore[arg-type]
+        frontend_dist=None,
+    )
 
 
 @pytest.fixture

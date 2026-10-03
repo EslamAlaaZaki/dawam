@@ -16,16 +16,21 @@ import sys
 import threading
 from pathlib import Path
 
-from dawam.platform.config import Settings, load_settings
+from dawam.platform.config import ConfigError, Settings, load_settings
 
-# The spec never touches the database; the URL only satisfies Settings.
+# The spec never touches the database or the key; they only satisfy Settings.
 _OPENAPI_PLACEHOLDER_DB = "postgresql+psycopg://openapi@localhost/openapi"
+_OPENAPI_PLACEHOLDER_KEY = "A" * 43 + "="  # 32 zero bytes
 
 
 def openapi_spec() -> str:
     from dawam.app import create_app
 
-    app = create_app(Settings(database_url=_OPENAPI_PLACEHOLDER_DB))
+    settings = Settings(
+        database_url=_OPENAPI_PLACEHOLDER_DB,
+        encryption_key=_OPENAPI_PLACEHOLDER_KEY,  # type: ignore[arg-type]
+    )
+    app = create_app(settings)
     return json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n"
 
 
@@ -92,7 +97,11 @@ def main(argv: list[str] | None = None) -> int:
     openapi.set_defaults(handler=_openapi)
 
     args = parser.parse_args(argv)
-    return args.handler(args)
+    try:
+        return args.handler(args)
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
