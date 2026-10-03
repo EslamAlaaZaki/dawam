@@ -41,6 +41,7 @@ def current_revisions(engine: sa.Engine) -> set[str]:
 
 
 def is_at_head(engine: sa.Engine) -> bool:
+    """Whether the database is migrated to head. Raises ``SQLAlchemyError`` if unreachable."""
     return current_revisions(engine) == head_revisions()
 
 
