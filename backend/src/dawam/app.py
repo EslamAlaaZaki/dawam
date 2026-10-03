@@ -21,6 +21,7 @@ from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
 from dawam.platform.logs import install_request_id_on_records
+from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 
 API_PREFIX = "/api/v1"
@@ -45,6 +46,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if settings.run_migrations_on_startup:
+            upgrade_to_head(engine)
         yield
         engine.dispose()
 
