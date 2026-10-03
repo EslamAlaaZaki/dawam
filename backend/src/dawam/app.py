@@ -19,6 +19,8 @@ from dawam.platform import health, meta
 from dawam.platform.config import Settings
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
+from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
+from dawam.platform.request_context import RequestContextMiddleware
 
 API_PREFIX = "/api/v1"
 
@@ -56,7 +58,10 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.services = services
     app.state.engine = engine
 
-    api = APIRouter(prefix=API_PREFIX)
+    install_error_handlers(app)
+    app.add_middleware(RequestContextMiddleware)
+
+    api = APIRouter(prefix=API_PREFIX, responses=ERROR_RESPONSES)
     api.include_router(meta.router)
     for module in ALL_MODULES:
         router = getattr(module, "router", None)
