@@ -33,7 +33,15 @@ Useful endpoints:
 - `GET /readyz`: 200 only when the database is reachable and migrations are at head
   (503 `not_ready` otherwise). Compose uses it as the `app` health check.
 - `GET /api/v1/version`, and the API docs at `/api/v1/docs`
-  (OpenAPI spec at `/api/v1/openapi.json`).
+  (OpenAPI spec at `/api/v1/openapi.json`). The docs page loads Swagger UI from
+  cdn.jsdelivr.net, so the browser needs internet access to show it.
+
+Every response carries the security headers of the spec's baseline: a
+Content-Security-Policy (with `frame-ancestors 'none'`), `X-Content-Type-Options:
+nosniff` and `Referrer-Policy: same-origin`. For anything beyond local use, put DAWAM
+behind a TLS-terminating reverse proxy and set `DAWAM_FORWARDED_ALLOW_IPS` to the
+proxy's address, so the app trusts its `X-Forwarded-Proto`; requests that arrived over
+HTTPS then also get `Strict-Transport-Security` (see `.env.example`).
 
 Logs are JSON lines on stdout (`docker compose logs -f app`). Every request gets a
 request id: send `X-Request-ID` to choose it, and it is returned in the response and

@@ -1,6 +1,8 @@
 """Per-request context: the request id, the access log line and the last-resort 500.
 
-``RequestContextMiddleware`` is the outermost app middleware. For every HTTP request it
+``RequestContextMiddleware`` is the outermost app middleware but one:
+``SecurityHeadersMiddleware`` wraps it, so even the 500s rendered here carry the
+security headers. For every HTTP request it
 
 - takes the caller's ``X-Request-ID`` (if it is a sane token) or generates one,
 - makes it available to every log record (see ``dawam.platform.logs``) and returns it
