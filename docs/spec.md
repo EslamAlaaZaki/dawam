@@ -185,6 +185,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 13. As the first person to install the tool, I want an admin account created from environment variables on first boot, so that the installation is never left without an admin.
 14. As an admin, I want to list, search and filter all users, so that I can manage the installation.
 15. As an admin, I want to invite a user by email, so that people can join while self-registration is off.
+15a. As an admin, I want to create a user directly with a temporary password that they must change at first sign-in, so that people can join without email and I never know their real password.
 16. As an admin, I want to deactivate and reactivate a user, so that leavers lose access immediately without losing their history.
 17. As an admin, I want to promote a user to admin or demote an admin, so that admin duties can be shared.
 18. As an admin, I want the system to block demoting or deactivating the last active admin, so that the installation stays manageable.
@@ -411,6 +412,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 - **Rate limiting:** login attempts are limited per IP and per account. After 5 consecutive failures the account locks for 15 minutes (configurable). Locking is logged.
 - **Password reset:** single-use token, valid 30 minutes, stored hashed. Using it invalidates all of the user's sessions. The response is identical whether or not the email exists.
 - **Invitations:** single-use token, valid 7 days, bound to an email and optionally to a Workspace and role.
+- **Admin-created users:** an admin can create a user with email, display name, system role and a temporary password (same password policy). The user is flagged `must_change_password`. Until they change it, the session allows only `GET /me`, password change and sign-out; every other request returns `403 password_change_required`, and the frontend sends them to the change-password page. Changing it clears the flag. Creation writes a security event. This is an alternative to invitations, mainly for installations without SMTP.
 - **Bootstrap admin:** `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars create the first admin on first boot only, if no admin exists.
 - **Without SMTP:** invitation and reset links are shown to the admin to copy manually, so the tool works on air-gapped installs.
 - **OIDC SSO:** authorization-code flow with PKCE against any OpenID Connect provider. Users are matched by verified email, and new users can be created automatically with the User role if the admin allows it. Admins can disable password login once SSO works, but the bootstrap admin keeps a password as break-glass access.
@@ -732,7 +734,7 @@ Every AI feature goes through one internal gateway. Nothing else in the codebase
 
 ```
 User(id, email UNIQUE, display_name, password_hash, system_role[admin|user],
-     is_active, failed_login_count, locked_until, created_at, last_login_at)
+     is_active, must_change_password, failed_login_count, locked_until, created_at, last_login_at)
 Session(id, user_id, created_at, last_seen_at, expires_at, ip, user_agent)
 Invitation(id, email, token_hash, invited_by, workspace_id?, workspace_role?, expires_at, accepted_at)
 PasswordReset(id, user_id, token_hash, expires_at, used_at)
@@ -926,7 +928,7 @@ POST   /auth/password/forgot | /auth/password/reset | /auth/password/change
 POST   /auth/invitations/{token}/accept
 GET    /me
 
-GET    /admin/users            POST /admin/users/invite
+GET    /admin/users            POST /admin/users   POST /admin/users/invite
 PATCH  /admin/users/{id}       (role, is_active)   POST /admin/users/{id}/force-reset
 GET    /admin/workspaces       POST /admin/workspaces/{id}/reassign-owner
 GET|PUT /admin/settings        GET /admin/security-events
