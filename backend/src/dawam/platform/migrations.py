@@ -8,10 +8,11 @@ from pathlib import Path
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 
 SCRIPT_LOCATION = Path(__file__).resolve().parent.parent / "migrations"
+
+_VERSION_TABLE = "alembic_version"
 
 # Serialises concurrent upgrades (e.g. several app replicas starting at once).
 _ADVISORY_LOCK_KEY = 0x0DA3A3
@@ -31,8 +32,12 @@ def head_revisions() -> set[str]:
 
 def current_revisions(engine: sa.Engine) -> set[str]:
     """Revisions applied to the database. Raises ``SQLAlchemyError`` if unreachable."""
+    # Plain SQL rather than alembic's MigrationContext, which logs on every call and
+    # this runs on every /readyz probe.
     with engine.connect() as conn:
-        return set(MigrationContext.configure(conn).get_current_heads())
+        if not sa.inspect(conn).has_table(_VERSION_TABLE):
+            return set()
+        return set(conn.scalars(sa.text(f"SELECT version_num FROM {_VERSION_TABLE}")))
 
 
 def is_at_head(engine: sa.Engine) -> bool:

@@ -22,9 +22,10 @@ from typing import Any
 from dawam.platform.request_context import current_request_id
 
 # Attributes every LogRecord has; anything else on a record came from ``extra``.
+# (``color_message`` is uvicorn's ANSI-coloured duplicate of the message.)
 _STANDARD_ATTRS = frozenset(
     vars(logging.LogRecord("", 0, "", 0, "", None, None)).keys()
-    | {"message", "asctime", "taskName", "request_id"}
+    | {"message", "asctime", "taskName", "request_id", "color_message"}
 )
 
 

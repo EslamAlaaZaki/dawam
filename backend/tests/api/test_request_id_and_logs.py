@@ -7,7 +7,7 @@ import re
 import pytest
 from fastapi import APIRouter, FastAPI
 
-from dawam.platform.logs import JsonFormatter
+from dawam.platform.logs import JsonFormatter, configure_logging
 
 
 @pytest.fixture(autouse=True)
@@ -107,3 +107,18 @@ def test_logs_outside_a_request_have_no_request_id():
     record = logging.LogRecord("dawam.test", logging.INFO, __file__, 1, "idle", None, None)
 
     assert "request_id" not in as_json(record)
+
+
+def test_configure_logging_writes_json_lines_to_stdout(capsys):
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    try:
+        configure_logging("INFO")
+        logging.getLogger("uvicorn.error").info("server up", extra={"color_message": "\x1b[1m"})
+        logging.getLogger("dawam.test").debug("not shown")
+    finally:
+        root.handlers[:], root.level = saved_handlers, saved_level
+
+    lines = capsys.readouterr().out.splitlines()
+    assert [json.loads(line)["message"] for line in lines] == ["server up"]
+    assert "color_message" not in json.loads(lines[0])
