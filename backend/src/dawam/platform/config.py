@@ -19,3 +19,8 @@ class Settings(BaseSettings):
     """Directory with the built frontend; served at ``/`` when set."""
 
     worker_poll_seconds: float = 5.0
+
+
+def load_settings() -> Settings:
+    """Read the settings from the environment; fails if ``DAWAM_DATABASE_URL`` is unset."""
+    return Settings()  # type: ignore[call-arg]  # required fields come from the environment

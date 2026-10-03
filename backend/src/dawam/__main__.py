@@ -16,7 +16,7 @@ import sys
 import threading
 from pathlib import Path
 
-from dawam.platform.config import Settings
+from dawam.platform.config import Settings, load_settings
 
 # The spec never touches the database; the URL only satisfies Settings.
 _OPENAPI_PLACEHOLDER_DB = "postgresql+psycopg://openapi@localhost/openapi"
@@ -29,14 +29,20 @@ def openapi_spec() -> str:
     return json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n"
 
 
+def _load_settings_and_configure_logging() -> Settings:
+    from dawam.platform.logs import configure_logging
+
+    settings = load_settings()
+    configure_logging(settings.log_level)
+    return settings
+
+
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     from dawam.app import create_app
-    from dawam.platform.logs import configure_logging
 
-    settings = Settings()  # type: ignore[call-arg]
-    configure_logging(settings.log_level)
+    settings = _load_settings_and_configure_logging()
     uvicorn.run(
         create_app(settings),
         host=args.host,
@@ -49,11 +55,9 @@ def _serve(args: argparse.Namespace) -> int:
 
 
 def _worker(args: argparse.Namespace) -> int:
-    from dawam.platform.logs import configure_logging
     from dawam.worker import run_worker
 
-    settings = Settings()  # type: ignore[call-arg]
-    configure_logging(settings.log_level)
+    settings = _load_settings_and_configure_logging()
     stop = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())

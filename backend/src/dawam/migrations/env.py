@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import context
 
 import dawam.modules  # noqa: F401  (importing the modules registers their tables)
-from dawam.platform.config import Settings
+from dawam.platform.config import load_settings
 from dawam.platform.db import Base
 
 config = context.config
@@ -20,7 +20,7 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    return config.get_main_option("sqlalchemy.url") or Settings().database_url  # type: ignore[call-arg]
+    return config.get_main_option("sqlalchemy.url") or load_settings().database_url
 
 
 def _run(connection: sa.Connection) -> None:
