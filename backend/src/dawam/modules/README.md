@@ -11,11 +11,13 @@ dawam/modules/<name>/
   __init__.py   # PUBLIC INTERFACE: re-exports the service API, schemas and `router`
   service.py    # the service API (functions or a class) other modules call
   api.py        # FastAPI `router` for the module's /api/v1 endpoints (optional)
-  tables.py     # SQLAlchemy tables on dawam.platform.db.Base (private)
-  internal/     # anything else (private)
+  tables.py     # SQLAlchemy tables on dawam.platform.db.Base (optional, private)
+  internal/     # anything else (optional, private)
 ```
 
-`dawam/modules/jobs/` is the smallest real example.
+Every module has `__init__.py` and `service.py`; the rest exist only when needed.
+`dawam/modules/jobs/` is the smallest real example: just `__init__.py`, re-exporting
+the job runner port and its inline implementation from `service.py`.
 
 ## The rules
 
@@ -28,8 +30,10 @@ dawam/modules/<name>/
    point at another module's rows, store the id (a database foreign key by table
    name, e.g. `sa.ForeignKey("workspaces.id")`, is fine), but never map an ORM
    `relationship()` to another module's class or query its tables.
-3. **`dawam.platform` is the shared kernel** (config, db, errors, logging,
-   migrations, email). Every module may use it; it must never import
+3. **`dawam.platform` is the shared kernel**: config, db, errors, logging,
+   migrations and email, plus the app-wide HTTP plumbing that belongs to no
+   module (request context middleware, the `/healthz` and `/readyz` probes, and
+   `GET /api/v1/version`). Every module may use it; it must never import
    `dawam.modules` or `dawam.app`.
 4. **Composition roots** (`dawam.app`, `dawam.worker`, `dawam.__main__`) wire
    modules together and choose concrete implementations (e.g. which

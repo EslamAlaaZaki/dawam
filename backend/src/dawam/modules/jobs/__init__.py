@@ -8,6 +8,6 @@ consumed by the worker process; tests keep using ``InlineJobRunner`` so backgrou
 work stays synchronous and deterministic in the S1 harness.
 """
 
-from .runner import InlineJobRunner, JobHandler, JobRunner, UnknownJobKindError
+from .service import InlineJobRunner, JobHandler, JobRunner, UnknownJobKindError
 
 __all__ = ["InlineJobRunner", "JobHandler", "JobRunner", "UnknownJobKindError"]

@@ -38,7 +38,7 @@ def _is_within(name: str, package: str) -> bool:
 
 
 def _owning_module(name: str) -> str | None:
-    """``dawam.modules.jobs.runner`` -> ``jobs``; None outside dawam.modules."""
+    """``dawam.modules.jobs.service`` -> ``jobs``; None outside dawam.modules."""
     if not _is_within(name, MODULES_PACKAGE):
         return None
     rest = name[len(MODULES_PACKAGE) + 1 :]
