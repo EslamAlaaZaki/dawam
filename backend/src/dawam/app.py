@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from fastapi import APIRouter, FastAPI
+from fastapi.staticfiles import StaticFiles
 
 import dawam
 from dawam.modules import ALL_MODULES
@@ -74,4 +75,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
             api.include_router(router)
     app.include_router(api)
     app.include_router(health.router)
+    if settings.frontend_dist is not None:
+        # Mounted last, so the API and probes always win over static files.
+        app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
     return app

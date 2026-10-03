@@ -3,7 +3,7 @@
 Code sends mail through an ``EmailSender``; which implementation is used is decided
 in the composition root (``dawam.app``):
 
-- ``LoggingEmailSender``: default until SMTP settings exist (spec story 24). It logs
+- ``LoggingEmailSender``: default until SMTP delivery exists (#26). It logs
   that a message was sent (recipient and subject only, never the body, which may
   carry one-time links).
 - ``InMemoryOutbox``: keeps every message in memory so tests can read what was sent.

@@ -7,12 +7,14 @@ with Testcontainers (once per test session). Fixtures:
 - ``signed_in_client``: extension point; becomes real when auth lands (#23).
 - ``outbox``: captures every email the app sends (``outbox.messages``).
 - ``jobs``: the job runner; in tests background work always runs inline.
+- ``fresh_database_url``: an empty, unmigrated database for tests that need one.
 
 The container starts lazily, so tests that need no database don't pay for it.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -39,6 +41,21 @@ def postgres() -> Iterator[PostgresContainer]:
 @pytest.fixture(scope="session")
 def database_url(postgres: PostgresContainer) -> str:
     return postgres.get_connection_url()
+
+
+@pytest.fixture
+def fresh_database_url(database_url: str) -> Iterator[str]:
+    """An empty database in the test PostgreSQL server, dropped afterwards."""
+    name = f"fresh_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
+    try:
+        yield sa.make_url(database_url).set(database=name).render_as_string(hide_password=False)
+    finally:
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()
 
 
 @pytest.fixture

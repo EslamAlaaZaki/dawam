@@ -1,10 +1,6 @@
 """/readyz is OK only when the database is reachable and migrations are at head;
 the app migrates the database on startup."""
 
-import uuid
-from collections.abc import Iterator
-
-import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.script import ScriptDirectory
@@ -31,21 +27,6 @@ def applied_revisions(database_url: str) -> set[str]:
             return set(conn.scalars(sa.text("SELECT version_num FROM alembic_version")))
     finally:
         engine.dispose()
-
-
-@pytest.fixture
-def fresh_database_url(database_url: str) -> Iterator[str]:
-    """An empty database in the test PostgreSQL server, dropped afterwards."""
-    name = f"fresh_{uuid.uuid4().hex[:12]}"
-    admin = sa.create_engine(database_url, isolation_level="AUTOCOMMIT")
-    with admin.connect() as conn:
-        conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
-    try:
-        yield sa.make_url(database_url).set(database=name).render_as_string(hide_password=False)
-    finally:
-        with admin.connect() as conn:
-            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        admin.dispose()
 
 
 def client_for(settings: Settings, services: Services) -> TestClient:
