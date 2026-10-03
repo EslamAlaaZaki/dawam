@@ -20,6 +20,7 @@ from dawam.platform.config import Settings
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
+from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.request_context import RequestContextMiddleware
 
 API_PREFIX = "/api/v1"
@@ -39,6 +40,7 @@ def default_services() -> Services:
 def create_app(settings: Settings | None = None, *, services: Services | None = None) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]  # read from env
     services = services or default_services()
+    install_request_id_on_records()
     engine = create_engine(settings.database_url)
 
     @asynccontextmanager
