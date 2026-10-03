@@ -1,0 +1,20 @@
+# The AI may read sample rows from source systems
+
+During source analysis the AI may read sample rows and run its own `SELECT` queries (e.g. `COUNT(*)` overlap checks) against a Source System to find undeclared relationships and understand the business, even though this means real source data reaches the model. We accepted this because statistics alone are often not enough to confirm a relationship or the meaning of a column, and source understanding is a core reason the AI exists in DAWAM.
+
+## Guardrails
+
+- **Opt-in.** Reading sample rows is its own data-sharing level that a Workspace owner opts into. Top-N values and min/max from profiling are real data too, so they reach the model only at this level. New Workspaces default to internal (self-hosted) models only when the installation has one, so by default no sample data leaves the network. The restriction covers every model role, not just the agent.
+- **Query guard, enforced by parsing, not string matching.** SQL is parsed with sqlglot and must be a single `SELECT`. Only allow-listed side-effect-free functions are permitted. Every table reference must resolve against the latest Snapshot to a fully qualified table in the same database and an allowed Database Schema; synonyms, cross-database names and linked servers are rejected. A `SELECT` alone is not safe enough because functions can have side effects and unqualified names can escape the allowed-schemas list.
+- **Load limits.** Read-only transaction where supported, statement timeout, result cap (default 100 rows), and a per-run budget of total source-query seconds.
+- **One protection set.** A column is protected if it is flagged sensitive or has a suggested or confirmed PII finding. Name-based PII rules run automatically before the first exploration, and a name match alone is always at least "suggested", so a freshly connected system is not explored unprotected.
+- **Masking by lineage.** Each output column is traced (through `SUBSTR`, `CONCAT`, `CAST`…) to the source columns it derives from; if any is protected it is masked. `SELECT *` is expanded first, and views are traced through their definitions; a view that can't be traced, or reads a disallowed schema, is not queryable (fail closed). Masking only confirmed PII by column name was rejected: it leaks exactly when the AI is used most (a new, unreviewed system) and is trivially bypassed by aliasing.
+- **Counting and joining are allowed.** `COUNT`/`COUNT(DISTINCT)` over protected columns and `JOIN ON` them are allowed, because undeclared join keys in Saudi systems are often national ID, Iqama or mobile numbers. Projecting their values, `GROUP BY`/`MIN`/`MAX` on them and comparing them to literals are rejected. A small-cell (k-anonymity) rule was considered and rejected as too costly for Release 1.
+- **Value check on every result.** Before results reach the model, every cell is tested with the Saudi PII validators (ID/Iqama checksum, IBAN, mobile, email, card). A hit masks that column and creates a suggested finding, which catches PII behind vague names (`ref_no`) before any value scan has run.
+- **Persistence.** Raw query results are never persisted (saved tool results keep only query, column names, row count and duration). Model-written text may quote non-protected values, so every model-written string is checked with the same validators before saving, and matches are redacted. The guarantee is therefore "raw results are never stored and validator-detectable PII is redacted", not "no value ever reaches storage": a free-text value no validator recognises can still be quoted by the model.
+- **Visibility.** Every AI query is logged and shown in the chat. No per-query approval.
+
+## Considered Options
+
+- **Statistics only** (software computes value overlap and distinct counts; the AI never sees values): safest, rejected as the only mode because it limits what the AI can discover.
+- **Always allowed**: rejected; sending customer data to a cloud model must be a deliberate owner choice.

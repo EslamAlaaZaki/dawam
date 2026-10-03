@@ -3,10 +3,13 @@
 | | |
 |---|---|
 | Name | **DAWAM**: Data Analysis & Warehouse Architecture Modeler (دوام, "continuity") |
-| Status | Draft v3 (AI fully in scope, pluggable self-hosted or cloud LLMs; only DW implementation deferred), awaiting review |
+| Status | Draft v6 (v4 design interview + 27 gap resolutions from a first review + 21 from a second review), awaiting review |
 | Date | 2026-10-03 |
 | License | Open source (recommended: Apache-2.0) |
 | Distribution | Self-hosted (Docker Compose), not sold |
+| Audience | The open-source community: data engineers, system analysts and data analysts, weighted equally |
+| Glossary | [`CONTEXT.md`](../CONTEXT.md) is the single source of terms |
+| Decisions | [`docs/adr/`](./adr/) |
 
 ---
 
@@ -14,60 +17,81 @@
 
 Data engineers, system analysts and data analysts building a data warehouse go through the same painful sequence on every project:
 
-1. They analyse source systems by hand: connecting to databases, exploring tables, guessing relationships that are not declared as foreign keys, and reading scattered documentation (SAD documents, Confluence pages, Jira tickets, code repositories).
-2. They design the warehouse (facts, dimensions, grain, SCD types, KPIs) in a mix of whiteboards, draw.io files and Word documents that quickly drift out of date.
-3. They write source-to-target mapping sheets in Excel. These sheets are the contract between the analyst and the engineer, yet they have no versioning, no validation and no link to the actual source schema.
+1. They analyse source systems by hand: connecting to databases, exploring tables, guessing relationships that are not declared as foreign keys, and reading scattered documentation (SAD documents, Confluence pages, tickets, code).
+2. They define KPIs and design the warehouse (staging, facts, dimensions, grain, SCD types) in a mix of whiteboards, draw.io files and Word documents that quickly drift out of date.
+3. They write source-to-target mapping sheets in Excel. These sheets are the contract between the analyst and the engineer, yet they have no validation and no link to the actual source schema.
 4. Lineage ("where does this KPI come from?") lives in people's heads.
 
 Each step lives in a different tool, nothing is connected, and nothing tells the team whether the design is complete or sound. When the source schema changes, nobody knows which mappings and KPIs are affected.
 
-On top of that, nobody systematically finds personal data in sources before it is copied into the warehouse, which matters under Saudi Arabia's PDPL. KPI definitions start from a blank page on every project. And answering simple questions about the project ("which tables feed revenue?") means digging through several tools.
+On top of that, nobody systematically finds personal data in sources before it is copied into the warehouse, which matters under Saudi Arabia's PDPL. And understanding an undocumented source system — what a table means, which columns join, what a status code stands for — takes weeks of manual exploration.
 
 ## 2. Solution
 
-A self-hosted web application where a team works through a data-warehouse project in connected stages, with every artifact traceable back to the real source schema.
+A self-hosted web application where a team analyses one or more source systems and designs one data warehouse from them, with every artifact traceable back to the real source schema, and an AI assistant working alongside the team in every stage.
+
+### 2.1 Structure
+
+A **Workspace** holds many **Source Systems** and one **Data Warehouse**. The UI is a folder tree:
+
+```
+Workspaces/
+└── Ministry DW/                         ← Workspace
+    ├── Systems/
+    │   └── System A/                    ← Source System (one database)
+    │       ├── Connection | Schema Import
+    │       ├── Source Schema            ← latest Snapshot + discovered relationships,
+    │       │                              descriptions, labels
+    │       ├── Profiling
+    │       ├── PII findings
+    │       ├── Documents                ← uploaded files + links
+    │       ├── KPIs                     ← KPIs based on this system
+    │       └── Outputs / Files          ← e.g. optional gaps & enhancements report
+    └── Data Warehouse/
+        ├── KPIs                         ← KPIs that span systems
+        ├── Staging/   Model · Mappings (source → staging, generated) · Evaluation
+        ├── Core/      Model · Mappings (staging → core) · Evaluation
+        ├── Mart/      Model · Mappings (core → mart) · Evaluation
+        └── Lineage · Overall score · DDL
+```
+
+### 2.2 Stages
 
 | Stage | What happens | Key outputs |
 |---|---|---|
-| **1. Source System Analysis** | Connect to source databases (required), extract metadata, profile data, discover relationships, attach supporting material (repo links, Jira, Confluence, SAD documents). | Source catalog, data profile, relationship map, source documentation |
-| **2. DW Design** | Design the target model (facts, dimensions, attributes, grain, SCD), document KPIs, map source to target, view lineage, and get a design-quality score. | Target model, KPI catalog, mapping specs, lineage graph, DW score, DDL |
-| **3. DW Implementation** (next phase) | Turn mappings into implementation artifacts. | dbt project skeleton, SQL transforms, load-order plan |
+| **1. Source System Analysis** (per Source System) | Get the metadata in through a live Connection or a Schema Import, profile the data, discover relationships, detect PII, attach documents. The AI explores the source, drafts documentation, labels tables and reports gaps. | Snapshots, enhanced Source Schema, profiles, PII findings, documentation, optional gaps report |
+| **2. KPIs** | Users enter KPIs; the AI suggests KPIs from the system analysis. | KPI catalog (per system or for the whole DW) |
+| **3. DW Modeling** | Staging is generated by software. The AI generates Core and Mart (Kimball) from the Source Schemas and KPIs; users edit. Each Layer is mapped from the Layer below and evaluated. | DW Schema, mappings, rule-based scores, AI evaluation, lineage, DDL |
+| **4. DW Implementation** (next phase) | Turn mappings into implementation artifacts. | dbt project skeleton, SQL transforms, load-order plan |
 
-Stages 1 and 2 and everything below are in scope for the first release. Stage 3 is the only part planned for the next phase.
+Stages 1–3 and everything below are in scope for Release 1. Stage 4 is the next phase.
 
-Four capabilities run across all stages:
+### 2.3 Principles
+
+- **Software first, AI where software can't.** Anything deterministic (extraction, profiling, PII regex, staging generation, scoring, lineage, validation) is done by software. The AI handles understanding, drafting, generating and judging. AI prompts are grounded by tools that fetch real schema, statistics and data rather than guessing.
+- **AI is required.** An installation needs at least one configured model; self-hosted models (vLLM, SGLang, Ollama) are fully supported, so the whole tool can run air-gapped.
+- **Nothing changes silently.** Every change to the Source Schema enhancements, DW Schema or mappings that comes from the AI, a regeneration, a Snapshot sync, a mapping import or change propagation arrives as a **Change Set** the user accepts in full or in part. The one exception is AI-suggested KPIs, which are created directly as labelled drafts (§6.13): create-only, never updating or deleting existing KPIs, skipping names that already exist, and audited as `via=ai`.
+- **Forward-only.** There is no revert, no restore button and no per-Asset version history ([ADR 0001](./adr/0001-forward-only-changes-no-revert.md)). A change lists the impacted Assets and offers a Change Set that propagates it. The audit trail shows old values, so a user can re-enter them as a new change.
+- **Destructive actions are soft.** Deleting a Source System or a DW table is owner-only and marks only that object `deleted` (no cascade) until an owner confirms the permanent delete.
+- **Everything is editable.** Users can override anything the software or the AI produced, and DAWAM remembers which fields a user overrode so regeneration and sync never silently undo them.
+- **The AI is required, but its absence doesn't freeze the work.** If the model is down or the budget is spent, all non-AI features keep working.
+
+### 2.4 Cross-cutting capabilities
 
 | Capability | What it does |
 |---|---|
-| **PII Detection** | Scans source column names and sampled values for personal data, tracks review decisions, and follows PII through lineage into the warehouse. |
-| **KPI Suggestions** | Proposes KPIs from the target model, from a domain KPI library, and from the AI assistant. |
-| **DW Schema Scoring** | Scores the warehouse schema per project, schema layer and table, with fix hints and an optional approval gate. |
-| **AI Assistant** | An agentic chat in every project that answers questions, generates and updates files, and proposes model changes that a human approves. It runs on any pluggable model: self-hosted (vLLM, SGLang, Ollama) or a cloud API. |
+| **PII Detection** | Scans source column names and sampled values with Arabic and English regex rules (Saudi-focused), tracks review decisions, and follows PII through lineage into the warehouse. |
+| **KPIs** | User-entered KPIs, AI-suggested KPIs after source analysis, and rule-based KPIs once the DW Schema exists. |
+| **DW Scoring** | Rule-based score per Data Warehouse, Layer and table, with fix hints and an approval gate per Layer. The AI adds an advisory evaluation on top. |
+| **AI Assistant** | An agentic chat in every Workspace that explores sources, answers questions, generates the DW Schema and mappings, evaluates the design and generates files, always through Change Sets for model changes. Runs on any pluggable model, self-hosted or cloud. |
 
-Access is controlled at two levels. **System roles** (Admin, User) govern the installation. **Project roles** (Owner, Editor, Viewer) govern who can see and change each project. A project and its source systems are visible only to its members.
+Access is controlled at two levels. **System roles** (Admin, User) govern the installation. **Workspace roles** (Owner, Editor, Viewer) govern who can see and change each Workspace. A Workspace and everything in it are visible only to its members.
+
+The UI is English only. Source data and documents may be in Arabic or any language, and the AI replies in the language the user writes in.
 
 ## 3. Glossary
 
-| Term | Meaning |
-|---|---|
-| Project | A DW initiative, the top-level container. Holds sources, the target model, KPIs, mappings and members. |
-| Source System | A logical system being analysed (e.g. "Core Banking", "CRM"). Has one or more connections and supporting artifacts. |
-| Connection | Credentials and settings for reaching one source database. |
-| Snapshot | A point-in-time capture of a source's metadata (schemas, tables, columns, keys). |
-| Profile | Statistics about a source column (null %, distinct count, min/max, patterns). Aggregates only. |
-| Inferred Relationship | A relationship between columns discovered by the tool rather than declared as a FK. |
-| Target Model | The warehouse design: facts, dimensions, bridges and their attributes. |
-| Grain | The precise meaning of one row in a fact table. |
-| KPI | A business metric with a definition, formula and owner, linked to target columns. |
-| Mapping | A rule describing how one target column is populated from one or more source columns. |
-| Lineage | The graph linking source columns → mappings → target columns → KPIs. |
-| DW Schema Score | An automated score of the warehouse schema's design quality, computed per project, per schema layer and per table. |
-| PII Finding | A detection that a source column likely holds personal data, with category, confidence and evidence (never the values themselves). |
-| KPI Suggestion | A proposed KPI from rules, a domain template or the assistant, waiting to be accepted or rejected. |
-| Assistant | The project's AI agent. It answers questions, generates or updates files and proposes changes. |
-| Change Set | A group of proposed changes shown as a diff and applied only after a human approves it. |
-| Project File | A versioned file in the project's file area, generated by the tool or the assistant, or uploaded by a member. |
-| LLM Provider | A configured model endpoint: self-hosted (vLLM, SGLang, Ollama or any OpenAI-compatible server) or a cloud API. |
+Domain terms are defined in [`CONTEXT.md`](../CONTEXT.md). Use those terms exactly; in particular, the bare word "schema" is avoided in favour of **Source Schema**, **DW Schema** and **Database Schema**.
 
 ## 4. Roles & Permissions
 
@@ -75,268 +99,305 @@ Access is controlled at two levels. **System roles** (Admin, User) govern the in
 
 | Role | Description |
 |---|---|
-| **Admin** | Manages the installation: users, registration settings, system configuration. |
-| **User** | Can create projects and be added to other people's projects. |
+| **Admin** | Manages the installation: users, registration settings, system configuration, LLM providers. |
+| **User** | Can create Workspaces and be added to other people's Workspaces. |
 
-Admins are users too. An admin does **not** see project content unless they are a member of that project. Admins can see project metadata (name, owner, member count, created date) to support ownership recovery.
+Admins are users too. An admin does **not** see Workspace content unless they are a member of that Workspace. Admins can see Workspace metadata (name, owner, member count, created date) to support ownership recovery.
 
-### 4.2 Project roles
+### 4.2 Workspace roles
+
+Roles apply to the whole Workspace (all Source Systems and the Data Warehouse). Per-folder permissions are not included.
 
 | Role | Description |
 |---|---|
-| **Owner** | Full control including members, credentials, deletion. A project can have several owners. |
-| **Editor** | Can change all analysis and design content. Cannot manage members or view and edit connection credentials. |
-| **Viewer** | Read-only access to all project content and exports. |
+| **Owner** | Full control including members, credentials, AI data settings, deletion. A Workspace can have several owners. |
+| **Editor** | Can change all analysis and design content. Cannot manage members, view or edit connection credentials, or change AI data settings. |
+| **Viewer** | Read-only access to all Workspace content and exports. |
 
 ### 4.3 Permission matrix
 
 | Action | Admin (non-member) | Owner | Editor | Viewer |
 |---|:-:|:-:|:-:|:-:|
-| See project in list (metadata only) | ✅ | ✅ | ✅ | ✅ |
-| Open project content | ❌ | ✅ | ✅ | ✅ |
-| Rename / edit project details | ❌ | ✅ | ❌ | ❌ |
-| Archive / delete project | ✅ | ✅ | ❌ | ❌ |
+| See Workspace in list (metadata only) | ✅ | ✅ | ✅ | ✅ |
+| Open Workspace content | ❌ | ✅ | ✅ | ✅ |
+| Rename / edit Workspace details | ❌ | ✅ | ❌ | ❌ |
+| Archive / unarchive Workspace | ✅ | ✅ | ❌ | ❌ |
+| Delete Workspace (typed name; admin only if archived) | ✅ | ✅ | ❌ | ❌ |
 | Add / remove members, change roles | ❌ | ✅ | ❌ | ❌ |
-| Transfer or reassign ownership | ✅ | ✅ | ❌ | ❌ |
-| Create / delete source systems | ❌ | ✅ | ✅ | ❌ |
-| Create connection, edit credentials | ❌ | ✅ | ❌ | ❌ |
-| Run extraction / profiling on a connection | ❌ | ✅ | ✅ | ❌ |
-| Edit source documentation & artifacts | ❌ | ✅ | ✅ | ❌ |
-| Edit target model, KPIs, mappings | ❌ | ✅ | ✅ | ❌ |
+| Transfer ownership | ❌ | ✅ | ❌ | ❌ |
+| Reassign ownership of an orphaned Workspace (no active owner) | ✅ | ❌ | ❌ | ❌ |
+| Create Source Systems | ❌ | ✅ | ✅ | ❌ |
+| Delete Source Systems or DW tables (soft, then confirm) | ❌ | ✅ | ❌ | ❌ |
+| Change a System Code or the target platform after creation | ❌ | ✅ | ❌ | ❌ |
+| Create Connection, edit credentials, see Connection host/user in audit | ❌ | ✅ | ❌ | ❌ |
+| Run extraction / Schema Import / profiling | ❌ | ✅ | ✅ | ❌ |
+| Allow top-N value capture per table | ❌ | ✅ | ❌ | ❌ |
+| Edit Source Schema enhancements & documents | ❌ | ✅ | ✅ | ❌ |
+| Edit KPIs, DW Schema, mappings | ❌ | ✅ | ✅ | ❌ |
+| Set up the Data Warehouse (target platform, Layer schema names, naming rules, date dimension settings) | ❌ | ✅ | ✅ | ❌ |
+| Include a source view in staging | ❌ | ✅ | ✅ | ❌ |
+| Request switching a Source System to a live Connection | ❌ | ✅ | ✅ | ❌ |
+| Set "approver must not be the last editor" | ❌ | ✅ | ❌ | ❌ |
+| Cancel another member's job | ❌ | ✅ | ❌ | ❌ |
 | Comment | ❌ | ✅ | ✅ | ✅ |
-| View lineage, scores, exports | ❌ | ✅ | ✅ | ✅ |
-| View project activity log | ❌ | ✅ | ✅ | ✅ |
-| Review PII findings, set PII handling | ❌ | ✅ | ✅ | ❌ |
-| Manage project PII rules | ❌ | ✅ | ❌ | ❌ |
-| Accept / reject KPI suggestions | ❌ | ✅ | ✅ | ❌ |
+| View lineage, scores, AI evaluation findings, exports, audit log | ❌ | ✅ | ✅ | ✅ |
+| Review PII findings, set PII hashing | ❌ | ✅ | ✅ | ❌ |
+| Manage Workspace PII rules | ❌ | ✅ | ❌ | ❌ |
 | Set minimum score gate, disable score checks | ❌ | ✅ | ❌ | ❌ |
-| Ask the assistant questions | ❌ | ✅ | ✅ | ✅ |
-| Let the assistant generate files and propose changes | ❌ | ✅ | ✅ | ❌ |
-| Approve, apply and revert change sets | ❌ | ✅ | ✅ | ❌ |
-| Enable AI for the project; choose its model, data-sharing level and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
-| Upload, edit, restore project files | ❌ | ✅ | ✅ | ❌ |
+| Move to in review; approve a Layer (core, mart) or KPI | ❌ | ✅ | ✅ | ❌ |
+| Ask the assistant questions, run an AI evaluation | ❌ | ✅ | ✅ | ✅ |
+| See conversations other members shared with the Workspace | ❌ | ✅ | ✅ | ✅ |
+| Let the assistant run source queries, generate files and propose changes | ❌ | ✅ | ✅ | ❌ |
+| Accept / reject Change Set items (owner-only items need an Owner) | ❌ | ✅ | ✅ | ❌ |
+| Choose the Workspace's model, data-sharing level and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
+| Upload, edit, delete Workspace files | ❌ | ✅ | ✅ | ❌ |
 | Configure LLM providers, models, roles and budgets (system-wide) | ✅ | ❌ | ❌ | ❌ |
 
-Authorization is enforced **on the server for every request**. The UI only hides controls for convenience.
+Authorization is enforced **on the server for every request**, including every assistant tool call. The UI only hides controls for convenience.
+
+An admin can reassign ownership only when the server confirms the Workspace has no active owner. Every reassignment writes a security event and notifies the Workspace's remaining members. A non-member admin can delete a Workspace only after it has been archived, by typing its name; the deletion writes a security event. A Viewer can run an AI evaluation and see its findings, but cannot turn findings into Change Sets.
+
+**Change Sets cannot bypass this matrix.** Every Change Set item carries the role its action requires, derived from this table (e.g. deletes, System Code and platform changes, top-N and PII-rule settings require Owner). An Editor can accept every other item; owner-only items stay pending, marked "needs owner".
 
 ---
 
 ## 5. User Stories
 
-Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**, **Viewer**, **Member** (any project role).
+Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**, **Viewer**, **Member** (any Workspace role).
 
 ### Epic A: Authentication
 
 1. As a visitor, I want to sign up with email, display name and password when self-registration is enabled, so that I can start using the tool.
-2. As a visitor, I want to sign in with email and password, so that I can access my projects.
+2. As a visitor, I want to sign in with email and password, so that I can access my Workspaces.
 3. As a user, I want my session to stay signed in for a configurable period, so that I don't log in constantly.
 4. As a user, I want to sign out, which ends my session on the server, so that a shared machine is safe.
 5. As a user, I want to sign out of all my sessions at once, so that I can recover if a device is lost.
 6. As a user, I want to reset a forgotten password through an emailed one-time link, so that I can regain access.
 7. As a user, I want to change my password when I know the current one, so that I can rotate it.
 8. As a user, I want to edit my display name, so that teammates recognise me.
-9. As a user, I want to switch the interface between English and Arabic (with right-to-left layout), so that I can work in my preferred language.
-10. As a visitor, I want login to slow down and temporarily lock after repeated failures, so that my account resists brute force.
-11. As a visitor invited by email, I want to accept the invitation and set my password, so that I can join without open registration.
-12. As a user, I want to sign in with my organisation's identity provider through OpenID Connect (e.g. Microsoft Entra ID, Google Workspace, Keycloak) when the admin has configured it, so that I can use my existing work account.
-13. As a user, I want to turn on two-factor authentication with an authenticator app (TOTP) and receive recovery codes, so that my account stays safe even if my password leaks.
+9. As a visitor, I want login to slow down and temporarily lock after repeated failures, so that my account resists brute force.
+10. As a visitor invited by email, I want to accept the invitation and set my password, so that I can join without open registration.
+11. As a user, I want to sign in with my organisation's identity provider through OpenID Connect (e.g. Microsoft Entra ID, Google Workspace, Keycloak) when the admin has configured it, so that I can use my existing work account.
+12. As a user, I want to turn on two-factor authentication with an authenticator app (TOTP) and receive recovery codes, so that my account stays safe even if my password leaks.
 
 ### Epic B: Administration
 
-14. As the first person to install the tool, I want an admin account created from environment variables on first boot, so that the installation is never left without an admin.
-15. As an admin, I want to list, search and filter all users, so that I can manage the installation.
-16. As an admin, I want to invite a user by email, so that people can join while self-registration is off.
-17. As an admin, I want to deactivate and reactivate a user, so that leavers lose access immediately without losing their history.
-18. As an admin, I want to promote a user to admin or demote an admin, so that admin duties can be shared.
-19. As an admin, I want the system to block demoting or deactivating the last active admin, so that the installation stays manageable.
-20. As an admin, I want to force a password reset for a user, so that I can respond to a suspected compromise.
-21. As an admin, I want to turn self-registration on or off and optionally restrict it to allowed email domains, so that I control who joins.
-22. As an admin, I want to see a list of all projects with owner, member count and dates, without seeing their content, so that I can support users while respecting privacy.
-23. As an admin, I want to reassign ownership of a project whose owners have all been deactivated, so that projects are never orphaned.
-24. As an admin, I want to see a system audit log of security events (logins, failed logins, role changes, deactivations), so that I can investigate incidents.
-25. As an admin, I want to configure SMTP settings, so that invitation and reset emails work.
-26. As an admin, I want to configure OIDC single sign-on (issuer, client ID and secret, allowed email domains, automatic account creation) and optionally disable password login, so that access follows our company directory.
-27. As an admin, I want to require two-factor authentication for all users or for admins only, so that accounts meet our security policy.
+13. As the first person to install the tool, I want an admin account created from environment variables on first boot, so that the installation is never left without an admin.
+14. As an admin, I want to list, search and filter all users, so that I can manage the installation.
+15. As an admin, I want to invite a user by email, so that people can join while self-registration is off.
+16. As an admin, I want to deactivate and reactivate a user, so that leavers lose access immediately without losing their history.
+17. As an admin, I want to promote a user to admin or demote an admin, so that admin duties can be shared.
+18. As an admin, I want the system to block demoting or deactivating the last active admin, so that the installation stays manageable.
+19. As an admin, I want to force a password reset for a user, so that I can respond to a suspected compromise.
+20. As an admin, I want to turn self-registration on or off and optionally restrict it to allowed email domains, so that I control who joins.
+21. As an admin, I want to see a list of all Workspaces with owner, member count and dates, without seeing their content, so that I can support users while respecting privacy.
+22. As an admin, I want to reassign ownership of a Workspace whose owners have all been deactivated, so that Workspaces are never orphaned.
+23. As an admin, I want to see a system audit log of security events (logins, failed logins, role changes, deactivations), so that I can investigate incidents.
+24. As an admin, I want to configure SMTP settings, so that invitation and reset emails work.
+25. As an admin, I want to configure OIDC single sign-on (issuer, client ID and secret, allowed email domains, automatic account creation) and optionally disable password login, so that access follows our company directory.
+26. As an admin, I want to require two-factor authentication for all users or for admins only, so that accounts meet our security policy.
 
-### Epic C: Projects & Sharing
+### Epic C: Workspaces & Sharing
 
-28. As a user, I want to create a project with a name, description and business domain, so that I can start a DW initiative.
-29. As a user, I want to see a list of projects I am a member of, with my role in each, so that I can navigate my work.
-30. As an owner, I want to add an existing user to my project by email with a role, so that colleagues can collaborate.
-31. As an owner, I want to invite someone who has no account yet by email, so that they join the installation and the project in one step (only if I am permitted to invite: admin, or self-registration enabled).
+27. As a user, I want to create a Workspace with a name, description and business domain, so that I can start a DW initiative.
+28. As a user, I want to see a list of Workspaces I am a member of, with my role in each, so that I can navigate my work.
+29. As a member, I want to navigate a Workspace as a folder tree (Systems / each Source System / its contents, and Data Warehouse / KPIs / each Layer / Model, Mappings, Evaluation), so that I always know where an Asset lives.
+30. As an owner, I want to add an existing user to my Workspace by email with a role, so that colleagues can collaborate.
+31. As an owner, I want to invite someone who has no account yet by email, so that they join the installation and the Workspace in one step (only if I am permitted to invite: admin, or self-registration enabled).
 32. As an owner, I want to change a member's role, so that access matches responsibility.
-33. As an owner, I want to remove a member, so that people who left the project lose access.
-34. As a member, I want to leave a project, so that my list stays relevant; the last owner cannot leave without transferring ownership.
-35. As an owner, I want to archive a project, which makes it read-only, so that finished work is preserved.
-36. As an owner, I want to delete a project after typing its name to confirm, so that I can remove it permanently.
-37. As a member, I want to see the project's stage progress (Source Analysis, DW Design, ETL), so that I know where the work stands.
-38. As a member, I want a project activity feed (who changed what and when), so that I can follow the team's work.
+33. As an owner, I want to remove a member, so that people who left lose access.
+34. As a member, I want to leave a Workspace, so that my list stays relevant; the last owner cannot leave without transferring ownership.
+35. As an owner, I want to archive a Workspace, which makes it read-only (running jobs are cancelled, pending Change Sets are rejected, chat becomes read-only, exports still work), and to unarchive it later, so that finished work is preserved.
+36. As an owner, I want to delete a Workspace after typing its name to confirm, so that I can remove it permanently. A non-member admin can do this only for an archived Workspace.
+37. As a member, I want to see stage progress (Source Analysis per system, KPIs, DW Modeling per Layer), so that I know where the work stands.
+38. As a member, I want a Workspace activity feed (who changed what and when), so that I can follow the team's work.
 
-### Epic D: Source Systems & Connections
+### Epic D: Source Systems, Connections & Schema Import
 
-39. As an editor, I want to create a source system with a name, description, business owner and technical owner, so that each source is documented.
-40. As an owner, I want to add a database connection to a source system (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, Snowflake, BigQuery), so that metadata can be extracted.
-41. As an owner, I want to test a connection before saving it, so that I catch configuration errors early.
+39. As an editor, I want to create a Source System with a name, a short **System Code** (identifier-safe, e.g. `cbs`), description, business owner and technical owner, so that each source is documented and generated names stay short. Changing the System Code later is owner-only and produces one rename Change Set for every affected Staging Table.
+40. As an owner, I want to add a database Connection to a Source System (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle), so that metadata can be extracted. A Source System has exactly one database.
+41. As an owner, I want to test a Connection before saving it, so that I catch configuration errors early.
 42. As an owner, I want stored credentials to be encrypted and never shown again after saving, so that secrets are protected.
 43. As an owner, I want the tool to warn me if the connection user has write privileges, so that I'm encouraged to use a read-only account.
-44. As an owner, I want to restrict which schemas the tool may read, so that out-of-scope or sensitive schemas are never touched.
-45. As an editor, I want to extract metadata from a connection into a new snapshot (schemas, tables, views, columns, data types, nullability, PKs, FKs, indexes, row-count estimates, table/column comments), so that I have an accurate source catalog.
+44. As an owner, I want to restrict which Database Schemas the tool may read, so that out-of-scope or sensitive schemas are never touched. Objects in a schema I exclude become `out_of_scope` (never treated as dropped, never queried), and DAWAM offers to purge their stored top-N values, min/max and PII evidence.
+45. As an editor, I want to extract metadata from a Connection into a new Snapshot (Database Schemas, tables, views with their definitions, columns, data types, nullability, PKs, FKs, indexes, stored procedures and functions with their code, row-count estimates, comments), so that I have an accurate source catalog.
 46. As an editor, I want extraction to run in the background with visible progress, so that large databases don't block the UI.
-47. As an editor, I want to re-extract and see a diff against the previous snapshot (added, removed and changed tables and columns), so that I can track source changes.
-48. As a member, I want to be told which mappings and KPIs are affected when a new snapshot removes or changes a column, so that schema drift is caught early.
+47. As an editor whose tool can't reach the source database, I want to download a **Schema Import template** (Excel) and **helper queries** for my engine, run the queries on the database myself, fill the template with the results and upload it, so that I can analyse sources without a live Connection.
+48. As an editor, I want helper queries also for engines DAWAM can't connect to (e.g. DB2, Teradata), so that those sources can still be analysed through Schema Import.
+49. As an editor, I want a Schema Import to be validated with a report before anything is saved, so that a bad file never produces a broken Snapshot.
+50. As a member, I want a clear warning on Source Systems built from a Schema Import listing the features that don't work without a live Connection (profiling, value-based PII scans, value-overlap relationship inference, AI data exploration), so that I know the limits.
+51. As an editor, I want to switch a Source System between Schema Import and a live Connection (I request the switch; an owner supplies the Connection), with the next Snapshot diffed against the previous one regardless of origin, so that I can start offline and connect later.
+52. As an editor, I want to re-extract or re-import and see a diff against the previous Snapshot (added, removed and changed tables, columns, routines), so that I can track source changes.
+52a. As an editor, I want the diff to propose **rename candidates** for columns (e.g. `CUST_NO` removed and `CUSTOMER_NO` added in the same table with the same type and position), tables (similar column sets) and Database Schemas, which I confirm, and a manual "merge removed X into added Y" action for renames noticed late, so that a rename keeps its identity, descriptions and mappings instead of becoming a drop and an add.
+53. As a member, I want to be told which Assets (staging tables, mappings, KPIs, downstream tables) are affected when a new Snapshot removes or changes something, so that schema drift is caught early.
 
 ### Epic E: Source Analysis
 
-49. As a member, I want to browse the source catalog by schema, table and column with search, so that I can explore quickly.
-50. As an editor, I want to profile selected tables (row count, null %, distinct count, min/max, top-N value frequencies, length stats, detected patterns such as email or phone), so that I understand data quality.
-51. As an owner, I want to choose per table whether top-N values may be stored, and to have columns flagged as sensitive never sampled, so that personal data is not copied into the tool.
-52. As an editor, I want profiling to respect a configurable row-sample limit and query timeout, so that production sources aren't overloaded.
-53. As a member, I want the tool to suggest inferred relationships based on name similarity, matching types and value overlap, each with a confidence score, so that undeclared joins are discovered.
-54. As an editor, I want to accept or reject inferred relationships, so that the relationship map reflects reality.
-55. As a member, I want an ER diagram of a source (declared and accepted relationships) that I can filter by schema or table, so that I can understand the structure visually.
-56. As an editor, I want to add business descriptions, tags (e.g. `PII`, `master-data`, `transactional`) and a sensitivity flag to tables and columns, so that the catalog carries business meaning.
-57. As an editor, I want to classify each source table (master, transactional, reference, log, staging), so that DW design decisions are informed.
-58. As a member, I want to see a source summary dashboard (table count, documented %, profiled %, relationships found), so that I can gauge analysis completeness.
+54. As a member, I want to browse the Source Schema by Database Schema, table, column and routine with search, so that I can explore quickly.
+55. As an editor, I want to profile selected tables (row count, null %, distinct count, min/max, top-N value frequencies, length stats, detected patterns such as email or phone), so that I understand data quality.
+56. As an owner, I want to choose per table whether top-N values may be stored, and to have columns flagged as sensitive never sampled into storage, so that personal data is not copied into the tool.
+57. As an editor, I want profiling to respect a configurable row-sample limit and query timeout, so that production sources aren't overloaded.
+58. As a member, I want the tool to suggest inferred relationships based on name similarity, matching types, value overlap and JOIN clauses found in stored procedures, functions and views, each with a confidence score and its evidence, so that undeclared joins are discovered.
+59. As an editor, I want to accept or reject inferred relationships, so that the Source Schema reflects reality.
+60. As a member, I want an ER diagram of a Source System (declared and accepted relationships) that I can filter by Database Schema or table, so that I can understand the structure visually.
+61. As an editor, I want to add business descriptions, tags (e.g. `PII`, `master-data`, `transactional`) and a sensitivity flag to tables and columns, so that the Source Schema carries business meaning.
+62. As an editor, I want to classify each source table (master, transactional, reference, log, landing) and label it with an SCD hint (e.g. "changes slowly, history matters"), so that DW Modeling decisions are informed.
+63. As a member, I want a source summary dashboard (table count, documented %, profiled %, relationships found, PII found), so that I can gauge analysis completeness.
 
-### Epic F: Supporting Artifacts (optional per source)
+### Epic F: Documents
 
-59. As an editor, I want to link a code repository URL to a source system, so that engineers can find the application code.
-60. As an editor, I want to upload SAD and other documents (PDF, DOCX, MD, XLSX, images) to a source system, so that documentation lives with the analysis.
-61. As an editor, I want to link Jira issues and Confluence pages by URL with a title and note, so that relevant context is one click away.
-62. As an owner, I want to connect Jira and Confluence with an API token and import selected issues or pages (by JQL, project, space or page tree) as read-only artifacts that I can refresh on demand, so that their content is searchable and available to the assistant.
-63. As an editor, I want to link any artifact to specific tables or columns, so that context appears where it's needed.
-64. As a member, I want to download any uploaded document, so that I can read it offline.
+64. As an editor, I want to upload SAD and other documents (PDF, DOCX, MD, XLSX, images) to a Source System, so that documentation lives with the analysis and the AI can read it.
+65. As an editor, I want to link a code repository, Jira issues and Confluence pages by URL with a title and note, so that relevant context is one click away.
+66. As an editor, I want to link any document to specific tables or columns, so that context appears where it's needed.
+67. As a member, I want to download any uploaded document, so that I can read it offline.
 
-### Epic G: DW Design: Target Model
+### Epic G: AI Source Exploration
 
-65. As an editor, I want to create target schemas or layers (e.g. `staging`, `core`, `mart`), so that the warehouse is organised.
-66. As an editor, I want to create fact tables with a mandatory grain statement and a fact type (transactional, periodic snapshot, accumulating snapshot, factless), so that facts are well-defined.
-67. As an editor, I want to create dimension tables with an SCD type (0, 1, 2) per dimension and override it per attribute, so that history handling is explicit.
-68. As an editor, I want to add attributes to target tables with name, data type, nullability, description and role (surrogate key, natural key, foreign key, measure, attribute, audit column), so that the model is complete.
-69. As an editor, I want measures on facts to declare an additivity (additive, semi-additive, non-additive), so that BI usage is correct.
-70. As an editor, I want to link fact foreign keys to dimensions, so that the star schema is captured.
-71. As an editor, I want to mark a dimension as conformed and reuse it across facts, so that integration is enforced.
-72. As an editor, I want to create a target table from a source table (copy columns as a starting point), so that I don't retype everything.
-73. As a member, I want a visual star/snowflake diagram of the target model, so that I can review the design.
-74. As an editor, I want a bus matrix (facts × conformed dimensions), so that the enterprise view is clear.
-75. As an editor, I want naming conventions per project (prefixes such as `dim_`/`fact_`, case style) to be validated, so that the model is consistent.
-76. As a member, I want to generate DDL for the target model in a chosen dialect (PostgreSQL, SQL Server, Snowflake, BigQuery), so that the design is deployable.
+68. As an editor, I want the AI to explore a source where FKs are missing, reading sample rows and running its own `SELECT` queries (e.g. `COUNT(*)` overlap checks), so that undeclared relationships are confirmed with evidence.
+69. As a member, I want every query the AI runs on a source to be shown in the chat with its row count and duration, so that I can see what it touched.
+70. As an editor, I want the AI to draft business descriptions for tables and columns, explain the meaning of codes and statuses, and propose table classifications and SCD hints, as a Change Set I review, so that documentation starts from a draft instead of a blank page.
+71. As an editor, I want the AI to produce an optional **gaps & enhancements report** (Markdown) for a Source System (missing keys, undocumented tables, data-quality concerns, suggested improvements), so that analysis findings are written down.
+72. As a member, I want to ask the AI questions about a Source System and its documents and get answers that link to tables, columns and cited document sections, so that I can understand the system by asking.
 
-### Epic H: KPI Documentation
+### Epic H: KPIs
 
-77. As an editor, I want to document a KPI with name, business definition, formula (in words and in SQL), unit, aggregation, owner, refresh frequency and target values, so that metrics have one agreed definition.
-78. As an editor, I want to link a KPI to the target measures and dimensions it uses, so that it's traceable.
+73. As an editor, I want to document a KPI with name, business definition, formula (in words and in SQL), unit, aggregation, owner, refresh frequency and target values, so that metrics have one agreed definition.
+74. As an editor, I want to place a KPI under a Source System, or under the Data Warehouse when it spans systems, so that KPIs live where they belong.
+75. As an editor, I want the AI to suggest KPIs after a Source System is analysed, based on its Source Schema, profiles and documents, so that I don't start from a blank page.
+76. As a member, I want AI-suggested KPIs to be created as draft KPIs clearly labelled as AI-generated, which I can edit or delete, so that I know their origin. The AI only creates new KPIs; it never changes or deletes existing ones and skips names that already exist.
+76a. As an editor, I want a Source System KPI to carry a business formula in words until the DW exists, and then receive a Change Set from the AI linking it to DW Schema columns with formula SQL, so that KPIs written early become traceable later.
+77. As an editor, I want a list of rule-based KPI suggestions once the DW Schema exists (sums and averages of additive measures, distinct counts of dimension keys, ratios between measures, period-over-period growth when a date dimension exists), with formula SQL pre-filled, where accepting one creates a draft KPI, so that obvious metrics aren't missed.
+78. As an editor, I want to link a KPI to the DW Schema measures and dimensions it uses, so that it's traceable.
 79. As a member, I want to see each KPI's full lineage back to source columns, so that I can answer "where does this number come from?".
-80. As an editor, I want KPI status (draft, in review, approved), so that sign-off is visible.
+80. As an editor, I want KPI status (draft, in review, approved), so that sign-off is visible; a structural edit to an approved KPI (formula SQL, links), directly or through propagation, returns it to draft, while text edits don't.
 
-### Epic I: Source-to-Target Mapping
+### Epic I: DW Modeling — Staging
 
-81. As an editor, I want to create a mapping for each target column specifying source column(s), a transformation rule in plain language and an optional SQL expression, so that the build contract is precise.
-82. As an editor, I want to define, per target table, the source join path (driving table, joins and filters), so that the row set is unambiguous.
-83. As an editor, I want to mark a target column as derived, constant, system-generated (surrogate key, audit column) or not yet mapped, so that coverage is honest.
-84. As an editor, I want the tool to validate that mapped source columns exist in the latest snapshot and that the SQL expression parses, so that errors are caught early.
-85. As an editor, I want a data-type compatibility warning when a source type may not fit the target type (e.g. truncation), so that load failures are prevented.
-86. As a member, I want to see mapping coverage per target table and for the whole project, so that I know what's left.
-87. As an editor, I want mapping status (draft, in review, approved) and to comment on individual mappings, so that analysts and engineers can review together.
-88. As a member, I want to export mappings as XLSX and CSV in a familiar mapping-sheet layout, so that I can share them with people outside the tool.
-89. As an editor, I want to import mappings from an XLSX in the same layout, with a validation report before anything is saved, so that existing Excel work can be migrated.
+81. As an editor, I want the Staging Layer generated by software from every source base table of every Source System, with views included only when I opt in per view, so that staging needs no manual work.
+82. As an editor, I want Staging Tables named `stg_<system code>_<database schema>_<table>`, with the same columns plus audit columns (e.g. `load_ts`, `source_system`), so that staging is predictable.
+83. As an editor, I want generated names that exceed the target platform's identifier limit, or that collide with another generated name after sanitising (e.g. `Order Items` and `order_items`), shortened or suffixed with a short stable hash and flagged for review, so that DDL never fails.
+84. As an editor, I want source names with spaces or reserved words sanitised automatically, and non-Latin names (e.g. Arabic) replaced with a placeholder (e.g. `col_017`) whose number never changes between Snapshots, and flagged, so that generated identifiers are always valid and stable.
+84a. As an editor, I want source types with no direct equivalent on the target platform (e.g. `sql_variant`, `XMLTYPE`, `ENUM`, `NUMBER` without precision) translated through a per-platform table with explicit fallbacks and flagged, so that DDL never loses precision silently.
+85. As an editor, I want staging mappings (source → staging, 1:1 direct) generated automatically, so that the first Layer is fully mapped.
+86. As an editor, I want a new Snapshot to raise an alert and a Change Set that syncs staging (new tables created, changed columns updated, dropped tables and columns kept and flagged `source_removed`), which I confirm, so that staging follows the source without surprises. Sync never brings back a staging object I deleted, and shows my overrides (e.g. a column type I changed) as conflicts instead of overwriting them.
+86a. As an editor, I want a "drop removed" Change Set that retires removed staging objects nothing downstream uses, so that dead tables don't stay forever.
 
-### Epic J: Lineage
+### Epic J: DW Modeling — Core & Mart
 
-90. As a member, I want a column-level lineage graph from source column through mapping to target column to KPI, so that dependencies are visible.
-91. As a member, I want to start the lineage graph from any node and expand upstream or downstream, so that I can explore impact.
-92. As a member, I want an impact report for a source column (all target columns and KPIs that depend on it), so that I can assess changes.
+87. As an editor, I want an explicit **"Set up Data Warehouse"** step where I choose the target platform (PostgreSQL, SQL Server, Oracle, Snowflake, BigQuery), a physical schema or dataset name per Layer and the naming rules (until then the Data Warehouse folder shows only this step, while Data Warehouse KPIs already work), so that data types, identifier limits and DDL match it. Changing the platform later is owner-only and produces one rename/retype Change Set.
+88. As an editor, I want the AI to generate the Core Layer (Kimball facts and dimensions) and Mart Layer from the Source Schemas, staging and KPIs, as a Change Set I review, so that the DW Schema starts from a sound draft.
+89. As an editor, I want to create and edit fact tables with a mandatory grain statement and a fact type (transactional, periodic snapshot, accumulating snapshot, factless), so that facts are well-defined.
+90. As an editor, I want to create dimension tables with an SCD type (0, 1, 2) per dimension and override it per attribute, so that history handling is explicit. Making a dimension SCD2 adds `valid_from`, `valid_to`, `is_current` and a row-hash column automatically.
+90a. As an editor, I want every dimension to have an **unknown member** row (surrogate key `-1`), so that facts with a missing or late-arriving dimension key still load.
+90b. As an editor, I want a built-in **generated date dimension** (configurable range, optional Hijri calendar and fiscal-calendar attributes, configurable weekend such as Friday/Saturday) and an optional time dimension, which need no source mapping and are delivered as DDL plus a seed file, so that every fact can link to a calendar.
+91. As an editor, I want to add attributes with name, data type, nullability, description, semantic type (amount, quantity, customer key, transaction date…) and role (surrogate key, natural key, foreign key, measure, attribute, degenerate dimension, audit column, SCD housekeeping), so that the model is complete.
+92. As an editor, I want measures on facts to declare an additivity (additive, semi-additive, non-additive), so that BI usage is correct.
+93. As an editor, I want to link fact foreign keys to dimensions, give an FK a role name when one dimension plays several roles (e.g. `order_date` and `ship_date` both pointing at `dim_date`), and mark a dimension as conformed and reuse it across facts, so that the star schema and integration are captured.
+93a. As an editor, I want Mart facts and aggregates to reference Core conformed dimensions directly, without copying dimensions into the Mart, so that each dimension exists once.
+94. As a member, I want a visual star/snowflake diagram per Layer, so that I can review the design.
+95. As a member, I want a bus matrix (facts × conformed dimensions), so that the enterprise view is clear.
+96. As an editor, I want naming conventions per Data Warehouse (prefixes such as `dim_`/`fact_`, case style) to be validated, so that the model is consistent.
+97. As a member, I want to generate DDL for the DW Schema in the target platform's dialect, so that the design is deployable.
+98. As an editor, I want to ask for the DW Schema to be regenerated after a mandatory input changes (a new Snapshot, KPI changes, Source Schema enhancements such as classifications, SCD hints or relationships), receiving a Change Set against the current model that keeps every field I overrode unless I accept a change to it, so that regeneration never wipes my work.
+98a. As an editor, when I change a mapping by hand in a way that changes which inputs feed a table, I want the score recalculated and an offer to regenerate only that table, so that the model can follow my mapping decisions without a regeneration loop.
 
-### Epic K: DW Schema Scoring
+### Epic K: Mappings
 
-93. As a member, I want an overall DW schema score (0–100) and a letter grade, with a breakdown by category (completeness, dimensional modeling, consistency, traceability, documentation, performance readiness, privacy), so that I can see design quality at a glance.
-94. As a member, I want a score for each target schema layer and each target table, so that I can find the weakest parts of the design.
-95. As a member, I want a star-schema health card for each fact table (grain, linked dimensions, conformed dimensions, measure additivity, date dimension), so that I can review one star at a time.
-96. As a member, I want each failed check to have a severity (error, warning, info), link to the object at fault and give a fix hint, so that improving the score is actionable.
-97. As a member, I want the score recalculated automatically after every design change, so that it is always current.
-98. As an owner, I want to disable individual checks for my project with a reason, so that the score reflects our deliberate decisions.
-99. As an owner, I want to set a minimum score and block moving the design to "approved" while it has errors or is below that score, so that sign-off means something.
-100. As a member, I want to see the score trend over time and compare the current score against a baseline, so that progress is visible.
-101. As a member, I want to ask the assistant to explain a failed check and propose a fix as a change set, so that I can resolve issues faster.
-102. As a member, I want to export the score report as Markdown or XLSX, so that I can share it in design reviews.
+99. As an editor, I want each Layer mapped from the Layer below it (source → staging → core → mart), so that lineage is layered and unambiguous.
+100. As an editor, I want to create a mapping for each target column specifying its input column(s) from the Layer below, a transformation rule in plain language and an optional SQL expression, so that the build contract is precise. Inputs may come from several Source Systems.
+101. As an editor, I want to ask the AI to draft the mappings for a Core or Mart table, as a Change Set I review, so that mapping starts from a draft.
+102. As an editor, I want to define, per target table, one or more **mapping branches** combined with UNION ALL, each with its own driving table, joins, filters and column expressions, plus a free-text integration rule and optional match-key columns, so that a table fed by several systems (e.g. `dim_customer` from CRM and Core Banking) keeps rows that exist in only one of them.
+103. As an editor, I want to mark a target column as derived, constant, hashed, a dimension **lookup** (dimension, natural-key inputs, as-of date input for SCD2, unknown-member key), system-generated (surrogate key, audit column) or not yet mapped, so that coverage is honest and fact-to-dimension lineage is kept.
+104. As an editor, I want the tool to validate that mapped input columns exist and that the SQL expression parses, so that errors are caught early.
+105. As an editor, I want a data-type compatibility warning when an input type may not fit the target type (e.g. truncation), so that load failures are prevented.
+106. As a member, I want to see mapping coverage per target table, per Layer and for the whole Data Warehouse, so that I know what's left.
+107. As an editor, I want to comment on individual mappings, with review and sign-off tracked through the Layer's approval state, so that analysts and engineers can review together.
+108. As a member, I want to export mappings as XLSX and CSV in a familiar mapping-sheet layout, so that I can share them with people outside the tool.
+109. As an editor, I want to import mappings from an XLSX in the same layout, with a validation report, ending in a Change Set I accept, so that existing Excel work can be migrated without silently overwriting approved mappings.
 
-### Epic L: Collaboration & History
+### Epic L: Lineage & Change Propagation
 
-103. As a member, I want to comment on tables, columns, target objects, KPIs and mappings, with threads that can be resolved, so that review happens in context.
-104. As a member, I want to @mention project members in comments, so that the right person is notified in-app.
-105. As a member, I want to see the change history of a mapping, KPI or target object (who, when, old vs new), so that decisions are auditable.
-106. As an editor, I want to create a named version (baseline) of the DW design, so that I can compare later changes against a signed-off state.
+110. As a member, I want a column-level lineage graph from source column through staging, core and mart to KPI, so that dependencies are visible.
+111. As a member, I want to start the lineage graph from any node and expand upstream or downstream, so that I can explore impact.
+112. As a member, I want an impact report for a source column (all DW columns and KPIs that depend on it), so that I can assess changes.
+113. As an editor, I want every structural change to an Asset (by me, the AI, regeneration or Snapshot sync) to raise an alert naming the impacted Assets across all Layers and offer one Change Set that propagates the change to them, which I accept in full or in part, so that nothing is left broken. Description and documentation edits never raise alerts.
+113a. As an editor, I want a **"Fix impacts"** action that recomputes the propagation Change Set from whatever is currently broken, so that impacts I skipped earlier can still be fixed later.
 
-### Epic M: Exports & Documentation
+### Epic M: DW Scoring & AI Evaluation
 
-107. As a member, I want to export a project documentation pack (source catalog, target model, KPIs, mappings, lineage summary) as Markdown and HTML, so that I can publish it.
-108. As a member, I want to export the source data dictionary as XLSX, so that business users can review it.
+114. As a member, I want an overall DW score (0–100) and a letter grade covering Core, Mart and KPI checks, with a breakdown by category (completeness, dimensional modeling, consistency, traceability, documentation, performance readiness, privacy), so that I can see design quality at a glance.
+115. As a member, I want a score for each Layer and each DW table, so that I can find the weakest parts of the design; staging is scored separately, only on naming and traceability, and is not part of the DW score. A Layer with no tables shows "not scored".
+116. As a member, I want a star-schema health card for each fact table (grain, linked dimensions, conformed dimensions, measure additivity, date dimension), so that I can review one star at a time.
+117. As a member, I want each failed check to have a severity (error, warning, info), link to the object at fault and give a fix hint, so that improving the score is actionable.
+118. As a member, I want the score recalculated automatically after every design change, so that it is always current.
+119. As an owner, I want to disable individual checks with a reason, so that the score reflects our deliberate decisions.
+120. As an owner, I want to set a minimum score per Layer and block approving a Core or Mart Layer while it has errors or is below that score, so that sign-off means something. Staging has no approval gate, and Mart can only be approved while Core is approved. Optionally, the approver must not be the last editor.
+121. As a member, I want to see the score trend over time, so that progress is visible.
+122. As a member, I want an advisory AI evaluation of a Layer (e.g. ambiguous grain statements, dimensions that look like they need SCD2, missing conformed dimensions), and as an editor I want to turn its suggestions into Change Sets, so that design issues that rules can't judge are caught. AI findings never change the score or the gate.
+123. As a member, I want to ask the AI to explain a failed check, and as an editor to have it propose a fix as a Change Set, so that I can resolve issues faster.
+124. As a member, I want to export the score report as Markdown or XLSX, so that I can share it in design reviews.
 
-### Epic N: DW Implementation (next phase)
+### Epic N: Collaboration & Audit
 
-109. As an editor, I want to generate a dbt project skeleton (sources.yml from snapshots, one model per target table with SELECT built from mappings), so that implementation starts from the agreed design.
-110. As an editor, I want a suggested load order based on dependencies (dimensions before facts), so that pipelines are sequenced correctly.
-111. As an editor, I want SCD2 dimensions to generate the matching snapshot/merge template, so that history handling is implemented consistently.
+125. As a member, I want to comment on tables, columns, DW objects, KPIs and mappings, with threads that can be resolved, so that review happens in context.
+126. As a member, I want to @mention Workspace members in comments, so that the right person is notified in-app.
+127. As a member, I want to see the audit trail of critical entities (Source Schema enhancements and relationships, DW Schema tables, mappings, KPIs, PII decisions, members and roles, Connections): who changed what, when, how (by hand, AI, regeneration, sync, propagation, import) and old vs new values, so that decisions are auditable and old values can be re-entered by hand. Connection entries never contain secrets, and their host and username are shown to owners only.
 
-### Epic O: PII Detection
+### Epic O: Exports & Documentation
 
-112. As an editor, I want every new snapshot scanned automatically for PII by column name, using a dictionary of English and Arabic-transliterated keywords (e.g. `national_id`, `iqama`, `hawiya`, `mobile`, `jawal`, `email`, `iban`, `birth_date`), so that obvious personal data is flagged immediately.
-113. As an editor, I want to run a value-based PII scan on selected tables that checks sampled values in memory against patterns such as Saudi national ID and Iqama numbers (with checksum validation), Saudi mobile numbers, Saudi IBANs, emails, card numbers, commercial registration numbers and dates of birth, so that PII hidden behind vague column names is found.
-114. As an owner, I want sampled values used for PII scanning to be discarded after the scan and never stored or shown, so that the scan itself doesn't leak personal data.
-115. As a member, I want each finding to show its category (direct identifier, quasi-identifier, sensitive/special category, financial), its confidence and its evidence (which rule matched and on what share of sampled rows), so that I can judge it quickly.
-116. As an editor, I want a PII review queue where I confirm or dismiss findings, so that the sensitive flags are trustworthy.
-117. As an editor, I want a confirmed finding to set the column's sensitive flag and PII category, excluding it from top-N profiling and from anything sent to the AI assistant beyond its name, so that protection is automatic.
-118. As an owner, I want to add custom PII rules for my project (name keywords, regex and category), so that organisation-specific identifiers such as employee or customer numbers are caught.
-119. As a member, I want PII to propagate through lineage, so that any target column fed by a confirmed PII column is flagged as PII-derived.
-120. As an editor, I want to record a handling decision for every PII-derived target column (keep, mask, hash, tokenise, generalise, drop) with a note, so that privacy is designed in rather than bolted on.
-121. As a member, I want new suspected PII columns from a re-extraction highlighted in the snapshot diff, so that new personal data isn't missed.
-122. As a member, I want to export a PII inventory (source and target columns, category, handling decision, reviewer) as XLSX or Markdown, so that I can support PDPL records of processing and audits.
+128. As a member, I want to export a documentation pack (Source Schemas, DW Schema per Layer, KPIs, mappings, lineage summary) as Markdown and HTML, so that I can publish it.
+129. As a member, I want to export a Source System's data dictionary as XLSX, so that business users can review it.
 
-### Epic P: KPI Suggestions
+### Epic P: PII Detection
 
-123. As an editor, I want the tool to suggest KPIs from the target model using rules (sums and averages of additive measures, distinct counts of dimension keys, ratios such as average order value, and period-over-period growth when a date dimension exists), with the formula SQL pre-filled, so that I don't start from a blank page.
-124. As an editor, I want to pick a business domain (e.g. retail/e-commerce, banking, telecom, healthcare, HR, government services) and see KPIs from a built-in library that match my model, so that I benefit from industry-standard metrics.
-125. As an editor, I want to tag target columns with a semantic type (amount, quantity, price, customer key, transaction date and so on), so that library KPIs can be matched to my model.
-126. As a member, I want each suggestion to show its origin (rule, library or assistant), the reasoning behind it, and a feasibility status (computable now, needs mapping, needs new data), so that I can prioritise.
-127. As an editor, I want to see KPI gaps, meaning library KPIs my model cannot compute yet, with the missing measures or dimensions listed, so that I know what to add to the design.
-128. As an editor, I want to ask the assistant for KPI suggestions based on the project's domain, target model and uploaded documents, so that suggestions reflect the actual business.
-129. As an editor, I want to accept a suggestion (optionally editing it first), which creates a draft KPI already linked to its measures and dimensions, so that adopting it takes one click.
-130. As an editor, I want rejected suggestions to stay hidden unless I restore them, so that the list doesn't keep repeating itself.
+130. As an editor, I want every new Snapshot scanned automatically for PII by column name, using a dictionary of English, Arabic-transliterated and Arabic-script keywords (e.g. `national_id`, `iqama`, `hawiya`, `jawal`, `رقم_الهوية`, `email`, `iban`, `birth_date`), so that obvious personal data is flagged immediately.
+131. As an editor, I want to run a value-based PII scan on selected tables that checks sampled values in memory against regex patterns and validators (Saudi national ID and Iqama with checksum, Saudi mobile numbers, Saudi IBANs, emails, card numbers, commercial registration numbers, dates of birth), so that PII hidden behind vague column names is found.
+132. As an owner, I want sampled values used for PII scanning to be discarded after the scan and never stored or shown, so that the scan itself doesn't leak personal data.
+133. As a member, I want each finding to show its category (direct identifier, quasi-identifier, sensitive/special category, financial), its confidence and its evidence (which rule matched and on what share of sampled rows), so that I can judge it quickly.
+134. As an editor, I want a PII review queue where I confirm or dismiss findings, so that the sensitive flags are trustworthy.
+135. As an editor, I want a confirmed finding to set the column's sensitive flag and PII category, exclude it from top-N profiling and mask it in anything sent to the AI, so that protection is automatic.
+136. As an owner, I want to add custom PII rules (name keywords, regex and category), so that organisation-specific identifiers such as employee or customer numbers are caught.
+137. As a member, I want PII to propagate through lineage, including columns used only in joins and filters, so that any DW column fed by a confirmed PII column is flagged as PII-derived and listed in the PII view.
+138. As an editor, I want to optionally enable hashing for a PII column in its staging mapping (salted, with the salt supplied at load time), and optionally record a handling note on PII-derived columns, so that privacy can be designed in where the team chooses. Hashed columns stay PII-derived and are marked "pseudonymised", because pseudonymised data is still personal data under PDPL.
+139. As a member, I want new suspected PII columns from a new Snapshot highlighted in the Snapshot diff, so that new personal data isn't missed.
+140. As a member, I want to export a PII inventory (source and DW columns, category, hashing, handling note, reviewer) as XLSX or Markdown, so that I can support PDPL records of processing and audits.
 
 ### Epic Q: AI Assistant
 
-131. As a member, I want a chat panel on every page of a project that knows which object I'm looking at, so that I can ask about it without explaining the context.
-132. As a member, I want to ask questions about the project in plain language (e.g. "which tables hold customer data?", "where does the Net Revenue KPI come from?", "what changed in the last snapshot?") and get answers that link to the objects they mention, so that I can navigate by asking.
-133. As a member, I want to ask questions about uploaded documents (SAD documents, Markdown, DOCX, text-based PDFs) and get answers that cite the document and section, so that I don't have to read everything myself.
-134. As a member, I want to see which tools the assistant used and what it looked at for each answer, so that I can verify it.
-135. As an editor, I want to ask the assistant to generate files (mapping sheets, DDL, data dictionary, KPI documentation, dbt models, documentation pages), which are saved to the project's file area as new versioned files, so that deliverables are produced on request.
-136. As an editor, I want to ask the assistant to update an existing file (e.g. "add the loyalty columns to the customer mapping sheet" or "rewrite section 3 of this Markdown document"), which saves a new version with a diff I can review, so that files evolve without manual editing.
-137. As an editor, I want to ask the assistant to change the design itself (target tables and columns, mappings, KPIs, SCD settings, PII handling, or fixes for score issues), with every change presented as a change set showing a diff, so that nothing changes without my approval.
-138. As an editor, I want to approve all, approve some, or reject the items in a change set, so that I stay in control.
-139. As an editor, I want to revert an applied change set, so that mistakes are easy to undo.
-140. As a viewer, I want to ask questions but not generate files or propose changes, so that read-only access stays read-only.
-141. As a member, I want the assistant to act with my permissions only and never see connection credentials, so that it can't do anything I couldn't do myself.
-142. As a member, I want my conversations saved in the project, private to me unless I share one with the project's members, so that I can come back to them.
-143. As a member, I want to stop a response while it is running, so that I can redirect it quickly.
-144. As an editor, I want large requests (e.g. "draft mappings for all 40 columns of fact_sales") to run as a background job with progress and end in one change set, so that big tasks don't time out.
-145. As an admin, I want to register one or more LLM providers, either self-hosted (vLLM, SGLang, Ollama or any OpenAI-compatible server) or cloud (Anthropic, OpenAI, Azure OpenAI, Google Gemini, AWS Bedrock or any OpenAI-compatible API), with base URL, API key and model name, so that each installation uses the models it trusts.
-146. As an admin, I want to test a provider and see whether its model supports tool calling, streaming and how large its context window is, so that I know it will work before anyone uses it.
-147. As an admin, I want to assign models to roles (an agent model, an optional lighter model for small tasks, and an embedding model for document search), each from any registered provider, so that cost and quality are balanced.
-148. As an admin, I want to mark each provider as internal (self-hosted in our network) or external, so that data exposure is always visible.
-149. As an admin, I want to set a monthly token budget for the installation and optionally per project, so that usage and cost are controlled.
-150. As an owner, I want to choose which approved model my project uses and restrict my project to internal providers only, so that sensitive projects never send data outside our network.
-151. As a member, I want the assistant to reply in the language I write in (Arabic or English), so that the conversation feels natural.
-152. As an owner, I want to turn the assistant on or off for my project and choose what it may see (metadata only; metadata and profile statistics; metadata, profiles and documents), so that data exposure matches our policy.
-153. As an admin, I want to see AI usage per project and per user, so that I can manage the budget.
+141. As a member, I want a chat panel on every page of a Workspace that knows which object I'm looking at, so that I can ask about it without explaining the context.
+142. As a member, I want to ask questions about the Workspace in plain language (e.g. "which tables hold customer data?", "where does the Net Revenue KPI come from?", "what changed in the last Snapshot?") and get answers that link to the objects they mention, so that I can navigate by asking.
+143. As a member, I want to ask questions about uploaded documents (SAD documents, Markdown, DOCX, text-based PDFs) and get answers that cite the document and section, so that I don't have to read everything myself.
+144. As a member, I want to see which tools the assistant used, which queries it ran and what it looked at for each answer, so that I can verify it.
+145. As an editor, I want to ask the assistant to generate files (mapping sheets, DDL, data dictionary, KPI documentation, documentation pages, gaps reports), which are saved to the Workspace's file area, so that deliverables are produced on request.
+146. As an editor, I want to ask the assistant to update an existing file, seeing a diff before it is saved that I accept or reject, so that files evolve without manual editing.
+147. As an editor, I want to ask the assistant to change the design (DW Schema tables and columns, mappings, KPIs, SCD settings, PII hashing, fixes for score issues), with every change presented as a Change Set, so that nothing changes without my approval.
+148. As an editor, I want to accept all, accept some, or reject the items in a Change Set, so that I stay in control.
+149. As a viewer, I want to ask questions but not run source queries, generate files or propose changes, so that read-only access stays read-only.
+150. As a member, I want the assistant to act with my permissions only and never see connection credentials, so that it can't do anything I couldn't do myself.
+151. As a member, I want my conversations saved in the Workspace, private to me unless I share one with the Workspace's members, so that I can come back to them.
+152. As a member, I want to stop a response while it is running, so that I can redirect it quickly.
+153. As an editor, I want large requests (e.g. "generate the core layer", "draft mappings for all 40 columns of fact_sales") to run as a background job with progress and end in one Change Set, so that big tasks don't time out. A job that is aborted (budget spent, model unavailable, cancelled) produces no Change Set and keeps its log.
+154. As a member, I want the assistant to reply in the language I write in (e.g. Arabic or English), so that the conversation feels natural.
+155. As an admin, I want to register one or more LLM providers, either self-hosted (vLLM, SGLang, Ollama or any OpenAI-compatible server) or cloud (Anthropic, OpenAI, Azure OpenAI, Google Gemini, AWS Bedrock or any OpenAI-compatible API), with base URL, API key and model name, so that each installation uses the models it trusts.
+156. As an admin, I want to test a provider and see whether its model supports tool calling, streaming and how large its context window is, so that I know it will work before anyone uses it.
+157. As an admin, I want to assign models to roles (an agent model, an optional lighter model for small tasks, and an embedding model for document search), each from any registered provider, so that cost and quality are balanced.
+158. As an admin, I want to mark each provider as internal (self-hosted in our network) or external, so that data exposure is always visible.
+159. As an admin, I want to set a monthly token budget for the installation and optionally per Workspace, so that usage and cost are controlled.
+160. As an owner, I want to choose which approved model my Workspace uses and restrict it to internal providers only, so that sensitive Workspaces never send data outside our network. New Workspaces are internal-only by default when the installation has an internal agent model; otherwise they default to not internal-only and show a banner saying so.
+161. As an owner, I want to choose what the AI may see (metadata only; + profile statistics; + documents; + sample rows), applied to every model role (agent, light, embedding), so that data exposure matches our policy.
+162. As an admin, I want to see AI usage per Workspace and per user, so that I can manage the budget.
 
-### Epic R: Project Files
+### Epic R: Workspace Files
 
-154. As a member, I want a file area in each project listing generated and uploaded files with type, size, author and last update, so that all deliverables are in one place.
-155. As an editor, I want every change to a file to create a new version recording who changed it, how (by hand, by export or by the assistant) and a note, so that history is never lost.
-156. As a member, I want to compare two versions of a text file (Markdown, SQL, YAML, CSV) as a diff, so that I can see exactly what changed.
-157. As an editor, I want to restore an older version as the current one, so that I can roll back.
-158. As an editor, I want to edit Markdown, SQL and YAML files in the browser, so that small fixes don't need a download.
-159. As a member, I want to download any file, or the whole file area as a zip, so that I can use the outputs elsewhere.
+163. As a member, I want a file area per Source System and for the Data Warehouse listing generated and uploaded files (including documents) with type, size, author and last update, so that all deliverables are in one place.
+164. As an editor, I want to edit Markdown, SQL and YAML files in the browser, so that small fixes don't need a download.
+165. As a member, I want to download any file, or the whole file area as a zip, so that I can use the outputs elsewhere.
+
+### Epic S: DW Implementation (next phase)
+
+166. As an editor, I want to generate a dbt project skeleton (sources.yml from Snapshots, one model per DW table with SELECT built from mappings), so that implementation starts from the agreed design.
+167. As an editor, I want a suggested load order based on dependencies (staging, then dimensions, then facts), so that pipelines are sequenced correctly.
+168. As an editor, I want SCD2 dimensions to generate the matching snapshot/merge template, so that history handling is implemented consistently.
 
 ---
 
@@ -349,7 +410,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 - **CSRF:** double-submit token required on all state-changing requests.
 - **Rate limiting:** login attempts are limited per IP and per account. After 5 consecutive failures the account locks for 15 minutes (configurable). Locking is logged.
 - **Password reset:** single-use token, valid 30 minutes, stored hashed. Using it invalidates all of the user's sessions. The response is identical whether or not the email exists.
-- **Invitations:** single-use token, valid 7 days, bound to an email and optionally to a project and role.
+- **Invitations:** single-use token, valid 7 days, bound to an email and optionally to a Workspace and role.
 - **Bootstrap admin:** `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars create the first admin on first boot only, if no admin exists.
 - **Without SMTP:** invitation and reset links are shown to the admin to copy manually, so the tool works on air-gapped installs.
 - **OIDC SSO:** authorization-code flow with PKCE against any OpenID Connect provider. Users are matched by verified email, and new users can be created automatically with the User role if the admin allows it. Admins can disable password login once SSO works, but the bootstrap admin keeps a password as break-glass access.
@@ -357,93 +418,200 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 
 ### 6.2 Authorization
 
-- One central policy function: `can(user, action, resource) -> bool`. Every endpoint calls it. No ad-hoc checks inside handlers.
-- Project-scoped resources always resolve their `project_id` server-side from the resource itself, never from client input.
+- One central policy function: `can(user, action, resource) -> bool`. Every endpoint and every assistant tool calls it. No ad-hoc checks inside handlers.
+- Workspace-scoped resources always resolve their `workspace_id` server-side from the resource itself, never from client input.
 - Deactivated users are rejected at session validation, and their sessions are deleted on deactivation.
-- A project must always have at least one owner. This is enforced in the service layer and backed by a database constraint or trigger.
+- A Workspace must always have at least one owner. This is enforced in the service layer and backed by a database constraint or trigger.
 
 ### 6.3 Source connectivity
 
-- **Engines:** PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, Snowflake, BigQuery. Each engine is a connector plugin implementing one interface (`test`, `list_schemas`, `extract`, `profile`, `sample`), so more engines can be added without touching the rest.
+- **Engines:** PostgreSQL, MySQL/MariaDB, SQL Server, Oracle. Each engine is a connector plugin implementing one interface (`test`, `list_schemas`, `extract`, `profile`, `sample`, `query`), so more engines can be added without touching the rest. A Source System has exactly one database.
+- **Extracted metadata:** Database Schemas, tables, views (with definitions), columns, types, nullability, PKs, FKs, unique constraints, indexes, stored procedures and functions (with source code), row-count estimates, comments.
 - **Credentials:** encrypted with AES-256-GCM using a key from the `ENCRYPTION_KEY` env var. The key rotation procedure is documented. Credentials are never returned by the API; it returns `has_password: true` instead.
 - Every source query runs with a statement timeout (default 30 s) and in a read-only transaction where the engine supports it.
-- Extraction and profiling run as **background jobs** with status (`queued`, `running`, `succeeded`, `failed`, `cancelled`), progress percentage and a log.
-- **Allowed-schemas list per connection:** anything outside it is never queried.
-- **Jira and Confluence import** uses each product's REST API with a per-project API token, encrypted like connection credentials. Imported issues and pages are stored as read-only artifacts with their text extracted and indexed. A refresh job re-pulls them on demand.
+- Extraction, profiling, PII scans and AI exploration run as **background jobs** with status (`queued`, `running`, `succeeded`, `failed`, `cancelled`), progress percentage and a log.
+- **Allowed-Database-Schemas list per Connection:** anything outside it is never queried. When the list is narrowed, objects in excluded schemas become `out_of_scope` (not `source_removed`): they are never treated as dropped, never proposed for removal and never queried by the AI. DAWAM offers (but doesn't force) to purge their stored top-N values, min/max and PII evidence. Widening the list brings them back in scope.
+- **Extraction is manual** in Release 1 (no schedules). An extraction or import with no differences from the previous Snapshot doesn't create a new Snapshot. View and routine definitions are stored once per content hash.
 
-### 6.4 Profiling & privacy
+### 6.4 Schema Import
 
-- Stores aggregates only: counts, null %, distinct count, min/max (except for sensitive columns), and length statistics.
-- Top-N values are **off by default**. They can be enabled per table by an owner and are never captured for columns flagged sensitive.
+- **Template:** one Excel workbook, one sheet per metadata kind: `schemas`, `tables` (incl. views and view definitions), `columns`, `constraints` (PK, FK, unique), `indexes`, `routines` (stored procedures and functions with code). Optional columns for row counts. Each sheet has a header row and documented column meanings.
+- **Helper queries:** for each supported engine plus DB2 and Teradata, DAWAM ships catalog queries (on `information_schema`, `sys.*`, `ALL_*`, `SYSCAT.*`, `DBC.*`…). Each query returns exactly the columns of one template sheet, so its result can be pasted or exported straight into that sheet. Each sheet can also be uploaded as a CSV.
+- **Validation:** the upload is parsed and validated (required columns, types, referential consistency such as FKs pointing at existing tables) and produces a report. Nothing is saved until the report is clean or the user accepts the warnings.
+- **Result:** a Snapshot with `origin = import`, diffed against the previous Snapshot like any other. Names are matched against existing Source Objects as described in §7 (exact name first, then case-insensitive when unambiguous), so switching between import and a live Connection doesn't turn objects into removed-plus-added.
+- **Disabled features:** profiling, value-based PII scans, value-overlap relationship inference and AI source queries need a live Connection. The UI shows this list as a warning on imported Source Systems. Name-based PII, name/type-based inference and routine JOIN parsing still work.
+
+### 6.5 Profiling & privacy
+
+**Protected column** — one definition used everywhere (profiling, AI masking, lineage, exports): a source column is protected if it is flagged `is_sensitive` **or** has a PII finding with status `suggested` or `confirmed`. Dismissing a finding removes protection only if `is_sensitive` is also false.
+
+- Stores aggregates only: counts, null %, distinct count, min/max (except for protected columns), and length statistics.
+- Top-N values are **off by default**. They can be enabled per table by an owner and are never captured for protected columns.
 - Sampling uses `TABLESAMPLE` or a `LIMIT`-based approach with a configurable cap (default 100 000 rows).
-- Columns with confirmed PII findings (§6.9) are automatically excluded from top-N and min/max capture.
+- Top-N values and min/max are real data: they are sent to the AI only at the *sample rows* data-sharing level, never at *profile statistics*.
 
-### 6.5 Relationship inference
+### 6.6 Relationship inference
 
-Rule-based, no AI. Candidate pairs are scored on:
+Rule-based candidates, then optional AI confirmation. Candidate pairs are scored on:
 
 - Name similarity, e.g. `customer_id` ↔ `customers.id` or `cust_id`
 - Exact type compatibility
 - The target column being unique (PK or unique index, or profiled distinct = rows)
-- Value-overlap ratio from a sample (only when profiling has been run)
+- Value-overlap ratio from a sample (only with a live Connection and profiling)
+- JOIN conditions parsed with sqlglot from stored procedures, functions and view definitions
 
-The output is a confidence score from 0 to 1. Only candidates at or above a threshold (default 0.6) are shown.
+The output is a confidence score from 0 to 1 with its evidence. Only candidates at or above a threshold (default 0.6) are shown. The AI may then confirm or reject candidates by exploring the data (§6.8), adding its query results as evidence.
 
-### 6.6 DW Schema Scoring
+### 6.7 Staging generation
 
-Scoring is rule-based and deterministic. It recalculates after every design change (debounced) and stores a `ScoreRun`.
+- **Scope:** one Staging Table per source base table of every Source System; views only when opted in per view.
+- **Precondition:** the Data Warehouse has been set up (§6.9), so its target platform is known.
+- **Naming:** `stg_<system code>_<database schema>_<table>`, lower-cased. Spaces and separators become `_`; reserved words of the target platform get a suffix; non-Latin names become placeholders (`tbl_007`, `col_017`) and are flagged for review. Placeholder numbers are assigned once and stored on the Source Object (`placeholder_no`), never derived from ordering, so they never change between Snapshots.
+- **Identifier limits** come from the Data Warehouse's target platform (e.g. PostgreSQL 63 bytes, Oracle 128, SQL Server 128). Names over the limit are truncated with a short stable hash suffix and flagged. The hash is the first 6 hex characters of SHA-256 over the Source Object's id.
+- **Collisions:** names that collide after sanitising or truncation (e.g. `Order Items` and `order_items`, or case-sensitive `"Customer"` and `customer`) get the stable hash suffix and are flagged.
+- **Columns:** same columns as the source, with types translated through a per-target-platform translation table with explicit fallbacks (e.g. string or JSON for `sql_variant`/`XMLTYPE`, `NUMERIC(38,10)` for `NUMBER` without precision); untranslatable or lossy columns are flagged. Plus audit columns (`load_ts`, `source_system`, configurable).
+- **Mappings:** source → staging mappings are generated as `direct`; a PII column can switch to `hashed` (§6.12).
+- **Sync:** each new Snapshot produces an alert and a **sync** Change Set touching staging only: new tables and columns are created, changed columns updated, tables and columns dropped in the source kept and flagged `source_removed`. Nothing changes until the user confirms. Once the sync is applied, DAWAM computes the propagation Change Set for Core, Mart and KPIs from what was actually accepted (§6.10).
+- **User edits win:** sync never re-proposes a staging object the owner deleted (a tombstone is kept), and a field the user overrode (e.g. a column type) appears as a conflict in the Change Set instead of being overwritten.
+- **Retiring:** a "drop removed" Change Set (owner-only items) deletes `source_removed` staging objects that nothing downstream uses.
+- **Platform or System Code change:** owner-only; produces one rename/retype Change Set covering every affected Staging Table and its dependents.
+- Staging generation is deterministic software; no AI is involved.
 
-| Category | Check | Severity |
-|---|---|---|
-| Completeness | Every fact has a grain statement | Error |
-| Completeness | Every target column has a mapping or is marked system-generated | Warning |
-| Completeness | Every KPI links to at least one measure | Warning |
-| Dimensional modeling | Every dimension has a surrogate key and a natural key | Error |
-| Dimensional modeling | Every fact has at least one dimension FK | Error |
-| Dimensional modeling | No fact-to-fact foreign keys | Error |
-| Dimensional modeling | Facts with time-based measures link to a date dimension | Warning |
-| Dimensional modeling | Every measure declares additivity | Warning |
-| Dimensional modeling | Every dimension declares an SCD type | Warning |
-| Dimensional modeling | Snowflaking deeper than one level | Info |
-| Consistency | Naming conventions respected | Warning |
-| Consistency | Same-named columns across tables share the same data type | Warning |
-| Consistency | Mart-layer tables are sourced only from core-layer tables | Warning |
-| Consistency | Conformed dimensions used by ≥ 2 facts | Info |
-| Traceability | All mapped source columns exist in the latest snapshot | Error |
-| Traceability | No mapping references a column flagged as removed | Error |
-| Documentation | Descriptions present on all target tables, measures and KPIs | Info |
-| Performance readiness | Surrogate keys use integer types | Warning |
-| Performance readiness | Free-text attributes or text measures on fact tables | Warning |
-| Performance readiness | Fact tables wider than 60 columns | Info |
-| Privacy | Every PII-derived target column has a handling decision | Error |
-| Privacy | No unmasked PII-derived columns in the mart layer | Warning |
+### 6.8 AI source exploration
 
-**Formula.** Severity weights are error 10, warning 3 and info 1. A table's score is the weighted pass percentage of the checks that apply to it. A schema layer's score is the average of its tables' scores, weighted by column count. The project score is the weighted pass percentage across all checks. Any unresolved error caps the grade at C.
+See [ADR 0002](./adr/0002-ai-may-read-source-sample-rows.md).
+
+- Available only for Source Systems with a live Connection, and only when the Workspace's data-sharing level includes **sample rows**.
+- **Before any exploration**, the name-based PII rules (§6.12) run automatically on the Source System if they haven't run on its latest Snapshot.
+- **Query guard.** The AI's `run_source_query` tool accepts SQL that is parsed with sqlglot and must be a **single `SELECT`** statement. Then:
+  - Every function call must be on a per-engine allow-list of side-effect-free functions (e.g. no `pg_terminate_backend`, `dblink`, `nextval`, `OPENROWSET`, `OPENQUERY`, or user-defined functions).
+  - Every table reference is resolved against the latest Snapshot as a fully qualified name in the same database and an allowed Database Schema. Unresolved names, synonyms, cross-database names (`otherdb.dbo.t`) and linked servers are rejected.
+  - `SELECT *` is expanded to explicit columns using the Snapshot before any check.
+  - **Views** are traced through their stored definition, so a view column is protected if what it reads is protected. A view whose definition can't be parsed, or that reads a schema outside the allowed list, is not queryable by the AI (fail closed) and is shown as "untraceable" in the exploration UI.
+  - Anything that fails is rejected before reaching the source.
+- **Load limits.** Queries run read-only where the engine supports it, with the statement timeout, results capped (default 100 rows), and a per-run budget of total source-query seconds (default 120 s). If the Connection user has write privileges, the exploration UI shows a strong warning.
+- **Masking by lineage.** For each output column, sqlglot traces which source columns it is derived from (through expressions such as `SUBSTR`, `CONCAT`, `CAST`). If any of them is a protected column (§6.5), the output column is masked before results reach the model.
+- **What may touch protected columns.** Allowed: `COUNT(*)`, `COUNT(col)` and `COUNT(DISTINCT col)` over them, and using them in `JOIN … ON` conditions — so the AI can confirm relationships on keys like national ID or Iqama, which are often exactly the undeclared join keys. Rejected: projecting their values (directly or through expressions), `GROUP BY`, `MIN`, `MAX` or other value-emitting aggregates on them, and comparing them to literals (`WHERE national_id LIKE '10%'`).
+- **Value check on results.** Before any result reaches the model, every cell is tested with the built-in PII validators (§6.12: Saudi ID/Iqama with checksum, IBAN mod-97, mobile, email, Luhn card). A match masks that whole output column in the result and creates a `suggested` PII finding (rule `value-at-query`) on the source column, so later queries mask it by name. This catches PII behind vague names like `ref_no` before any value scan has run.
+- **Persistence.** Raw query results are never persisted: the saved tool result keeps only the query, the column names, the row count and the duration. Model-written text (messages, descriptions in Change Sets, reports, findings, KPI rationales) may quote non-protected values, so every model-written string is checked with the same validators before it is saved, and matches are redacted (`[redacted: iban]`).
+- Every query is recorded on the assistant run and shown in the chat with its row count and duration. No per-query approval.
+- Outputs (descriptions, classifications, SCD hints, relationship confirmations) arrive as a Change Set. The gaps & enhancements report is a Markdown file in the Source System's file area.
+
+### 6.9 DW Modeling
+
+- **Methodology:** Kimball dimensional modeling for Core and Mart in Release 1. Layers are fixed: `staging`, `core`, `mart`.
+- **Set up Data Warehouse.** The Data Warehouse is created by an explicit setup step: target platform (PostgreSQL, SQL Server, Oracle, Snowflake, BigQuery), physical schema or dataset name per Layer (default `staging`, `core`, `mart`), naming rules and date-dimension settings. Until then the Data Warehouse folder shows only the setup step; Data Warehouse KPIs already work. The platform drives type translation, identifier limits and DDL dialect. Changing it later is owner-only (see Dialect below).
+- **Dialect.** Column types are stored in a neutral form (ANSI-like type plus length, precision and scale) and translated to the platform only when DDL is produced. SQL text (expressions, joins, filters, KPI formulas) is stored in the target platform's dialect and validated with sqlglot. A platform change produces one Change Set that transpiles all stored SQL; anything sqlglot can't translate is flagged "manual". A platform change is structural, so it revokes Core and Mart approval.
+- **Layered mapping:** each Layer's **data inputs** come only from the Layer directly below (source → staging → core → mart). Exceptions: **generated tables** need no inputs, and Mart facts and aggregates may reference Core conformed dimensions directly by FK (dimensions are not copied into the Mart). The layering check looks only at data inputs (mapping inputs, expressions, joins, filters); a lookup's dimension is a declared reference and is exempt.
+- **Mapping branches:** a table mapping has one or more branches combined with UNION ALL. Each branch has its own driving table, joins, filters, optional `GROUP BY`/`HAVING`, and per-column expressions, so a table fed by several Source Systems (e.g. `dim_customer` from CRM and Core Banking staging tables) keeps rows that exist in only one system. The table mapping also has a free-text integration rule (deduplication, survivorship) and an optional list of match-key columns. Structured survivorship rules are deferred.
+- **Branch coverage:** a column is covered when every branch maps it or marks it "not available in this branch" (NULL). Surrogate keys, SCD housekeeping and audit columns are table-level (`system`) and are not mapped per branch.
+- **Aggregates:** tables flagged `is_aggregate` (typically Mart summaries such as `fact_sales_monthly`) use the branch `GROUP BY`; every non-aggregated output column must appear in it.
+- **Dimension lookups:** a **Core** fact FK column is mapped with `mapping_type = lookup`: the natural-key inputs, an as-of date input for SCD2 dimensions (`date between valid_from and valid_to`), and the unknown-member key used when no match is found. The target dimension is the FK's `references_table_id` (not stored twice). Lookups are lineage edges from the fact to the dimension. **Mart** fact FKs are mapped `direct` from the Core fact's FK, since the surrogate key is already resolved there.
+- **SCD2 housekeeping:** making a dimension (or attribute) SCD2 adds columns with roles `scd_valid_from`, `scd_valid_to`, `scd_current_flag` and `row_hash`, generated as `system`.
+- **Unknown member:** every dimension gets an unknown-member row convention (surrogate key `-1`, configurable default attribute values), used by lookups. Since DAWAM doesn't load data in Release 1, unknown-member rows are emitted as `INSERT` statements in the DDL package.
+- **Generated tables:** `kind = generated` tables need no mapping inputs and pass the layering check. Release 1 ships a **date dimension** (configurable range; Gregorian attributes; optional Hijri attributes using the Umm al-Qura calendar; optional fiscal-calendar attributes; configurable weekend, default Friday/Saturday) and an optional **time dimension**. The date key is an integer `YYYYMMDD` (a deliberate exception to "surrogate keys are meaningless"). Generated tables are delivered as DDL plus a **seed file** (CSV plus a platform `INSERT`/`COPY` script) saved in the Data Warehouse file area. AI generation and rule-based KPI suggestions assume a date dimension exists.
+- **Kimball roles:** column roles include `degenerate_dimension` (e.g. invoice number on a fact, exempt from the text-on-fact check) and FK columns carry an optional `role_name` for role-playing dimensions (`order_date`, `ship_date` → `dim_date`). Bridge tables have a group key and two FKs.
+- **AI generation:** the `generate_dw_schema` tool produces Core and Mart tables (facts with grain, dimensions with SCD type, keys, measures with additivity, conformed dimensions, lookups) from the Source Schemas, staging, KPIs and documents, as a Change Set. The `draft_mappings` tool drafts mappings for a target table as a Change Set.
+- **Generation provenance.** DAWAM (not the model) issues a stable `generation_key` for every DW table and column the generator creates. On regeneration, the tool gives the model each existing object with a short opaque handle, and the model refers to existing objects only by handle; DAWAM maps handles back to keys, so an AI rename stays a rename and a weak model can't garble keys. Items with an unknown or missing handle become creates flagged "possible duplicate of X" (by name or column-set similarity). Every generated object stores the last generated value of each field (`generated`) and the fields the user overrode (`edited_fields`); changes the user accepted from AI chat (`propose_changes`) also count as user edits. This is provenance, not version history ([ADR 0001](./adr/0001-forward-only-changes-no-revert.md)).
+- **Tombstones.** Any deleted object that carries a `generation_key` (and any deleted Staging Table) keeps a tombstone. Regeneration and sync never propose it again unless the user explicitly asks.
+- **Regeneration.** DAWAM offers to regenerate when a mandatory input changes: a new Snapshot, KPI changes, or Source Schema enhancements (classification, SCD hint, relationships). Regeneration always produces a Change Set diffed against the current DW Schema. Fields the user overrode (listed in `edited_fields`) are never changed unless the user accepts that specific item, which is shown as a conflict. The first generation into an empty Layer is also a Change Set.
+- **Manual mapping edits** always trigger a score recalculation. If an edit changes which inputs feed a table (a new input table, or an input mapped to a target column that doesn't exist yet), DAWAM offers — never runs — a regeneration limited to that table. Changes whose origin is regeneration or propagation never trigger a regeneration offer, so there is no loop.
+- **DDL** is generated from the neutral types into the target platform's dialect, into each Layer's physical schema, together with unknown-member inserts and generated-table seed scripts.
+
+### 6.10 Change propagation & audit
+
+See [ADR 0001](./adr/0001-forward-only-changes-no-revert.md).
+
+- Changes are **forward-only**: no per-Asset version history, no revert, no restore button, no undo of an applied Change Set, no Baselines.
+
+**Propagation.** Propagation is always computed **after** a change is applied, from what was actually applied. When an Asset changes structurally (a direct edit, an accepted AI or regeneration item, or an applied sync), DAWAM computes the impacted Assets through lineage (§6.14: value, uses and lookup edges) and shows an alert naming them, with **one** propagation Change Set that carries the change **transitively** through all Layers and KPIs, grouped by Layer. For a new Snapshot this means two steps: first the sync Change Set (staging only, §6.7), then one propagation Change Set. The user accepts the propagation in full, in part, or not at all; unaccepted impacts stay visible as validation errors. Description, tag and documentation edits never raise alerts.
+
+**Fix impacts.** A "Fix impacts" action recomputes the propagation Change Set from whatever is currently broken (open validation errors that propagation can fix). Expired items are never revived; they are recomputed. The same action is used to fix a failed score check, and after unarchiving a Workspace.
+
+| Change | Proposed downstream change |
+|---|---|
+| Rename (column or table) | Rewrite mapping inputs, join/filter conditions, `sql_expression` and KPI `formula_sql` identifiers (via sqlglot) to the new name. Downstream column names are not renamed automatically; a rename of a same-named downstream column is offered as an optional item. |
+| Type change | Retype direct-mapped downstream columns (optional item per column); flag type-compatibility warnings elsewhere. |
+| Nullability change | Flag downstream non-null columns and keys fed by a now-nullable input. |
+| Delete / `source_removed` | Never cascade-delete. Downstream mappings that used it become `unmapped` (or lose that branch input), and are flagged. |
+| New input (column or table) | No propagation; it appears as unmapped coverage and, for staging, in the sync Change Set. |
+
+**Change Set rules.**
+- **Granularity:** a create is one item per table, with its columns nested inside; updates and deletes are one item per changed object (table, column, mapping, KPI…). A first staging sync for 2,000 tables is therefore about 2,000 items, not 60,000.
+- **Staleness per field:** every item stores the base values of the fields it changes. An item is stale only if one of *those* fields has changed since; an unrelated edit (e.g. a colleague's description fix) doesn't make it stale.
+- **Applying:** one accept action is all-or-nothing. Before the transaction, DAWAM lists stale items and the items that depend on them; those are skipped and reported, and everything else is applied in one transaction and recorded in the audit trail. Skipped items can be regenerated.
+- **Dependencies:** items declare dependencies (e.g. "add FK to `dim_customer`" depends on "create `dim_customer`"). Accepting an item also accepts what it depends on; rejecting an item also rejects what depends on it.
+- **Roles:** every item carries the role its action requires (§4.3). Owner-only items stay pending, marked "needs owner", while an Editor accepts the rest.
+- **Superseding:** a newer Change Set of the same origin and scope (e.g. a staging sync for the same Source System) supersedes a pending one.
+- **Expiry:** when a Change Set is closed (applied in part or rejected), its remaining items expire. "Fix impacts" recomputes them instead of reviving them.
+- **Origins:** `ai`, `regeneration`, `sync`, `propagation`, `import` (mapping XLSX import), `platform_change`, `system_code_change`.
+- `version` fields on editable objects are used for optimistic locking in the UI and API (§8.3), not for Change Set staleness.
+
+**Two kinds of "removed".**
+- `source_removed`: the object no longer exists in the source (or a staging object whose source is gone). It stays **visible, flagged and scored**, so the errors it causes are shown.
+- `deleted`: a user soft-deleted it. It is hidden from the model and the score, shown in a "deleted" list, and permanently removed only when an owner confirms. Its System Code (for a Source System) can't be reused until then.
+- (`out_of_scope` is a third state for source objects outside the allowed schemas, §6.3.)
+
+**Soft deletes.** Deleting a Source System or a DW table is owner-only and marks **only that object** `deleted`; it never cascades. Dependents keep existing and show validation errors, exactly like any other delete in the propagation table. When a Source System is deleted, the things that exist only because of it go with it: its Source Objects, Snapshots, Staging Tables, staging mappings, documents and files. Its KPIs that are already linked to DW columns are **re-homed** to the Data Warehouse (`source_system_id = null`); its KPIs with no DW links are deleted with it. Mapping branches that read its Staging Tables become broken branches, so a table fed by another system keeps its other branches. The owner sees all of these lists before confirming.
+
+**Audit.** Audit tables record who, when, how (`user`, `ai`, `regeneration`, `sync`, `propagation`, `import`, `platform_change`, `system_code_change`) and old vs new values for critical entities: Source Schema enhancements (descriptions, tags, classifications, SCD hints) and relationships, DW Schema tables and columns, mappings, KPIs, PII decisions, members and roles, Connections. Connection entries never contain secrets or ciphertext; host and username are visible to owners only. The audit view shows old values so a user can re-enter them as a new change.
+
+**Approval lifecycle.**
+- Approval exists only for **Layers (Core, Mart)** and **KPIs**. Mappings have no status of their own; their review happens through comments and the Layer's state.
+- `draft → in_review → approved`, moved by editors or owners. `in_review` is informational (it signals "please review" and blocks nothing). Optionally (owner setting) the approver must not be the last editor of anything in the Layer; in a Workspace with a single editor the setting can't be turned on.
+- **Revoking fields** (back to `draft`): table and column structure (names, types, nullability, keys, roles, SCD settings), mapping type, inputs, expressions, joins, filters, group-by and lookups, and for KPIs their formula SQL and links. Text fields (descriptions, rule text, notes, comments) never revoke.
+- Only changes to Core or Mart objects revoke their Layer. A staging-only change revokes nothing by itself; it reaches Core only through a propagation item, which does.
+- Mart can be approved only while Core is approved; revoking Core approval revokes Mart.
+- Every revocation is recorded in the audit trail with its cause.
+
+### 6.11 DW Scoring & AI evaluation
+
+Scoring is rule-based and deterministic. It recalculates after every design change (debounced) and stores a `ScoreRun`. Checks apply per Layer as listed; staging is scored only on Consistency (naming) and Traceability, and generated tables (date, time) are exempt from mapping checks.
+
+| Category | Check | Severity | Layers |
+|---|---|---|---|
+| Completeness | Every fact has a grain statement | Error | core, mart |
+| Completeness | Every column is covered in every branch (mapped, "not available in this branch", or system-generated) | Warning | core, mart |
+| Completeness | Every aggregate table's non-aggregated columns appear in its `GROUP BY` | Error | core, mart |
+| Traceability | Every mapping expression, join and filter parses | Error | all |
+| Completeness | Every KPI links to at least one measure | Warning | DW |
+| Dimensional modeling | Every dimension has a surrogate key and a natural key | Error | core, mart |
+| Dimensional modeling | Every fact has at least one dimension FK | Error | core, mart |
+| Dimensional modeling | No fact-to-fact foreign keys | Error | core, mart |
+| Dimensional modeling | Facts with time-based measures link to a date dimension | Warning | core, mart |
+| Dimensional modeling | Every measure declares additivity | Warning | core, mart |
+| Dimensional modeling | Every dimension declares an SCD type | Warning | core, mart |
+| Dimensional modeling | Snowflaking deeper than one level | Info | core, mart |
+| Consistency | Naming conventions respected | Warning | all |
+| Consistency | Same-named columns across tables share the same data type | Warning | core, mart |
+| Consistency | Each Layer's data inputs come only from the Layer below (lookup references exempt) | Error | all |
+| Consistency | Conformed dimensions used by ≥ 2 facts | Info | core, mart |
+| Dimensional modeling | Every Core fact FK to a dimension is mapped as a lookup | Warning | core |
+| Dimensional modeling | Every bridge table has a group key and two FKs | Warning | core, mart |
+| Traceability | All mapped input columns exist | Error | all |
+| Traceability | No mapping references a column flagged `source_removed` | Error (core, mart) / Warning (staging) | all |
+| Traceability | Generated names and type translations flagged for review are resolved | Warning | staging |
+| Documentation | Descriptions present on all DW tables, measures and KPIs | Info | core, mart |
+| Performance readiness | Surrogate keys use integer types (the `YYYYMMDD` date key qualifies) | Warning | core, mart |
+| Performance readiness | Free-text attributes or text measures on fact tables (degenerate dimensions exempt) | Warning | core, mart |
+| Performance readiness | Fact tables wider than 60 columns | Info | core, mart |
+| Privacy | PII-derived columns reach the mart Layer | Info | mart |
+
+**Formula.** Severity weights are error 10, warning 3 and info 1. A table's score is the weighted pass percentage of the checks that apply to it. A Layer's score is the average of its tables' scores, weighted by column count. The **Data Warehouse score** is the weighted pass percentage across the Core and Mart checks plus the DW-wide KPI checks; staging is excluded and shown as its own separate score. A Layer with no tables is "not scored" (neither 0 nor 100). Any unresolved error caps the grade at C.
 
 **Grades.** A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F < 60.
 
-**Gate.** Owners can set a minimum score. The design cannot move to `approved` while errors exist or the score is below the minimum.
+**Gate.** Owners can set a minimum score per Layer. A Core or Mart Layer cannot move to `approved` while it has errors or is below its minimum, and Mart requires an approved Core (§6.10). Staging has no gate.
 
-Disabled checks are excluded from the formula and listed separately with their reasons.
+Disabled checks are excluded from the formula and listed separately with their reasons. Objects marked `deleted` are excluded from scoring; `source_removed` objects are included. The score trend is kept as one summary row per `ScoreRun` (score, grade, per-Layer scores); full per-check results are kept only for the latest run.
 
-### 6.7 Lineage
+**AI evaluation** (`evaluate_dw` tool) is advisory: it reviews a Layer and returns findings (e.g. ambiguous grain, likely SCD2 dimensions, missing conformed dimensions, KPIs the model can't compute). It is a read tool that stores its result. Any member can run it and see its findings; editors can turn findings into Change Sets. It is blocked in archived Workspaces. It never changes the score or the gate.
 
-- Lineage edges come from mappings (source column → target column) and KPI links (target column → KPI).
-- Source columns referenced inside a mapping's SQL expression are extracted with an SQL parser (sqlglot) and added as edges.
-- Lineage is computed on read from the mapping tables (no separate lineage store). Graph queries use recursive CTEs.
+### 6.12 PII detection
 
-### 6.8 Import / export formats
-
-- **Mapping sheet (XLSX/CSV) columns:** `target_schema, target_table, target_column, target_type, source_system, source_schema, source_table, source_column(s), transformation_rule, sql_expression, mapping_type, status, notes`
-- **DDL** generated through sqlglot transpilation into the chosen dialect
-- **Documentation pack:** Markdown files zipped, plus a single-file HTML
-- Every export can be saved into the project file area (§6.12) as well as downloaded.
-
-### 6.9 PII detection
-
-- **Name rules** use a keyword dictionary in English and Arabic transliteration, matched on normalised table and column names (lower case, separators removed). They run automatically on every new snapshot and put no load on the source.
-- **Value rules** run on demand as a background job. Up to N rows per column are sampled (default 1 000) and tested in memory, and only the match ratio is recorded. Values are discarded when the job ends and are never logged.
-- **Built-in value validators:**
+- **Name rules** use a keyword dictionary in English, Arabic transliteration and Arabic script, matched by regex on normalised table and column names (lower case, separators removed). They run automatically on every new Snapshot and put no load on the source.
+- **Value rules** run on demand as a background job (live Connection only). Up to N rows per column are sampled (default 1 000) and tested in memory, and only the match ratio is recorded. Values are discarded when the job ends and are never logged.
+- **Built-in validators:**
   - Saudi national ID (starts with 1) and Iqama (starts with 2): 10 digits with checksum
   - Saudi mobile: `05xxxxxxxx` or `+9665xxxxxxxx`
   - Saudi IBAN: `SA` + 22 characters, mod-97 check
@@ -452,65 +620,87 @@ Disabled checks are excluded from the formula and listed separately with their r
   - Commercial registration number
   - Date of birth (date columns where the implied age falls in a human range)
   - IPv4/IPv6 address
-- **Confidence** combines the name match and the value match ratio. Findings at or above 0.5 enter the review queue.
+- Detection is regex and validator based only; no AI or NER.
+- **Confidence** combines the name match and the value match ratio. A name-keyword match alone has a confidence floor of 0.5, so on a freshly extracted system every name match is at least `suggested` and therefore protected (§6.5). Findings at or above 0.5 enter the review queue. Findings created by the query-time value check (§6.8) use rule `value-at-query`.
 - **Categories:** direct identifier, quasi-identifier, sensitive/special category (health, religion and similar), financial.
-- **Propagation:** a target column is PII-derived if any upstream source column in its lineage is confirmed PII. This is recomputed whenever mappings change.
-- **Handling decisions** are stored on target columns. Missing decisions feed the Privacy checks in §6.6.
+- **Propagation:** a DW column is **PII-derived** only through value edges (direct, derived, hashed or expression inputs) from a confirmed PII column. Join, filter and lookup usage of a PII column marks the **table** (or branch) **PII-influenced** instead, shown in a separate list and not exported as PII columns. Surrogate keys produced by a lookup are never PII-derived. This is recomputed whenever mappings change, and PII-derived columns are listed in the PII view.
+- **Hashing (optional):** a confirmed PII column's staging mapping can be switched to `hashed`, which generates a salted SHA-256 expression with a `:pii_salt` placeholder. The salt is supplied at load time and is never stored in DAWAM. Hashed columns and everything downstream stay PII-derived, marked `pseudonymised`.
+- **Handling note (optional)** can be recorded on any PII-derived column. No handling decision is required.
 
-### 6.10 KPI suggestions
+### 6.13 KPIs
 
-- **Rule engine (deterministic).** For each fact, the engine proposes:
-  - `SUM` and `AVG` of additive measures
-  - `COUNT(DISTINCT)` of key dimension FKs
-  - Simple ratios between measures of the same fact
-  - Month-over-month and year-over-year growth when a date dimension is linked
+- **User KPIs** are entered under a Source System or under the Data Warehouse.
+- **Formula SQL is always written against the DW Schema.** Before the DW exists, a KPI carries only its business formula in words. Once the DW Schema exists, the AI proposes, as a Change Set, links to DW columns and formula SQL for every KPI that has none.
+- **KPI links** point at the highest Layer that holds the measure (Mart if present, otherwise Core).
+- **AI suggestions** (`suggest_kpis` tool) run after a Source System is analysed and use its Source Schema, profiles and documents. They are created directly as draft KPIs with `origin = ai`, shown with an AI label and a rationale, and can be edited or deleted. This is the one exception to "AI changes arrive as Change Sets": the tool only creates new KPIs, never updates or deletes existing ones, skips any suggestion whose name matches an existing KPI, and writes an audit entry with `via=ai` for each KPI.
+- **Rule-based suggestions** run once the DW Schema exists. For each fact: `SUM` and `AVG` of additive measures, `COUNT(DISTINCT)` of key dimension FKs, simple ratios between measures of the same fact, and month-over-month and year-over-year growth when a date dimension is linked. Formula SQL is generated against the DW Schema. Suggestions that trace to the same Core measure through lineage (e.g. from a Core fact and a Mart aggregate) are deduplicated. They are **not** KPIs: they are shown as a computed list, and accepting one creates a draft KPI (`origin = rule`) through the normal edit path. Dismissed suggestions stay hidden.
+- **Re-pointing:** when a measure later appears in the Mart, re-pointing a KPI's links (and the identifiers in its formula SQL) from Core to Mart is offered as a propagation item.
+- **Feasibility** for rule and AI suggestions: *computable* (all inputs exist and are mapped), *needs mapping* (inputs exist but are unmapped), *needs data* (inputs missing from the DW Schema).
 
-  Formula SQL is generated against the target model.
-- **Domain library.** Versioned YAML files in the repo (`kpi-library/*.yaml`), so the community can contribute. Each template lists the semantic types it requires (e.g. `amount`, `transaction_date`, `customer_key`) and a formula pattern. A template matches when the model has columns with those semantic types.
-- **Assistant suggestions** come from the assistant's `suggest_kpis` tool (§6.11) and are stored as `KpiSuggestion` rows with origin `assistant` and a rationale.
-- **Feasibility** has three values:
-  - *computable*: all inputs exist and are mapped
-  - *needs mapping*: the inputs exist but are unmapped
-  - *needs data*: the inputs are missing from the model
+### 6.14 Lineage
 
-### 6.11 AI assistant
+- **The SQL text is the master.** A mapping's expressions, joins, filters, group-by and lookup inputs reference columns by qualified name with a stable alias syntax. On every save, DAWAM parses them with sqlglot and **derives and stores** lineage edges (`LineageEdge`), replacing the previous edges for that mapping. The structured input list is derived from the SQL, never edited separately.
+- **Edge kinds:** `value` (input column → target column, Layer by Layer, per branch, from inputs and expressions), `uses` (columns used in joins, filters and group-by → target table or branch), `lookup` (Core fact FK → dimension) and `kpi` (DW column → KPI).
+- `value` edges drive PII-derived status; `uses` and `lookup` edges drive impact analysis and PII-influenced status (§6.12). In the graph, `uses` and `lookup` edges are drawn differently from `value` edges.
+- An expression that can't be parsed is saved with `validation.unparsed = true`, produces no edges, and fails the "parses" check (§6.11).
+- Graph queries use recursive CTEs over the stored edges, with a cycle guard (e.g. self-referencing hierarchies such as employee → manager).
+- Lineage drives impact analysis for change propagation (§6.10) and PII propagation (§6.12).
 
-- **Agent loop.** The backend runs a tool-use loop against the model the project is configured to use. The agent depends only on the LLM gateway interface (§6.13), never on a vendor SDK. Responses stream to the browser over Server-Sent Events.
+### 6.15 Import / export formats
+
+- **Mapping sheet (XLSX/CSV) columns:** `layer, target_table, branch, target_column, target_type, input_layer, input_system, input_database_schema, input_table, input_column(s), transformation_rule, sql_expression, mapping_type, lookup_dimension, notes`. Several inputs in one cell are separated by `;` and written as `table.column`. A second sheet holds the table-level join path, filters, group-by, integration rule and match keys per branch.
+- **Mapping import** always ends in a Change Set (§6.10). Rows for target tables or columns that don't exist fail validation (they never create objects). Staging rows are ignored, because staging mappings are generated. Import never changes approval states.
+- **Schema Import template** (§6.4)
+- **DDL** in the target platform's dialect
+- **Documentation pack:** Markdown files zipped, plus a single-file HTML
+- Every export can be saved into the file area (§6.17) as well as downloaded.
+
+### 6.16 AI assistant
+
+- **Agent loop.** The backend runs a tool-use loop against the model the Workspace is configured to use. The agent depends only on the LLM gateway interface (§6.18), never on a vendor SDK. Responses stream to the browser over Server-Sent Events.
 - **Tools** call the same service layer as the REST API. Every call goes through `can(user, action, resource)` as the requesting user.
 
 | Tool | Kind | Purpose |
 |---|---|---|
-| `search_catalog` | read | Find source/target tables and columns by name, tag or description |
-| `get_object` | read | Read a table, column, KPI, mapping or file with its details |
+| `search_catalog` | read | Find source and DW tables, columns and routines by name, tag or description |
+| `get_object` | read | Read a table, column, routine, KPI, mapping or file with its details |
+| `get_profile` | read | Profile statistics for a table or column; top-N values and min/max only at the *sample rows* level, never for protected columns |
 | `get_lineage` | read | Upstream/downstream lineage for a node |
-| `get_snapshot_diff` | read | Changes between snapshots |
+| `get_snapshot_diff` | read | Changes between Snapshots |
 | `get_score` | read | Current score, failed checks and fix hints |
-| `get_pii_findings` | read | PII findings and handling status (never values) |
-| `search_documents` | read | Full-text search over extracted document text, returning cited passages |
-| `list_files` / `read_file` | read | Project file area |
+| `get_pii_findings` | read | PII findings and status (never values) |
+| `search_documents` | read | Hybrid search over extracted document text, returning cited passages |
+| `list_files` / `read_file` | read | File area |
 | `run_validation` | read | Validate mappings and model, return problems |
-| `suggest_kpis` | write (suggestion) | Create KPI suggestions |
-| `propose_changes` | write (change set) | Propose creates, updates and deletes on the target model, mappings, KPIs and PII handling |
-| `generate_file` | write (file) | Create a new project file (through the exporters for DDL, XLSX and dbt; free text for Markdown) |
-| `update_file` | write (file) | Save a new version of an existing text file |
+| `run_source_query` | read (source) | Run a guarded single `SELECT` on a live source (§6.8) |
+| `suggest_kpis` | write (KPIs) | Create AI-labelled draft KPIs |
+| `generate_dw_schema` | write (change set) | Generate or regenerate Core/Mart tables |
+| `draft_mappings` | write (change set) | Draft mappings for a target table |
+| `evaluate_dw` | read (stores result) | Advisory evaluation of a Layer; allowed for Viewers, blocked in archived Workspaces |
+| `propose_changes` | write (change set) | Propose creates, updates and deletes on Source Schema enhancements, DW Schema, mappings, KPIs and PII settings |
+| `generate_file` | write (file) | Create a file (through the exporters for DDL and XLSX; free text for Markdown) |
+| `update_file` | write (file) | Propose a new content for a text file, shown as a diff and saved only when accepted |
 
-- **Human in the loop.** `propose_changes` never writes to the model. It creates a `ChangeSet` in `pending` state, shown as a diff in the chat. An editor approves all or some items, which applies them in one transaction and records them in the activity log. An applied change set can be reverted as long as the affected objects haven't changed since. File tools always create new versions, so they are reversible through file history.
-- **Data minimisation.** The assistant never receives connection credentials, sampled values, top-N values or row data. Everything else it sees follows the project's data-sharing level (metadata only; plus profile statistics; plus documents). Columns confirmed as PII are sent by name and category only. When a project is restricted to internal providers, nothing leaves the organisation's network.
-- **Prompt-injection posture.** Document text, comments and descriptions are passed as quoted data, and the system prompt tells the model to treat them as data. Permissions are enforced in the tool executor and every write needs human approval, so an injected instruction cannot escalate access or change anything silently.
-- **Context.** The object on the current page is sent as context. The agent pulls everything else through tools instead of having the whole project placed in the prompt.
-- **Document text** is extracted on upload (pypdf for text PDFs, python-docx for DOCX, raw for MD/TXT) and indexed with Postgres full-text search. Documents are also chunked and embedded with the configured embedding model into pgvector, and search combines full-text and vector results. Without an embedding model, search falls back to full-text only. Scanned PDFs without a text layer are marked "no text found".
-- **Long tasks** that the agent judges to be large run as a `Job` and end in a single change set.
-- **Limits.** Tool calls are capped per request (default 25), and the installation's monthly token budget is checked before each model call. Every run is logged with tokens, tools used and duration.
+- **Human in the loop.** Write tools that touch the model never write directly. They create a `ChangeSet` in `pending` state, shown as a diff in the chat. An editor accepts all or some items, which applies them in one transaction and records them in the audit trail. There is no revert (§6.10).
+- **Data-sharing levels** (owner setting): *metadata*; *+ profile statistics*; *+ documents*; *+ sample rows* (enables `run_source_query`). They apply to **every model role**: the agent model, the light model and the embedding model. The assistant never receives connection credentials. Protected columns (§6.5) are always masked in sample rows (§6.8) and sent by name and category only. When a Workspace is restricted to internal providers, the restriction also covers every model role and upload-time indexing, so nothing leaves the organisation's network.
+- **Prompt-injection posture.** Document text, comments, descriptions, routine code and query results are passed as quoted data, and the system prompt tells the model to treat them as data. Permissions are enforced in the tool executor, source queries are parsed and limited to a single `SELECT`, and every model write needs human approval, so an injected instruction cannot escalate access or change anything silently.
+- **Context.** The object on the current page is sent as context. The agent pulls everything else through tools instead of having the whole Workspace placed in the prompt.
+- **Language.** The assistant replies in the language of the user's message. Generated identifiers follow the naming rules regardless of language.
+- **Document text** is extracted on upload (pypdf for text PDFs, python-docx for DOCX, openpyxl for XLSX, raw for MD/TXT) and indexed with Postgres full-text search. Arabic text is normalised before indexing and before querying (diacritics removed; alef, ya and ta-marbuta forms unified). Documents are also chunked and embedded into pgvector, but only when the Workspace's data level includes documents and the embedding provider passes the Workspace's internal-only check; otherwise that Workspace uses full-text search only. Search combines full-text and vector results. Scanned PDFs without a text layer are marked "no text found".
+- **Light model fallback.** If the light model isn't allowed for a Workspace (internal-only), its tasks use the Workspace's agent model.
+- **Long tasks** (DW generation, bulk mappings, exploration of many tables) run as a `Job` and end in a single Change Set. A job aborted by budget exhaustion, provider failure or cancellation produces no Change Set and keeps its log.
+- **Limits.** Tool calls are capped per request (default 25; higher for background jobs). Both the installation's and the Workspace's monthly token budgets are checked before each model call. Every run is logged with tokens, tools used, source queries and duration.
+- **Without a working model** (provider down, budget spent), the assistant shows the reason and every non-AI feature keeps working.
 
-### 6.12 Project files
+### 6.17 Files
 
-- Files live in the configured storage backend. Each change creates a `FileVersion`, and nothing is overwritten.
-- Text formats (MD, SQL, YAML, CSV, JSON) support in-browser editing and line diffs.
-- Binary formats (XLSX, DOCX, PDF) are versioned but not diffed. An exporter-produced XLSX can be regenerated from the current model.
+- Each Source System and the Data Warehouse has a file area for generated and uploaded files, stored in the configured storage backend. A **document** (Epic F) is simply an uploaded file in a Source System's file area that also has extracted text and links to tables or columns; there is one file model, not two. Links (URLs) are a separate, lightweight entity.
+- Files are overwritten in place; there is no file version history. When the assistant updates a file, the user sees a diff and accepts or rejects it before it is saved.
+- Text formats (MD, SQL, YAML, CSV, JSON) support in-browser editing. Binary formats (XLSX, DOCX, PDF) can be downloaded and replaced. An exporter-produced XLSX can be regenerated from the current model.
 
-### 6.13 LLM gateway (pluggable models)
+### 6.18 LLM gateway (pluggable models)
 
-Every AI feature (the assistant, assistant KPI suggestions, document embedding) goes through one internal gateway. Nothing else in the codebase imports a vendor SDK.
+Every AI feature goes through one internal gateway. Nothing else in the codebase imports a vendor SDK. An installation requires at least one configured agent model; setup is not complete until one is registered and tested. If no **internal** agent model is registered, setup warns the admin that new Workspaces will default to not internal-only, and those Workspaces show a banner. The internal-only default is decided in code when each Workspace is created, not by a database default.
 
 - **Interface:** `chat(messages, tools, stream) -> events`, `embed(texts) -> vectors` and `capabilities() -> {...}`. The gateway normalises messages, tool calls, streaming events, token usage and errors into one internal format.
 - **Adapters:**
@@ -524,14 +714,14 @@ Every AI feature (the assistant, assistant KPI suggestions, document embedding) 
 | `bedrock` | Models on AWS Bedrock | Region, IAM credentials or role, model ID |
 
 - **Plugins:** adapters register through a Python entry point (`dawam.llm_providers`), so a new provider can ship as a separate package without changing the core.
-- **Self-hosting notes:** vLLM and SGLang must be started with tool calling enabled and a tool-call parser that matches the model (vLLM: `--enable-auto-tool-choice --tool-call-parser <parser>`; SGLang: `--tool-call-parser <parser>`). Ollama is reached through its OpenAI-compatible `/v1` endpoint, and supports tools for models that advertise them. The setup docs include a tested recipe for each server.
+- **Self-hosting notes:** vLLM and SGLang must be started with tool calling enabled and a tool-call parser that matches the model (vLLM: `--enable-auto-tool-choice --tool-call-parser <parser>`; SGLang: `--tool-call-parser <parser>`). Ollama is reached through its OpenAI-compatible `/v1` endpoint. The setup docs include a tested recipe for each server.
 - **Capability detection:** "Test connection" sends a short prompt and a dummy tool call, then records tool support, streaming support, JSON-schema output support, context window (from server metadata or admin input) and, for embedding models, the vector dimension.
-- **Fallback for models without native tool calling:** tools are described in the system prompt, and the model answers with a JSON tool call that is validated against the tool's JSON Schema and retried up to 2 times if invalid. These models are shown as "limited" in the UI. Write tools still go through change sets.
-- **Model roles:** `agent` (required for the assistant), `light` (optional; conversation titles, short summaries, KPI rationales) and `embedding` (optional; document search). Each role points to any provider and model. Owners can override the agent model per project from an admin-approved list.
-- **Internal vs external:** every provider is flagged internal or external. For projects set to internal-only, the gateway refuses requests to external providers.
+- **Fallback for models without native tool calling:** tools are described in the system prompt, and the model answers with a JSON tool call that is validated against the tool's JSON Schema and retried up to 2 times if invalid. These models are shown as "limited" in the UI. Write tools still go through Change Sets.
+- **Model roles:** `agent` (required), `light` (optional; conversation titles, short summaries, KPI rationales) and `embedding` (optional; document search). Each role points to any provider and model. Owners can override the agent model per Workspace from an admin-approved list.
+- **Internal vs external:** every provider is flagged internal or external. For Workspaces set to internal-only, the gateway refuses requests to external providers for every model role (agent, light, embedding).
 - **Context management:** the gateway knows each model's context window. The agent trims or summarises older turns and large tool results to fit, which matters for smaller self-hosted models.
 - **Reliability:** provider errors map to common codes (auth, rate limit, context overflow, unavailable). Rate limits and 5xx errors are retried with backoff. Timeouts are configurable per provider.
-- **Usage:** token counts come from the provider when it reports them and are estimated otherwise. They feed installation and project budgets.
+- **Usage:** token counts come from the provider when it reports them and are estimated otherwise. They feed installation and Workspace budgets.
 - **Secrets:** API keys are encrypted like connection credentials and never returned by the API.
 - **Embedding changes:** switching the embedding model, or a model whose vector dimension differs, triggers a re-indexing job.
 - **Local quick start:** Docker Compose includes an optional `ollama` profile (`docker compose --profile ollama up`) for a fully local setup with no external calls.
@@ -544,90 +734,150 @@ Every AI feature (the assistant, assistant KPI suggestions, document embedding) 
 User(id, email UNIQUE, display_name, password_hash, system_role[admin|user],
      is_active, failed_login_count, locked_until, created_at, last_login_at)
 Session(id, user_id, created_at, last_seen_at, expires_at, ip, user_agent)
-Invitation(id, email, token_hash, invited_by, project_id?, project_role?, expires_at, accepted_at)
+Invitation(id, email, token_hash, invited_by, workspace_id?, workspace_role?, expires_at, accepted_at)
 PasswordReset(id, user_id, token_hash, expires_at, used_at)
 SystemSetting(key, value)                         -- registration, allowed domains, SMTP
-AuditEvent(id, actor_id?, event_type, target_type, target_id, metadata JSON, ip, created_at)
+SecurityEvent(id, actor_id?, event_type, target_type, target_id, metadata JSON, ip, created_at)
+UserMfa(user_id, totp_secret_encrypted, recovery_codes_hashed[], enabled_at)
+UserIdentity(user_id, provider, subject, email)   -- OIDC links
 
-Project(id, name, description, domain, status[active|archived], naming_rules JSON,
-        created_by, created_at, updated_at)
-ProjectMember(project_id, user_id, role[owner|editor|viewer], added_by, added_at)  PK(project_id,user_id)
-ActivityEvent(id, project_id, actor_id, verb, object_type, object_id, diff JSON, created_at)
+Workspace(id, name, description, domain, status[active|archived], require_distinct_approver,
+          created_by, created_at, updated_at)
+WorkspaceMember(workspace_id, user_id, role[owner|editor|viewer], added_by, added_at)  PK(workspace_id,user_id)
+ActivityEvent(id, workspace_id, actor_id, verb, object_type, object_id, created_at)
+AuditEntry(id, workspace_id, actor_id,
+           via[user|ai|regeneration|sync|propagation|import|platform_change|system_code_change],
+           change_set_id?, entity_type, entity_id, old JSON, new JSON, created_at)
+                                                  -- critical entities only (§6.10); never secrets
+Notification(id, user_id, workspace_id, kind[mention|impact_alert|sync_alert|ownership|job|needs_owner],
+             ref_type, ref_id, created_at, read_at?)
+                                                  -- impact alerts are derived from open validation errors
 
-SourceSystem(id, project_id, name, description, business_owner, technical_owner, repo_url?)
-Connection(id, source_system_id, engine, host, port, database, username,
+-- Lifecycle state used by source objects, DW objects and Source Systems:
+--   present | source_removed (gone from the source; visible, flagged, scored)
+--   | out_of_scope (outside the allowed Database Schemas; never queried, never dropped)
+--   | deleted (user soft-delete; hidden; permanent only when an owner confirms)
+SourceSystem(id, workspace_id, name, code UNIQUE(workspace_id, code), description,
+             business_owner, technical_owner, status[present|deleted])
+Connection(id, source_system_id UNIQUE, engine, host, port, database, username,
            secret_encrypted, options JSON, allowed_schemas[], last_tested_at, created_by)
-Job(id, project_id, type[extract|profile|infer_relationships|export], status,
-    progress, params JSON, log TEXT, started_at, finished_at, created_by)
-Snapshot(id, connection_id, job_id, taken_at, is_latest)
-SrcSchema(id, snapshot_id, name)
-SrcTable(id, schema_id, name, kind[table|view], row_estimate, comment,
-         classification?, description?, tags[], is_sensitive)
-SrcColumn(id, table_id, name, ordinal, data_type, is_nullable, is_pk, default,
-          comment, description?, tags[], is_sensitive, pii_category?, status[present|removed])
-SrcConstraint(id, table_id, type[pk|fk|unique], columns[], ref_table_id?, ref_columns[])
-ColumnProfile(id, column_id, job_id, row_count, null_pct, distinct_count, min, max,
+Job(id, workspace_id, type[extract|import|profile|infer_relationships|pii_scan|
+    ai_explore|ai_generate|export], status, progress, params JSON, log TEXT,
+    started_at, finished_at, created_by)
+
+-- Stable source identities: carry enhancements, mappings, PII and relationships.
+-- Matching across Snapshots: exact name first; case-insensitive only when unambiguous and the
+-- engine folds case; or a user-confirmed rename/merge. A type change updates the identity.
+SrcDbSchema(id, source_system_id, name, status)
+SrcTable(id, db_schema_id, name, kind[table|view], current_definition JSON,
+         classification?[master|transactional|reference|log|landing], scd_hint?, description?, tags[],
+         is_sensitive, include_view_in_staging, placeholder_no?, status, version)
+SrcColumn(id, table_id, name, current_definition JSON, description?, tags[], is_sensitive,
+          pii_category?, placeholder_no?, status, version)
+SrcRoutine(id, db_schema_id, name, kind[procedure|function], status)
+
+-- Immutable Snapshot contents: one frozen row per object per Snapshot.
+Snapshot(id, source_system_id, origin[connection|import], job_id, taken_at, is_latest)
+SnapshotTable(snapshot_id, src_table_id, name, kind, view_definition_hash?, row_estimate, comment)
+SnapshotColumn(snapshot_id, src_column_id, name, ordinal, data_type, is_nullable, is_pk,
+               default, comment)
+SnapshotConstraint(snapshot_id, src_table_id, type[pk|fk|unique], columns[], ref_table_id?, ref_columns[])
+SnapshotIndex(snapshot_id, src_table_id, name, columns[], is_unique)
+SnapshotRoutine(snapshot_id, src_routine_id, definition_hash)
+DefinitionText(hash PK, text)                     -- view and routine text stored once per content hash
+RenameCandidate(id, snapshot_id, object_type[db_schema|table|column], old_object_id, new_name,
+                confidence, status[suggested|confirmed|rejected])
+ColumnProfile(id, src_column_id, job_id, row_count, null_pct, distinct_count, min, max,
               avg_len, max_len, top_values JSON?, patterns[], profiled_at)
-Relationship(id, from_column_id, to_column_id, origin[declared|inferred|manual],
-             confidence, status[suggested|accepted|rejected])
-Artifact(id, source_system_id, kind[file|repo|jira|confluence|link], title, url?,
-         storage_key?, mime?, size?, note, uploaded_by,
-         extracted_text?, text_status[none|extracted|no_text_found])
-ArtifactLink(artifact_id, object_type[table|column], object_id)
+Relationship(id, from_column_id, to_column_id, origin[declared|inferred|routine|ai|manual],
+             confidence, evidence JSON, status[suggested|accepted|rejected], version)
+SourceLink(id, source_system_id, kind[repo|jira|confluence|other], title, url, note, created_by)
+FileObjectLink(file_id, object_type[table|column], object_id)   -- documents linked to tables/columns
 
-TgtSchema(id, project_id, name, layer[staging|core|mart|other])
-TgtTable(id, schema_id, name, kind[fact|dimension|bridge|other], fact_type?, grain?,
-         scd_type?, is_conformed, description, status)
-TgtColumn(id, table_id, name, ordinal, data_type, is_nullable, role[sk|nk|fk|measure|attribute|audit],
-          additivity?, scd_type_override?, references_table_id?, description,
-          semantic_type?, is_pii_derived)
-Kpi(id, project_id, name, definition, formula_text, formula_sql, unit, aggregation,
-    owner, refresh_frequency, targets JSON, status)
-KpiLink(kpi_id, tgt_column_id)
-TableMapping(id, tgt_table_id, driving_src_table_id, joins JSON, filters TEXT, notes)
-ColumnMapping(id, tgt_column_id, mapping_type[direct|derived|constant|system|unmapped],
-              rule_text, sql_expression, status, validation JSON, updated_by, updated_at)
-ColumnMappingSource(column_mapping_id, src_column_id)
-Comment(id, project_id, object_type, object_id, parent_id?, author_id, body, resolved_at?, created_at)
-Baseline(id, project_id, name, created_by, created_at, payload JSON)   -- frozen design copy
-ScoreRun(id, project_id, score, grade, breakdown JSON, per_layer JSON, per_table JSON, created_at)
-ScoreCheckResult(score_run_id, check_code, severity, object_type, object_id, passed)
-DisabledCheck(project_id, check_code, reason, disabled_by)
-ScoreGate(project_id, min_score, block_on_errors)
+DataWarehouse(id, workspace_id UNIQUE, target_platform[postgresql|sqlserver|oracle|snowflake|bigquery],
+              layer_physical_schemas JSON, naming_rules JSON, date_dim_settings JSON, set_up_at)
+                                                  -- created by the explicit "Set up Data Warehouse" step
+DwTable(id, data_warehouse_id, layer[staging|core|mart], name,
+        kind[staging|fact|dimension|bridge|generated|other], src_table_id?, fact_type?, grain?,
+        is_aggregate, scd_type?, is_conformed, unknown_member JSON?, description, generation_key?,
+        generated JSON?, edited_fields[], is_pii_influenced, name_flagged, status, version)
+DwColumn(id, table_id, name, ordinal, data_type JSON,      -- neutral type {type, length, precision, scale}
+         is_nullable,
+         role[sk|nk|fk|measure|attribute|degenerate_dimension|audit|
+              scd_valid_from|scd_valid_to|scd_current_flag|row_hash],
+         additivity?, scd_type_override?, references_table_id?, role_name?, description,
+         semantic_type?, is_pii_derived, is_pseudonymised, pii_note?, generation_key?,
+         generated JSON?, edited_fields[], name_flagged, type_flagged, status, version)
+                                                  -- generated = last generated value per field;
+                                                  -- edited_fields = fields the user overrode (§6.9)
+Tombstone(data_warehouse_id, object_type, generation_key?, src_object_id?, deleted_by, deleted_at)
+                                                  -- deleted generated objects and Staging Tables (§6.9)
+LayerState(data_warehouse_id, layer[core|mart], status[draft|in_review|approved], approved_by?, approved_at?)
+Kpi(id, workspace_id, source_system_id?, name, definition, formula_text, formula_sql?, unit,
+    aggregation, owner, refresh_frequency, targets JSON, rationale?,
+    origin[user|ai|rule], feasibility?, status[draft|in_review|approved], version)
+                                                  -- source_system_id null = Data Warehouse KPI;
+                                                  -- formula_sql always targets the DW Schema
+KpiLink(kpi_id, dw_column_id)
+DismissedKpiSuggestion(data_warehouse_id, suggestion_key, dismissed_by, dismissed_at)
+TableMapping(id, dw_table_id, integration_rule TEXT?, match_keys[], notes, version)
+MappingBranch(id, table_mapping_id, ordinal, name, driving_input TEXT, joins TEXT, filters TEXT,
+              group_by TEXT?, having TEXT?, version)
+                                                  -- branches are combined with UNION ALL; SQL in target dialect
+ColumnMapping(id, branch_id?, dw_column_id,
+              mapping_type[direct|hashed|derived|constant|lookup|system|not_in_branch|unmapped],
+              rule_text, sql_expression, lookup JSON?, validation JSON, updated_by, updated_at, version)
+                                                  -- branch_id null = table-level (system columns);
+                                                  -- lookup = {nk_inputs, as_of_input?, unknown_key};
+                                                  -- dimension comes from DwColumn.references_table_id
+LineageEdge(id, kind[value|uses|lookup|kpi], from_type[src_column|dw_column], from_id,
+            to_type[dw_column|dw_table|branch|kpi], to_id, mapping_id?)
+                                                  -- derived from the SQL text on every save (§6.14)
+Comment(id, workspace_id, object_type, object_id, parent_id?, author_id, body, resolved_at?, created_at)
+ScoreRun(id, data_warehouse_id, score, grade, per_layer JSON, created_at)    -- one summary row per run
+ScoreCheckResult(data_warehouse_id, check_code, severity, layer, object_type, object_id, passed)
+                                                  -- latest run only
+DisabledCheck(data_warehouse_id, check_code, reason, disabled_by)
+ScoreGate(data_warehouse_id, layer[core|mart], min_score, block_on_errors)
+AiEvaluation(id, data_warehouse_id, layer, findings JSON, created_by, created_at)
 
-PiiRule(id, project_id?, name, category, name_keywords[], value_regex?, validator?, enabled)
-                                                  -- project_id null = built-in rule
+PiiRule(id, workspace_id?, name, category, name_keywords[], value_regex?, validator?, enabled)
+                                                  -- workspace_id null = built-in rule
 PiiFinding(id, src_column_id, rule_id, category, confidence, evidence JSON,
            status[suggested|confirmed|dismissed], reviewed_by?, reviewed_at?)
-PiiHandling(tgt_column_id, method[keep|mask|hash|tokenise|generalise|drop], note, decided_by)
+                                                  -- protected column = is_sensitive OR finding in {suggested, confirmed}
 
-KpiTemplate(id, domain, name, definition, formula_pattern, required_semantic_types[], library_version)
-KpiSuggestion(id, project_id, origin[rule|template|assistant], payload JSON, rationale,
-              feasibility[computable|needs_mapping|needs_data], status[suggested|accepted|rejected])
-
-ProjectFile(id, project_id, path, kind[generated|uploaded], mime, current_version_id)
-FileVersion(id, file_id, version_no, storage_key, size, created_by,
-            created_via[user|export|assistant], change_note, created_at)
+WorkspaceFile(id, workspace_id, owner_kind[source_system|data_warehouse], owner_id, path,
+              kind[generated|uploaded], mime, storage_key, size, extracted_text?,
+              text_status[none|extracted|no_text_found], updated_by, updated_at)
+                                                  -- a document is an uploaded file with extracted text
 
 LlmProvider(id, name, adapter[openai_compatible|anthropic|azure_openai|gemini|bedrock|<plugin>],
             base_url?, api_key_encrypted?, extra_config JSON, is_internal, enabled, last_tested_at)
 LlmModel(id, provider_id, model_name, display_name, kind[chat|embedding], supports_tools,
          supports_streaming, supports_json_schema, context_window, embedding_dim?, enabled)
 ModelRoleAssignment(role[agent|light|embedding], model_id)               -- installation defaults
-AiBudget(scope[installation|project], project_id?, monthly_token_limit)
-ProjectAiSettings(project_id, enabled, data_level[metadata|metadata_profiles|metadata_profiles_documents],
-                  agent_model_id?, internal_providers_only)
-DocumentChunk(id, source_type[artifact|file_version], source_id, ordinal, text, tsv, embedding vector?)
-UserMfa(user_id, totp_secret_encrypted, recovery_codes_hashed[], enabled_at)
-UserIdentity(user_id, provider, subject, email)                          -- OIDC links
-Conversation(id, project_id, user_id, title, shared_with_project, created_at)
+AiBudget(scope[installation|workspace], workspace_id?, monthly_token_limit)
+WorkspaceAiSettings(workspace_id, data_level[metadata|profiles|documents|samples],
+                    agent_model_id?, internal_providers_only)
+                                                  -- default set in code at creation (§6.18)
+DocumentChunk(id, file_id, ordinal, text, tsv, embedding vector?)
+Conversation(id, workspace_id, user_id, title, shared_with_workspace, created_at)
 Message(id, conversation_id, role[user|assistant|tool], content JSON, created_at)
-AssistantRun(id, message_id, tool_calls JSON, input_tokens, output_tokens, duration_ms, status)
-ChangeSet(id, project_id, conversation_id?, created_by, items JSON,
-          status[pending|applied|partially_applied|rejected|reverted], applied_by?, applied_at?)
+                                                  -- tool results never contain raw query values
+AssistantRun(id, message_id, tool_calls JSON, source_queries JSON, input_tokens, output_tokens,
+             duration_ms, status)
+ChangeSet(id, workspace_id,
+          origin[ai|regeneration|sync|propagation|import|platform_change|system_code_change],
+          scope JSON, conversation_id?, created_by,
+          status[pending|applied|partially_applied|rejected|superseded], applied_by?, applied_at?)
+ChangeSetItem(id, change_set_id, object_type, object_id?, operation[create|update|delete],
+              base_values JSON?, payload JSON, depends_on[], required_role[editor|owner],
+              is_conflict, status[pending|needs_owner|accepted|rejected|stale|expired])
+                                                  -- creates are one item per table, columns nested
 ```
 
-Source objects are tied to a **snapshot**. Mappings reference `SrcColumn` rows from the latest snapshot. On re-extraction, columns are matched by `(schema, table, column)` name, existing IDs are kept for unchanged columns, and missing ones are marked `status=removed` rather than deleted. This keeps mappings and drift detection intact.
+**Source identity vs Snapshots.** `SrcDbSchema`, `SrcTable`, `SrcColumn` and `SrcRoutine` are stable identities per Source System; they carry descriptions, tags, classifications, PII, relationships and mappings. Each Snapshot stores its own immutable `Snapshot*` rows pointing at those identities, so any two Snapshots can be diffed. On re-extraction or re-import, objects are matched to identities by exact name first, then case-insensitively only when that is unambiguous and the engine folds case (so PostgreSQL's `"Customer"` and `customer` stay two objects), or by a confirmed rename or manual merge. A type change updates the identity's current definition. Objects missing from the new Snapshot become `source_removed`; objects outside the allowed Database Schemas become `out_of_scope`; neither is ever deleted automatically. Mappings therefore never break because of a type change or a confirmed rename. The data-sharing levels are cumulative: `samples` includes `documents`, which includes `profiles`, which includes `metadata`.
 
 ---
 
@@ -638,7 +888,7 @@ These are recommended defaults. Any of them can be changed during review.
 ### 8.1 Architecture
 
 - **Modular monolith.** One backend service, one frontend, one Postgres database, one background worker. This fits a solo maintainer and keeps self-hosting simple.
-- **Deep modules with narrow interfaces**, each owning its tables and exposing a service API: `auth`, `admin`, `projects` (incl. membership & authorization policy), `sources` (connections, extraction, snapshots), `analysis` (profiling, inference), `artifacts`, `design` (target model, KPIs), `mapping`, `lineage`, `scoring`, `collaboration` (comments, activity, baselines), `exports`, `jobs`, `pii`, `kpi_suggestions`, `files`, `assistant` (agent loop, tools, change sets), `llm_gateway` (provider adapters, capability detection, budgets).
+- **Deep modules with narrow interfaces**, each owning its tables and exposing a service API: `auth`, `admin`, `workspaces` (incl. membership & authorization policy), `sources` (connections, extraction, snapshots), `schema_import`, `analysis` (profiling, inference), `documents`, `staging`, `design` (DW Schema, KPIs), `mapping`, `lineage`, `propagation` (impact analysis, change sets, audit), `scoring`, `collaboration` (comments, activity), `exports`, `jobs`, `pii`, `kpi_suggestions`, `files`, `assistant` (agent loop, tools), `llm_gateway` (provider adapters, capability detection, budgets).
 - Modules talk only through service interfaces, never by reading another module's tables directly.
 
 ### 8.2 Stack
@@ -646,18 +896,18 @@ These are recommended defaults. Any of them can be changed during review.
 | Layer | Choice | Reason |
 |---|---|---|
 | Backend | Python 3.12 + FastAPI | Best ecosystem for DB introspection and SQL parsing |
-| DB introspection | SQLAlchemy `inspect()` + engine drivers (psycopg, PyMySQL, pyodbc/pymssql) | One API across many engines |
-| SQL parsing / DDL | sqlglot | Parses and transpiles many dialects; used for lineage and DDL |
-| Metadata store | PostgreSQL 16 | JSONB, recursive CTEs, robust |
+| DB introspection | SQLAlchemy `inspect()` + engine drivers (psycopg, PyMySQL, pyodbc/pymssql, oracledb) plus engine-specific catalog queries for routines and view definitions | One API across engines |
+| SQL parsing / DDL | sqlglot | Parses and transpiles many dialects; used for lineage, routine JOIN parsing, AI query guarding and DDL |
+| Metadata store | PostgreSQL 16 (only) | JSONB, recursive CTEs, full-text search, pgvector, `SKIP LOCKED` |
 | Migrations | Alembic | Standard with SQLAlchemy |
 | Background jobs | Postgres-backed queue (`SELECT … FOR UPDATE SKIP LOCKED`) worker | No extra infrastructure (no Redis needed) |
 | File storage | Local volume by default, S3-compatible optional | Self-host friendly |
 | Frontend | React + TypeScript + Vite, TanStack Query, React Flow (diagrams & lineage) | Mature graph tooling |
-| XLSX | openpyxl | Import/export |
+| XLSX | openpyxl | Schema Import, mapping import/export |
 | Packaging | Docker Compose (`app`, `worker`, `db`, optional `ollama` profile) | One-command install; fully local AI optional |
-| LLM access | Own thin gateway: the `openai` SDK for every OpenAI-compatible server (vLLM, SGLang, Ollama, many cloud APIs), plus Anthropic, Azure OpenAI, Gemini and Bedrock adapters | One internal interface; self-hosted and cloud models are interchangeable |
+| LLM access | Own thin gateway: the `openai` SDK for every OpenAI-compatible server, plus Anthropic, Azure OpenAI, Gemini and Bedrock adapters | One internal interface; self-hosted and cloud models are interchangeable |
 | Chat streaming | Server-Sent Events | Simple one-way streaming |
-| Document text | pypdf, python-docx | Text extraction for assistant search (no OCR) |
+| Document text | pypdf, python-docx, openpyxl | Text extraction for assistant search (no OCR) |
 | Document search | Postgres full-text search + pgvector | Hybrid search with no extra infrastructure |
 | SSO / MFA | Authlib (OIDC), pyotp (TOTP) | Standard, well-maintained libraries |
 
@@ -678,30 +928,32 @@ GET    /me
 
 GET    /admin/users            POST /admin/users/invite
 PATCH  /admin/users/{id}       (role, is_active)   POST /admin/users/{id}/force-reset
-GET    /admin/projects         POST /admin/projects/{id}/reassign-owner
-GET|PUT /admin/settings        GET /admin/audit
+GET    /admin/workspaces       POST /admin/workspaces/{id}/reassign-owner
+GET|PUT /admin/settings        GET /admin/security-events
 
-GET|POST /projects             GET|PATCH|DELETE /projects/{id}
-GET|POST /projects/{id}/members  PATCH|DELETE /projects/{id}/members/{userId}
-GET    /projects/{id}/activity
+GET|POST /workspaces           GET|PATCH|DELETE /workspaces/{id}
+GET|POST /workspaces/{id}/members  PATCH|DELETE /workspaces/{id}/members/{userId}
+GET    /workspaces/{id}/activity   GET /workspaces/{id}/audit
 
-…/projects/{id}/sources, /sources/{id}/connections, /connections/{id}/test,
-/connections/{id}/extract, /snapshots/{id}/diff, /tables, /columns,
-/profile, /relationships, /artifacts
+…/workspaces/{id}/systems, /systems/{sid}/connection, /connection/test, /connection/extract,
+/systems/{sid}/import (template, helper-queries?engine=…, upload, validate),
+/systems/{sid}/snapshots, /snapshots/{snid}/diff, /tables, /columns, /routines,
+/profile, /relationships, /documents, /explore
 
-…/projects/{id}/target/schemas|tables|columns, /kpis, /mappings,
-/mappings/import, /mappings/export, /lineage?node=…&direction=…&depth=…,
-/score, /baselines, /comments, /exports/ddl?dialect=…, /exports/docs
+…/workspaces/{id}/dw/setup (target platform, Layer schema names, naming rules, date settings), /dw,
+/dw/layers/{layer}/tables|columns|mappings|evaluation|approve,
+/dw/staging/sync, /dw/generate, /kpis, /mappings/import, /mappings/export,
+/lineage?node=…&direction=…&depth=…, /impact?node=…, /exports/ddl, /exports/docs
 
-…/projects/{id}/pii/findings, /pii/rules, /pii/handling, /pii/inventory/export
-…/projects/{id}/kpi-suggestions (GET; POST generate; PATCH accept | reject)
-…/projects/{id}/score/history, /score/gate, /score/report
-…/projects/{id}/files, /files/{fid}/versions, /files/{fid}/versions/{v}/diff?against=…, /files/{fid}/restore
-…/projects/{id}/assistant/conversations, /conversations/{cid}/messages (POST → SSE stream), /conversations/{cid}/stop
-…/projects/{id}/change-sets/{csid} (GET), /apply, /reject, /revert
+…/workspaces/{id}/pii/findings, /pii/rules, /pii/inventory/export
+…/workspaces/{id}/score, /score/history, /score/gate, /score/report
+…/workspaces/{id}/files
+…/workspaces/{id}/assistant/conversations, /conversations/{cid}/messages (POST → SSE stream), /conversations/{cid}/stop
+…/workspaces/{id}/change-sets/{csid} (GET), /apply, /reject    POST /workspaces/{id}/fix-impacts
+…/workspaces/{id}/notifications
 GET|POST /admin/llm/providers   PATCH|DELETE /admin/llm/providers/{id}   POST /admin/llm/providers/{id}/test
 GET|POST /admin/llm/models      PUT /admin/llm/roles    GET|PUT /admin/llm/budgets    GET /admin/ai-usage
-GET|PUT  /projects/{id}/ai-settings
+GET|PUT  /workspaces/{id}/ai-settings
 GET|PUT  /admin/sso            GET /auth/oidc/login     GET /auth/oidc/callback
 POST     /auth/mfa/enroll | /auth/mfa/verify | /auth/mfa/disable
 
@@ -713,8 +965,9 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel
 - OWASP ASVS Level 1 as a minimum
 - Security headers: CSP, HSTS (when behind TLS), `X-Content-Type-Options`, `frame-ancestors 'none'`
 - Uploads: 25 MB limit by default, MIME sniffing with an allow-list, stored under random keys, served with `Content-Disposition: attachment`
-- Secrets only from env vars, never in the database except encrypted connection credentials
-- No source data rows are ever persisted, except opt-in top-N values
+- Secrets only from env vars, never in the database except encrypted connection credentials and API keys
+- No source data rows are ever persisted, except opt-in top-N values. Sample rows read by the AI are redacted from saved conversation transcripts (§6.8).
+- AI source queries are restricted to a single `SELECT` by parsing, not by string matching
 
 ---
 
@@ -722,17 +975,17 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel
 
 | Area | Requirement |
 |---|---|
-| Performance | Extract metadata for a 2 000-table database in < 5 min. Catalog search < 300 ms. Lineage graph of 500 nodes renders < 2 s. |
-| Source safety | No source query runs longer than the configured timeout. Profiling is sampled. Everything is read-only. |
-| Concurrency | Several editors on the same project. Conflicting edits are detected via the `version` field. |
+| Performance | Extract metadata for a 2 000-table database in < 5 min. Catalog search < 300 ms. Lineage graph of 500 nodes renders < 2 s. Staging generation for 2 000 tables < 30 s. |
+| Source safety | No source query (including AI queries) runs longer than the configured timeout. Profiling is sampled. Everything is read-only. |
+| Concurrency | Several editors on the same Workspace. Conflicting edits are detected via the `version` field. |
 | Availability | Single-node self-hosted. Backups via documented `pg_dump` + file-volume copy. |
-| i18n | UI strings externalised from day one. English and Arabic (RTL) in the first release. |
+| Language | UI in English only. Source data, documents and assistant conversations may be in any language, including Arabic. |
 | Accessibility | Keyboard-navigable core flows, WCAG AA contrast. |
 | Observability | Structured JSON logs, `/healthz` and `/readyz`, job logs visible in the UI. |
 | Install | `docker compose up` with a documented `.env.example`. Works offline after image pull. With a self-hosted LLM (vLLM, SGLang or Ollama), the whole tool, AI included, runs fully offline and air-gapped. Cloud models need outbound access to the chosen provider only. |
 | Assistant | First streamed token in < 3 s for simple questions. |
-| Scoring | Recalculation in < 2 s for a 200-table target model. |
-| AI data exposure | Only what the project's data-sharing level allows is sent to the provider. Credentials, sampled values and row data are never sent. With internal providers, nothing leaves the network. |
+| Scoring | Recalculation in < 2 s for a 200-table DW Schema. |
+| AI data exposure | Only what the Workspace's data-sharing level allows is sent to the provider. Credentials are never sent; confirmed PII is always masked. New Workspaces are internal-only by default. |
 | LLM portability | Full agent mode works with any model that has native tool calling and a context window of at least 32k tokens. Other models run in limited mode. |
 
 ---
@@ -742,88 +995,87 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel
 - **Test behaviour through module public interfaces**, not internals. A good test calls the service or HTTP API and asserts on outputs and side effects.
 - **Authorization gets a table-driven test:** every endpoint × every role (anonymous, user non-member, viewer, editor, owner, admin non-member), asserting allow/deny against the permission matrix in §4.3. This is the single most important test suite.
 - **Auth flows:** registration toggle, lockout, reset-token single use and expiry, session invalidation on password change and deactivation, last-admin and last-owner protections.
-- **Connectors:** integration tests against real PostgreSQL, MySQL and SQL Server containers (Testcontainers) seeded with a sample schema that includes undeclared relationships, so inference can be verified.
-- **Snapshot diff & drift:** re-extract after `ALTER TABLE` changes. Assert that IDs are preserved, removed columns are flagged and affected mappings are reported.
-- **Lineage & scoring:** fixture-based tests with small hand-built projects and known expected graphs and scores.
-- **Import/export:** round-trip export → import and assert no changes. A malformed XLSX produces a validation report and writes nothing.
-- **Frontend:** component tests for complex editors (mapping grid, model editor), plus a small Playwright suite covering sign in → create project → add member → extract → map → view lineage.
-- **PII detection:** unit tests per validator (valid and invalid Saudi IDs, Iqamas, IBANs, mobiles, cards) and name-rule tests including Arabic transliterations. One test asserts that no sampled value appears in the database, logs or job output after a scan.
-- **Scoring:** pass and fail fixtures for every check. The formula, grade cap and approval gate are tested end to end.
-- **KPI suggestions:** fixture models with known expected suggestions and feasibility. Library YAML is validated in CI.
-- **Assistant:** a fake LLM provider replays scripted tool calls, so the agent loop, change-set creation, partial approval and revert are tested deterministically. A table-driven test confirms every tool refuses actions the user's role can't perform, and that viewers can't trigger write tools. A small set of real questions against a sample project is run against the real model before each release.
-- **Files:** version creation, diff and restore. Assistant updates always create a new version.
+- **Connectors:** integration tests against real PostgreSQL, MySQL, SQL Server and Oracle containers (Testcontainers) seeded with a sample schema that includes undeclared relationships, views and stored procedures with JOINs, so extraction and inference can be verified.
+- **Schema Import:** for each engine, run the helper queries against the seeded container, fill the template, import it, and assert the Snapshot equals the one from live extraction (apart from profile-dependent data). A malformed workbook produces a validation report and writes nothing.
+- **Snapshot diff & drift:** re-extract after `ALTER TABLE` changes. Assert that identities are preserved across type changes and letter-case differences, older Snapshots stay unchanged and diffable, rename candidates are proposed and keep identity when confirmed, removed columns are flagged, and the staging sync Change Set and impacted Assets are reported.
+- **Staging generation:** naming, sanitising, stable placeholder names, collisions, truncation with hash per target platform limit, type translation fallbacks, views opt-in, sync Change Sets, tombstones (deleted objects never return), overrides shown as conflicts, "drop removed".
+- **AI query guard:** non-`SELECT` statements, multiple statements, writes hidden in CTEs or functions, non-allow-listed functions, unresolved/synonym/cross-database names and queries outside allowed Database Schemas are all rejected; output columns derived from confirmed or suggested PII (through `SUBSTR`, `CONCAT`, `CAST`, aggregates) are masked; filters on PII columns are rejected; saved transcripts contain no sample values; the per-run query-seconds budget is enforced.
+- **Change propagation:** fixture DW Schemas where each row of the propagation table (rename, type change, nullability, delete) produces the expected transitive impact list and Change Set; deletes never cascade; partial acceptance leaves the expected validation errors; approval is revoked only by structural or mapping changes; Mart approval follows Core.
+- **Change Sets:** staleness is per changed field (an unrelated edit doesn't make an item stale); stale items and their dependents are skipped and reported before an all-or-nothing apply; dependency closure on accept and reject; owner-only items stay `needs_owner` when an Editor accepts (table-driven over the permission matrix); a newer sync supersedes a pending one; remaining items expire and "Fix impacts" recomputes them; creates are one item per table; mapping import produces a Change Set.
+- **Deletes and states:** soft delete marks only the target `deleted` and dependents show errors; `source_removed` objects stay scored; narrowing allowed schemas yields `out_of_scope`, never removal; deleting a Source System re-homes DW-linked KPIs and keeps other systems' branches.
+- **Regeneration:** user-edited fields survive regeneration; an AI rename is matched through its handle and stays a rename; a garbled or missing handle produces a flagged "possible duplicate"; tombstoned objects are never re-proposed; regeneration and propagation never trigger new regeneration offers.
+- **Multi-source mappings:** a two-branch `dim_customer` keeps rows present in only one system; branch coverage counts "not available in this branch"; aggregates validate `GROUP BY`; Core lookups produce fact → dimension edges and are exempt from the layering check; Mart FKs mapped `direct` pass; SCD2 dimensions get housekeeping columns.
+- **Lineage storage:** edges are re-derived from the SQL text on save; unparsable expressions produce no edges and an Error; cyclic hierarchies terminate.
+- **PII protection set:** a hand-flagged sensitive column and a suggested finding are both masked and excluded from top-N and min/max; name-only matches are at least `suggested`; a vague-named column holding Iqama numbers is masked by the query-time value check and gets a `suggested` finding; `COUNT(DISTINCT)` and `JOIN ON` PII keys are allowed while projection, `GROUP BY`, `MIN`/`MAX` and literal comparisons are rejected; views over disallowed schemas or with unparsable definitions are not queryable; model-written text is redacted before saving; join-only PII use marks tables PII-influenced, not columns PII-derived.
+- **Lineage & scoring:** fixture-based tests with small hand-built Workspaces and known expected graphs and scores, including per-Layer checks and the staging-only check set.
+- **Import/export:** round-trip mapping export → import and assert no changes.
+- **Frontend:** component tests for complex editors (mapping grid, model editor, folder tree), plus a small Playwright suite covering sign in → create Workspace → add member → extract → generate staging → generate core → map → view lineage.
+- **PII detection:** unit tests per validator (valid and invalid Saudi IDs, Iqamas, IBANs, mobiles, cards) and name-rule tests including Arabic transliterations and Arabic script. One test asserts that no sampled value appears in the database, logs or job output after a scan. Hashed staging mappings never contain a literal salt.
+- **Scoring:** pass and fail fixtures for every check. The formula, grade cap and per-Layer approval gate are tested end to end.
+- **KPI suggestions:** fixture models with known expected rule-based suggestions and feasibility.
+- **Assistant:** a fake LLM provider replays scripted tool calls, so the agent loop, DW generation, mapping drafts, change-set creation and partial acceptance are tested deterministically. A table-driven test confirms every tool refuses actions the user's role can't perform, that viewers can't trigger write or source-query tools, and that `run_source_query` is unavailable below the `samples` data level. For internal-only Workspaces, no request reaches an external provider for any model role, including upload-time embedding. Aborted jobs produce no Change Set. `suggest_kpis` never updates, deletes or duplicates existing KPIs. A small set of real tasks against a sample Workspace is run against the real model before each release.
 - **LLM gateway:** a contract test suite every adapter must pass (streaming, tool-call round trip, error mapping, usage reporting), run against recorded fixtures. A CI job runs the assistant against Ollama with a small tool-capable model. Before each release the evaluation set runs against vLLM, SGLang and at least one cloud model. The prompted-tool fallback is tested with malformed and invalid JSON.
 - **SSO and MFA:** the OIDC flow is tested against a Keycloak container. TOTP enrolment, verification, recovery codes and enforcement policies are covered.
-- **Connectors:** Oracle runs in a container like the others. Snowflake and BigQuery are tested against recorded fixtures, with an optional live job when credentials are available.
 
 ---
 
 ## 11. Delivery Phases
 
-**Release 1 contains everything in this document except DW implementation (Epic N).** Phases 0–5 are the build order within Release 1, and each is shippable on its own. Use this ordering when turning the PRD into GitHub issues.
+**Release 1 contains everything in this document except DW Implementation (Epic S).** Phases 0–6 are the build order within Release 1. Use this ordering when turning the PRD into GitHub issues.
 
 **Phase 0: Foundations.** Repo, CI, Docker Compose, DB migrations, module skeletons, error format, OpenAPI client generation.
 
-**Phase 1: Auth, Admin & Projects** (Epics A, B, C). Bootstrap admin, sessions, invitations, password reset, OIDC SSO, TOTP two-factor, admin console, projects, membership, authorization policy with the full permission test suite, activity log, English/Arabic UI shell with RTL.
+**Phase 1: Auth, Admin & Workspaces** (Epics A, B, C). Bootstrap admin, sessions, invitations, password reset, OIDC SSO, TOTP two-factor, admin console, Workspaces, membership, folder-tree shell, authorization policy with the full permission test suite, activity log.
 
-**Phase 2: Source Analysis & PII** (Epics D, E, F, and scanning and review from O). Connector plugin interface with PostgreSQL, MySQL/MariaDB and SQL Server first, then Oracle, Snowflake and BigQuery. Encrypted credentials, background jobs, extraction, snapshots & diff, catalog, profiling, relationship inference, ER diagram, documentation/tags, artifacts with text extraction, Jira/Confluence import, PII scans, review queue and custom rules.
+**Phase 2: LLM Gateway & Assistant foundations** (Epic Q core). Provider registry; the `openai_compatible` adapter (vLLM, SGLang, Ollama, OpenAI and other compatible APIs) and the `anthropic` adapter first, with `azure_openai`, `gemini` and `bedrock` added later in Release 1 through the same plugin interface; capability detection, prompted-tool fallback, model roles, budgets, internal-only Workspaces, data-sharing levels, the agent loop and Change Sets. The AI is required, so it comes before the features that use it.
 
-**Phase 3: LLM Gateway & Assistant foundations** (Epic Q). Provider registry and adapters (OpenAI-compatible for vLLM, SGLang, Ollama and cloud APIs; Anthropic; Azure OpenAI; Gemini; Bedrock), capability detection, prompted-tool fallback, model roles, budgets, internal-only projects, document chunking and hybrid search, and the agent loop with read tools for project and document Q&A. AI comes this early so every later feature ships with its assistant tools.
+**Phase 3: Source Analysis & PII** (Epics D, E, F, G, P scanning and review). Connector interface with PostgreSQL, MySQL/MariaDB, SQL Server and Oracle; Schema Import with templates and helper queries; encrypted credentials; background jobs; extraction incl. routines and views; Snapshots & diff; Source Schema browsing; profiling; relationship inference incl. routine JOIN parsing; ER diagram; documentation; documents with text extraction and search; PII scans, review queue and custom rules; AI source exploration, drafting and gaps reports.
 
-**Phase 4: DW Design core & Files** (Epics G, H, I, R, P). Target model editor & diagram, bus matrix, semantic types, KPIs, KPI suggestions from rules, library and assistant, mappings, validation, coverage, XLSX import/export, DDL export, project file area with versions. The assistant gains file generation and update tools, and change sets with approve and revert.
+**Phase 4: KPIs, DW Modeling & Mapping model** (Epics H, I, J, R, and the mapping data model and editor from K). KPIs with AI suggestions; "Set up Data Warehouse"; staging generation and sync; table mappings, branches, lookups and the mapping editor (AI generation of Core and Mart needs them); stored lineage edges; AI generation of Core and Mart; model editor & diagrams; bus matrix; DDL export with seeds; file areas.
 
-**Phase 5: Insight, Scoring & Collaboration** (Epics J, K, L, M, and propagation and handling from O). Lineage graph & impact report, DW schema scoring with gate, PII propagation and handling, PII inventory export, comments & mentions, history, baselines, documentation pack. The assistant gains lineage, score-explanation and fix tools, and long-running assistant jobs.
+**Phase 5: Mapping workflow, Lineage & Propagation** (rest of Epic K, Epics L, N, P propagation and hashing). AI mapping drafts, validation, coverage, XLSX import/export, lineage graph and impact report, change propagation, audit trail, PII propagation and hashing, comments and mentions.
 
-**Next phase: DW Implementation** (Epic N). dbt project generation, load-order planning, SCD2 templates, and assistant tools to generate and update them. Whether the tool also runs pipelines and loads data into the warehouse is decided when this phase is specified.
+**Phase 6: Scoring, Evaluation & Exports** (Epics M, O, H rule-based suggestions). Per-Layer scoring with gate and trend, AI evaluation, rule-based KPI suggestions, PII inventory, score report, documentation pack.
 
----
+**Next phase: DW Implementation** (Epic S). dbt project generation, load-order planning, SCD2 templates, and assistant tools to generate and update them. Whether the tool also runs pipelines and loads data into the warehouse is decided when this phase is specified.
 
-### 11.1 Estimated timeline
-
-These estimates assume **Claude Code writes the code and one person reviews, tests and steers it**. At this pace, review is the bottleneck, not code generation: every phase needs time to read diffs, run the app, test against real databases and models, and send fixes back. "Full-time" means about 35–40 review hours per week; "part-time" means about 15.
-
-| Phase | Scope | Full-time | Part-time |
-|---|---|---|---|
-| 0 | Foundations: repo, CI, Docker Compose, migrations, module skeletons | 1 week | 2 weeks |
-| 1 | Auth, Admin & Projects, incl. SSO, MFA and the Arabic/RTL shell | 2–3 weeks | 5–6 weeks |
-| 2 | Source Analysis & PII, incl. six connectors and Jira/Confluence import | 4–5 weeks | 8–10 weeks |
-| 3 | LLM Gateway & Assistant foundations | 3–4 weeks | 6–8 weeks |
-| 4 | DW Design core & Files (model editor, diagrams, mapping grid: the heaviest UI) | 5–6 weeks | 10–12 weeks |
-| 5 | Insight, Scoring & Collaboration | 3–4 weeks | 6–8 weeks |
-| Release | Hardening: security review, install docs, LLM server recipes, evaluation set, bug fixing | 2 weeks | 4 weeks |
-| **Total** | **Release 1** | **≈ 20–25 weeks (5–6 months)** | **≈ 41–50 weeks (10–12 months)** |
-
-**Lean MVP option.** A first public version with PostgreSQL/MySQL/SQL Server connectors, extraction and catalog, name-based PII detection, target model, mappings with XLSX export, DDL export, and an assistant on the OpenAI-compatible adapter (Q&A plus file generation) takes about **8–10 weeks full-time** or **4–5 months part-time**. The remaining stories then become follow-up releases.
-
-**Main schedule risks:**
+**Main risks:**
 
 - **Review throughput.** If review falls behind, generated code piles up unverified. Keep issues small and merge often.
-- **Visual editors.** The model diagram, lineage graph and mapping grid usually take the most iteration to feel right.
-- **Cloud connectors.** Snowflake and BigQuery need test accounts, and Oracle containers are slow and heavy.
+- **AI DW generation quality.** Generating a sound Kimball model from an undocumented source is the hardest AI task here; it needs an evaluation set of sample sources with reference models and real testing on smaller self-hosted models.
+- **Visual editors.** The model diagram, lineage graph, folder tree and mapping grid usually take the most iteration to feel right.
+- **Oracle.** Oracle containers are slow and heavy in CI.
 - **Self-hosted model quality.** Tool calling on smaller vLLM, SGLang or Ollama models needs real testing and prompt tuning.
-- **Arabic/RTL.** Supporting RTL throughout adds friction to every UI story, not just one.
 
-## 12. Out of Scope
+## 12. Out of Scope & Deferred
 
-Not planned for any phase. DW implementation is not listed here because it is the next phase (§11).
+**Deferred to later releases:**
 
+- DW Implementation (Epic S)
+- Inmon/3NF or Data Vault modeling for the Core Layer
+- Source Systems spanning more than one database
+- Jira and Confluence API import (links are supported)
+- Reading and searching linked code repositories
+- Generic ODBC connector; Snowflake and BigQuery as *sources* (they are supported as DW target platforms)
+- Pushing a Workspace to an external Git remote
+- Built-in domain KPI library
+- Sharing one Source System across several Workspaces
+- Per-folder permissions inside a Workspace
+
+**Not planned:**
+
+- Revert, undo of Change Sets, per-Asset version history and Baselines ([ADR 0001](./adr/0001-forward-only-changes-no-revert.md))
+- UI languages other than English
+- AI or NER-based PII detection
 - OCR of scanned documents (text-based PDFs are supported)
-- The assistant applying changes without human approval, or acting on its own schedule
-- Fine-tuning models, or managing model servers (the tool connects to vLLM, SGLang, Ollama or cloud APIs that you run or subscribe to; the optional Ollama Compose profile is a convenience)
+- The assistant applying model changes without human approval, or acting on its own schedule
+- Fine-tuning models, or managing model servers (the optional Ollama Compose profile is a convenience)
 - Storing or browsing raw source data rows
 - Real-time co-editing with live cursors (optimistic locking only)
-- Multi-tenant SaaS hosting, billing or organisations above projects
+- Multi-tenant SaaS hosting, billing or organisations above Workspaces
 - Non-relational sources (MongoDB, APIs, files as sources)
+- A metadata store other than PostgreSQL
 
-## 13. Assumptions to Confirm
+## 13. Open Items
 
-1. **DW schema scoring** scores the *target* warehouse schema (§6.6). A separate score for how DW-ready the *source* tables are (data quality, key stability) is not included, but could be added in Phase 5.
-2. **Admins cannot read project content** unless they are members. This favours privacy, but some teams may prefer admin oversight.
-3. **Self-hosted only** for an open-source, not-for-sale tool. No hosted multi-tenant version is planned.
-4. **Python/FastAPI backend.** Chosen for the data-tooling ecosystem. If you prefer another backend stack you know well, only §8.2 and parts of §8.3 change.
-5. **Source engines** in the first release are PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, Snowflake and BigQuery.
-6. **"Project (source system) shared with users I add"** is implemented as project-level membership: adding someone to a project gives access to all its source systems. Per-source-system permissions are not included.
-7. **No AI provider is bundled by default.** Each installation registers its own, either a self-hosted model (vLLM, SGLang, Ollama) or a cloud API key, and pays for its own usage if any.
-8. **The assistant's default data-sharing level** is *metadata only*. Owners opt in to sending profile statistics or documents.
-9. **Initial KPI library domains** are retail/e-commerce, banking, telecom, healthcare, HR and government services, starting with roughly 15–25 KPIs each.
-10. **Minimum model for full agent mode** is native tool calling and a context window of at least 32k tokens. Weaker models run in limited mode (prompted tools, shorter history).
+1. **Helper queries.** The maintainer will share the catalog queries they already use; the Schema Import template and helper queries (§6.4) will be aligned with them.
