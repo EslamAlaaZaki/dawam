@@ -11,7 +11,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from fastapi import APIRouter, FastAPI
-from fastapi.staticfiles import StaticFiles
 
 import dawam
 from dawam.modules import ALL_MODULES
@@ -22,6 +21,7 @@ from dawam.platform.config import Settings, load_settings
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
+from dawam.platform.frontend import SinglePageApp
 from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
@@ -84,5 +84,5 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     install_api_docs(app, f"{API_PREFIX}/docs")
     if settings.frontend_dist is not None:
         # Mounted last, so the API and probes always win over static files.
-        app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
+        app.mount("/", SinglePageApp(settings.frontend_dist), name="frontend")
     return app
