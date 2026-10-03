@@ -6,7 +6,6 @@ import time
 
 import pytest
 
-from dawam.platform.config import Settings
 from dawam.platform.db import create_engine
 from dawam.platform.migrations import upgrade_to_head
 from dawam.worker import run_worker
@@ -24,9 +23,11 @@ def logged(caplog: pytest.LogCaptureFixture, message: str) -> bool:
     return any(r.getMessage() == message for r in caplog.records)
 
 
-def test_worker_waits_for_migrations_then_runs_until_stopped(fresh_database_url, caplog):
+def test_worker_waits_for_migrations_then_runs_until_stopped(fresh_database_url, settings, caplog):
     caplog.set_level(logging.INFO)
-    settings = Settings(database_url=fresh_database_url, worker_poll_seconds=0.05)
+    settings = settings.model_copy(
+        update={"database_url": fresh_database_url, "worker_poll_seconds": 0.05}
+    )
     stop = threading.Event()
     worker = threading.Thread(target=run_worker, args=(settings,), kwargs={"stop": stop})
     worker.start()
@@ -48,8 +49,8 @@ def test_worker_waits_for_migrations_then_runs_until_stopped(fresh_database_url,
     assert logged(caplog, "worker stopped")
 
 
-def test_worker_returns_immediately_when_already_stopped(database_url):
+def test_worker_returns_immediately_when_already_stopped(settings):
     stop = threading.Event()
     stop.set()
 
-    run_worker(Settings(database_url=database_url), stop=stop)
+    run_worker(settings, stop=stop)

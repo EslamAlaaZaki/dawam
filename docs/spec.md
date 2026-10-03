@@ -429,7 +429,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 
 - **Engines:** PostgreSQL, MySQL/MariaDB, SQL Server, Oracle. Each engine is a connector plugin implementing one interface (`test`, `list_schemas`, `extract`, `profile`, `sample`, `query`), so more engines can be added without touching the rest. A Source System has exactly one database.
 - **Extracted metadata:** Database Schemas, tables, views (with definitions), columns, types, nullability, PKs, FKs, unique constraints, indexes, stored procedures and functions (with source code), row-count estimates, comments.
-- **Credentials:** encrypted with AES-256-GCM using a key from the `ENCRYPTION_KEY` env var. The key rotation procedure is documented. Credentials are never returned by the API; it returns `has_password: true` instead.
+- **Credentials:** encrypted with AES-256-GCM using a key from the `DAWAM_ENCRYPTION_KEY` env var (32 bytes, base64-encoded; startup fails without it). The key rotation procedure is documented. Credentials are never returned by the API; it returns `has_password: true` instead.
 - Every source query runs with a statement timeout (default 30 s) and in a read-only transaction where the engine supports it.
 - Extraction, profiling, PII scans and AI exploration run as **background jobs** with status (`queued`, `running`, `succeeded`, `failed`, `cancelled`), progress percentage and a log.
 - **Allowed-Database-Schemas list per Connection:** anything outside it is never queried. When the list is narrowed, objects in excluded schemas become `out_of_scope` (not `source_removed`): they are never treated as dropped, never proposed for removal and never queried by the AI. DAWAM offers (but doesn't force) to purge their stored top-N values, min/max and PII evidence. Widening the list brings them back in scope.
@@ -967,7 +967,8 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel
 - OWASP ASVS Level 1 as a minimum
 - Security headers: CSP, HSTS (when behind TLS), `X-Content-Type-Options`, `frame-ancestors 'none'`
 - Uploads: 25 MB limit by default, MIME sniffing with an allow-list, stored under random keys, served with `Content-Disposition: attachment`
-- Secrets only from env vars, never in the database except encrypted connection credentials and API keys
+- Secrets only from env vars (e.g. `DAWAM_ENCRYPTION_KEY`), never in the database except encrypted connection credentials and API keys. A missing or malformed required secret stops startup with a message naming the variable.
+- Every DAWAM env var carries the `DAWAM_` prefix (e.g. `DAWAM_DATABASE_URL`).
 - No source data rows are ever persisted, except opt-in top-N values. Sample rows read by the AI are redacted from saved conversation transcripts (§6.8).
 - AI source queries are restricted to a single `SELECT` by parsing, not by string matching
 

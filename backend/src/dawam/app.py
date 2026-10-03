@@ -17,6 +17,7 @@ import dawam
 from dawam.modules import ALL_MODULES
 from dawam.modules.jobs import InlineJobRunner, JobRunner
 from dawam.platform import health, meta
+from dawam.platform.api_docs import install_api_docs
 from dawam.platform.config import Settings, load_settings
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
@@ -24,6 +25,7 @@ from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
 from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
+from dawam.platform.security_headers import SecurityHeadersMiddleware
 
 API_PREFIX = "/api/v1"
 
@@ -56,7 +58,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         title="DAWAM",
         version=dawam.__version__,
         openapi_url=f"{API_PREFIX}/openapi.json",
-        docs_url=f"{API_PREFIX}/docs",
+        docs_url=None,  # served by install_api_docs, under its own CSP
         redoc_url=None,
         lifespan=lifespan,
     )
@@ -66,6 +68,10 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     install_error_handlers(app)
     app.add_middleware(RequestContextMiddleware)
+    # Added last, so it is outermost and also covers the 500s RequestContextMiddleware renders.
+    app.add_middleware(
+        SecurityHeadersMiddleware, hsts_max_age_seconds=settings.hsts_max_age_seconds
+    )
 
     api = APIRouter(prefix=API_PREFIX, responses=ERROR_RESPONSES)
     api.include_router(meta.router)
@@ -75,6 +81,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
             api.include_router(router)
     app.include_router(api)
     app.include_router(health.router)
+    install_api_docs(app, f"{API_PREFIX}/docs")
     if settings.frontend_dist is not None:
         # Mounted last, so the API and probes always win over static files.
         app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")

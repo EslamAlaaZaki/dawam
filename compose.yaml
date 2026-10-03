@@ -11,6 +11,8 @@ x-dawam: &dawam
       required: false
   environment:
     DAWAM_DATABASE_URL: ${DAWAM_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-dawam}:${POSTGRES_PASSWORD:-dawam}@db:5432/${POSTGRES_DB:-dawam}}
+    # Required, no default: compose refuses to start without it.
+    DAWAM_ENCRYPTION_KEY: ${DAWAM_ENCRYPTION_KEY:?set DAWAM_ENCRYPTION_KEY in .env; .env.example says how to generate one}
   depends_on:
     db:
       condition: service_healthy

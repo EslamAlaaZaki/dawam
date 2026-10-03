@@ -14,7 +14,11 @@ def test_openapi_command_writes_the_apps_spec(tmp_path):
 
     text = output.read_text(encoding="utf-8")
     assert text.endswith("}\n")
-    app = create_app(Settings(database_url="postgresql+psycopg://unused@localhost/unused"))
+    unused = Settings(
+        database_url="postgresql+psycopg://unused@localhost/unused",
+        encryption_key=bytes(32),  # type: ignore[arg-type]
+    )
+    app = create_app(unused)
     assert json.loads(text) == app.openapi()
 
 

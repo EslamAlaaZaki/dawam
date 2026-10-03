@@ -44,8 +44,9 @@ nothing else.
    email and running migrations (`dawam.platform.migrations` drives Alembic and
    points it at the scripts by path; the scripts themselves live in
    `dawam.migrations`, a composition root, not in the kernel), plus the app-wide
-   HTTP plumbing that belongs to no module (request context middleware, the
-   `/healthz` and `/readyz` probes, and `GET /api/v1/version`). Every module may
+   HTTP plumbing that belongs to no module (request context and security headers
+   middleware, the `/healthz` and `/readyz` probes, `GET /api/v1/version` and the
+   API docs page). Every module may
    use it; it must never import `dawam.modules` or `dawam.app`.
 4. **Composition roots** (`dawam.app`, `dawam.worker`, `dawam.__main__` and
    `dawam.migrations`) may import `dawam.modules`; they wire modules together and
