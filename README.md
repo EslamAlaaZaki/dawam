@@ -24,7 +24,9 @@ python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_
 docker compose up --build
 ```
 
-Then open <http://localhost:8000>. Compose starts three services:
+Then open <http://localhost:8000> and sign in. To get the first admin account, set
+`DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` in `.env` before the first start (see
+[Sign in](#sign-in)). Compose starts three services:
 
 | Service  | What it is |
 |----------|------------|
@@ -55,13 +57,30 @@ Logs are JSON lines on stdout (`docker compose logs -f app`). Every request gets
 request id: send `X-Request-ID` to choose it, and it is returned in the response and
 on every log line for that request.
 
+### Sign in
+
+- **First admin.** When the app starts and no admin exists, it creates one from
+  `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` (the spec's `ADMIN_EMAIL` /
+  `ADMIN_PASSWORD`, with DAWAM's `DAWAM_` prefix). Once an admin exists, later starts
+  never create or change one.
+- **Sessions** are stored in the database. The browser holds only a random token in
+  the `dawam_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` when served over
+  HTTPS). A session ends after `DAWAM_SESSION_IDLE_TIMEOUT_HOURS` (default 8) without
+  a request, or `DAWAM_SESSION_ABSOLUTE_TIMEOUT_DAYS` (default 14) after sign-in.
+  Behind a TLS-terminating reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's
+  address so uvicorn trusts its `X-Forwarded-Proto`.
+- **CSRF.** Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` must send the value
+  of the `dawam_csrf` cookie in the `X-CSRF-Token` header (double submit); any
+  response sets that cookie for a client without one.
+- Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`.
+
 ## Develop
 
 Repository layout:
 
 ```
 backend/    FastAPI app (Python 3.12+), Alembic migrations, tests, tools/
-frontend/   React + TypeScript + Vite app, TanStack Query, generated API client
+frontend/   React + TypeScript + Vite app, React Router, TanStack Query, generated API client
 scripts/    generate-api-client.sh, check-api-client.sh
 compose.yaml, Dockerfile, .env.example
 ```
@@ -131,8 +150,11 @@ running**. The harness in `backend/tests/conftest.py` provides:
 
 - `anonymous_client`: a test client with no session (entering it runs app startup,
   including migrations);
-- `signed_in_client`: the extension point for a signed-in client, filled in once
-  authentication exists;
+- `signed_in_client`: a client signed in through the API as `signed_in_user` (a
+  regular user); it sends the CSRF token on every request;
+- `create_user`: creates a user (regular by default) and returns its credentials;
+  sign in with `tests.helpers.sign_in(client, email, password)`;
+- `clock`: the app's clock, a `FakeClock` that tests move with `clock.advance(...)`;
 - `outbox`: every email the app sends, readable as `outbox.messages` /
   `outbox.sent_to(address)`;
 - `jobs`: the job runner; background work runs inline in tests, before `submit`
