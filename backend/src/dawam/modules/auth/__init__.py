@@ -2,12 +2,14 @@
 
 Public interface. Other modules import only what is re-exported here:
 
-- ``AuthService``: create users, the bootstrap admin, sessions.
+- ``AuthService``: create users, the bootstrap admin, sessions, display names and
+  password changes.
 - ``CurrentUser``: annotate a route parameter with it to require a signed-in user
   (anonymous requests get ``401 unauthenticated``); ``User`` is what it holds.
 - ``SecurityEventRecorder``: the one way to record a ``SecurityEvent`` (sign-ins and
   lockouts here; role changes, deactivations, ownership reassignments elsewhere).
-- ``router``: ``POST /auth/login``, ``POST /auth/logout``, ``GET /me``.
+- ``router``: ``POST /auth/login``, ``/auth/logout``, ``/auth/logout-all``,
+  ``/auth/password/change``; ``GET|PATCH /me``.
 
 Owns the ``users``, ``sessions`` and ``security_events`` tables.
 """

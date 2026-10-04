@@ -18,7 +18,13 @@ from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
-from .internal.credentials import is_valid_email, normalize_email, password_problem
+from .internal.credentials import (
+    display_name_problem,
+    is_valid_email,
+    normalize_display_name,
+    normalize_email,
+    password_problem,
+)
 from .internal.login_guard import LoginGuard, too_many_attempts
 from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
@@ -48,6 +54,21 @@ def _token_hash(token: str) -> str:
 
 def _email_taken() -> ApiError:
     return ApiError(409, "email_taken", "A user with this email already exists.")
+
+
+def _checked_password(password: str) -> str:
+    problem = password_problem(password)
+    if problem:
+        raise ApiError(422, "invalid_password", f"The password {problem}.")
+    return password
+
+
+def _checked_display_name(display_name: str) -> str:
+    display_name = normalize_display_name(display_name)
+    problem = display_name_problem(display_name)
+    if problem:
+        raise ApiError(422, "invalid_display_name", f"The display name {problem}.")
+    return display_name
 
 
 @dataclass(frozen=True)
@@ -312,6 +333,42 @@ class AuthService:
                 session.last_seen_at = now
             return _user(user)
 
+    def update_display_name(self, user_id: uuid.UUID, display_name: str) -> User:
+        """Change a user's display name (stored trimmed). Raises ``ApiError``: 422
+        ``invalid_display_name``, 404 ``not_found``."""
+        display_name = _checked_display_name(display_name)
+        with Session(self._engine) as db, db.begin():
+            user = self._existing_user(db, user_id)
+            user.display_name = display_name
+            return _user(user)
+
+    def change_password(
+        self,
+        user_id: uuid.UUID,
+        current_password: str,
+        new_password: str,
+        *,
+        keep_session: str | None = None,
+    ) -> None:
+        """Replace the user's password, given the current one, and end every session of
+        theirs except the one whose token is ``keep_session`` (the browser asking), so a
+        stolen session dies with the old password. Raises ``ApiError``: 400
+        ``wrong_password``, 422 ``invalid_password``, 404 ``not_found``."""
+        with Session(self._engine) as db, db.begin():
+            user = self._existing_user(db, user_id)
+            if not self._verify(user.password_hash, current_password):
+                raise ApiError(400, "wrong_password", "The current password is incorrect.")
+            user.password_hash = _hasher.hash(_checked_password(new_password))
+            others = sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
+            if keep_session:
+                others = others.where(SessionRecord.token_hash != _token_hash(keep_session))
+            db.execute(others)
+
+    def sign_out_everywhere(self, user_id: uuid.UUID) -> None:
+        """End every session of the user, the caller's own included."""
+        with Session(self._engine) as db, db.begin():
+            db.execute(sa.delete(SessionRecord).where(SessionRecord.user_id == user_id))
+
     def sign_out(self, token: str) -> None:
         """End the session with this token (nothing happens if there is none)."""
         with Session(self._engine) as db, db.begin():
@@ -325,16 +382,21 @@ class AuthService:
         email = normalize_email(email)
         if not is_valid_email(email):
             raise ApiError(422, "invalid_email", "The email address is not valid.")
-        problem = password_problem(password)
-        if problem:
-            raise ApiError(422, "invalid_password", f"The password {problem}.")
+        display_name = _checked_display_name(display_name)
         return UserRecord(
             email=email,
-            display_name=display_name.strip(),
-            password_hash=_hasher.hash(password),
+            display_name=display_name,
+            password_hash=_hasher.hash(_checked_password(password)),
             system_role=system_role,
             created_at=self._clock(),
         )
+
+    @staticmethod
+    def _existing_user(db: Session, user_id: uuid.UUID) -> UserRecord:
+        user = db.get(UserRecord, user_id, with_for_update=True)
+        if user is None:
+            raise ApiError(404, "not_found", "The user does not exist.")
+        return user
 
     @staticmethod
     def _verify(password_hash: str, password: str) -> bool:

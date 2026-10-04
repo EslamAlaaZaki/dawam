@@ -1,4 +1,5 @@
-"""``/api/v1/auth/login``, ``/api/v1/auth/logout`` and ``/api/v1/me``.
+"""Sign-in and sessions (``/api/v1/auth/login``, ``/logout``, ``/logout-all``), the
+password change (``/api/v1/auth/password/change``) and the user's profile (``/api/v1/me``).
 
 The session token travels only in the ``dawam_session`` cookie: ``HttpOnly``,
 ``SameSite=Lax``, ``Secure`` when the request came over TLS, and kept by the browser
@@ -20,6 +21,9 @@ from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
 from .service import AuthService, SystemRole, User
 
 SESSION_COOKIE = "dawam_session"
+
+# Bounds the input only; the display-name rules (trimmed, at most 200) are the service's.
+_MAX_DISPLAY_NAME_INPUT = 1000
 
 router = APIRouter(tags=["auth"])
 
@@ -49,6 +53,15 @@ class SignInRequest(BaseModel):
     # Bounded, so an oversized password is rejected (422) before argon2 sees it.
     email: str = Field(max_length=MAX_EMAIL_LENGTH)
     password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+
+
+class UpdateMeRequest(BaseModel):
+    display_name: str = Field(max_length=_MAX_DISPLAY_NAME_INPUT)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+    new_password: str = Field(max_length=MAX_PASSWORD_LENGTH)
 
 
 class Me(BaseModel):
@@ -93,14 +106,53 @@ def sign_out(request: Request, auth: AuthServiceDep) -> Response:
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         auth.sign_out(token)
-    response = Response(status_code=204)
-    response.delete_cookie(
-        SESSION_COOKIE, path="/", secure=_is_tls(request), httponly=True, samesite="lax"
+    return _signed_out(request)
+
+
+@router.post(
+    "/auth/logout-all", operation_id="signOutEverywhere", status_code=204, response_class=Response
+)
+def sign_out_everywhere(user: CurrentUser, request: Request, auth: AuthServiceDep) -> Response:
+    """End every session of the signed-in user (this one too) and clear this cookie."""
+    auth.sign_out_everywhere(user.id)
+    return _signed_out(request)
+
+
+@router.post(
+    "/auth/password/change",
+    operation_id="changePassword",
+    status_code=204,
+    response_class=Response,
+)
+def change_password(
+    body: ChangePasswordRequest, user: CurrentUser, request: Request, auth: AuthServiceDep
+) -> Response:
+    """Change the signed-in user's password, given the current one. Every other session
+    of the user ends; this one stays signed in."""
+    auth.change_password(
+        user.id,
+        body.current_password,
+        body.new_password,
+        keep_session=request.cookies.get(SESSION_COOKIE),
     )
-    return response
+    return Response(status_code=204)
 
 
 @router.get("/me", operation_id="getMe")
 def get_me(user: CurrentUser) -> Me:
     """The signed-in user."""
     return Me.model_validate(user)
+
+
+@router.patch("/me", operation_id="updateMe")
+def update_me(body: UpdateMeRequest, user: CurrentUser, auth: AuthServiceDep) -> Me:
+    """Change the signed-in user's display name."""
+    return Me.model_validate(auth.update_display_name(user.id, body.display_name))
+
+
+def _signed_out(request: Request) -> Response:
+    response = Response(status_code=204)
+    response.delete_cookie(
+        SESSION_COOKIE, path="/", secure=_is_tls(request), httponly=True, samesite="lax"
+    )
+    return response
