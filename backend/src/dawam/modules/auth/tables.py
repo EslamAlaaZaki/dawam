@@ -126,3 +126,20 @@ class SecurityEventRecord(Base):
     """The spec's ``metadata`` (a reserved attribute name on SQLAlchemy classes)."""
     ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), index=True)
+
+
+class PasswordResetRecord(Base):
+    """A password-reset link: single use, valid 30 minutes. The link carries a random
+    token; only its SHA-256 is stored."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(sa.String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """When the link set a new password, or was voided by another one doing so."""

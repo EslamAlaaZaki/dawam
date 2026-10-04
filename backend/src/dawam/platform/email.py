@@ -126,11 +126,20 @@ class InMemoryOutbox:
 
     def __init__(self) -> None:
         self._sent: list[tuple[EmailMessage, SmtpConfig | None]] = []
+        self._failure: str | None = None
         self._lock = threading.Lock()
 
     def send(self, message: EmailMessage, smtp: SmtpConfig | None = None) -> None:
         with self._lock:
+            if self._failure is not None:
+                raise EmailDeliveryError(self._failure)
             self._sent.append((message, smtp))
+
+    def fail_with(self, reason: str | None) -> None:
+        """Make every ``send`` raise ``EmailDeliveryError(reason)``, as an unreachable
+        SMTP server would; ``None`` delivers again."""
+        with self._lock:
+            self._failure = reason
 
     @property
     def messages(self) -> list[EmailMessage]:

@@ -6,6 +6,7 @@ with Testcontainers (once per test session). Fixtures:
 - ``anonymous_client``: a test client with no session.
 - ``signed_in_client``: a test client signed in as ``signed_in_user`` (a regular
   user) through the API; it sends the CSRF token on every request.
+- ``admin_client``: the same, signed in as ``admin_user`` (an admin).
 - ``create_user``: creates a user (default: a regular user) and returns its
   credentials; sign in with ``tests.helpers.sign_in``.
 - ``clock``: the app's clock, a ``FakeClock`` the test moves with ``advance``.
@@ -182,6 +183,27 @@ def roles(app: FastAPI, auth_service: AuthService, clock: FakeClock) -> Iterator
     """A client per permission-matrix role on one Workspace (see ``tests/roles.py``)."""
     with ExitStack() as stack:
         yield RoleClients(app, auth_service, WorkspaceService(app.state.engine, clock=clock), stack)
+
+
+@pytest.fixture
+def admin_user(create_user: UserFactory) -> CreatedUser:
+    return create_user(
+        email="root@example.com",
+        password="administrator password",
+        display_name="Root Admin",
+        system_role="admin",
+    )
+
+
+@pytest.fixture
+def admin_client(app: FastAPI, admin_user: CreatedUser) -> Iterator[TestClient]:
+    """A client signed in as ``admin_user`` (an admin) through the API, sending the
+    CSRF token on every request like ``signed_in_client``."""
+    with TestClient(app) as client:
+        response = sign_in(client, admin_user.email, admin_user.password)
+        assert response.status_code == 200, response.text
+        client.headers[CSRF_HEADER] = csrf_token(client)
+        yield client
 
 
 def _reset_database(engine: sa.Engine) -> None:
