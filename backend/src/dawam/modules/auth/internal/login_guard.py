@@ -127,18 +127,20 @@ class LoginGuard:
         and locked for the rest of the transaction."""
         if user is not None:
             return user
-        key = _email_key(email)
-        db.execute(
-            pg_insert(LoginLockoutRecord)
-            .values(email_key=key, failed_login_count=0, last_failed_login_at=now)
-            .on_conflict_do_nothing(index_elements=[LoginLockoutRecord.email_key])
+        # One statement that both creates a missing row and locks an existing one (the
+        # no-op update), so a concurrent prune can never delete it in between.
+        insert = pg_insert(LoginLockoutRecord).values(
+            email_key=_email_key(email), failed_login_count=0, last_failed_login_at=now
         )
-        return db.scalars(
-            sa.select(LoginLockoutRecord)
-            .where(LoginLockoutRecord.email_key == key)
-            .with_for_update()
+        upsert = (
+            insert.on_conflict_do_update(
+                index_elements=[LoginLockoutRecord.email_key],
+                set_={"email_key": insert.excluded.email_key},
+            )
+            .returning(LoginLockoutRecord)
             .execution_options(populate_existing=True)
-        ).one()
+        )
+        return db.scalars(sa.select(LoginLockoutRecord).from_statement(upsert)).one()
 
     @staticmethod
     def locked_until(state: LockoutState, now: datetime) -> datetime | None:

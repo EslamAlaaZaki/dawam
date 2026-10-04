@@ -244,6 +244,41 @@ def test_concurrent_failures_cannot_skip_the_lock(auth_service: AuthService, gra
     assert codes == {"invalid_credentials": 4, "account_locked": 6}
 
 
+def test_a_prune_racing_an_unknown_email_attempt_cannot_take_its_row(
+    app: FastAPI, anonymous_client, clock: FakeClock
+):
+    """A deliberate concurrency check: it reads the auth tables directly.
+
+    The email's row is stale (prunable). Right after the attempt's first statement on
+    ``login_lockouts``, another connection prunes as ``prune`` does (``SKIP LOCKED``).
+    The attempt must already hold the row, so the prune skips it."""
+    fail(anonymous_client, "nobody@example.com", 1)
+    clock.advance(timedelta(hours=24))
+    engine = app.state.engine
+    pruned: list[int] = []
+
+    def prune_concurrently(conn, cursor, statement, *args) -> None:
+        if pruned or not statement.lstrip().upper().startswith("INSERT INTO LOGIN_LOCKOUTS"):
+            return
+        with engine.connect() as other, other.begin():
+            result = other.execute(
+                sa.text(
+                    "DELETE FROM login_lockouts WHERE email_key IN "
+                    "(SELECT email_key FROM login_lockouts FOR UPDATE SKIP LOCKED)"
+                )
+            )
+            pruned.append(result.rowcount)
+
+    sa.event.listen(engine, "after_cursor_execute", prune_concurrently)
+    try:
+        response = sign_in(anonymous_client, "nobody@example.com", WRONG)
+    finally:
+        sa.event.remove(engine, "after_cursor_execute", prune_concurrently)
+
+    assert pruned == [0]
+    assert response.status_code == 401
+
+
 def test_an_unknown_emails_lock_state_is_kept_by_hash_and_not_for_ever(
     app: FastAPI, anonymous_client, clock: FakeClock
 ):
