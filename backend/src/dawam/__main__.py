@@ -53,8 +53,7 @@ def _serve(args: argparse.Namespace) -> int:
         port=args.port,
         log_config=None,
         access_log=False,  # RequestContextMiddleware logs each request with its id
-        proxy_headers=True,  # X-Forwarded-Proto tells the app (and HSTS) about TLS
-        forwarded_allow_ips=settings.forwarded_allow_ips,
+        proxy_headers=False,  # the app applies DAWAM_FORWARDED_ALLOW_IPS itself
     )
     return 0
 

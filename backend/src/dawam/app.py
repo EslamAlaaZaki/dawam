@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, FastAPI
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
 from dawam.modules import ALL_MODULES
@@ -82,10 +83,15 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)
     app.add_middleware(RequestContextMiddleware)
-    # Added last, so it is outermost and also covers the 500s RequestContextMiddleware renders.
+    # Added after the others, so it is outside them and also covers the 500s
+    # RequestContextMiddleware renders.
     app.add_middleware(
         SecurityHeadersMiddleware, hsts_max_age_seconds=settings.hsts_max_age_seconds
     )
+    # Outermost: everything inside sees the real client address and scheme. Only a
+    # request from DAWAM_FORWARDED_ALLOW_IPS (in Compose, the `edge` proxy) may set
+    # them through X-Forwarded-For / X-Forwarded-Proto; anyone else's are ignored.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.forwarded_allow_ips)
 
     # Every state-changing API request needs the double-submit CSRF token.
     api = APIRouter(

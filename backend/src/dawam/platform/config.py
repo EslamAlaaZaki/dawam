@@ -85,8 +85,9 @@ class Settings(DatabaseSettings):
     """``Strict-Transport-Security`` max-age, sent only on HTTPS requests; 0 turns HSTS off."""
 
     forwarded_allow_ips: str = "127.0.0.1"
-    """Proxies whose ``X-Forwarded-Proto``/``-For`` uvicorn trusts (comma-separated IPs or
-    networks, or ``*``). Only then does a request a TLS proxy forwards count as HTTPS."""
+    """Proxies whose ``X-Forwarded-Proto``/``-For`` the app trusts (comma-separated IPs or
+    networks, or ``*``): in Compose, the ``edge`` proxy. Only a request from one of them
+    can count as HTTPS or name a client address other than its own."""
 
     @field_validator("encryption_key", mode="before")
     @classmethod

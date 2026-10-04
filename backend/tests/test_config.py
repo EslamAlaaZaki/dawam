@@ -162,19 +162,21 @@ def test_the_command_line_exits_with_the_message_instead_of_a_traceback(capsys, 
     assert "Traceback" not in err
 
 
-def test_serve_trusts_proxy_headers_only_from_the_configured_addresses(monkeypatch):
+def test_serve_leaves_proxy_headers_to_the_app(monkeypatch):
+    """The app applies DAWAM_FORWARDED_ALLOW_IPS itself (tests/api/test_forwarded_headers.py);
+    uvicorn's own handling, which reads FORWARDED_ALLOW_IPS, stays off."""
     import uvicorn
 
     monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
-    monkeypatch.setenv("DAWAM_FORWARDED_ALLOW_IPS", "10.0.0.0/8")
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
     calls = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **options: calls.append(options))
 
     assert main(["serve"]) == 0
 
     (options,) = calls
-    assert options["proxy_headers"] is True
-    assert options["forwarded_allow_ips"] == "10.0.0.0/8"
+    assert options["proxy_headers"] is False
+    assert "forwarded_allow_ips" not in options
 
 
 def test_migrations_from_the_command_line_need_only_the_database_url(

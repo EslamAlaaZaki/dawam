@@ -11,9 +11,9 @@ probes and every error response (including the last-resort 500 rendered by
 - ``Referrer-Policy: same-origin``: no referrer ever leaves the site, while same-origin
   requests keep it.
 - ``Strict-Transport-Security``, only when the request came over HTTPS and
-  ``DAWAM_HSTS_MAX_AGE_SECONDS`` is above 0. Behind a TLS-terminating proxy the scheme
-  comes from its ``X-Forwarded-Proto``, which uvicorn trusts only from
-  ``DAWAM_FORWARDED_ALLOW_IPS``.
+  ``DAWAM_HSTS_MAX_AGE_SECONDS`` is above 0. Behind a proxy the scheme comes from its
+  ``X-Forwarded-Proto``, which the app trusts only from ``DAWAM_FORWARDED_ALLOW_IPS``
+  (``ProxyHeadersMiddleware``, see ``dawam.app``).
 """
 
 from __future__ import annotations
