@@ -126,6 +126,30 @@ export interface paths {
         patch: operations["updateMe"];
         trace?: never;
     };
+    "/api/v1/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Admin Settings
+         * @description The installation-wide settings (admins only).
+         */
+        get: operations["getAdminSettings"];
+        /**
+         * Update Admin Settings
+         * @description Change installation-wide settings (admins only); returns all of them.
+         */
+        put: operations["updateAdminSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces": {
         parameters: {
             query?: never;
@@ -184,6 +208,18 @@ export interface components {
          * @enum {string}
          */
         Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members";
+        /** AdminSettings */
+        AdminSettings: {
+            registration: components["schemas"]["RegistrationSettingsBody"];
+        };
+        /**
+         * AdminSettingsUpdate
+         * @description The sections to change; each one given replaces that section, and the others are
+         *     left as they are.
+         */
+        AdminSettingsUpdate: {
+            registration?: components["schemas"]["RegistrationSettingsBody"] | null;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -246,6 +282,19 @@ export interface components {
              * @enum {string}
              */
             system_role: "admin" | "user";
+        };
+        /** RegistrationSettingsBody */
+        RegistrationSettingsBody: {
+            /**
+             * Enabled
+             * @description Whether visitors may sign up on their own.
+             */
+            enabled: boolean;
+            /**
+             * Allowed Email Domains
+             * @description Only emails at exactly one of these domains may sign up (a subdomain must be listed itself); empty allows any domain.
+             */
+            allowed_email_domains: string[];
         };
         /** SignInRequest */
         SignInRequest: {
@@ -592,6 +641,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAdminSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateAdminSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSettings"];
                 };
             };
             /** @description Validation error */

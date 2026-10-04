@@ -305,6 +305,98 @@
         }
       }
     },
+    "/api/v1/admin/settings": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Admin Settings",
+        "description": "The installation-wide settings (admins only).",
+        "operationId": "getAdminSettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Update Admin Settings",
+        "description": "Change installation-wide settings (admins only); returns all of them.",
+        "operationId": "updateAdminSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces": {
       "get": {
         "tags": [
@@ -562,6 +654,35 @@
         "title": "Action",
         "description": "What a user wants to do: one row of the spec's permission matrix (§4.3)."
       },
+      "AdminSettings": {
+        "properties": {
+          "registration": {
+            "$ref": "#/components/schemas/RegistrationSettingsBody"
+          }
+        },
+        "type": "object",
+        "required": [
+          "registration"
+        ],
+        "title": "AdminSettings"
+      },
+      "AdminSettingsUpdate": {
+        "properties": {
+          "registration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistrationSettingsBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AdminSettingsUpdate",
+        "description": "The sections to change; each one given replaces that section, and the others are\nleft as they are."
+      },
       "ChangePasswordRequest": {
         "properties": {
           "current_password": {
@@ -680,6 +801,30 @@
           "system_role"
         ],
         "title": "Me"
+      },
+      "RegistrationSettingsBody": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether visitors may sign up on their own."
+          },
+          "allowed_email_domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Allowed Email Domains",
+            "description": "Only emails at exactly one of these domains may sign up (a subdomain must be listed itself); empty allows any domain."
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "allowed_email_domains"
+        ],
+        "title": "RegistrationSettingsBody"
       },
       "SignInRequest": {
         "properties": {
