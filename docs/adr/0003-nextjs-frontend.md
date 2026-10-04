@@ -4,10 +4,11 @@ The frontend is built with Next.js (App Router, TypeScript) and runs as its own 
 
 ## How it fits
 
-- **One origin for the browser.** The browser only talks to `web`. Next.js rewrites `/api/*` (and `/healthz`, `/readyz`) to the FastAPI `app` service, so the session cookie, the double-submit CSRF cookie and `SameSite=Lax` behave as if there were one server. FastAPI stays the only place that authenticates, authorizes and stores data. No business logic, sessions or database access live in Next.js.
+- **One origin for the browser.** The browser only talks to `edge`, an nginx proxy in front of both servers. It sends `/api/` (and `/healthz`, `/readyz`) to the FastAPI `app` service and everything else to Next.js (`web`), so the session cookie, the double-submit CSRF cookie and `SameSite=Lax` behave as if there were one server. FastAPI stays the only place that authenticates, authorizes and stores data. No business logic, sessions or database access live in Next.js.
+- **`edge` is the single trusted hop.** It overwrites `X-Forwarded-For` and `X-Forwarded-Proto` (believing a TLS proxy in front only when told its addresses), and FastAPI trusts those headers from `edge`'s address alone. We put nginx in front instead of having Next.js rewrite `/api/*` to FastAPI because Next.js passes a client's forwarded headers on as they came, so FastAPI could not trust them from `web` without trusting whatever a client claims; because API responses that stream (server-sent events for the assistant) need a proxy that does not buffer and allows long reads; and because Next.js bakes rewrite targets into its build, while `edge` finds `app` at run time.
 - **Data fetching stays in the browser by default.** Screens are client components that call the generated OpenAPI client through TanStack Query. Server components are used for layout and static shell only. Moving a screen to server-side fetching is allowed later, but it must forward the user's cookies to FastAPI and never hold its own session.
 - **Security headers on both servers.** FastAPI keeps its headers on API responses. Next.js sets the same baseline (CSP with `frame-ancestors 'none'`, `nosniff`, referrer policy, HSTS behind TLS) on the pages it serves.
-- **Packaging.** Compose gains a `web` service built with Next.js `output: "standalone"`; `app` no longer serves frontend files.
+- **Packaging.** Compose gains a `web` service built with Next.js `output: "standalone"` and an `edge` nginx service, the only one published on the host; `app` no longer serves frontend files.
 
 ## Considered options
 

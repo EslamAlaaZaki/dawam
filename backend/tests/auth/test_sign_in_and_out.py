@@ -118,7 +118,7 @@ def test_sign_in_records_when_from_where_and_with_what(
         headers={
             CSRF_HEADER: csrf_token(anonymous_client),
             "User-Agent": "Mozilla/5.0 (DAWAM test)",
-            # Only uvicorn, and only for DAWAM_FORWARDED_ALLOW_IPS, may rewrite the client.
+            # Ignored: only a hop in DAWAM_FORWARDED_ALLOW_IPS may name the client.
             "X-Forwarded-For": "203.0.113.9",
         },
     )

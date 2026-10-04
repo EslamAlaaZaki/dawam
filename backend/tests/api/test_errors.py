@@ -60,6 +60,15 @@ def test_unknown_route_outside_the_api_uses_the_same_shape(anonymous_client):
     assert error_of(response)["code"] == "not_found"
 
 
+@pytest.mark.parametrize("path", ["/", "/login", "/index.html", "/_next/static/app.js"])
+def test_the_app_serves_no_web_ui(anonymous_client, path):
+    """The pages are the Next.js `web` service's; the app answers them like any unknown path."""
+    response = anonymous_client.get(path)
+
+    assert response.status_code == 404
+    assert error_of(response)["code"] == "not_found"
+
+
 def test_wrong_method_is_a_405_error(anonymous_client):
     response = anonymous_client.delete("/api/v1/version")
 

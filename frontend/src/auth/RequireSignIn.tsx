@@ -1,18 +1,29 @@
-import { Navigate, Outlet, useLocation } from "react-router";
+"use client";
+
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 
 import { useMe } from "../api/queries";
+import { Loading } from "../shell/Loading";
+import { loginPath } from "./returnPath";
 
-export interface LoginLocationState {
-  /** Where to go after signing in. */
-  from?: string;
-}
-
-/** Renders the nested routes for a signed-in user; sends anyone else to `/login`. */
-export function RequireSignIn() {
+/** Renders `children` for a signed-in user; sends anyone else to `/login`, and back after. */
+export function RequireSignIn({ children }: { children: ReactNode }) {
   const me = useMe();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const anonymous = me.data === null;
+  const here = search ? `${pathname}?${search}` : pathname;
+
+  useEffect(() => {
+    if (anonymous) {
+      router.replace(loginPath(here));
+    }
+  }, [anonymous, here, router]);
+
   if (me.isPending) {
-    return <p className="page">Loading…</p>;
+    return <Loading />;
   }
   if (me.isError) {
     return (
@@ -21,9 +32,8 @@ export function RequireSignIn() {
       </p>
     );
   }
-  if (me.data === null) {
-    const state: LoginLocationState = { from: location.pathname + location.search };
-    return <Navigate to="/login" replace state={state} />;
+  if (anonymous) {
+    return null;
   }
-  return <Outlet />;
+  return children;
 }

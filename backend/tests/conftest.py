@@ -76,7 +76,6 @@ def settings(database_url: str) -> Settings:
     return Settings(
         database_url=database_url,
         encryption_key=TEST_ENCRYPTION_KEY,  # type: ignore[arg-type]
-        frontend_dist=None,
     )
 
 

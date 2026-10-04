@@ -1,6 +1,6 @@
 """Command line entry point: ``python -m dawam {serve,worker,openapi}``.
 
-- ``serve``: run the API (and the built frontend, if ``DAWAM_FRONTEND_DIST`` is set).
+- ``serve``: run the API (the web UI is the separate Next.js ``web`` service).
 - ``worker``: run the background worker process.
 - ``openapi``: print or write the OpenAPI spec the frontend client is generated from.
 
@@ -53,8 +53,7 @@ def _serve(args: argparse.Namespace) -> int:
         port=args.port,
         log_config=None,
         access_log=False,  # RequestContextMiddleware logs each request with its id
-        proxy_headers=True,  # X-Forwarded-Proto tells the app (and HSTS) about TLS
-        forwarded_allow_ips=settings.forwarded_allow_ips,
+        proxy_headers=False,  # the app applies DAWAM_FORWARDED_ALLOW_IPS itself
     )
     return 0
 

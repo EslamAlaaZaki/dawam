@@ -12,7 +12,8 @@ dist/
 
 # Node
 node_modules/
-frontend/dist/
+frontend/.next/
+frontend/next-env.d.ts
 *.tsbuildinfo
 coverage/
 

@@ -1,18 +1,27 @@
-import type { FormEvent } from "react";
-import { Navigate, useLocation } from "react-router";
+"use client";
+
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, type FormEvent } from "react";
 
 import { useMe, useSignIn } from "../api/queries";
-import type { LoginLocationState } from "./RequireSignIn";
+import { safeReturnPath } from "./returnPath";
 
 export function LoginPage() {
   const me = useMe();
   const signIn = useSignIn();
-  const location = useLocation();
-  const from = (location.state as LoginLocationState | null)?.from ?? "/";
+  const router = useRouter();
+  const from = useSearchParams().get("from");
+  // Signed in already, or just now: signing in fills the `me` query.
+  const signedIn = Boolean(me.data);
 
-  if (me.data) {
-    // Signed in already, or just now: signing in fills the `me` query.
-    return <Navigate to={from} replace />;
+  useEffect(() => {
+    if (signedIn) {
+      router.replace(safeReturnPath(from));
+    }
+  }, [signedIn, from, router]);
+
+  if (signedIn) {
+    return null;
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
