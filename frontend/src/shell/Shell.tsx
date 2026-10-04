@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { AdminNav } from "../admin/AdminNav";
 import { ApiStatus } from "./ApiStatus";
 import { SignedInUser } from "./SignedInUser";
 
@@ -10,6 +11,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <header className="shell-header">
         <h1>DAWAM</h1>
         <p>Data Analysis &amp; Warehouse Architecture Modeler</p>
+        <AdminNav />
         <SignedInUser />
       </header>
       <main className="shell-main">{children}</main>

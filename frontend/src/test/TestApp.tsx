@@ -2,12 +2,16 @@
 // (which render without Next.js). Keep it in step with the files under src/app/.
 import { usePathname } from "next/navigation";
 
+import EmailSettingsPage from "../app/(signed-in)/admin/email/page";
+import LinksToSharePage from "../app/(signed-in)/admin/email/links/page";
 import SignedInLayout from "../app/(signed-in)/layout";
 import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
 import HomePage from "../app/(signed-in)/page";
 import ProfilePage from "../app/(signed-in)/profile/page";
 import NewWorkspace from "../app/(signed-in)/workspaces/new/page";
+import ForgotPasswordPage from "../app/forgot-password/page";
 import LoginPage from "../app/login/page";
+import ResetPasswordPage from "../app/reset-password/page";
 import NotFound from "../app/not-found";
 import SignUpPage from "../app/signup/page";
 import { Shell } from "../shell/Shell";
@@ -31,6 +35,22 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <AdminSettingsPage />
+        </SignedInLayout>
+      );
+    case "/forgot-password":
+      return <ForgotPasswordPage />;
+    case "/reset-password":
+      return <ResetPasswordPage />;
+    case "/admin/email":
+      return (
+        <SignedInLayout>
+          <EmailSettingsPage />
+        </SignedInLayout>
+      );
+    case "/admin/email/links":
+      return (
+        <SignedInLayout>
+          <LinksToSharePage />
         </SignedInLayout>
       );
     case "/":

@@ -227,10 +227,11 @@ cp -r .next/static .next/standalone/.next/
 node .next/standalone/server.js   # pages only: put edge (or another proxy) in front for /api
 ```
 
-The app lives in `frontend/src/`: routes in `app/` (`login/`, `signup/`, and the
-signed-in pages in the `(signed-in)` group, `profile/` and `admin/settings/` among
-them, whose layout sends anyone not signed in to `/login?from=<page>`), screens in
-`auth/`, `profile/`, `admin/`, `shell/` and `workspaces/`, the API client and its
+The app lives in `frontend/src/`: routes in `app/` (`login/`, `signup/`,
+`forgot-password/`, `reset-password/`, and the signed-in pages in the `(signed-in)`
+group, `profile/` and `admin/` (settings, email) among them, whose layout sends anyone
+not signed in to `/login?from=<page>`), screens in `auth/`, `profile/`, `admin/`,
+`shell/` and `workspaces/`, the API client and its
 TanStack Query hooks in `api/`, and the security headers in `security/` and
 `proxy.ts`. Screens are client components that call the API from the browser;
 server components only lay out the static shell. The frontend has no API routes,
