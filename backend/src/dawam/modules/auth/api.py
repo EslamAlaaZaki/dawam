@@ -18,6 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.platform.errors import ApiError
+from dawam.platform.request_context import client_ip
 
 from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
 from .service import AuthService, PasswordResets, RegistrationPolicy, SignedIn, SystemRole, User
@@ -191,8 +192,7 @@ def update_me(body: UpdateMeRequest, user: CurrentUser, auth: AuthServiceDep) ->
 
 def _client_of(request: Request) -> dict[str, str | None]:
     return {
-        # uvicorn sets the client from X-Forwarded-For only for DAWAM_FORWARDED_ALLOW_IPS.
-        "ip": request.client.host if request.client else None,
+        "ip": client_ip(request),
         "user_agent": request.headers.get("user-agent"),
     }
 
@@ -231,11 +231,6 @@ def password_resets(request: Request) -> PasswordResets:
 PasswordResetsDep = Annotated[PasswordResets, Depends(password_resets)]
 
 
-def _client_ip(request: Request) -> str | None:
-    # uvicorn sets the client from X-Forwarded-For only for DAWAM_FORWARDED_ALLOW_IPS.
-    return request.client.host if request.client else None
-
-
 class ForgotPasswordRequest(BaseModel):
     email: str = Field(max_length=MAX_EMAIL_LENGTH)
 
@@ -262,7 +257,7 @@ def forgot_password(
     keep it for an admin to share when SMTP is off). The answer is the same whether or
     not the email belongs to a user, and comes before any email is sent, so neither its
     content nor its timing tells."""
-    background.add_task(resets.request_reset, body.email, ip=_client_ip(request))
+    background.add_task(resets.request_reset, body.email, ip=client_ip(request))
     return Response(status_code=202)
 
 
@@ -274,5 +269,5 @@ def reset_password(
 ) -> Response:
     """Set a new password with the token from a reset link. The link stops working, and
     every session of the user ends: they sign in again with the new password."""
-    resets.reset_password(body.token, body.password, ip=_client_ip(request))
+    resets.reset_password(body.token, body.password, ip=client_ip(request))
     return Response(status_code=204)

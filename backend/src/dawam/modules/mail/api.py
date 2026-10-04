@@ -17,6 +17,7 @@ from dawam.modules.auth import CurrentUser, User
 from dawam.modules.workspaces import INSTALLATION, Action, can
 from dawam.platform.email import SmtpSecurity
 from dawam.platform.errors import ApiError
+from dawam.platform.request_context import client_ip
 
 from .service import KEEP_PASSWORD, MailService, UndeliveredReason
 
@@ -42,10 +43,6 @@ def email_admin(user: CurrentUser) -> User:
 
 
 EmailAdmin = Annotated[User, Depends(email_admin)]
-
-
-def _client_ip(request: Request) -> str | None:
-    return request.client.host if request.client else None
 
 
 class SmtpSettingsOut(BaseModel):
@@ -126,7 +123,7 @@ def save_smtp_settings(
         username=body.username,
         password=body.password if "password" in body.model_fields_set else KEEP_PASSWORD,
         by=admin.id,
-        ip=_client_ip(request),
+        ip=client_ip(request),
     )
     return SmtpSettingsOut.model_validate(settings)
 
@@ -136,7 +133,7 @@ def save_smtp_settings(
 )
 def clear_smtp_settings(request: Request, admin: EmailAdmin, mail: MailServiceDep) -> Response:
     """Turn SMTP off: links are then kept for admins to copy."""
-    mail.clear_smtp_settings(by=admin.id, ip=_client_ip(request))
+    mail.clear_smtp_settings(by=admin.id, ip=client_ip(request))
     return Response(status_code=204)
 
 
