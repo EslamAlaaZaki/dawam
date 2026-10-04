@@ -25,7 +25,7 @@ from dawam.platform.clock import Clock, system_clock
 from dawam.platform.config import ConfigError, Settings, load_settings
 from dawam.platform.csrf import CsrfCookieMiddleware, require_csrf
 from dawam.platform.db import create_engine
-from dawam.platform.email import EmailSender, LoggingEmailSender
+from dawam.platform.email import EmailSender, SmtpEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
 from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
@@ -46,7 +46,7 @@ class Services:
 
 def default_services() -> Services:
     # Jobs run inline until the Postgres queue arrives (#41).
-    return Services(email=LoggingEmailSender(), jobs=InlineJobRunner())
+    return Services(email=SmtpEmailSender(), jobs=InlineJobRunner())
 
 
 def create_app(settings: Settings | None = None, *, services: Services | None = None) -> FastAPI:
