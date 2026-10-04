@@ -253,7 +253,9 @@ def _member_out(member: MemberView) -> Member:
 def list_members(
     workspace_id: uuid.UUID, user: CurrentUser, members: MembershipServiceDep
 ) -> MemberList:
-    """The Workspace's members and their roles (any member)."""
+    """The Workspace's members and their roles (any member). Not paged, unlike other
+    lists: a Workspace has a team's worth of members, and the list is sorted by display
+    name, which lives with the users."""
     return MemberList(items=[_member_out(m) for m in members.list(user, workspace_id)])
 
 

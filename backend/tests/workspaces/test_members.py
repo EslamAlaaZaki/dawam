@@ -192,6 +192,37 @@ def test_an_owner_invites_a_non_user_when_registration_is_open(
     assert opened.json()["role"] == "viewer"
 
 
+def test_an_invitation_stops_working_once_its_sender_is_no_longer_an_owner(
+    roles: RoleClients, open_registration, smtp, outbox: InMemoryOutbox, anonymous_client
+):
+    open_registration()
+    roles.client("viewer")
+    add(roles, "newcomer@example.com", "owner")
+    token = LINK.search(outbox.sent_to("newcomer@example.com")[0].body)["token"]  # type: ignore[index]
+    roles.client("owner").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/transfer-ownership",
+        json={"user_id": str(roles.user("viewer").id)},
+    )
+
+    accepted = anonymous_client.post(
+        "/api/v1/auth/invitations/accept",
+        json={"token": token, "display_name": "New Comer", "password": "a fine new passphrase"},
+        headers={CSRF_HEADER: csrf_token(anonymous_client)},
+    )
+
+    assert accepted.status_code == 400
+    assert error_code(accepted) == "invalid_invitation"
+    assert "newcomer@example.com" not in listed(roles, "viewer")
+    assert (
+        anonymous_client.post(
+            "/api/v1/auth/login",
+            json={"email": "newcomer@example.com", "password": "a fine new passphrase"},
+            headers={CSRF_HEADER: csrf_token(anonymous_client)},
+        ).status_code
+        == 401
+    )
+
+
 def test_invites_follow_the_registration_domains(roles: RoleClients, open_registration):
     open_registration("bank.example")
 

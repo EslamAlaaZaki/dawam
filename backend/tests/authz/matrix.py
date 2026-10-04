@@ -36,7 +36,6 @@ from starlette.routing import BaseRoute, Route
 
 from dawam.modules.auth import AuthService, Invitations
 from dawam.modules.mail import MailService
-from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
 
@@ -155,24 +154,25 @@ def invitation_id(roles: RoleClients) -> uuid.UUID:
     return invitations.invite("invitee@example.com", actor_id=roles.user("admin").id).invitation.id
 
 
+COLLEAGUE_EMAIL = "colleague@example.com"
+
+
 def colleague_id(roles: RoleClients) -> uuid.UUID:
-    """A viewer of the Workspace who is none of the roles, for members to act on."""
+    """A viewer of the Workspace who is none of the roles, for members to act on; the
+    owner adds them through the API."""
     state = roles.app.state
-    clock = state.services.clock
-    colleague = AuthService(state.engine, state.settings, clock=clock).find_user_by_email(
-        COLLEAGUE_EMAIL
-    )
+    auth = AuthService(state.engine, state.settings, clock=state.services.clock)
+    colleague = auth.find_user_by_email(COLLEAGUE_EMAIL)
     if colleague is None:
-        colleague = AuthService(state.engine, state.settings, clock=clock).create_user(
+        colleague = auth.create_user(
             email=COLLEAGUE_EMAIL, password=PASSWORD, display_name="Colleague", system_role="user"
         )
-        WorkspaceService(state.engine, clock=clock).add_member(
-            roles.user("owner"), roles.workspace_id, member_id=colleague.id, role="viewer"
+        response = roles.client("owner").post(
+            f"/api/v1/workspaces/{roles.workspace_id}/members",
+            json={"email": COLLEAGUE_EMAIL, "role": "viewer"},
         )
+        assert response.status_code == 201, response.text
     return colleague.id
-
-
-COLLEAGUE_EMAIL = "colleague@example.com"
 
 
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {

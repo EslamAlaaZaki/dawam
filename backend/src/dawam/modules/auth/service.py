@@ -133,8 +133,8 @@ class RegistrationRules:
     allowed_email_domains: frozenset[str] = frozenset()
 
     def allows(self, email: str) -> bool:
-        """Whether a normalised email may sign up."""
-        domain = email.rpartition("@")[2]
+        """Whether ``email`` (normalised here) may sign up."""
+        domain = normalize_email(email).rpartition("@")[2]
         return self.open and (
             not self.allowed_email_domains or domain in self.allowed_email_domains
         )

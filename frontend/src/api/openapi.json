@@ -1903,7 +1903,7 @@
           "workspaces"
         ],
         "summary": "List Members",
-        "description": "The Workspace's members and their roles (any member).",
+        "description": "The Workspace's members and their roles (any member). Not paged, unlike other\nlists: a Workspace has a team's worth of members, and the list is sorted by display\nname, which lives with the users.",
         "operationId": "listMembers",
         "parameters": [
           {

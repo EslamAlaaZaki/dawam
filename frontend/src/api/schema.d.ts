@@ -601,7 +601,9 @@ export interface paths {
         };
         /**
          * List Members
-         * @description The Workspace's members and their roles (any member).
+         * @description The Workspace's members and their roles (any member). Not paged, unlike other
+         *     lists: a Workspace has a team's worth of members, and the list is sorted by display
+         *     name, which lives with the users.
          */
         get: operations["listMembers"];
         put?: never;

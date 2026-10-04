@@ -26,6 +26,7 @@ from .internal.policy import (
 from .tables import (
     DESCRIPTION_MAX_LENGTH,
     DOMAIN_MAX_LENGTH,
+    MEMBER_PRIMARY_KEY,
     NAME_MAX_LENGTH,
     MemberRecord,
     WorkspaceRecord,
@@ -127,7 +128,8 @@ def _clean(value: str, field: str, max_length: int, *, required: bool = False) -
     return cleaned
 
 
-def _role(value: str) -> WorkspaceRole:
+def as_role(value: str) -> WorkspaceRole:
+    """``value`` (a stored role) as a ``WorkspaceRole``; ``ValueError`` if unknown."""
     if value not in WORKSPACE_ROLES:
         raise ValueError(f"unknown Workspace role {value!r}")
     return value  # type: ignore[return-value]  # checked above
@@ -161,7 +163,7 @@ def authorized(
     scope = WorkspaceScope(
         workspace_id=record.id,
         user_id=user.id,
-        role=_role(role) if role is not None else None,
+        role=as_role(role) if role is not None else None,
     )
     if can(user, action, scope):
         return record, scope
@@ -264,7 +266,7 @@ class WorkspaceService:
             )
         with Session(self._engine) as db:
             rows = db.execute(query).all()
-        items = [workspace_view(user, record, _role(role)) for record, role, _ in rows[:limit]]
+        items = [workspace_view(user, record, as_role(role)) for record, role, _ in rows[:limit]]
         next_cursor = None
         if len(rows) > limit:
             # The database's own sort key, so the next page starts exactly after it.
@@ -326,7 +328,7 @@ class WorkspaceService:
     ) -> None:
         """Make the user ``member_id`` a member of the Workspace with ``role``, acting
         as ``user``. Raises ``ApiError`` 409 ``already_member``, 404 ``user_not_found``."""
-        _role(role)
+        as_role(role)
         try:
             with Session(self._engine) as db, db.begin():
                 authorized(db, user, Action.MANAGE_MEMBERS, workspace_id, lock=True)
@@ -341,7 +343,7 @@ class WorkspaceService:
                 )
         except IntegrityError as exc:
             constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-            if constraint == "pk_workspace_members":
+            if constraint == MEMBER_PRIMARY_KEY:
                 raise ApiError(
                     409, "already_member", "That user is already a member of this Workspace."
                 ) from None

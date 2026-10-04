@@ -54,9 +54,11 @@ class InvitedMembership(Protocol):
         user_id: uuid.UUID,
         role: InvitedRole,
         invited_by: uuid.UUID,
-    ) -> None:
+    ) -> bool:
         """Make ``user_id`` a member as ``role`` inside ``db``'s transaction, the one that
-        accepts the invitation, so the account and its membership commit together."""
+        accepts the invitation, so the account and its membership commit together.
+        Returns False, adding nobody, if the invitation no longer holds (its sender is
+        no longer an owner there)."""
         ...
 
 
@@ -307,13 +309,15 @@ class Invitations:
             if invitation.workspace_id is not None:
                 if self._membership is None:
                     raise RuntimeError("accepting a Workspace invitation needs the membership")
-                self._membership.join(
+                joined = self._membership.join(
                     db,
                     workspace_id=invitation.workspace_id,
                     user_id=user.id,
                     role=invitation.workspace_role,  # type: ignore[arg-type]  # a check constraint
                     invited_by=invitation.invited_by,
                 )
+                if not joined:
+                    raise _invalid_invitation()  # rolls back the new account too
             self._events.record(
                 "invitation_accepted",
                 actor_id=user.id,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, type ComponentProps, type FormEvent } from "react";
 
 import {
   useAddMember,
@@ -92,13 +92,7 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
       </label>
       <label>
         Role
-        <select name="role" defaultValue="editor">
-          {ROLES.map((role) => (
-            <option key={role} value={role}>
-              {ROLE_LABELS[role]}
-            </option>
-          ))}
-        </select>
+        <RoleSelect name="role" defaultValue="editor" />
       </label>
       <p className="form-hint">
         Someone without an account gets an invitation to join DAWAM and this Workspace.
@@ -115,7 +109,7 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
       )}
       {result?.outcome === "added" && (
         <p className="form-ok">
-          {result.member.display_name} is now {articled(result.member.role)}.
+          {result.member.display_name} is now {withArticle(result.member.role)}.
         </p>
       )}
       {result?.outcome === "invited" && result.delivery === "sent" && (
@@ -131,7 +125,21 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function articled(role: WorkspaceRole): string {
+/** A select of the Workspace roles, by their labels. */
+function RoleSelect(props: ComponentProps<"select">) {
+  return (
+    <select {...props}>
+      {ROLES.map((role) => (
+        <option key={role} value={role}>
+          {ROLE_LABELS[role]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** "an owner", "an editor", "a viewer". */
+function withArticle(role: WorkspaceRole): string {
   return `${role === "owner" || role === "editor" ? "an" : "a"} ${ROLE_LABELS[role].toLowerCase()}`;
 }
 
@@ -163,7 +171,7 @@ function MemberRow({
       <td>{member.email}</td>
       <td>
         {manages ? (
-          <select
+          <RoleSelect
             aria-label={`Role of ${member.display_name}`}
             value={member.role}
             disabled={changeRole.isPending}
@@ -173,13 +181,7 @@ function MemberRow({
                 role: event.target.value as WorkspaceRole,
               })
             }
-          >
-            {ROLES.map((role) => (
-              <option key={role} value={role}>
-                {ROLE_LABELS[role]}
-              </option>
-            ))}
-          </select>
+          />
         ) : (
           ROLE_LABELS[member.role]
         )}

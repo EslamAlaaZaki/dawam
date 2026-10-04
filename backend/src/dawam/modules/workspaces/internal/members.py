@@ -31,8 +31,8 @@ from dawam.platform.clock import Clock
 from dawam.platform.email import Delivery
 from dawam.platform.errors import ApiError
 
-from ..service import Workspace, _role, authorized, workspace_view
-from ..tables import OWNER_CONSTRAINT, MemberRecord, WorkspaceRecord
+from ..service import Workspace, as_role, authorized, workspace_view
+from ..tables import MEMBER_PRIMARY_KEY, OWNER_CONSTRAINT, MemberRecord, WorkspaceRecord
 from .policy import INSTALLATION, Action, WorkspaceRole, can
 
 
@@ -138,7 +138,9 @@ class MembershipService:
         Raises ``ApiError`` 409 ``already_member``, 403 ``invite_not_allowed`` (no account
         has the email, and ``user`` is not an admin while self-registration would not let
         the email sign up), and the invitation's own errors (422 ``invalid_email``)."""
-        _role(role)
+        as_role(role)
+        # Authorized before looking the email up, so only owners learn whether it has an
+        # account; the add itself checks again under the lock.
         with Session(self._engine) as db:
             record, _ = authorized(db, user, Action.MANAGE_MEMBERS, workspace_id)
             workspace_name = record.name
@@ -159,7 +161,7 @@ class MembershipService:
                 db.flush()
                 return MemberAdded(member=_member(member, existing))
         except IntegrityError as exc:
-            if _constraint(exc) == "pk_workspace_members":
+            if _constraint(exc) == MEMBER_PRIMARY_KEY:
                 raise ApiError(
                     409, "already_member", "That user is already a member of this Workspace."
                 ) from None
@@ -170,12 +172,12 @@ class MembershipService:
     ) -> Member:
         """Give the member ``member_id`` the role ``role``. Raises ``ApiError`` 404
         ``member_not_found``, 409 ``last_owner`` (it would leave no owner)."""
-        _role(role)
+        as_role(role)
         with _owner_kept(), Session(self._engine) as db, db.begin():
             authorized(db, user, Action.MANAGE_MEMBERS, workspace_id, lock=True)
             member = self._member_record(db, workspace_id, member_id)
             if member.role == "owner" and role != "owner":
-                self._keep_an_owner(db, workspace_id)
+                self._ensure_another_owner(db, workspace_id)
             member.role = role
             db.flush()
             users = self._auth.users_by_id([member_id])
@@ -184,11 +186,11 @@ class MembershipService:
     def remove(self, user: User, workspace_id: uuid.UUID, member_id: uuid.UUID) -> None:
         """Remove the member ``member_id``; their access ends with this call. Raises
         ``ApiError`` 404 ``member_not_found``, 409 ``last_owner``."""
-        self._delete(user, Action.MANAGE_MEMBERS, workspace_id, member_id)
+        self._remove_member(user, Action.MANAGE_MEMBERS, workspace_id, member_id)
 
     def leave(self, user: User, workspace_id: uuid.UUID) -> None:
         """``user`` leaves the Workspace. Raises ``ApiError`` 409 ``last_owner``."""
-        self._delete(user, Action.LEAVE_WORKSPACE, workspace_id, user.id)
+        self._remove_member(user, Action.LEAVE_WORKSPACE, workspace_id, user.id)
 
     def transfer_ownership(
         self, user: User, workspace_id: uuid.UUID, to_user_id: uuid.UUID
@@ -219,7 +221,7 @@ class MembershipService:
     ) -> MemberInvited:
         rules = self._registration.registration_rules() if self._registration else None
         if not can(user, Action.MANAGE_USERS, INSTALLATION) and not (
-            rules is not None and rules.allows(email.strip().lower())
+            rules is not None and rules.allows(email)
         ):
             raise ApiError(
                 403,
@@ -237,14 +239,14 @@ class MembershipService:
         )
         return MemberInvited(invitation=sent.invitation, delivery=sent.delivery)
 
-    def _delete(
+    def _remove_member(
         self, user: User, action: Action, workspace_id: uuid.UUID, member_id: uuid.UUID
     ) -> None:
         with _owner_kept(), Session(self._engine) as db, db.begin():
             authorized(db, user, action, workspace_id, lock=True)
             member = self._member_record(db, workspace_id, member_id)
             if member.role == "owner":
-                self._keep_an_owner(db, workspace_id)
+                self._ensure_another_owner(db, workspace_id)
             db.delete(member)
 
     @staticmethod
@@ -255,7 +257,7 @@ class MembershipService:
         return member
 
     @staticmethod
-    def _keep_an_owner(db: Session, workspace_id: uuid.UUID) -> None:
+    def _ensure_another_owner(db: Session, workspace_id: uuid.UUID) -> None:
         """Refuse to take away an owner if they are the last one (the Workspace row is
         locked, so the count holds until commit)."""
         owners = db.scalar(
@@ -282,7 +284,7 @@ class InvitedWorkspaceMembership:
         user_id: uuid.UUID,
         role: InvitedRole,
         invited_by: uuid.UUID,
-    ) -> None:
+    ) -> bool:
         # Members change only with the Workspace row locked; the invitation's foreign
         # key (ON DELETE CASCADE) means the Workspace still exists.
         db.execute(
@@ -290,16 +292,21 @@ class InvitedWorkspaceMembership:
             .where(WorkspaceRecord.id == workspace_id)
             .with_for_update()
         )
+        # Only owners invite into a Workspace, so one removed or demoted since cannot.
+        sender = db.get(MemberRecord, (workspace_id, invited_by))
+        if sender is None or sender.role != "owner":
+            return False
         db.add(
             MemberRecord(
                 workspace_id=workspace_id,
                 user_id=user_id,
-                role=_role(role),
+                role=as_role(role),
                 added_by=invited_by,
                 added_at=self._clock(),
             )
         )
         db.flush()
+        return True
 
 
 def _member(record: MemberRecord, user: User) -> Member:
@@ -307,7 +314,7 @@ def _member(record: MemberRecord, user: User) -> Member:
         user_id=record.user_id,
         email=user.email,
         display_name=user.display_name,
-        role=_role(record.role),
+        role=as_role(record.role),
         is_active=user.is_active,
         added_at=record.added_at,
     )
