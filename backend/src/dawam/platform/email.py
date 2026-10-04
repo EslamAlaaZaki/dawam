@@ -76,13 +76,17 @@ class SmtpEmailSender:
         """The name sent in ``EHLO``; by default this machine's fully qualified name."""
 
     def send(self, message: EmailMessage, smtp: SmtpConfig) -> None:
-        mime = MimeMessage()
-        mime["From"] = smtp.sender
-        mime["To"] = message.to
-        mime["Subject"] = message.subject
-        mime["Date"] = formatdate(localtime=False, usegmt=True)
-        mime["Message-ID"] = make_msgid(domain=smtp.sender.rpartition("@")[2] or None)
-        mime.set_content(message.body)
+        try:
+            mime = MimeMessage()
+            mime["From"] = smtp.sender
+            mime["To"] = message.to
+            mime["Subject"] = message.subject
+            mime["Date"] = formatdate(localtime=False, usegmt=True)
+            mime["Message-ID"] = make_msgid(domain=smtp.sender.rpartition("@")[2] or None)
+            mime.set_content(message.body)
+        except ValueError as exc:
+            # A header with a line break (header injection) or otherwise malformed.
+            raise EmailDeliveryError(f"The message cannot be sent: {exc}") from None
         try:
             with self._connect(smtp) as client:
                 if smtp.username:

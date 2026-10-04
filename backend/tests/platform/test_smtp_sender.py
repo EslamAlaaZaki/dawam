@@ -243,3 +243,14 @@ def test_an_unreachable_server_is_a_delivery_error():
 
 def test_the_password_is_not_in_the_configs_repr():
     assert PASSWORD not in repr(config(25, username=USERNAME, password=PASSWORD))
+
+
+def test_a_header_with_a_line_break_is_a_delivery_error(run_server):
+    mailbox = Mailbox()
+    port = run_server(mailbox)
+    bad = EmailMessage(to="ada@example.com\r\nBcc: eve@example.com", subject="Hi", body="x")
+
+    with pytest.raises(EmailDeliveryError):
+        sender().send(bad, config(port))
+
+    assert mailbox.received == []
