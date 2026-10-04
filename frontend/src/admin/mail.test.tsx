@@ -18,6 +18,7 @@ const ROOT: Me = {
   email: "root@example.com",
   display_name: "Root Admin",
   system_role: "admin",
+  must_change_password: false,
 };
 const ADA: Me = { ...ROOT, email: "ada@example.com", display_name: "Ada", system_role: "user" };
 
@@ -100,6 +101,7 @@ describe("email settings", () => {
     expect(requests).toContainEqual({
       method: "PUT",
       path: "/api/v1/admin/smtp",
+      query: {},
       csrf: CSRF_TOKEN,
       body: {
         host: "smtp.example.com",

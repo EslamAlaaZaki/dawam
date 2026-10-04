@@ -50,6 +50,7 @@ describe("forgot password", () => {
     expect(requests).toContainEqual({
       method: "POST",
       path: "/api/v1/auth/password/forgot",
+      query: {},
       csrf: CSRF_TOKEN,
       body: { email: "grace@example.com" },
     });
@@ -80,6 +81,7 @@ describe("reset password", () => {
     expect(requests).toContainEqual({
       method: "POST",
       path: "/api/v1/auth/password/reset",
+      query: {},
       csrf: CSRF_TOKEN,
       body: { token: "tok-123", password: "a brand new password" },
     });

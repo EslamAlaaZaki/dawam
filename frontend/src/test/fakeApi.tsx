@@ -48,6 +48,7 @@ export function user(overrides: Partial<Me> = {}): Me {
     email: "ada@example.com",
     display_name: "Ada Lovelace",
     system_role: "user",
+    must_change_password: false,
     ...overrides,
   };
 }

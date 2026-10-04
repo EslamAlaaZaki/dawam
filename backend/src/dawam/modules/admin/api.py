@@ -1,4 +1,5 @@
-"""``GET|PUT /api/v1/admin/settings``: the installation-wide settings, for admins only."""
+"""``GET|PUT /api/v1/admin/settings``: the installation-wide settings, for admins only;
+``user_api`` adds user management and ``security_events_api`` the security-event log."""
 
 from __future__ import annotations
 
@@ -7,25 +8,21 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from dawam.modules.auth import CurrentUser, SecurityEventRecorder, User
-from dawam.modules.workspaces import INSTALLATION, Action, can
-from dawam.platform.errors import ApiError
+from dawam.modules.auth import SecurityEventRecorder, User
+from dawam.modules.workspaces import Action
 from dawam.platform.request_context import client_ip
 
+from .internal.access import allowed_to
+from .security_events_api import router as security_events_router
 from .service import RegistrationSettings, SystemSettingsService
+from .user_api import router as user_router
 
 router = APIRouter(tags=["admin"])
+router.include_router(user_router)
+router.include_router(security_events_router)
 
 
-def settings_manager(user: CurrentUser) -> User:
-    """The signed-in user if the central policy lets them manage the system settings
-    (admins); anyone else gets ``403 forbidden`` (anonymous ``401 unauthenticated``)."""
-    if not can(user, Action.MANAGE_SYSTEM_SETTINGS, INSTALLATION):
-        raise ApiError(403, "forbidden", "Only admins can do this.")
-    return user
-
-
-SettingsManager = Annotated[User, Depends(settings_manager)]
+SettingsManager = Annotated[User, Depends(allowed_to(Action.MANAGE_SYSTEM_SETTINGS))]
 """Declare a parameter of this type to make a route need ``MANAGE_SYSTEM_SETTINGS``."""
 
 

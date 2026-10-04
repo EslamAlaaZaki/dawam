@@ -144,6 +144,7 @@ def undelivered_link_id(roles: RoleClients) -> uuid.UUID:
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
+    "user_id": lambda roles: roles.user("non_member").id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 

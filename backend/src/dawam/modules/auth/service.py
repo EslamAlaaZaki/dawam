@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
-from dawam.platform.email import EmailMessage, Mailer, OneTimeLink
+from dawam.platform.email import Delivery, EmailMessage, Mailer, OneTimeLink
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import (
@@ -79,6 +79,10 @@ def _email_must_be_free() -> Iterator[None]:
         raise
 
 
+def _account_deactivated() -> ApiError:
+    return ApiError(403, "account_deactivated", "This account has been deactivated.")
+
+
 def _checked_password(password: str) -> str:
     problem = password_problem(password)
     if problem:
@@ -92,6 +96,32 @@ def _checked_display_name(display_name: str) -> str:
     if problem:
         raise ApiError(422, "invalid_display_name", f"The display name {problem}.")
     return display_name
+
+
+def _new_user_record(
+    email: str,
+    password: str,
+    display_name: str,
+    system_role: SystemRole,
+    *,
+    now: datetime,
+    must_change_password: bool = False,
+) -> UserRecord:
+    """A new user's row, checked. Raises ``ApiError`` 422 ``invalid_email``,
+    ``invalid_display_name`` or ``invalid_password``."""
+    email = normalize_email(email)
+    if not is_valid_email(email):
+        raise ApiError(422, "invalid_email", "The email address is not valid.")
+    display_name = _checked_display_name(display_name)
+    return UserRecord(
+        email=email,
+        display_name=display_name,
+        password_hash=_hasher.hash(_checked_password(password)),
+        system_role=system_role,
+        is_active=True,
+        must_change_password=must_change_password,
+        created_at=now,
+    )
 
 
 @dataclass(frozen=True)
@@ -130,6 +160,10 @@ class User:
     display_name: str
     system_role: SystemRole
     last_login_at: datetime | None
+    is_active: bool = True
+    must_change_password: bool = False
+    """Set for a user an admin created with a temporary password, until they change it."""
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +193,9 @@ def _user(record: UserRecord) -> User:
         display_name=record.display_name,
         system_role=record.system_role,  # type: ignore[arg-type]  # checked above
         last_login_at=record.last_login_at,
+        is_active=record.is_active,
+        must_change_password=record.must_change_password,
+        created_at=record.created_at,
     )
 
 
@@ -358,7 +395,18 @@ class AuthService:
             correct = locked_until is None and self._verify(
                 user.password_hash if user else _DUMMY_HASH, password
             )
-            if correct and user is not None:
+            if correct and user is not None and not user.is_active:
+                # Only someone who knows the password learns the account is deactivated.
+                self._events.record(
+                    "login_failed",
+                    target_type="user",
+                    target_id=user.id,
+                    metadata={"email": email, "reason": "account_deactivated"},
+                    ip=ip,
+                    db=db,
+                )
+                failure = _account_deactivated()
+            elif correct and user is not None:
                 user.failed_login_count = 0  # a success ends the streak
                 signed_in = self._start_session(db, user, password, now, replacing, ip, user_agent)
                 self._events.record(
@@ -371,10 +419,11 @@ class AuthService:
                     db=db,
                 )
                 return signed_in
-            # Committed: a failure is recorded before it is raised.
-            failure = self._guard.failed(
-                db, state, user, email, ip=ip, now=now, locked_until=locked_until
-            )
+            else:
+                # Committed: a failure is recorded before it is raised.
+                failure = self._guard.failed(
+                    db, state, user, email, ip=ip, now=now, locked_until=locked_until
+                )
         with Session(self._engine) as db, db.begin():
             self._guard.prune(db, now)
         raise failure
@@ -423,7 +472,8 @@ class AuthService:
                 return None
             session, user = row
             if (
-                now >= session.expires_at  # absolute timeout, fixed at sign-in
+                not user.is_active  # deactivation deletes sessions; this is the backstop
+                or now >= session.expires_at  # absolute timeout, fixed at sign-in
                 or now >= session.last_seen_at + self.idle_timeout
             ):
                 db.delete(session)
@@ -452,14 +502,14 @@ class AuthService:
     ) -> None:
         """Replace the user's password, given the current one, and end every session of
         theirs except the one whose token is ``keep_session`` (the browser asking), so a
-        stolen session dies with the old password. Records a ``password_changed``
-        security event from ``ip``.
+        stolen session dies with the old password, and clear ``must_change_password``.
+        Records a ``password_changed`` security event from ``ip``.
 
         A wrong current password counts against the account like a failed sign-in
         (and is recorded as ``password_change_failed``), so it cannot be guessed here
         either. Raises ``ApiError``: 400 ``wrong_password``, 429 ``account_locked``
-        (when that locks the account, or it was locked), 422 ``invalid_password``, 404
-        ``not_found``."""
+        (when that locks the account, or it was locked), 422 ``invalid_password`` (or
+        ``password_unchanged``: a temporary password kept as it is), 404 ``not_found``."""
         now = self._clock()
         with Session(self._engine) as db, db.begin():
             user = self._existing_user(db, user_id)
@@ -468,7 +518,14 @@ class AuthService:
             locked_until = self._guard.locked_until(user, now)
             if locked_until is None and self._verify(user.password_hash, current_password):
                 user.failed_login_count = 0  # knowing the password ends the streak
+                if user.must_change_password and new_password == current_password:
+                    raise ApiError(
+                        422,
+                        "password_unchanged",
+                        "Choose a new password, not the temporary one you were given.",
+                    )
                 user.password_hash = _hasher.hash(_checked_password(new_password))
+                user.must_change_password = False
                 others = sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
                 if keep_session:
                     others = others.where(SessionRecord.token_hash != _token_hash(keep_session))
@@ -516,17 +573,7 @@ class AuthService:
     def _new_user(
         self, email: str, password: str, display_name: str, system_role: SystemRole
     ) -> UserRecord:
-        email = normalize_email(email)
-        if not is_valid_email(email):
-            raise ApiError(422, "invalid_email", "The email address is not valid.")
-        display_name = _checked_display_name(display_name)
-        return UserRecord(
-            email=email,
-            display_name=display_name,
-            password_hash=_hasher.hash(_checked_password(password)),
-            system_role=system_role,
-            created_at=self._clock(),
-        )
+        return _new_user_record(email, password, display_name, system_role, now=self._clock())
 
     @staticmethod
     def _existing_user(db: Session, user_id: uuid.UUID) -> UserRecord:
@@ -580,7 +627,7 @@ class PasswordResets:
         self._events = SecurityEventRecorder(engine, clock=clock)
 
     def request_reset(self, email: str, *, ip: str | None = None) -> None:
-        """Email a reset link to the user with this email, if there is one, and record
+        """Email a reset link to the user with this email, if there is an active one, and record
         a ``password_reset_requested`` security event (from ``ip``). Says nothing either
         way, so callers can answer the same whether or not it exists."""
         now = self._clock()
@@ -590,8 +637,8 @@ class PasswordResets:
             user = db.scalar(
                 sa.select(UserRecord).where(UserRecord.email == normalize_email(email))
             )
-            if user is None:
-                return
+            if user is None or not user.is_active:
+                return  # a deactivated user could not sign in with a new password anyway
             user_id, address = user.id, user.email
             if self._throttled(db, user_id, ip, now):
                 logger.warning(
@@ -615,24 +662,87 @@ class PasswordResets:
                 ip=ip,
                 db=db,
             )
+        self._send_link(address, token, expires_at)
+        logger.info("password reset requested", extra={"user_id": str(user_id)})
+
+    def force_reset(
+        self, user_id: uuid.UUID, *, actor_id: uuid.UUID, ip: str | None = None
+    ) -> Delivery:
+        """An admin's answer to a suspected compromise (spec story 19): end every session
+        of the user, make their password stop working and send them a reset link (kept
+        for an admin to share when it cannot be emailed). Not throttled. Records a
+        ``password_reset_forced`` security event naming ``actor_id``, from ``ip``.
+
+        Raises ``ApiError`` 404 ``not_found``, 409 ``user_deactivated``."""
+        now = self._clock()
+        token = secrets.token_urlsafe(32)
+        expires_at = now + RESET_LINK_LIFETIME
+        with Session(self._engine) as db, db.begin():
+            user = db.get(UserRecord, user_id, with_for_update=True)
+            if user is None:
+                raise ApiError(404, "not_found", "The user does not exist.")
+            if not user.is_active:
+                raise ApiError(
+                    409,
+                    "user_deactivated",
+                    "The user is deactivated: reactivate them first.",
+                )
+            # Nobody knows this password: only the link lets the user back in.
+            user.password_hash = _hasher.hash(secrets.token_urlsafe(32))
+            ended = db.execute(
+                sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
+            ).rowcount
+            db.add(
+                PasswordResetRecord(
+                    user_id=user.id,
+                    token_hash=_token_hash(token),
+                    created_at=now,
+                    expires_at=expires_at,
+                )
+            )
+            self._events.record(
+                "password_reset_forced",
+                actor_id=actor_id,
+                target_type="user",
+                target_id=user.id,
+                metadata={"email": user.email, "sessions_ended": ended},
+                ip=ip,
+                db=db,
+            )
+            address = user.email
+        logger.info("password reset forced", extra={"user_id": str(user_id)})
+        return self._send_link(address, token, expires_at, forced=True)
+
+    def _send_link(
+        self, address: str, token: str, expires_at: datetime, *, forced: bool = False
+    ) -> Delivery:
         url = f"{self._public_url}/reset-password#token={token}"
         minutes = int(RESET_LINK_LIFETIME.total_seconds() // 60)
-        self._mailer.send(
+        if forced:
+            why = (
+                "A DAWAM administrator has reset the password of your account, so the old "
+                "one no longer works and every session of yours has ended.\n\n"
+            )
+            ending = "The link works once. Ask an administrator for a new one if it expires.\n"
+        else:
+            why = "Someone (hopefully you) asked to reset the password of your DAWAM account.\n\n"
+            ending = (
+                "The link works once. If you did not ask for it, ignore this email: "
+                "your password stays as it is.\n"
+            )
+        return self._mailer.send(
             EmailMessage(
                 to=address,
                 subject="Reset your DAWAM password",
                 body=(
-                    "Someone (hopefully you) asked to reset the password of your DAWAM "
-                    "account.\n\n"
+                    f"{why}"
                     f"To choose a new password, open this link within {minutes} minutes:\n\n"
                     f"{url}\n\n"
-                    "The link works once. If you did not ask for it, ignore this email: "
-                    "your password stays as it is.\n"
+                    f"{ending}"
                 ),
             ),
             link=OneTimeLink(url=url, purpose="password_reset", expires_at=expires_at),
         )
-        logger.info("password reset requested", extra={"user_id": str(user_id)})
 
     def _throttled(self, db: Session, user_id: uuid.UUID, ip: str | None, now: datetime) -> bool:
         # Locks serialise concurrent requests for one account and for one address, so
@@ -661,9 +771,9 @@ class PasswordResets:
         return (recent_for_ip or 0) >= self._ip_max
 
     def reset_password(self, token: str, new_password: str, *, ip: str | None = None) -> None:
-        """Set a new password with a reset link's token, end every session of the user
-        and lift a sign-in lockout. Every other unused link of the user stops working
-        too. Records a ``password_reset`` security event (from ``ip``).
+        """Set a new password with a reset link's token, end every session of the user,
+        lift a sign-in lockout and clear ``must_change_password``. Every other unused link
+        of the user stops working too. Records a ``password_reset`` security event (from ``ip``).
 
         Raises ``ApiError``: 422 ``invalid_password``, 400 ``invalid_reset_token``."""
         problem = password_problem(new_password)
@@ -682,6 +792,8 @@ class PasswordResets:
             if user is None:
                 raise _invalid_reset_token()
             user.password_hash = _hasher.hash(new_password)
+            # A password the user chose themselves: no temporary one left to replace.
+            user.must_change_password = False
             # Whoever reads the user's email may choose their password, so a lock
             # against password guessing has nothing left to protect.
             user.failed_login_count = 0
