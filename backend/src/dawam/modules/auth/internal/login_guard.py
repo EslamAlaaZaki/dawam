@@ -37,10 +37,19 @@ from dawam.platform.config import Settings
 from dawam.platform.errors import ApiError
 
 from ..tables import IP_MAX_LENGTH, LoginFailureRecord, LoginLockoutRecord, UserRecord
+from .credentials import is_valid_email
 from .security_events import SecurityEventRecorder
 
 FAILURE_STREAK_TTL = timedelta(hours=24)
 """A failure this long after the previous one starts a new streak."""
+
+
+def _email_metadata(email: str) -> dict[str, object]:
+    """What an event records of the typed email: the address only if it is one, since
+    people paste passwords into the email field by mistake."""
+    if is_valid_email(email):
+        return {"email": email}
+    return {"email": None, "email_invalid": True}
 
 
 def invalid_credentials() -> ApiError:
@@ -158,7 +167,11 @@ class LoginGuard:
         target = {"target_type": "user", "target_id": user.id} if user else {}
         reason = "account_locked" if locked_until else "invalid_credentials"
         self._events.record(
-            "login_failed", metadata={"email": email, "reason": reason}, ip=ip, db=db, **target
+            "login_failed",
+            metadata={**_email_metadata(email), "reason": reason},
+            ip=ip,
+            db=db,
+            **target,
         )
         if locked_until is not None:
             return account_locked(locked_until, now)
@@ -175,7 +188,7 @@ class LoginGuard:
         self._events.record(
             "account_locked",
             metadata={
-                "email": email,
+                **_email_metadata(email),
                 "failed_attempts": self._max_failures,
                 "locked_until": until.isoformat(),
             },

@@ -143,3 +143,18 @@ def test_the_recorder_refuses_metadata_that_looks_like_a_secret(
 def test_event_types_are_short_snake_case_names(recorder: SecurityEventRecorder, event_type):
     with pytest.raises(ValueError):
         recorder.record(event_type)
+
+
+@pytest.mark.parametrize("typed", ["correct horse battery", "grace@", "grace@example"])
+def test_what_was_typed_is_not_recorded_unless_it_is_an_email(
+    anonymous_client, recorder: SecurityEventRecorder, typed: str
+):
+    # People paste passwords into the email field by mistake.
+    for _ in range(5):
+        sign_in(anonymous_client, typed, "whatever it is")
+
+    events = recorder.recent()
+    assert [e.event_type for e in events[:2]] == ["account_locked", "login_failed"]
+    for event in events:
+        assert event.metadata["email"] is None
+        assert event.metadata["email_invalid"] is True
