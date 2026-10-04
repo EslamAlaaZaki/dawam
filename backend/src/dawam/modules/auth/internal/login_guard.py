@@ -18,6 +18,12 @@ them leaves the window. Its attempts are refused before any account is looked at
 they are not recorded, count towards nothing and lock no account: the limit slows
 that address alone, and caps how many accounts it can lock per window.
 
+**Sign-up (per address).** Every self-registration attempt from an address is
+counted (``registration_attempts``, a separate counter): one with
+``DAWAM_REGISTER_IP_MAX_ATTEMPTS`` attempts in the last
+``DAWAM_REGISTER_IP_WINDOW_MINUTES`` must wait, the same way, so sign-up cannot be used
+to create accounts in bulk, probe emails or burn CPU on password hashing.
+
 **The password change** checks the current password, so guessing it there counts
 against the same per-account state (``password_check_failed``): it locks the account
 like failed sign-ins do, and a locked account cannot change its password either.
@@ -40,7 +46,13 @@ from sqlalchemy.orm import Session
 from dawam.platform.config import Settings
 from dawam.platform.errors import ApiError
 
-from ..tables import IP_MAX_LENGTH, LoginFailureRecord, LoginLockoutRecord, UserRecord
+from ..tables import (
+    IP_MAX_LENGTH,
+    LoginFailureRecord,
+    LoginLockoutRecord,
+    RegistrationAttemptRecord,
+    UserRecord,
+)
 from .credentials import is_valid_email
 from .security_events import SecurityEventRecorder
 
@@ -84,10 +96,38 @@ def account_locked(until: datetime, now: datetime) -> ApiError:
     )
 
 
-def too_many_attempts(until: datetime, now: datetime) -> ApiError:
-    return _must_wait(
-        "too_many_attempts", "Too many failed sign-ins from your network.", until, now
+def too_many_attempts(
+    until: datetime, now: datetime, why: str = "Too many failed sign-ins from your network."
+) -> ApiError:
+    return _must_wait("too_many_attempts", why, until, now)
+
+
+def too_many_sign_ups(until: datetime, now: datetime) -> ApiError:
+    return too_many_attempts(until, now, "Too many sign-ups from your network.")
+
+
+def _window_ends(
+    db: Session,
+    ip_column: sa.ColumnElement[str],
+    at_column: sa.ColumnElement[datetime],
+    ip: str | None,
+    now: datetime,
+    max_count: int,
+    window: timedelta,
+) -> datetime | None:
+    """When an address with ``max_count`` rows in the last ``window`` may go on; None if
+    it may now."""
+    if not ip:
+        return None
+    # The row whose leaving the window brings the address back under the limit.
+    oldest_that_counts = db.scalar(
+        sa.select(at_column)
+        .where(ip_column == ip[:IP_MAX_LENGTH], at_column > now - window)
+        .order_by(at_column.desc())
+        .offset(max_count - 1)
+        .limit(1)
     )
+    return oldest_that_counts + window if oldest_that_counts else None
 
 
 class LockoutState(Protocol):
@@ -108,24 +148,48 @@ class LoginGuard:
         self._lockout = timedelta(minutes=settings.login_lockout_minutes)
         self._ip_max_failures = settings.login_ip_max_failures
         self._ip_window = timedelta(minutes=settings.login_ip_window_minutes)
+        self._register_max = settings.register_ip_max_attempts
+        self._register_window = timedelta(minutes=settings.register_ip_window_minutes)
         self._events = events
 
     def throttled_until(self, db: Session, ip: str | None, now: datetime) -> datetime | None:
         """When this address may try again; None if it may now."""
-        if not ip:
-            return None
-        # The failure whose leaving the window brings the address back under the limit.
-        oldest_that_counts = db.scalar(
-            sa.select(LoginFailureRecord.failed_at)
-            .where(
-                LoginFailureRecord.ip == ip[:IP_MAX_LENGTH],
-                LoginFailureRecord.failed_at > now - self._ip_window,
-            )
-            .order_by(LoginFailureRecord.failed_at.desc())
-            .offset(self._ip_max_failures - 1)
-            .limit(1)
+        return _window_ends(
+            db,
+            LoginFailureRecord.ip,
+            LoginFailureRecord.failed_at,
+            ip,
+            now,
+            self._ip_max_failures,
+            self._ip_window,
         )
-        return oldest_that_counts + self._ip_window if oldest_that_counts else None
+
+    def sign_up_throttled_until(
+        self, db: Session, ip: str | None, now: datetime
+    ) -> datetime | None:
+        """When this address may sign up again; None if it may now."""
+        return _window_ends(
+            db,
+            RegistrationAttemptRecord.ip,
+            RegistrationAttemptRecord.attempted_at,
+            ip,
+            now,
+            self._register_max,
+            self._register_window,
+        )
+
+    def sign_up_attempted(self, db: Session, ip: str | None, now: datetime) -> None:
+        """Count a sign-up attempt from ``ip``, and forget those outside the window."""
+        if ip:
+            db.add(RegistrationAttemptRecord(ip=ip[:IP_MAX_LENGTH], attempted_at=now))
+        old = (
+            sa.select(RegistrationAttemptRecord.id)
+            .where(RegistrationAttemptRecord.attempted_at <= now - self._register_window)
+            .with_for_update(skip_locked=True)
+        )
+        db.execute(
+            sa.delete(RegistrationAttemptRecord).where(RegistrationAttemptRecord.id.in_(old))
+        )
 
     def state_of(
         self, db: Session, user: UserRecord | None, email: str, now: datetime

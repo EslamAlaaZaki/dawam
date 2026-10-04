@@ -27,7 +27,7 @@ from .internal.credentials import (
     normalize_email,
     password_problem,
 )
-from .internal.login_guard import LoginGuard, too_many_attempts
+from .internal.login_guard import LoginGuard, too_many_attempts, too_many_sign_ups
 from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
@@ -193,12 +193,23 @@ class AuthService:
     ) -> SignedIn:
         """Self-registration: create a regular user and sign them in, if ``policy``
         allows it. Raises ``ApiError``: 403 ``registration_closed`` or
-        ``email_domain_not_allowed``, 422 ``invalid_email``, ``invalid_display_name`` or
+        ``email_domain_not_allowed``, 429 ``too_many_attempts`` (too many sign-ups from
+        ``ip``; ``internal.login_guard``), 422 ``invalid_email``, ``invalid_display_name`` or
         ``invalid_password``, 409 ``email_taken``. ``replacing``, ``ip`` and
         ``user_agent`` are as for ``sign_in``. Records a ``user_registered`` security
         event."""
         if not policy.registration_open():
             raise ApiError(403, "registration_closed", "Self-registration is turned off.")
+        now = self._clock()
+        # Every attempt from an address counts, committed before anything is checked or
+        # hashed, so a refused or failing one costs the address too.
+        with Session(self._engine) as db, db.begin():
+            throttled_until = self._guard.sign_up_throttled_until(db, ip, now)
+            if throttled_until is None:
+                self._guard.sign_up_attempted(db, ip, now)
+        if throttled_until is not None:
+            logger.warning("sign-up throttled", extra={"ip": ip})
+            raise too_many_sign_ups(throttled_until, now)
         normalized = normalize_email(email)
         if is_valid_email(normalized) and not policy.email_domain_allowed(normalized):
             raise ApiError(
@@ -207,7 +218,6 @@ class AuthService:
                 "Self-registration is not open to this email domain.",
             )
         record = self._new_user(normalized, password, display_name, "user")
-        now = self._clock()
         with _email_must_be_free(), Session(self._engine) as db, db.begin():
             db.add(record)
             db.flush()

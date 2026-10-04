@@ -116,9 +116,12 @@ on every log line for that request.
   `PUT /api/v1/admin/settings`), optionally only for some email domains (exact
   matches; list subdomains separately). While it is off the login page shows no
   sign-up link and `POST /api/v1/auth/register` answers `403 registration_closed`; an
-  email outside the allowed domains gets `403 email_domain_not_allowed`.
+  email outside the allowed domains gets `403 email_domain_not_allowed`. An address
+  that tried to sign up `DAWAM_REGISTER_IP_MAX_ATTEMPTS` (default 10) times in the
+  last `DAWAM_REGISTER_IP_WINDOW_MINUTES` (default 60) gets `429 too_many_attempts`.
 - **Profile.** Users edit their display name, change their password (which needs the
-  current one and signs out every other session of theirs) and sign out everywhere.
+  current one and signs out every other session of theirs) and sign out everywhere. A
+  wrong current password counts towards the lockout like a failed sign-in.
 - Endpoints: `POST /api/v1/auth/login`, `/auth/logout`, `/auth/logout-all`,
   `/auth/register`, `/auth/password/change`; `GET /api/v1/auth/registration` (is
   sign-up open?); `GET|PATCH /api/v1/me`; `GET|PUT /api/v1/admin/settings` (admins

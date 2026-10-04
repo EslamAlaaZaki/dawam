@@ -95,6 +95,18 @@ class LoginFailureRecord(Base):
     failed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), index=True)
 
 
+class RegistrationAttemptRecord(Base):
+    """A sign-up attempt from a client address, for the per-address sign-up limit. Only
+    the limit's window is kept: older rows are deleted."""
+
+    __tablename__ = "registration_attempts"
+    __table_args__ = (sa.Index("ix_registration_attempts_ip_attempted_at", "ip", "attempted_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    ip: Mapped[str] = mapped_column(sa.String(IP_MAX_LENGTH))
+    attempted_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), index=True)
+
+
 class SecurityEventRecord(Base):
     """A security-relevant action (spec §7 ``SecurityEvent``), written only through
     ``SecurityEventRecorder``. Append-only; never holds a password or token."""
