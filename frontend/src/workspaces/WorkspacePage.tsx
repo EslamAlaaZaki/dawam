@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent } from "react";
 
 import { ApiError } from "../api/client";
+import { useDataWarehouse } from "../api/dataWarehouse";
 import {
   ROLE_LABELS,
   allows,
@@ -14,6 +15,7 @@ import {
 } from "../api/workspaces";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
+import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
@@ -31,6 +33,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const warehouse = useDataWarehouse(workspaceId);
 
   if (workspace.isPending) {
     return <Loading />;
@@ -47,7 +50,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
     );
   }
-  const root = workspaceFolders(workspace.data.name);
+  const root = workspaceFolders(workspace.data.name, warehouse.data?.set_up ?? false);
   const folder = findFolder(root, searchParams.get("folder") ?? "") ?? root;
 
   function select(id: string) {
@@ -71,6 +74,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
               <MembersPanel workspace={workspace.data} />
             </>
+          ) : folder.id === "dw" || folder.id === "dw/setup" ? (
+            <DataWarehouseSetup workspace={workspace.data} />
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>

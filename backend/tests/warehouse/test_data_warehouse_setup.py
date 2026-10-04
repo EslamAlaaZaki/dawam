@@ -200,4 +200,8 @@ def test_other_modules_read_limits_and_reserved_words_from_the_package():
     assert is_reserved_word("postgresql", "USER")
     assert is_reserved_word("sqlserver", "Top")
     assert not is_reserved_word("postgresql", "top")
+    assert is_reserved_word("oracle", "date")
+    assert is_reserved_word("oracle", "COMMENT")
+    assert is_reserved_word("snowflake", "view")
+    assert is_reserved_word("bigquery", "unnest")
     assert platform_profile("snowflake").label == "Snowflake"

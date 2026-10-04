@@ -55,21 +55,23 @@ _PER_PLATFORM: dict[TargetPlatform, frozenset[str]] = {
         "unpivot updatetext use view waitfor while within writetext"
     ),
     "oracle": _words(
-        "access add audit level lock long maxextents minus mlslabel mode modify "
-        "noaudit nowait number of offline online option raw rename resource row rowid "
-        "rownum rows session share size smallint start successful synonym sysdate "
-        "trigger uid validate varchar varchar2 view whenever"
+        "access add alter audit char cluster column_value comment compress connect current "
+        "date decimal exclusive file float identified immediate increment index initial "
+        "integer level lock long maxextents minus mlslabel mode modify nested_table_id "
+        "noaudit nocompress nowait number of offline online option pctfree prior public raw "
+        "rename resource revoke rowid rowlabel rownum rows row session share size smallint "
+        "start successful synonym sysdate trigger uid validate varchar varchar2 view whenever"
     ),
     "snowflake": _words(
-        "account connection database gscluster issue organization qualify regexp "
-        "rlike sample schema trigger try_cast"
+        "account alter connect connection current database following gscluster ilike "
+        "increment issue localtime localtimestamp minus organization qualify regexp revoke "
+        "rlike row rows sample schema start trigger try_cast view whenever"
     ),
     "bigquery": _words(
-        "assert_rows_modified at collate contains cube current cursor define enum "
-        "escape exclude extract fetch following for grouping groups hash ignore "
-        "interval lateral lookup merge natural new no nulls of over partition preceding "
-        "proto range recursive respect rollup rows struct tablesample treat unbounded "
-        "window within"
+        "assert_rows_modified at collate contains cube current cursor define enum escape "
+        "exclude extract fetch following for grouping groups hash if ignore interval lateral "
+        "lookup merge natural new no nulls of over partition preceding proto qualify range "
+        "recursive respect rollup rows struct tablesample treat unbounded unnest window within"
     ),
 }
 

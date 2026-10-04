@@ -25,7 +25,11 @@ function layer(id: string, label: string): Folder {
   };
 }
 
-export function workspaceFolders(workspaceName: string): Folder {
+/**
+ * `dwSetUp`: whether the Data Warehouse has been set up (spec story 87). Until then its
+ * folder holds only the setup step and KPIs.
+ */
+export function workspaceFolders(workspaceName: string, dwSetUp: boolean): Folder {
   return {
     id: "",
     label: workspaceName,
@@ -42,33 +46,47 @@ export function workspaceFolders(workspaceName: string): Folder {
         label: "Data Warehouse",
         empty: "The Data Warehouse has nothing in it yet.",
         children: [
+          ...(dwSetUp
+            ? []
+            : [
+                {
+                  id: "dw/setup",
+                  label: "Set up Data Warehouse",
+                  children: [],
+                  empty: "",
+                },
+              ]),
           {
             id: "dw/kpis",
             label: "KPIs",
             children: [],
             empty: "No KPIs yet. Business metrics for the Data Warehouse will be listed here.",
           },
-          layer("staging", "Staging"),
-          layer("core", "Core"),
-          layer("mart", "Mart"),
-          {
-            id: "dw/lineage",
-            label: "Lineage",
-            children: [],
-            empty: "Lineage appears here once there is a DW Schema to trace.",
-          },
-          {
-            id: "dw/score",
-            label: "Score",
-            children: [],
-            empty: "The Data Warehouse has not been scored yet.",
-          },
-          {
-            id: "dw/ddl",
-            label: "DDL",
-            children: [],
-            empty: "DDL is generated here once there is a DW Schema.",
-          },
+          ...(dwSetUp
+            ? [
+                layer("staging", "Staging"),
+                layer("core", "Core"),
+                layer("mart", "Mart"),
+                {
+                  id: "dw/lineage",
+                  label: "Lineage",
+                  children: [],
+                  empty: "Lineage appears here once there is a DW Schema to trace.",
+                },
+                {
+                  id: "dw/score",
+                  label: "Score",
+                  children: [],
+                  empty: "The Data Warehouse has not been scored yet.",
+                },
+                {
+                  id: "dw/ddl",
+                  label: "DDL",
+                  children: [],
+                  empty: "DDL is generated here once there is a DW Schema.",
+                },
+              ]
+            : []),
         ],
       },
     ],
