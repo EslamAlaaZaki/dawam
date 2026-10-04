@@ -19,6 +19,7 @@ from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import is_valid_email, normalize_email, password_problem
+from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,7 @@ class AuthService:
         self._engine = engine
         self._settings = settings
         self._clock = clock
+        self._events = SecurityEventRecorder(engine, clock=clock)
 
     @property
     def idle_timeout(self) -> timedelta:
@@ -209,39 +211,72 @@ class AuthService:
     ) -> SignedIn:
         """Check the credentials and start a session. ``replacing`` is the token of the
         browser's current session, if any, which is ended. ``ip`` and ``user_agent`` are
-        recorded on the session."""
+        recorded on the session.
+
+        Every attempt is recorded as a security event (``login_succeeded`` or
+        ``login_failed``)."""
         now = self._clock()
+        email = normalize_email(email)
         with Session(self._engine) as db, db.begin():
-            user = db.scalar(
-                sa.select(UserRecord).where(UserRecord.email == normalize_email(email))
-            )
+            user = db.scalar(sa.select(UserRecord).where(UserRecord.email == email))
             if user is None:
                 self._verify(_DUMMY_HASH, password)
-                raise _invalid_credentials()
-            if not self._verify(user.password_hash, password):
-                raise _invalid_credentials()
-            if _hasher.check_needs_rehash(user.password_hash):
-                user.password_hash = _hasher.hash(password)
-            user.last_login_at = now
-            if replacing:
-                db.execute(
-                    sa.delete(SessionRecord).where(
-                        SessionRecord.token_hash == _token_hash(replacing)
-                    )
+                failure = _invalid_credentials()
+            elif not self._verify(user.password_hash, password):
+                failure = _invalid_credentials()
+            else:
+                signed_in = self._start_session(db, user, password, now, replacing, ip, user_agent)
+                self._events.record(
+                    "login_succeeded",
+                    actor_id=user.id,
+                    target_type="user",
+                    target_id=user.id,
+                    metadata={"email": email},
+                    ip=ip,
+                    db=db,
                 )
-            token = secrets.token_urlsafe(32)
-            db.add(
-                SessionRecord(
-                    token_hash=_token_hash(token),
-                    user_id=user.id,
-                    created_at=now,
-                    last_seen_at=now,
-                    expires_at=now + self.absolute_timeout,
-                    ip=ip[:IP_MAX_LENGTH] if ip else None,
-                    user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
-                )
+                return signed_in
+            # Committed, unlike the session: a failure is recorded before it is raised.
+            self._events.record(
+                "login_failed",
+                target_type="user" if user else None,
+                target_id=user.id if user else None,
+                metadata={"email": email, "reason": failure.code},
+                ip=ip,
+                db=db,
             )
-            return SignedIn(token=token, user=_user(user))
+        raise failure
+
+    def _start_session(
+        self,
+        db: Session,
+        user: UserRecord,
+        password: str,
+        now: datetime,
+        replacing: str | None,
+        ip: str | None,
+        user_agent: str | None,
+    ) -> SignedIn:
+        if _hasher.check_needs_rehash(user.password_hash):
+            user.password_hash = _hasher.hash(password)
+        user.last_login_at = now
+        if replacing:
+            db.execute(
+                sa.delete(SessionRecord).where(SessionRecord.token_hash == _token_hash(replacing))
+            )
+        token = secrets.token_urlsafe(32)
+        db.add(
+            SessionRecord(
+                token_hash=_token_hash(token),
+                user_id=user.id,
+                created_at=now,
+                last_seen_at=now,
+                expires_at=now + self.absolute_timeout,
+                ip=ip[:IP_MAX_LENGTH] if ip else None,
+                user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
+            )
+        )
+        return SignedIn(token=token, user=_user(user))
 
     def user_for_session(self, token: str) -> User | None:
         """The signed-in user of a live session, or None. An expired session is deleted."""
