@@ -31,6 +31,11 @@ class UserRecord(Base):
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """The last successful sign-in; None until the first."""
+    failed_login_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    """Failed sign-ins since the last successful one (or the last lock); at
+    ``DAWAM_LOGIN_MAX_FAILURES`` the account locks and this goes back to 0."""
+    locked_until: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """Sign-in is refused, even with the right password, until then."""
 
 
 class SessionRecord(Base):
@@ -56,6 +61,26 @@ class SessionRecord(Base):
     ``X-Forwarded-For`` counts only from ``DAWAM_FORWARDED_ALLOW_IPS``)."""
     user_agent: Mapped[str | None] = mapped_column(sa.String(USER_AGENT_MAX_LENGTH))
     """The ``User-Agent`` at sign-in, cut to its first 512 characters."""
+
+
+class LoginFailureRecord(Base):
+    """A failed sign-in attempt, for any email (with an account or not).
+
+    It lets an email without an account lock exactly as an account would, so locking
+    reveals nothing about which emails have accounts.
+    """
+
+    __tablename__ = "login_failures"
+    __table_args__ = (sa.Index("ix_login_failures_email_failed_at", "email", "failed_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(sa.String(320))
+    """As typed, trimmed and lower-cased."""
+    ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
+    failed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    password_checked: Mapped[bool]
+    """False when the attempt was refused unchecked because the email was locked;
+    such attempts never count towards a lock."""
 
 
 class SecurityEventRecord(Base):

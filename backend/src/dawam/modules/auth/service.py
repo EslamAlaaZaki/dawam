@@ -19,6 +19,7 @@ from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import is_valid_email, normalize_email, password_problem
+from .internal.login_guard import LoginGuard
 from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
@@ -43,11 +44,6 @@ _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(16))
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _invalid_credentials() -> ApiError:
-    # One error for an unknown email and a wrong password, so neither can be probed.
-    return ApiError(401, "invalid_credentials", "The email or password is incorrect.")
 
 
 def _email_taken() -> ApiError:
@@ -107,6 +103,7 @@ class AuthService:
         self._settings = settings
         self._clock = clock
         self._events = SecurityEventRecorder(engine, clock=clock)
+        self._guard = LoginGuard(settings, self._events)
 
     @property
     def idle_timeout(self) -> timedelta:
@@ -213,18 +210,24 @@ class AuthService:
         browser's current session, if any, which is ended. ``ip`` and ``user_agent`` are
         recorded on the session.
 
-        Every attempt is recorded as a security event (``login_succeeded`` or
-        ``login_failed``)."""
+        Raises ``ApiError`` 401 ``invalid_credentials``, or 429 ``account_locked`` once
+        too many consecutive attempts have failed (see ``internal.login_guard``). Every
+        attempt is recorded as a security event (``login_succeeded`` or
+        ``login_failed``, plus ``account_locked`` when it locks the account)."""
         now = self._clock()
         email = normalize_email(email)
         with Session(self._engine) as db, db.begin():
-            user = db.scalar(sa.select(UserRecord).where(UserRecord.email == email))
-            if user is None:
-                self._verify(_DUMMY_HASH, password)
-                failure = _invalid_credentials()
-            elif not self._verify(user.password_hash, password):
-                failure = _invalid_credentials()
-            else:
+            # Locked, so concurrent attempts on one account are counted one at a time.
+            user = db.scalar(
+                sa.select(UserRecord).where(UserRecord.email == email).with_for_update()
+            )
+            locked_until = self._guard.locked_until(db, user, email, now)
+            # A locked email is refused without checking the password, account or not.
+            correct = locked_until is None and self._verify(
+                user.password_hash if user else _DUMMY_HASH, password
+            )
+            if correct and user is not None:
+                self._guard.succeeded(user)
                 signed_in = self._start_session(db, user, password, now, replacing, ip, user_agent)
                 self._events.record(
                     "login_succeeded",
@@ -236,15 +239,8 @@ class AuthService:
                     db=db,
                 )
                 return signed_in
-            # Committed, unlike the session: a failure is recorded before it is raised.
-            self._events.record(
-                "login_failed",
-                target_type="user" if user else None,
-                target_id=user.id if user else None,
-                metadata={"email": email, "reason": failure.code},
-                ip=ip,
-                db=db,
-            )
+            # Committed: a failure is recorded before it is raised.
+            failure = self._guard.failed(db, user, email, ip=ip, now=now, locked_until=locked_until)
         raise failure
 
     def _start_session(
