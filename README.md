@@ -144,12 +144,21 @@ email** (`POST /api/v1/admin/smtp/test`) sends one right away and shows the serv
 error if it fails. The SMTP password is stored encrypted with `DAWAM_ENCRYPTION_KEY`
 (AES-256-GCM) and never returned (the API says `has_password` instead); changing the
 host, port or username needs it entered again, so it cannot be sent to another
-server unseen.
+server unseen. The SMTP host is whatever the admin enters, so DAWAM will connect to
+any address it can reach, internal ones included (the test email shows the server's
+error). That is accepted because only admins can set it; keep admin accounts few.
+
+Forgot-password is throttled without telling anyone: at most one reset email per
+account per `DAWAM_PASSWORD_RESET_COOLDOWN_MINUTES` (5), and at most
+`DAWAM_PASSWORD_RESET_IP_MAX_REQUESTS` (10) per client address per
+`DAWAM_PASSWORD_RESET_IP_WINDOW_MINUTES` (60). A throttled request gets the same
+answer, sends nothing and stores nothing.
 
 **Without SMTP** (air-gapped installs), or when sending fails, links DAWAM would
 email are kept for admins instead: **Links to share** (`GET
 /api/v1/admin/undelivered-links`) lists each with its recipient, so an admin can
-copy it to them. A link leaves the list when it expires or an admin removes it;
+copy it to them. A link leaves the list when it expires, when it stops working
+(a used or voided reset link) or when an admin removes it;
 it is stored encrypted too.
 
 ### Workspaces

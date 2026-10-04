@@ -58,13 +58,15 @@ nothing else.
    modules' public interfaces. `dawam/migrations/env.py` imports `dawam.modules`
    so that every module's tables are registered on `Base.metadata` before Alembic
    compares or migrates.
-5. **`auth` is upstream of every module.** Any module may import it (for
-   `CurrentUser`, `SecurityEventRecorder`, ...), so `auth` imports no other module: what it
-   needs from one, it gets as a kernel port the composition root fills. Its reset
-   emails go through the `mail` module's `MailService` as the
-   `dawam.platform.email.Mailer` in `app.state.mailer`. Other modules import
-   `dawam.modules.mail` directly; either way every email goes through that one
-   service.
+5. **No import cycles: a module that another module imports gets nothing back by
+   import.** `auth` is upstream of every module (any module may import it for
+   `CurrentUser`, `SecurityEventRecorder`, ...), so it imports none; `workspaces`
+   (the `can()` policy) imports only `auth`. What such a module needs from a module
+   that imports it, it gets as a kernel port that a composition root fills (rule 4).
+   Email is the example: `mail` imports `auth` and `workspaces`, so those two send
+   through the `dawam.platform.email.Mailer` port (`app.state.mailer`, the `mail`
+   module's `MailService`); every other module imports `dawam.modules.mail` through
+   its package (rule 1). Either way every email goes through that one service.
 
 `tools/check_boundaries.py`, which CI runs, enforces:
 
