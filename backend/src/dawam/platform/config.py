@@ -17,7 +17,6 @@ from pydantic import (
     SecretStr,
     ValidationError,
     field_validator,
-    model_validator,
 )
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -114,8 +113,8 @@ class Settings(DatabaseSettings):
     admin_email: str | None = None
     admin_password: SecretStr | None = None
     """The first admin (the spec's ``ADMIN_EMAIL`` / ``ADMIN_PASSWORD``): created at
-    startup only if no admin exists yet. Set both or neither; empty counts as unset.
-    The auth module checks them, and only when it is about to create the admin."""
+    startup only if no admin exists yet. Empty counts as unset. The auth module
+    checks them (both set, valid), and only when it is about to create the admin."""
 
     @field_validator("admin_email", "admin_password", mode="before")
     @classmethod
@@ -129,12 +128,6 @@ class Settings(DatabaseSettings):
     """A session ends after this long without a request."""
     session_absolute_timeout_days: float = Field(default=14, gt=0)
     """A session ends this long after sign-in, however active it is."""
-
-    @model_validator(mode="after")
-    def _admin_email_and_password_together(self) -> Settings:
-        if (self.admin_email is None) != (self.admin_password is None):
-            raise ValueError("set both DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD, or neither")
-        return self
 
 
 def load_settings() -> Settings:
@@ -160,10 +153,7 @@ def _load[T: DatabaseSettings](settings_class: type[T]) -> T:
 def _describe(exc: ValidationError) -> str:
     lines = ["DAWAM is not configured: fix these environment variables (or your .env file):"]
     for error in exc.errors(include_input=False):
-        if not error["loc"]:  # a rule across several variables; its message names them
-            lines.append(f"  - {error['msg'].removeprefix('Value error, ')}.")
-            continue
-        field = str(error["loc"][0])
+        field = str(error["loc"][0]) if error["loc"] else ""
         name = f"DAWAM_{field.upper()}"
         problem = "is not set" if error["type"] == "missing" else f"is invalid: {error['msg']}"
         hint = _HINTS.get(field)

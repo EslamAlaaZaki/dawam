@@ -18,7 +18,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
-from .credentials import is_valid_email, normalize_email, password_problem
+from .internal.credentials import is_valid_email, normalize_email, password_problem
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
 logger = logging.getLogger(__name__)
@@ -166,17 +166,24 @@ class AuthService:
         set and no admin exists. Never changes an existing user.
 
         Only when it is about to create the admin does it check the values; it raises
-        ``ConfigError`` (naming the variable, never echoing the password) if the email
-        is not an address, the password breaks the policy, or a non-admin user already
-        has the email. Once an admin exists, stale values never stop startup."""
-        if self._settings.admin_email is None or self._settings.admin_password is None:
+        ``ConfigError`` (naming the variable, never echoing the password) if only one
+        is set, the email is not an address, the password breaks the policy, or a
+        non-admin user already has the email. Once an admin exists, stale or partial
+        values never stop startup."""
+        admin_email, admin_password = self._settings.admin_email, self._settings.admin_password
+        if admin_email is None and admin_password is None:
             return
-        email = normalize_email(self._settings.admin_email)
-        password = self._settings.admin_password.get_secret_value()
         with Session(self._engine) as db, db.begin():
             db.execute(sa.select(sa.func.pg_advisory_xact_lock(_BOOTSTRAP_LOCK_KEY)))
             if db.scalar(sa.select(sa.exists().where(UserRecord.system_role == "admin"))):
                 return
+            if admin_email is None or admin_password is None:
+                raise ConfigError(
+                    "No admin exists yet: set both DAWAM_ADMIN_EMAIL and "
+                    "DAWAM_ADMIN_PASSWORD to create one, or neither."
+                )
+            email = normalize_email(admin_email)
+            password = admin_password.get_secret_value()
             if not is_valid_email(email):
                 raise ConfigError("DAWAM_ADMIN_EMAIL is invalid: must be an email address.")
             problem = password_problem(password)

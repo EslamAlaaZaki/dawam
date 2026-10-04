@@ -7,7 +7,6 @@ import logging
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 
 from dawam.app import create_app
 from dawam.platform.config import ConfigError, Settings
@@ -134,9 +133,22 @@ def test_the_admin_email_is_not_logged(boot, create_user, caplog: pytest.LogCapt
 @pytest.mark.parametrize(
     "admin", [{"admin_email": ADMIN_EMAIL}, {"admin_password": ADMIN_PASSWORD}]
 )
-def test_the_email_and_password_must_be_set_together(settings: Settings, admin):
-    with pytest.raises(ValidationError, match="DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD"):
-        Settings(**{**settings.model_dump(), **admin})
+def test_only_one_admin_value_stops_startup_while_no_admin_exists(boot, anonymous_client, admin):
+    with pytest.raises(ConfigError, match="DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD"):
+        boot(**admin)
+
+    assert not signs_in(anonymous_client, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+
+@pytest.mark.parametrize(
+    "admin", [{"admin_email": ADMIN_EMAIL}, {"admin_password": "a different password"}]
+)
+def test_only_one_admin_value_is_fine_once_an_admin_exists(boot, anonymous_client, admin):
+    boot(admin_email=ADMIN_EMAIL, admin_password=ADMIN_PASSWORD)
+
+    boot(**admin)
+
+    assert signs_in(anonymous_client, ADMIN_EMAIL, ADMIN_PASSWORD)
 
 
 def test_the_admin_password_never_shows_in_the_settings_repr(settings: Settings):

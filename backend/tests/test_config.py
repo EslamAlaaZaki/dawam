@@ -202,16 +202,15 @@ def test_migrations_from_the_command_line_fail_clearly_without_the_database_url(
     assert "DAWAM_ENCRYPTION_KEY" not in str(raised.value)
 
 
-def test_the_admin_email_without_its_password_is_explained(monkeypatch):
+def test_one_admin_value_without_the_other_loads(monkeypatch):
+    # Whether both are needed is decided at bootstrap, only while no admin exists.
     monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
     monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "admin@example.com")
 
-    with pytest.raises(ConfigError) as raised:
-        load_settings()
+    settings = load_settings()
 
-    assert "  - set both DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD, or neither." in str(
-        raised.value
-    )
+    assert settings.admin_email == "admin@example.com"
+    assert settings.admin_password is None
 
 
 def test_admin_values_are_not_checked_until_an_admin_is_created(monkeypatch):

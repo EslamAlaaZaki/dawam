@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.platform.errors import ApiError
 
-from .credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
+from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
 from .service import AuthService, SystemRole, User
 
 SESSION_COOKIE = "dawam_session"

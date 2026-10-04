@@ -41,12 +41,13 @@ class SessionRecord(Base):
         sa.ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
-    """When the user signed in; the absolute timeout counts from here."""
+    """When the user signed in."""
     last_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     """The last request on this session (updated at most once a minute); the idle
     timeout counts from here."""
     expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
-    """``created_at`` plus the absolute timeout in force at sign-in."""
+    """``created_at`` plus the absolute timeout in force at sign-in; the session ends
+    then, however active it is."""
     ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
     """The client address at sign-in, as uvicorn reports it (a proxy's
     ``X-Forwarded-For`` counts only from ``DAWAM_FORWARDED_ALLOW_IPS``)."""
