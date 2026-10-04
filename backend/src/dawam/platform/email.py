@@ -182,3 +182,8 @@ class Mailer(Protocol):
     """The email-delivery service (implemented by the ``mail`` module)."""
 
     def send(self, message: EmailMessage, *, link: OneTimeLink | None = None) -> Delivery: ...
+
+    def withdraw_links(self, *, recipient: str, purpose: str) -> None:
+        """Forget the links of ``purpose`` kept for an admin to give ``recipient``,
+        because they no longer work (e.g. a reset link once the password is reset)."""
+        ...

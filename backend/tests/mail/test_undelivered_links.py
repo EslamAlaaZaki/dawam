@@ -75,6 +75,61 @@ def test_the_copied_link_resets_the_password(anonymous_client, admin_client, gra
     assert response.status_code == 204
 
 
+def test_a_reset_removes_the_users_now_dead_reset_links(
+    anonymous_client, admin_client, grace, create_user, clock
+):
+    create_user(email="ada@example.com")
+    forgot(anonymous_client, grace.email)
+    clock.advance(timedelta(minutes=5))  # past the per-account cooldown
+    forgot(anonymous_client, grace.email)
+    forgot(anonymous_client, "ada@example.com")
+    token = TOKEN.search(links(admin_client)[-1]["url"])[1]  # grace's first link
+
+    anonymous_client.post(
+        "/api/v1/auth/password/reset",
+        json={"token": token, "password": "a brand new password"},
+        headers={CSRF_HEADER: csrf_token(anonymous_client)},
+    )
+
+    assert [link["recipient"] for link in links(admin_client)] == ["ada@example.com"]
+
+
+def test_sending_purges_expired_links(app, mail, clock: FakeClock):
+    """Storage-property check: reads the mail module's own table."""
+    message = EmailMessage(to="ada@example.com", subject="Join", body="...")
+    soon = OneTimeLink(url="http://x/1", purpose="invitation", expires_at=clock() + timedelta(1))
+    mail.send(message, link=soon)
+    clock.advance(timedelta(days=2))
+
+    mail.send(
+        message,
+        link=OneTimeLink(url="http://x/2", purpose="invitation", expires_at=clock() + timedelta(1)),
+    )
+
+    with app.state.engine.connect() as conn:
+        assert conn.scalar(sa.text("SELECT count(*) FROM undelivered_links")) == 1
+
+
+def test_withdrawing_links_removes_only_that_recipients_purpose(mail, admin_client, clock):
+    expires = clock() + timedelta(days=1)
+    for to, purpose in [
+        ("a@x.example", "password_reset"),
+        ("a@x.example", "invitation"),
+        ("b@x.example", "password_reset"),
+    ]:
+        mail.send(
+            EmailMessage(to=to, subject=purpose, body="..."),
+            link=OneTimeLink(url=f"http://x/{to}/{purpose}", purpose=purpose, expires_at=expires),
+        )
+
+    mail.withdraw_links(recipient="a@x.example", purpose="password_reset")
+
+    assert sorted((link["recipient"], link["purpose"]) for link in links(admin_client)) == [
+        ("a@x.example", "invitation"),
+        ("b@x.example", "password_reset"),
+    ]
+
+
 def test_an_unknown_email_leaves_no_link(anonymous_client, admin_client):
     forgot(anonymous_client, "nobody@example.com")
 

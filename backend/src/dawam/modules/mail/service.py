@@ -110,7 +110,8 @@ class MailService:
     # --- Delivery -------------------------------------------------------------------
 
     def send(self, message: EmailMessage, *, link: OneTimeLink | None = None) -> Delivery:
-        """Deliver ``message``, or keep its ``link`` for an admin when it cannot be.
+        """Deliver ``message``, or keep its ``link`` for an admin when it cannot be
+        (expired kept links are deleted then too).
 
         Never raises for a delivery failure: it is logged (without the body, which
         may carry the link) and the outcome returned."""
@@ -131,7 +132,11 @@ class MailService:
                 "email not sent: SMTP is not set up", extra={"email_subject": message.subject}
             )
             return "not_sent"
+        now = self._clock()
         with Session(self._engine) as db, db.begin():
+            db.execute(
+                sa.delete(UndeliveredLinkRecord).where(UndeliveredLinkRecord.expires_at <= now)
+            )
             db.add(
                 UndeliveredLinkRecord(
                     recipient=message.to,
@@ -139,7 +144,7 @@ class MailService:
                     purpose=link.purpose,
                     url_encrypted=self._box.encrypt(link.url, context=_LINK_CONTEXT),
                     reason=reason,
-                    created_at=self._clock(),
+                    created_at=now,
                     expires_at=link.expires_at,
                 )
             )
@@ -313,6 +318,17 @@ class MailService:
                     )
                 )
             return links
+
+    def withdraw_links(self, *, recipient: str, purpose: str) -> None:
+        """Forget the undelivered links of ``purpose`` for ``recipient``: the caller
+        knows they no longer work (a used or voided password reset link)."""
+        with Session(self._engine) as db, db.begin():
+            db.execute(
+                sa.delete(UndeliveredLinkRecord).where(
+                    UndeliveredLinkRecord.recipient == recipient,
+                    UndeliveredLinkRecord.purpose == purpose,
+                )
+            )
 
     def dismiss_link(self, link_id: uuid.UUID) -> None:
         """Forget an undelivered link (once shared, or never to be). Raises ``ApiError``

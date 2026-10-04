@@ -70,6 +70,9 @@ class _LinkCatcher:
         self.url = link.url
         return "sent"
 
+    def withdraw_links(self, *, recipient, purpose):
+        pass
+
 
 def reset_body(roles: RoleClients) -> dict:
     """A fresh reset token for the owner's account, caught from its link."""

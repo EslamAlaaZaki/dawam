@@ -704,5 +704,7 @@ class PasswordResets:
                 .values(used_at=now)
             )
             db.execute(sa.delete(SessionRecord).where(SessionRecord.user_id == user.id))
-            user_id = user.id
+            user_id, address = user.id, user.email
+        # Every reset link of the user is dead now: an admin need not share any.
+        self._mailer.withdraw_links(recipient=address, purpose="password_reset")
         logger.info("password reset", extra={"user_id": str(user_id)})
