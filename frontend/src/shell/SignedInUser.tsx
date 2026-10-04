@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useMe, useSignOut } from "../api/queries";
 
 export function SignedInUser() {
@@ -10,7 +12,10 @@ export function SignedInUser() {
   }
   return (
     <div className="shell-user">
-      <span className="shell-user-name">{me.data.display_name}</span>
+      {me.data.system_role === "admin" && <Link href="/admin/settings">Admin settings</Link>}
+      <Link href="/profile" className="shell-user-name">
+        {me.data.display_name}
+      </Link>
       <button type="button" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
         Sign out
       </button>

@@ -3,10 +3,13 @@
 import { usePathname } from "next/navigation";
 
 import SignedInLayout from "../app/(signed-in)/layout";
+import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
 import HomePage from "../app/(signed-in)/page";
+import ProfilePage from "../app/(signed-in)/profile/page";
 import NewWorkspace from "../app/(signed-in)/workspaces/new/page";
 import LoginPage from "../app/login/page";
 import NotFound from "../app/not-found";
+import SignUpPage from "../app/signup/page";
 import { Shell } from "../shell/Shell";
 import { WorkspacePage } from "../workspaces/WorkspacePage";
 
@@ -16,6 +19,20 @@ function Page({ pathname }: { pathname: string }) {
   switch (pathname) {
     case "/login":
       return <LoginPage />;
+    case "/signup":
+      return <SignUpPage />;
+    case "/profile":
+      return (
+        <SignedInLayout>
+          <ProfilePage />
+        </SignedInLayout>
+      );
+    case "/admin/settings":
+      return (
+        <SignedInLayout>
+          <AdminSettingsPage />
+        </SignedInLayout>
+      );
     case "/":
       return (
         <SignedInLayout>
