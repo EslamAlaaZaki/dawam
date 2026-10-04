@@ -67,8 +67,8 @@ on every log line for that request.
   the `dawam_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` when served over
   HTTPS). A session ends after `DAWAM_SESSION_IDLE_TIMEOUT_HOURS` (default 8) without
   a request, or `DAWAM_SESSION_ABSOLUTE_TIMEOUT_DAYS` (default 14) after sign-in.
-  Behind a TLS-terminating reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's
-  address so uvicorn trusts its `X-Forwarded-Proto`.
+  Behind a TLS-terminating proxy, cookies are `Secure` only once
+  `DAWAM_FORWARDED_ALLOW_IPS` trusts it (see above).
 - **CSRF.** Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` must send the value
   of the `dawam_csrf` cookie in the `X-CSRF-Token` header (double submit); any
   response sets that cookie for a client without one.

@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 
 from dawam.app import create_app
 from dawam.platform.api_docs import install_api_docs
+from dawam.platform.csrf import CSRF_HEADER
+from tests.helpers import csrf_token
 
 APP_CSP_DIRECTIVES = {
     "default-src": ["'self'"],
@@ -98,6 +100,8 @@ def test_api_and_error_responses_carry_the_security_headers(anonymous_client, me
         ("/assets/app.js", 200),
         ("/assets/missing.js", 404),
         ("/api/v1/version", 200),
+        ("/login", 200),  # a client-side route: index.html from the SPA fallback
+        ("/workspaces/42", 200),
     ],
 )
 def test_frontend_responses_carry_the_security_headers(frontend_client, path, status):
@@ -106,6 +110,34 @@ def test_frontend_responses_carry_the_security_headers(frontend_client, path, st
     assert response.status_code == status
     assert_baseline_headers(response)
     assert csp_of(response) == APP_CSP_DIRECTIVES
+
+
+def test_the_api_docs_page_wins_over_the_frontend(frontend_client):
+    response = frontend_client.get("/api/v1/docs")
+
+    assert "SwaggerUIBundle" in response.text
+    assert csp_of(response)["default-src"] == ["'none'"]
+
+
+def test_auth_responses_carry_the_security_headers(anonymous_client, create_user):
+    grace = create_user()
+    token = csrf_token(anonymous_client)
+    login = {"email": grace.email, "password": grace.password}
+    responses = [
+        anonymous_client.get("/api/v1/me"),  # 401
+        anonymous_client.post("/api/v1/auth/login", json=login),  # 403 csrf_failed
+        anonymous_client.post(
+            "/api/v1/auth/login", json={**login, "password": "wrong"}, headers={CSRF_HEADER: token}
+        ),  # 401
+        anonymous_client.post("/api/v1/auth/login", json=login, headers={CSRF_HEADER: token}),
+        anonymous_client.get("/api/v1/me"),  # 200
+        anonymous_client.post("/api/v1/auth/logout", headers={CSRF_HEADER: token}),  # 204
+    ]
+
+    assert [r.status_code for r in responses] == [401, 403, 401, 200, 200, 204]
+    for response in responses:
+        assert_baseline_headers(response)
+        assert csp_of(response) == APP_CSP_DIRECTIVES
 
 
 def test_the_app_policy_allows_no_inline_or_third_party_code(anonymous_client):
