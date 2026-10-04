@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from pathlib import Path
 
 from pydantic import (
     Field,
@@ -79,8 +78,6 @@ class Settings(DatabaseSettings):
 
     log_level: str = "INFO"
     run_migrations_on_startup: bool = True
-    frontend_dist: Path | None = None
-    """Directory with the built frontend; served at ``/`` when set."""
 
     worker_poll_seconds: float = 5.0
 

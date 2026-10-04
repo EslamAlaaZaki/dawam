@@ -25,7 +25,6 @@ from dawam.platform.csrf import CsrfCookieMiddleware, require_csrf
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
-from dawam.platform.frontend import SinglePageApp
 from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
@@ -100,7 +99,4 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.include_router(api)
     app.include_router(health.router)
     install_api_docs(app, f"{API_PREFIX}/docs")
-    if settings.frontend_dist is not None:
-        # Mounted last, so the API and probes always win over static files.
-        app.mount("/", SinglePageApp(settings.frontend_dist), name="frontend")
     return app

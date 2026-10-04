@@ -1,13 +1,12 @@
 """The security headers of the spec's baseline (§8.4), on every HTTP response.
 
 ``SecurityHeadersMiddleware`` is the outermost app middleware, so API JSON, the
-served frontend, the probes and every error response (including the last-resort 500
-rendered by ``dawam.platform.request_context``) carry:
+probes and every error response (including the last-resort 500 rendered by
+``dawam.platform.request_context``) carry:
 
 - ``Content-Security-Policy``: ``APP_CSP``, unless the response already set its own
   (the API docs page does, see ``dawam.platform.api_docs``). Every policy includes
-  ``frame-ancestors 'none'``. The built frontend has no inline scripts or styles, so
-  ``'self'`` is enough for it.
+  ``frame-ancestors 'none'``.
 - ``X-Content-Type-Options: nosniff``.
 - ``Referrer-Policy: same-origin``: no referrer ever leaves the site, while same-origin
   requests keep it.

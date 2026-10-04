@@ -1,9 +1,10 @@
 """Every response carries the security headers of the spec's baseline (§8.4).
 
-API JSON, the served frontend (HTML and static files), the API docs page and error
-responses all get a Content-Security-Policy with ``frame-ancestors 'none'``,
-``X-Content-Type-Options: nosniff`` and a strict ``Referrer-Policy``. HSTS is sent
-only over HTTPS.
+API JSON, the probes, the API docs page and error responses all get a
+Content-Security-Policy with ``frame-ancestors 'none'``, ``X-Content-Type-Options:
+nosniff`` and a strict ``Referrer-Policy``. HSTS is sent only over HTTPS. (The pages of
+the web UI are served by the Next.js ``web`` service, which sets the same baseline and
+tests it in ``frontend/src/security/``.)
 """
 
 import base64
@@ -59,16 +60,6 @@ def probe_routes(app: FastAPI) -> None:
     app.include_router(router)
 
 
-@pytest.fixture
-def frontend_client(tmp_path, settings, services):
-    (tmp_path / "index.html").write_text("<!doctype html><title>DAWAM</title>", encoding="utf-8")
-    (tmp_path / "assets").mkdir()
-    (tmp_path / "assets" / "app.js").write_text("console.log('hi')", encoding="utf-8")
-    settings = settings.model_copy(update={"frontend_dist": tmp_path})
-    with TestClient(create_app(settings, services=services)) as client:
-        yield client
-
-
 @pytest.mark.usefixtures("probe_routes")
 @pytest.mark.parametrize(
     ("method", "path", "status"),
@@ -90,33 +81,6 @@ def test_api_and_error_responses_carry_the_security_headers(anonymous_client, me
     assert response.status_code == status
     assert_baseline_headers(response)
     assert csp_of(response) == APP_CSP_DIRECTIVES
-
-
-@pytest.mark.parametrize(
-    ("path", "status"),
-    [
-        ("/", 200),
-        ("/index.html", 200),
-        ("/assets/app.js", 200),
-        ("/assets/missing.js", 404),
-        ("/api/v1/version", 200),
-        ("/login", 200),  # a client-side route: index.html from the SPA fallback
-        ("/workspaces/42", 200),
-    ],
-)
-def test_frontend_responses_carry_the_security_headers(frontend_client, path, status):
-    response = frontend_client.get(path)
-
-    assert response.status_code == status
-    assert_baseline_headers(response)
-    assert csp_of(response) == APP_CSP_DIRECTIVES
-
-
-def test_the_api_docs_page_wins_over_the_frontend(frontend_client):
-    response = frontend_client.get("/api/v1/docs")
-
-    assert "SwaggerUIBundle" in response.text
-    assert csp_of(response)["default-src"] == ["'none'"]
 
 
 def test_auth_responses_carry_the_security_headers(anonymous_client, create_user):

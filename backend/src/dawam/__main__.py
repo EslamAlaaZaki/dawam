@@ -1,6 +1,6 @@
 """Command line entry point: ``python -m dawam {serve,worker,openapi}``.
 
-- ``serve``: run the API (and the built frontend, if ``DAWAM_FRONTEND_DIST`` is set).
+- ``serve``: run the API (the web UI is the separate Next.js ``web`` service).
 - ``worker``: run the background worker process.
 - ``openapi``: print or write the OpenAPI spec the frontend client is generated from.
 
