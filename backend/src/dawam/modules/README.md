@@ -59,7 +59,7 @@ nothing else.
    so that every module's tables are registered on `Base.metadata` before Alembic
    compares or migrates.
 5. **`auth` is upstream of every module.** Any module may import it (for
-   `CurrentUser`, `AdminUser`, ...), so `auth` imports no other module: what it
+   `CurrentUser`, `SecurityEventRecorder`, ...), so `auth` imports no other module: what it
    needs from one, it gets as a kernel port the composition root fills. Its reset
    emails go through the `mail` module's `MailService` as the
    `dawam.platform.email.Mailer` in `app.state.mailer`. Other modules import

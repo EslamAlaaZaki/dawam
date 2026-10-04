@@ -2,7 +2,7 @@
 module's smtp_settings and undelivered_links tables.
 
 Revision ID: e2dda06a7a2d
-Revises: 57d75041af55
+Revises: 7c3e9a1f5b20
 Create Date: 2026-10-04 09:09:14.126288
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e2dda06a7a2d"
-down_revision: str | Sequence[str] | None = "57d75041af55"
+down_revision: str | Sequence[str] | None = "7c3e9a1f5b20"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

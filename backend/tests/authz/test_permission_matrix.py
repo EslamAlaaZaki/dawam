@@ -13,6 +13,8 @@ from collections import Counter
 import pytest
 from fastapi import FastAPI
 
+from dawam.modules.auth import PasswordResets
+from dawam.modules.mail import MailService
 from tests.authz.matrix import (
     Row,
     admin_only,
@@ -36,6 +38,50 @@ def _open_registration_and_sign_up(roles: RoleClients) -> dict[str, str]:
     )
     assert response.status_code == 200, response.text
     return {"email": "newcomer@example.com", "password": PASSWORD, "display_name": "New"}
+
+
+SMTP_SETTINGS = {
+    "host": "smtp.example.com",
+    "port": 25,
+    "security": "none",
+    "sender": "dawam@example.com",
+    "username": None,
+}
+
+
+def _mail(roles: RoleClients) -> MailService:
+    state = roles.app.state
+    return MailService(
+        state.engine, state.settings, sender=state.services.email, clock=state.services.clock
+    )
+
+
+def smtp_test_body(roles: RoleClients) -> dict:
+    """SMTP is saved first (the suite's outbox stands in for the server)."""
+    _mail(roles).save_smtp_settings(**SMTP_SETTINGS)
+    return {"to": "someone@example.com"}
+
+
+class _LinkCatcher:
+    def __init__(self) -> None:
+        self.url = ""
+
+    def send(self, message, *, link=None):
+        self.url = link.url
+        return "sent"
+
+
+def reset_body(roles: RoleClients) -> dict:
+    """A fresh reset token for the owner's account, caught from its link."""
+    state = roles.app.state
+    catcher = _LinkCatcher()
+    PasswordResets(
+        state.engine,
+        mailer=catcher,
+        clock=state.services.clock,
+        public_url=state.settings.public_url,
+    ).request_reset(roles.user("owner").email)
+    return {"token": catcher.url.rsplit("token=", 1)[1], "password": "a brand new password"}
 
 
 ROWS: list[Row] = [
@@ -80,6 +126,43 @@ ROWS: list[Row] = [
         "registration settings (story 20)",
         admin_only(),
         json=lambda roles: {"registration": {"enabled": True, "allowed_email_domains": []}},
+    ),
+        "POST",
+        "/api/v1/auth/password/forgot",
+        "forgot password: same answer for any email (story 6)",
+        public(),
+        json=lambda roles: {"email": roles.user("owner").email},
+    ),
+    Row(
+        "POST",
+        "/api/v1/auth/password/reset",
+        "reset password: the token is the credential (story 6)",
+        public(),
+        json=reset_body,
+    ),
+    # Email (admin only: story 24, §6.1 "Without SMTP").
+    Row("GET", "/api/v1/admin/smtp", "see SMTP settings", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/smtp",
+        "configure SMTP",
+        admin_only(),
+        json=lambda roles: SMTP_SETTINGS,
+    ),
+    Row("DELETE", "/api/v1/admin/smtp", "turn SMTP off", admin_only()),
+    Row(
+        "POST",
+        "/api/v1/admin/smtp/test",
+        "send a test email",
+        admin_only(),
+        json=smtp_test_body,
+    ),
+    Row("GET", "/api/v1/admin/undelivered-links", "see links to share", admin_only()),
+    Row(
+        "DELETE",
+        "/api/v1/admin/undelivered-links/{link_id}",
+        "remove a link to share",
+        admin_only(),
     ),
     # Workspaces.
     Row("GET", "/api/v1/workspaces", "list my Workspaces (story 28)", signed_in()),

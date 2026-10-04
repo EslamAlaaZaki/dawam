@@ -51,19 +51,6 @@ CurrentUser = Annotated[User, Depends(current_user)]
 """Declare a parameter of this type to make a route require a signed-in user."""
 
 
-def admin_user(user: CurrentUser) -> User:
-    """The signed-in user if they are an admin; anyone else gets ``403 forbidden``.
-
-    Interim: the central policy (``can()``, #29) takes over this check."""
-    if user.system_role != "admin":
-        raise ApiError(403, "forbidden", "Only an admin can do this.")
-    return user
-
-
-AdminUser = Annotated[User, Depends(admin_user)]
-"""Declare a parameter of this type to make a route admin-only."""
-
-
 class SignInRequest(BaseModel):
     # Bounded, so an oversized password is rejected (422) before argon2 sees it.
     email: str = Field(max_length=MAX_EMAIL_LENGTH)

@@ -13,8 +13,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from dawam.modules.auth import AdminUser
+from dawam.modules.auth import CurrentUser, User
+from dawam.modules.workspaces import INSTALLATION, Action, can
 from dawam.platform.email import SmtpSecurity
+from dawam.platform.errors import ApiError
 
 from .service import KEEP_PASSWORD, MailService, UndeliveredReason
 
@@ -29,6 +31,17 @@ def mail_service(request: Request) -> MailService:
 
 
 MailServiceDep = Annotated[MailService, Depends(mail_service)]
+
+
+def email_admin(user: CurrentUser) -> User:
+    """The signed-in user if the policy lets them manage email (admins); others get
+    ``403 forbidden``."""
+    if not can(user, Action.MANAGE_EMAIL, INSTALLATION):
+        raise ApiError(403, "forbidden", "Only an admin can manage email.")
+    return user
+
+
+EmailAdmin = Annotated[User, Depends(email_admin)]
 
 
 def _client_ip(request: Request) -> str | None:
@@ -94,7 +107,7 @@ class UndeliveredLinksOut(BaseModel):
 
 
 @router.get("/admin/smtp", operation_id="getSmtpSettings")
-def get_smtp_settings(admin: AdminUser, mail: MailServiceDep) -> SmtpSettingsOut | None:
+def get_smtp_settings(admin: EmailAdmin, mail: MailServiceDep) -> SmtpSettingsOut | None:
     """The saved SMTP settings, or `null` while SMTP is off."""
     settings = mail.smtp_settings()
     return SmtpSettingsOut.model_validate(settings) if settings else None
@@ -102,7 +115,7 @@ def get_smtp_settings(admin: AdminUser, mail: MailServiceDep) -> SmtpSettingsOut
 
 @router.put("/admin/smtp", operation_id="saveSmtpSettings")
 def save_smtp_settings(
-    body: SmtpSettingsIn, request: Request, admin: AdminUser, mail: MailServiceDep
+    body: SmtpSettingsIn, request: Request, admin: EmailAdmin, mail: MailServiceDep
 ) -> SmtpSettingsOut:
     """Save the SMTP settings; DAWAM emails links from now on."""
     settings = mail.save_smtp_settings(
@@ -121,14 +134,14 @@ def save_smtp_settings(
 @router.delete(
     "/admin/smtp", operation_id="clearSmtpSettings", status_code=204, response_class=Response
 )
-def clear_smtp_settings(request: Request, admin: AdminUser, mail: MailServiceDep) -> Response:
+def clear_smtp_settings(request: Request, admin: EmailAdmin, mail: MailServiceDep) -> Response:
     """Turn SMTP off: links are then kept for admins to copy."""
     mail.clear_smtp_settings(by=admin.id, ip=_client_ip(request))
     return Response(status_code=204)
 
 
 @router.post("/admin/smtp/test", operation_id="sendTestEmail")
-def send_test_email(body: TestEmailIn, admin: AdminUser, mail: MailServiceDep) -> TestEmailOut:
+def send_test_email(body: TestEmailIn, admin: EmailAdmin, mail: MailServiceDep) -> TestEmailOut:
     """Send a test email through the saved settings."""
     to = body.to or admin.email
     mail.send_test(to)
@@ -136,7 +149,7 @@ def send_test_email(body: TestEmailIn, admin: AdminUser, mail: MailServiceDep) -
 
 
 @router.get("/admin/undelivered-links", operation_id="listUndeliveredLinks")
-def list_undelivered_links(admin: AdminUser, mail: MailServiceDep) -> UndeliveredLinksOut:
+def list_undelivered_links(admin: EmailAdmin, mail: MailServiceDep) -> UndeliveredLinksOut:
     """Links DAWAM could not email that still work, newest first, for an admin to share."""
     return UndeliveredLinksOut(
         items=[UndeliveredLinkOut.model_validate(link) for link in mail.undelivered_links()]
@@ -150,7 +163,7 @@ def list_undelivered_links(admin: AdminUser, mail: MailServiceDep) -> Undelivere
     response_class=Response,
 )
 def dismiss_undelivered_link(
-    link_id: uuid.UUID, admin: AdminUser, mail: MailServiceDep
+    link_id: uuid.UUID, admin: EmailAdmin, mail: MailServiceDep
 ) -> Response:
     """Remove a link from the list (it keeps working until it expires or is used)."""
     mail.dismiss_link(link_id)

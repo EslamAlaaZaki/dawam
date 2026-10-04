@@ -9,7 +9,6 @@ Public interface. Other modules import only what is re-exported here:
   ``app.state.registration_policy``.
 - ``CurrentUser``: annotate a route parameter with it to require a signed-in user
   (anonymous requests get ``401 unauthenticated``); ``User`` is what it holds.
-- ``AdminUser``: the same, for admin-only routes (others get ``403 forbidden``).
 - ``SecurityEventRecorder``: the one way to record a ``SecurityEvent`` (sign-ins and
   lockouts here; role changes, deactivations, ownership reassignments elsewhere).
 - ``PasswordResets``: forgotten passwords (reset links, emailed through the
@@ -22,7 +21,7 @@ Public interface. Other modules import only what is re-exported here:
 Owns the ``users``, ``sessions``, ``security_events`` and ``password_resets`` tables.
 """
 
-from .api import AdminUser, CurrentUser, router
+from .api import CurrentUser, router
 from .internal.security_events import SecurityEvent, SecurityEventRecorder
 from .service import (
     AuthService,
@@ -36,7 +35,6 @@ from .service import (
 )
 
 __all__ = [
-    "AdminUser",
     "AuthService",
     "CurrentUser",
     "PasswordResets",

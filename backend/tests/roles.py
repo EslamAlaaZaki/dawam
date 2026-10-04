@@ -59,6 +59,10 @@ class RoleClients:
         return self._users[role]
 
     @property
+    def app(self) -> FastAPI:
+        return self._app
+
+    @property
     def workspace(self) -> dict[str, Any]:
         if self._workspace is None:
             response = self.client("owner").post(
