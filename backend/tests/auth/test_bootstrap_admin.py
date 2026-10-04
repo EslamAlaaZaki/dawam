@@ -84,8 +84,9 @@ def test_the_admin_email_of_a_non_admin_user_stops_startup_and_leaves_the_user_a
         ("not-an-email", ADMIN_PASSWORD, "DAWAM_ADMIN_EMAIL", "email address"),
         (ADMIN_EMAIL, "too short", "DAWAM_ADMIN_PASSWORD", "at least 10 characters"),
         (ADMIN_EMAIL, "x" * 1025, "DAWAM_ADMIN_PASSWORD", "at most 1024 characters"),
+        (ADMIN_EMAIL, "qwertyuiop", "DAWAM_ADMIN_PASSWORD", "too common"),
     ],
-    ids=["bad-email", "short-password", "long-password"],
+    ids=["bad-email", "short-password", "long-password", "common-password"],
 )
 def test_an_invalid_admin_stops_startup_naming_the_variable(
     boot, anonymous_client, email, password, variable, problem

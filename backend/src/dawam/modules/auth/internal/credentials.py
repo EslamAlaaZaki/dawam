@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from functools import cache
+from importlib import resources
 
 MIN_PASSWORD_LENGTH = 10
 MAX_PASSWORD_LENGTH = 1024
@@ -22,10 +24,24 @@ def is_valid_email(email: str) -> bool:
     return len(email) <= MAX_EMAIL_LENGTH and _EMAIL.match(email) is not None
 
 
+@cache
+def _common_passwords() -> frozenset[str]:
+    """The common-password list shipped with DAWAM (``common_passwords.txt``, lower-case;
+    see ``common_passwords.LICENSE.txt`` for its source). Read once, from the package, so
+    it works offline."""
+    text = resources.files(__package__).joinpath("common_passwords.txt").read_text("utf-8")
+    return frozenset(line for line in text.splitlines() if line)
+
+
 def password_problem(password: str) -> str | None:
-    """Why ``password`` breaks the policy, or None if it is acceptable."""
+    """Why ``password`` breaks the policy, or None if it is acceptable.
+
+    The policy (spec §6.1): 10 to 1024 characters, and not on the common-password list,
+    compared case-insensitively (``Password123`` is as guessable as ``password123``)."""
     if len(password) < MIN_PASSWORD_LENGTH:
         return f"must be at least {MIN_PASSWORD_LENGTH} characters long"
     if len(password) > MAX_PASSWORD_LENGTH:
         return f"must be at most {MAX_PASSWORD_LENGTH} characters long"
+    if password.lower() in _common_passwords():
+        return "is too common: choose one that is harder to guess"
     return None
