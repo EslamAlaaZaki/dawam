@@ -24,6 +24,16 @@ function visibleRows(
   return [row, ...folder.children.flatMap((child) => visibleRows(child, collapsed, level + 1, row))];
 }
 
+/** A folder id and its ancestors' ids, nearest first, ending with the root (""). */
+function withAncestors(id: string): string[] {
+  const ids = [id];
+  for (let at = id; at !== ""; ) {
+    at = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : "";
+    ids.push(at);
+  }
+  return ids;
+}
+
 /**
  * The Workspace's folders as a WAI-ARIA tree. One item is in the tab order (arrow keys
  * move focus within the tree); Enter or Space, or a click, selects the focused folder.
@@ -46,8 +56,12 @@ export function FolderTree({
   const moveFocus = useRef(false);
 
   const rows = visibleRows(root, collapsed);
-  // A folder that was showing can disappear (its parent collapsed); the tab stop must not.
-  const tabStop = rows.some((r) => r.folder.id === focused) ? focused : selected;
+  // The focused folder, else the selected one, else the nearest ancestor of either that
+  // is showing (a collapse can hide both); the tree always keeps one tab stop.
+  const shown = new Set(rows.map((r) => r.folder.id));
+  const tabStop =
+    [...withAncestors(focused), ...withAncestors(selected)].find((id) => shown.has(id)) ??
+    rows[0]!.folder.id;
 
   useEffect(() => {
     if (moveFocus.current) {
@@ -162,6 +176,7 @@ export function FolderTree({
               onClick={(event) => {
                 event.stopPropagation();
                 setOpen(folder.id, !open);
+                focusOn(folder.id);
               }}
             >
               {open ? "▾" : "▸"}

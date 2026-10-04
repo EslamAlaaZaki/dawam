@@ -180,6 +180,18 @@ describe("the folder tree", () => {
     expect(item("KPIs")).toHaveFocus();
   });
 
+  it("keeps a tab stop and focus when a mouse collapse hides the selected folder", async () => {
+    open("owner", "?folder=dw/staging/model");
+    await tree();
+
+    fireEvent.click(within(item("Data Warehouse")).getAllByText("▾")[0]!);
+
+    expect(item("Data Warehouse")).toHaveAttribute("aria-expanded", "false");
+    const tabStops = screen.getAllByRole("treeitem").filter((n) => n.tabIndex === 0);
+    expect(tabStops).toEqual([item("Data Warehouse")]);
+    expect(item("Data Warehouse")).toHaveFocus();
+  });
+
   it("moves to the parent with Left from a leaf", async () => {
     open("owner");
     await tree();
