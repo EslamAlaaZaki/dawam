@@ -12,6 +12,8 @@ with Testcontainers (once per test session). Fixtures:
 - ``outbox``: captures every email the app sends (``outbox.messages``).
 - ``jobs``: the job runner; in tests background work always runs inline.
 - ``fresh_database_url``: an empty, unmigrated database for tests that need one.
+- ``roles``: a client per permission-matrix role (anonymous, non-member user,
+  viewer, editor, owner, non-member admin) on one Workspace; see ``tests/roles.py``.
 
 The container starts lazily, so tests that need no database don't pay for it.
 """
@@ -21,6 +23,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -33,12 +36,14 @@ from testcontainers.community.postgres import PostgresContainer
 from dawam.app import Services, create_app
 from dawam.modules.auth import AuthService, SystemRole
 from dawam.modules.jobs import InlineJobRunner
+from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
 from dawam.platform.csrf import CSRF_HEADER
 from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
 from tests.helpers import csrf_token, sign_in
+from tests.roles import RoleClients
 
 POSTGRES_IMAGE = "postgres:16"
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
@@ -170,6 +175,13 @@ def signed_in_client(app: FastAPI, signed_in_user: CreatedUser) -> Iterator[Test
         assert response.status_code == 200, response.text
         client.headers[CSRF_HEADER] = csrf_token(client)
         yield client
+
+
+@pytest.fixture
+def roles(app: FastAPI, auth_service: AuthService, clock: FakeClock) -> Iterator[RoleClients]:
+    """A client per permission-matrix role on one Workspace (see ``tests/roles.py``)."""
+    with ExitStack() as stack:
+        yield RoleClients(app, auth_service, WorkspaceService(app.state.engine, clock=clock), stack)
 
 
 def _reset_database(engine: sa.Engine) -> None:
