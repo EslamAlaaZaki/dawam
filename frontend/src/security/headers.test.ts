@@ -1,10 +1,12 @@
 // @vitest-environment node
-// The pages `web` serves carry the spec's security baseline (§8.4), and the API, the
-// probes and their cookies are proxied to FastAPI untouched.
+// The pages `web` serves carry the spec's security baseline (§8.4). In production the
+// API never reaches `web` (the `edge` proxy routes it to FastAPI); only `next dev`
+// forwards it.
+import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from "next/constants";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import nextConfig from "../../next.config";
+import nextConfigFor from "../../next.config";
 import { config as proxyConfig, proxy } from "../proxy";
 import { contentSecurityPolicy, hstsMaxAgeSeconds, strictTransportSecurity } from "./headers";
 
@@ -79,7 +81,7 @@ describe("HSTS on pages", () => {
     ).toBeNull();
   });
 
-  it("is sent when a TLS-terminating proxy forwarded the request", () => {
+  it("is sent when edge says the client used HTTPS", () => {
     const response = proxy(pageRequest("/", { "X-Forwarded-Proto": "https" }));
 
     expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
@@ -96,9 +98,10 @@ describe("HSTS on pages", () => {
     expect(proxy(pageRequest("/", https)).headers.get("Strict-Transport-Security")).toBeNull();
   });
 
-  it("reads the client-facing hop of a forwarded chain", () => {
-    expect(strictTransportSecurity("https, http", 60)).toBe("max-age=60");
+  it("takes edge's X-Forwarded-Proto as it is: one value, which it always sets", () => {
+    expect(strictTransportSecurity("https", 60)).toBe("max-age=60");
     expect(strictTransportSecurity("http, https", 60)).toBeNull();
+    expect(strictTransportSecurity(null, 60)).toBeNull();
   });
 
   it("refuses a max-age that is not whole seconds", () => {
@@ -109,39 +112,65 @@ describe("HSTS on pages", () => {
   });
 });
 
-describe("next.config", () => {
-  it("builds a standalone server", () => {
-    expect(nextConfig.output).toBe("standalone");
+describe("the proxy's matcher", () => {
+  const [matcher] = proxyConfig.matcher;
+  const matches = (path: string) => new RegExp(`^${matcher!.source}$`).test(path);
+
+  it("covers the pages", () => {
+    for (const path of ["/", "/login", "/workspaces/42", "/apiary"]) {
+      expect(matches(path), path).toBe(true);
+    }
   });
 
-  it("sends nosniff and the referrer policy on everything it serves, not on the API", async () => {
-    const rules = await nextConfig.headers!();
-
-    expect(rules).toHaveLength(1);
-    const [rule] = rules;
-    expect(rule!.headers).toEqual([
-      { key: "X-Content-Type-Options", value: "nosniff" },
-      { key: "Referrer-Policy", value: "same-origin" },
+  it("skips static files, images, the favicon, prefetches and the API", () => {
+    for (const path of [
+      "/_next/static/chunks/a.js",
+      "/_next/image",
+      "/favicon.ico",
+      "/api/v1/version",
+    ]) {
+      expect(matches(path), path).toBe(false);
+    }
+    expect(matcher!.missing).toEqual([
+      { type: "header", key: "next-router-prefetch" },
+      { type: "header", key: "purpose", value: "prefetch" },
     ]);
-    // The same exclusion as the proxy's: FastAPI owns the headers of what it serves.
-    expect(rule!.source).toBe(proxyConfig.matcher[0]);
-    const served = new RegExp(`^${rule!.source}$`);
-    for (const path of ["/", "/login", "/workspaces/42", "/_next/static/chunks/a.js", "/apiary"]) {
-      expect(served.test(path), path).toBe(true);
-    }
-    for (const path of ["/api", "/api/v1/version", "/healthz", "/readyz"]) {
-      expect(served.test(path), path).toBe(false);
-    }
+  });
+});
+
+describe("next.config", () => {
+  const production = nextConfigFor(PHASE_PRODUCTION_BUILD);
+
+  it("builds a standalone server", () => {
+    expect(production.output).toBe("standalone");
   });
 
-  it("forwards the API and the probes to FastAPI before any page or file", async () => {
-    const rewrites = await nextConfig.rewrites!();
+  it("sends nosniff and the referrer policy on everything it serves", async () => {
+    expect(await production.headers!()).toEqual([
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "same-origin" },
+        ],
+      },
+    ]);
+  });
+
+  it("never forwards the API in production: edge routes it to FastAPI", () => {
+    expect(production.rewrites).toBeUndefined();
+    expect(nextConfigFor(PHASE_PRODUCTION_SERVER).rewrites).toBeUndefined();
+  });
+
+  it("forwards the API and the probes under `next dev`, before any page or file", async () => {
+    vi.stubEnv("DAWAM_DEV_API_URL", "http://127.0.0.1:9000/");
+    const rewrites = await nextConfigFor(PHASE_DEVELOPMENT_SERVER).rewrites!();
 
     expect(rewrites).toEqual({
       beforeFiles: [
-        { source: "/api/:path*", destination: "http://localhost:8000/api/:path*" },
-        { source: "/healthz", destination: "http://localhost:8000/healthz" },
-        { source: "/readyz", destination: "http://localhost:8000/readyz" },
+        { source: "/api/:path*", destination: "http://127.0.0.1:9000/api/:path*" },
+        { source: "/healthz", destination: "http://127.0.0.1:9000/healthz" },
+        { source: "/readyz", destination: "http://127.0.0.1:9000/readyz" },
       ],
       afterFiles: [],
       fallback: [],

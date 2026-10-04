@@ -1,5 +1,5 @@
-// Runs before every request `web` serves itself (never the proxied API, see
-// `config.matcher`) and adds the per-request security headers.
+// Runs before every page request `web` serves (see `config.matcher`) and adds the
+// per-request security headers.
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -30,7 +30,17 @@ export function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Everything but the paths rewritten to FastAPI (BACKEND_PATHS), whose responses
-  // carry the backend's own headers. Must be a literal: Next.js reads it at build.
-  matcher: ["/((?!api(?:/|$)|healthz$|readyz$).*)"],
+  // Pages only, as Next.js recommends: not its static files and images (which get
+  // nosniff from next.config's headers()), not prefetches, and not the API, which
+  // only reaches `web` under `next dev` and keeps FastAPI's own headers. Must be a
+  // literal: Next.js reads it at build.
+  matcher: [
+    {
+      source: "/((?!api/|_next/static|_next/image|favicon.ico).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
+  ],
 };

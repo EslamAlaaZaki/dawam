@@ -1,7 +1,7 @@
 # DAWAM: `cp .env.example .env` (optional), then `docker compose up --build`.
-# DAWAM listens on http://localhost:${DAWAM_PORT:-8000}: the `web` service, which
-# serves the UI and forwards /api, /healthz and /readyz to `app`. Only `web` is
-# published; `app`, `worker` and `db` are reachable inside the Compose network only.
+# DAWAM listens on http://localhost:${DAWAM_PORT:-8000}: the `edge` proxy, which sends
+# /api/, /healthz and /readyz to `app` and everything else to `web`. Only `edge` is
+# published; the other services are reachable inside the Compose network only.
 # Optional local LLM server: `docker compose --profile ollama up`.
 
 name: dawam
@@ -15,12 +15,32 @@ x-dawam: &dawam
     DAWAM_DATABASE_URL: ${DAWAM_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-dawam}:${POSTGRES_PASSWORD:-dawam}@db:5432/${POSTGRES_DB:-dawam}}
     # Required, no default: compose refuses to start without it.
     DAWAM_ENCRYPTION_KEY: ${DAWAM_ENCRYPTION_KEY:?set DAWAM_ENCRYPTION_KEY in .env; .env.example says how to generate one}
+    # Only `edge` may tell the app who the client is and whether it used HTTPS.
+    DAWAM_FORWARDED_ALLOW_IPS: 172.30.126.10
   depends_on:
     db:
       condition: service_healthy
   restart: unless-stopped
 
 services:
+  edge:
+    build: deploy/nginx
+    environment:
+      # A TLS-terminating proxy in front of DAWAM (see .env.example); unset: none.
+      DAWAM_TRUSTED_PROXY_CIDRS: ${DAWAM_TRUSTED_PROXY_CIDRS:-}
+    ports:
+      - "${DAWAM_PORT:-8000}:8080"
+    networks:
+      default:
+        # Fixed, so `app` can trust exactly this address (DAWAM_FORWARDED_ALLOW_IPS).
+        ipv4_address: 172.30.126.10
+    depends_on:
+      app:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
   db:
     image: postgres:16
     environment:
@@ -54,19 +74,10 @@ services:
     command: ["python", "-m", "dawam", "worker"]
 
   web:
-    build:
-      context: frontend
-      args:
-        # Baked into the build: change it, then `docker compose up --build`.
-        DAWAM_API_URL: ${DAWAM_API_URL:-http://app:8000}
+    build: frontend
     # Only what the web server needs; it holds no secrets.
     environment:
       DAWAM_HSTS_MAX_AGE_SECONDS: ${DAWAM_HSTS_MAX_AGE_SECONDS:-31536000}
-    ports:
-      - "${DAWAM_PORT:-8000}:3000"
-    depends_on:
-      app:
-        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -85,6 +96,16 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        # If this clashes with a network on your host, change it, edge's ipv4_address
+        # and DAWAM_FORWARDED_ALLOW_IPS together. Other containers get addresses from
+        # ip_range only, so edge's fixed address is never taken.
+        - subnet: 172.30.126.0/24
+          ip_range: 172.30.126.128/25
 
 volumes:
   db-data:

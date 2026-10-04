@@ -1,40 +1,36 @@
 import type { NextConfig } from "next";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
-import { BACKEND_PATHS, STATIC_SECURITY_HEADERS } from "./src/security/headers";
+import { STATIC_SECURITY_HEADERS } from "./src/security/headers";
 
-// Where `web` forwards the API. Read when Next.js loads this file: on `next dev`, and
-// on `next build`, which bakes the value into the build (the Docker image takes it as
-// a build argument).
-const apiUrl = (process.env.DAWAM_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
+/** What FastAPI serves; in production the `edge` proxy sends these paths to `app`. */
+const BACKEND_PATHS = ["/api/:path*", "/healthz", "/readyz"];
 
-/** Every path except the backend's: the pages, assets and errors Next.js serves itself. */
-const NEXT_SERVED = "/((?!api(?:/|$)|healthz$|readyz$).*)";
+export default function nextConfig(phase: string): NextConfig {
+  const config: NextConfig = {
+    output: "standalone",
+    poweredByHeader: false,
+    reactStrictMode: true,
 
-const nextConfig: NextConfig = {
-  output: "standalone",
-  poweredByHeader: false,
-  reactStrictMode: true,
+    // The Content-Security-Policy (with a per-request nonce) and HSTS come from
+    // src/proxy.ts.
+    async headers() {
+      return [{ source: "/:path*", headers: STATIC_SECURITY_HEADERS }];
+    },
+  };
+  // `edge` puts `web` and `app` behind one origin. `next dev` runs without it, so
+  // only there does Next.js forward the API itself (to DAWAM_DEV_API_URL).
+  if (phase === PHASE_DEVELOPMENT_SERVER) {
+    config.rewrites = async () => devRewrites(process.env.DAWAM_DEV_API_URL);
+  }
+  return config;
+}
 
-  // The browser talks only to `web`: the API and the probes are proxied to FastAPI
-  // as they are (cookies included), so there is one origin and no CORS. `beforeFiles`
-  // means no page or file can ever shadow them.
-  async rewrites() {
-    return {
-      beforeFiles: BACKEND_PATHS.map((source) => ({
-        source,
-        destination: `${apiUrl}${source}`,
-      })),
-      afterFiles: [],
-      fallback: [],
-    };
-  },
-
-  // FastAPI sets its own headers on the API; these cover what Next.js serves. The
-  // Content-Security-Policy (with a per-request nonce) and HSTS come from
-  // `src/proxy.ts`.
-  async headers() {
-    return [{ source: NEXT_SERVED, headers: STATIC_SECURITY_HEADERS }];
-  },
-};
-
-export default nextConfig;
+function devRewrites(apiUrl = "http://localhost:8000") {
+  const origin = apiUrl.replace(/\/+$/, "");
+  return {
+    beforeFiles: BACKEND_PATHS.map((source) => ({ source, destination: `${origin}${source}` })),
+    afterFiles: [],
+    fallback: [],
+  };
+}

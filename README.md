@@ -26,19 +26,23 @@ docker compose up --build
 
 Then open <http://localhost:8000> (`DAWAM_PORT`) and sign in. To get the first admin
 account, set `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` in `.env` before the first
-start (see [Sign in](#sign-in)). Compose starts four services:
+start (see [Sign in](#sign-in)). Compose starts five services:
 
 | Service  | What it is |
 |----------|------------|
-| `web`    | The Next.js web UI, the only service published on the host. It forwards `/api/*`, `/healthz` and `/readyz` to `app`, so the browser sees a single origin. |
+| `edge`   | nginx (`deploy/nginx/`), the only service published on the host: it sends `/api/`, `/healthz` and `/readyz` to `app` and everything else to `web`, so the browser sees a single origin. |
+| `web`    | The Next.js web UI (pages only). |
 | `app`    | The FastAPI backend: the API, and the only place that authenticates, authorizes and stores data. Applies database migrations on startup. |
 | `worker` | The background worker process. |
 | `db`     | PostgreSQL 16, the only metadata store (data in the `db-data` volume). |
 
-`app`, `worker` and `db` are reachable only inside the Compose network; everything
-below goes through `web`. `web` finds the API at `DAWAM_API_URL` (default
-`http://app:8000`), which is built into its image: after changing it, run
-`docker compose up --build`.
+Everything else is reachable only inside the Compose network, so every request
+passes through `edge`. It overwrites `X-Forwarded-For` and `X-Forwarded-Proto` with
+the client's address and scheme, and `app` believes those headers from `edge`'s
+address alone (`DAWAM_FORWARDED_ALLOW_IPS`, set by Compose): whatever a client sends
+in them is ignored. The Compose network has a fixed subnet (`172.30.126.0/24`) so
+that `edge` can have a fixed address; if it clashes with a network on your host,
+change the three addresses in `compose.yaml` together.
 
 An optional local LLM server is declared but off by default:
 `docker compose --profile ollama up`.
@@ -61,12 +65,13 @@ new on every request (`frontend/src/security/headers.ts`); that is why every pag
 rendered per request.
 
 For anything beyond local use, put DAWAM behind a TLS-terminating reverse proxy in
-front of `web`. Requests it marks as HTTPS (`X-Forwarded-Proto: https`) then get
-`Strict-Transport-Security` on the pages. For the API responses and `Secure` cookies,
-`app` must also trust that header: set `DAWAM_FORWARDED_ALLOW_IPS` to the networks of
-`web` and of the proxy (see `.env.example`).
+front of `edge` (`DAWAM_PORT`) and list the proxy's addresses in
+`DAWAM_TRUSTED_PROXY_CIDRS`. From those addresses only, `edge` takes the client from
+`X-Forwarded-For` and the scheme from `X-Forwarded-Proto`; requests that arrived over
+HTTPS then get `Strict-Transport-Security` (pages and API) and `Secure` cookies (see
+`.env.example`).
 
-Logs are JSON lines on stdout (`docker compose logs -f app web`). Every request gets a
+Logs are JSON lines on stdout (`docker compose logs -f app web edge`). Every request gets a
 request id: send `X-Request-ID` to choose it, and it is returned in the response and
 on every log line for that request.
 
@@ -97,6 +102,7 @@ Repository layout:
 backend/    FastAPI app (Python 3.12+), Alembic migrations, tests, tools/
 frontend/   Next.js (App Router) + TypeScript app, TanStack Query, generated API client,
             its own Dockerfile (the `web` service)
+deploy/     nginx/: the `edge` service (Dockerfile, config template, trusted-proxy script)
 scripts/    generate-api-client.sh, check-api-client.sh
 compose.yaml, Dockerfile (the `app` and `worker` image), .env.example
 ```
@@ -137,11 +143,19 @@ one with `alembic revision --autogenerate -m "..."` in `backend/`.
 ```sh
 cd frontend
 npm ci
-npm run dev      # http://localhost:3000, forwards /api, /healthz and /readyz to
-                 # http://localhost:8000 (override with DAWAM_API_URL)
+npm run dev      # http://localhost:3000; only `next dev` forwards /api, /healthz and
+                 # /readyz itself, to http://localhost:8000 (DAWAM_DEV_API_URL)
 npm run lint     # ESLint, with the Next.js rules
 npm test         # component tests: Vitest + Testing Library
-npm run build    # next build (also type-checks); `npm start` serves the build
+npm run build    # next build (also type-checks)
+```
+
+The build is a standalone server (`output: "standalone"`), which `next start` cannot
+run. The `web` image runs it; to run it yourself after `npm run build`:
+
+```sh
+cp -r .next/static .next/standalone/.next/
+node .next/standalone/server.js   # pages only: put edge (or another proxy) in front for /api
 ```
 
 The app lives in `frontend/src/`: routes in `app/` (`login/`, and the signed-in pages

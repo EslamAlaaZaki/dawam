@@ -1,0 +1,56 @@
+# DAWAM's entry point. Rendered by the image's entrypoint (envsubst fills in the
+# ${...} values from the environment); $dawam_from_trusted_proxy comes from
+# 00-dawam-trusted-proxies.conf (15-dawam-trusted-proxies.sh).
+
+# The scheme the client used: what a trusted TLS proxy in front says, else edge's own.
+map "$dawam_from_trusted_proxy:$http_x_forwarded_proto" $dawam_forwarded_proto {
+    default $scheme;
+    "~^1:\s*(?<forwarded_proto>https?)\s*(,|$)" $forwarded_proto;
+}
+
+server {
+    listen 8080;
+    server_tokens off;
+
+    # Docker's DNS, so recreated `app`/`web` containers are found at their new address.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+    set $dawam_app http://${DAWAM_EDGE_APP};
+    set $dawam_web http://${DAWAM_EDGE_WEB};
+
+    # Room for future uploads (Schema Import files, documents).
+    client_max_body_size 100m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    # Overwritten, never appended: `app` trusts these from edge alone
+    # (DAWAM_FORWARDED_ALLOW_IPS), and `web` reads X-Forwarded-Proto for HSTS.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $dawam_forwarded_proto;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port "";
+    proxy_set_header X-Real-IP "";
+    proxy_set_header Forwarded "";
+
+    # The API goes straight to FastAPI. Not buffered, with a long read timeout, so
+    # streamed responses (server-sent events) reach the browser as they are written.
+    location /api/ {
+        proxy_pass $dawam_app;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+    location = /api {
+        proxy_pass $dawam_app;
+    }
+    location = /healthz {
+        proxy_pass $dawam_app;
+    }
+    location = /readyz {
+        proxy_pass $dawam_app;
+    }
+
+    # Everything else is a page or a file of the Next.js web UI.
+    location / {
+        proxy_pass $dawam_web;
+    }
+}

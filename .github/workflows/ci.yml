@@ -67,6 +67,20 @@ jobs:
       - name: Build (next build, also type-checks)
         run: npm run build
 
+  edge:
+    name: Edge proxy config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t dawam-edge deploy/nginx
+      # `nginx -T` prints every file it loaded: fail unless DAWAM's server is among them.
+      - name: Config is valid without a trusted proxy
+        run: docker run --rm dawam-edge nginx -T 2>&1 | tee /dev/stderr | grep -q "location /api/"
+      - name: Config is valid with trusted proxies
+        run: |
+          docker run --rm -e DAWAM_TRUSTED_PROXY_CIDRS="10.0.0.0/8, 192.0.2.7" dawam-edge nginx -T 2>&1 \
+            | tee /dev/stderr | grep -q "set_real_ip_from 192.0.2.7;"
+
   api-client:
     name: API client is up to date
     runs-on: ubuntu-latest

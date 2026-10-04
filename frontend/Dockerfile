@@ -1,5 +1,5 @@
 # The `web` service: the Next.js frontend as a standalone Node.js server
-# (`output: "standalone"`), forwarding the API to the `app` service.
+# (`output: "standalone"`). It serves pages only; `edge` routes the API to `app`.
 
 FROM node:22-slim AS build
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -7,10 +7,7 @@ WORKDIR /frontend
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-# Where `web` forwards /api, /healthz and /readyz. Next.js bakes it into the build, so
-# changing it means rebuilding the image.
-ARG DAWAM_API_URL=http://app:8000
-RUN DAWAM_API_URL="$DAWAM_API_URL" npm run build
+RUN npm run build
 
 FROM node:22-slim
 ENV NODE_ENV=production \

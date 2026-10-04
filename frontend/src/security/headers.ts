@@ -1,9 +1,6 @@
-// The security headers of the spec's baseline (§8.4) for everything `web` serves
-// itself. FastAPI sets the same baseline on the API responses `web` proxies (see
-// backend/src/dawam/platform/security_headers.py).
-
-/** Paths `web` forwards to FastAPI unchanged (see `rewrites` in next.config.ts). */
-export const BACKEND_PATHS = ["/api/:path*", "/healthz", "/readyz"];
+// The security headers of the spec's baseline (§8.4) for everything `web` serves.
+// The API never passes through `web`: the `edge` proxy sends it straight to FastAPI,
+// which sets the same baseline (backend/src/dawam/platform/security_headers.py).
 
 /** Headers that never change, set by `headers()` in next.config.ts. */
 export const STATIC_SECURITY_HEADERS = [
@@ -13,7 +10,7 @@ export const STATIC_SECURITY_HEADERS = [
 ];
 
 /**
- * The Content-Security-Policy for one response, set by `src/proxy.ts`.
+ * The Content-Security-Policy for one page, set by `src/proxy.ts`.
  *
  * Next.js puts inline scripts in every page (the React Server Components payload and
  * its bootstrap), so `'self'` alone would break the app. Instead each request gets a
@@ -48,18 +45,16 @@ export function newNonce(): string {
 /**
  * The `Strict-Transport-Security` value for a request, or `null` when none is sent.
  *
- * `web` itself speaks plain HTTP, so the request counts as HTTPS only when a
- * TLS-terminating proxy in front says so in `X-Forwarded-Proto` (its first value, the
- * client-facing hop). A forged header over plain HTTP gains nothing: browsers ignore
- * HSTS that does not arrive over HTTPS. `maxAgeSeconds` is
+ * `web` speaks plain HTTP and is reachable only through `edge`, which always
+ * overwrites `X-Forwarded-Proto` with the scheme the client used (believing a TLS
+ * proxy in front only when DAWAM_TRUSTED_PROXY_CIDRS names it). `maxAgeSeconds` is
  * `DAWAM_HSTS_MAX_AGE_SECONDS`; 0 turns HSTS off.
  */
 export function strictTransportSecurity(
   forwardedProto: string | null,
   maxAgeSeconds: number,
 ): string | null {
-  const scheme = forwardedProto?.split(",")[0]?.trim().toLowerCase();
-  if (scheme !== "https" || !(maxAgeSeconds > 0)) {
+  if (forwardedProto !== "https" || !(maxAgeSeconds > 0)) {
     return null;
   }
   return `max-age=${Math.floor(maxAgeSeconds)}`;

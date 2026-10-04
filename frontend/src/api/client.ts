@@ -45,8 +45,8 @@ const sendCsrfToken: Middleware = {
 
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const client = createClient<paths>({
-    // Same origin: `web` proxies the API. (No `window` while Next.js renders the page
-    // on the server, where screens never call the API.)
+    // Same origin: `edge` routes the API to FastAPI. (No `window` while Next.js
+    // renders the page on the server, where screens never call the API.)
     baseUrl: options.baseUrl ?? (typeof window === "undefined" ? "" : window.location.origin),
     fetch: options.fetch,
   });
