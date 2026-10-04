@@ -101,7 +101,9 @@ cannot see. It reads imports and attribute chains only, so it misses:
    unauthenticated`. Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` already
    requires the double-submit CSRF token (`dawam.platform.csrf`); add nothing.
 6. Test behaviour through the HTTP API (`anonymous_client`, `signed_in_client`)
-   or the public service interface, not internals (spec §10).
+   or the public service interface, not internals (spec §10). The one exception
+   is a deliberate storage-property check (e.g. a token is stored only hashed),
+   which may read the module's own tables; say so in the test's docstring.
 
 ## Planned modules
 

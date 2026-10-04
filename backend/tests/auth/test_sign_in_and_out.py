@@ -1,9 +1,14 @@
 """Signing in with email and password, ``GET /me``, and signing out (spec stories 2, 4)."""
 
+from datetime import timedelta
+
+import pytest
 import sqlalchemy as sa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from dawam.modules.auth import AuthService, SessionInfo
+from dawam.platform.clock import FakeClock
 from dawam.platform.csrf import CSRF_HEADER
 from tests.helpers import cookie_attributes, csrf_token, set_cookie_headers, sign_in, sign_out
 
@@ -84,6 +89,83 @@ def test_sign_in_rejects_a_missing_field(anonymous_client):
     assert error_of(response)["code"] == "validation_error"
 
 
+@pytest.mark.parametrize(
+    "credentials",
+    [
+        {"email": "a" * 243 + "@example.com", "password": "correct horse battery"},  # 255
+        {"email": "grace@example.com", "password": "x" * 1025},
+    ],
+)
+def test_sign_in_rejects_huge_inputs_before_checking_them(anonymous_client, credentials):
+    response = anonymous_client.post(
+        "/api/v1/auth/login", json=credentials, headers={CSRF_HEADER: csrf_token(anonymous_client)}
+    )
+
+    assert response.status_code == 422
+    assert error_of(response)["code"] == "validation_error"
+
+
+def test_sign_in_records_when_from_where_and_with_what(
+    anonymous_client, create_user, auth_service: AuthService, clock: FakeClock
+):
+    grace = create_user()
+    assert auth_service.get_user(grace.id).last_login_at is None
+    signed_in_at = clock()
+
+    response = anonymous_client.post(
+        "/api/v1/auth/login",
+        json={"email": grace.email, "password": grace.password},
+        headers={
+            CSRF_HEADER: csrf_token(anonymous_client),
+            "User-Agent": "Mozilla/5.0 (DAWAM test)",
+            # Only uvicorn, and only for DAWAM_FORWARDED_ALLOW_IPS, may rewrite the client.
+            "X-Forwarded-For": "203.0.113.9",
+        },
+    )
+
+    assert response.status_code == 200
+    assert auth_service.get_user(grace.id).last_login_at == signed_in_at
+    assert auth_service.sessions_of(grace.id) == [
+        SessionInfo(
+            ip="testclient",
+            user_agent="Mozilla/5.0 (DAWAM test)",
+            created_at=signed_in_at,
+            last_seen_at=signed_in_at,
+        )
+    ]
+
+
+def test_only_a_successful_sign_in_updates_the_last_login(
+    anonymous_client, create_user, auth_service: AuthService, clock: FakeClock
+):
+    grace = create_user()
+    sign_in(anonymous_client, grace.email, grace.password)
+    first = clock()
+
+    clock.advance(timedelta(hours=1))
+    sign_in(anonymous_client, grace.email, "not the password")
+    assert auth_service.get_user(grace.id).last_login_at == first
+
+    clock.advance(timedelta(hours=1))
+    sign_in(anonymous_client, grace.email, grace.password)
+    assert auth_service.get_user(grace.id).last_login_at == first + timedelta(hours=2)
+
+
+def test_a_very_long_user_agent_is_cut_short(
+    anonymous_client, create_user, auth_service: AuthService
+):
+    grace = create_user()
+
+    anonymous_client.post(
+        "/api/v1/auth/login",
+        json={"email": grace.email, "password": grace.password},
+        headers={CSRF_HEADER: csrf_token(anonymous_client), "User-Agent": "x" * 5000},
+    )
+
+    [session] = auth_service.sessions_of(grace.id)
+    assert session.user_agent == "x" * 512
+
+
 def test_the_session_cookie_is_httponly_lax_and_not_secure_over_plain_http(
     anonymous_client, create_user
 ):
@@ -118,6 +200,7 @@ def test_the_session_cookie_is_secure_when_served_over_tls(app: FastAPI, create_
 def test_the_session_is_stored_in_the_database_not_in_the_cookie(
     app: FastAPI, anonymous_client, create_user
 ):
+    """A deliberate storage-property check: it reads the auth tables directly."""
     grace = create_user()
 
     sign_in(anonymous_client, grace.email, grace.password)
@@ -132,6 +215,7 @@ def test_the_session_is_stored_in_the_database_not_in_the_cookie(
 
 
 def test_passwords_are_stored_as_argon2id_hashes(app: FastAPI, create_user):
+    """A deliberate storage-property check: it reads the auth tables directly."""
     grace = create_user(password="correct horse battery")
 
     with app.state.engine.connect() as conn:
@@ -143,7 +227,7 @@ def test_passwords_are_stored_as_argon2id_hashes(app: FastAPI, create_user):
 
 
 def test_sign_out_deletes_the_session_and_the_old_cookie_is_401(
-    app: FastAPI, anonymous_client, create_user
+    anonymous_client, create_user, auth_service: AuthService
 ):
     grace = create_user()
     sign_in(anonymous_client, grace.email, grace.password)
@@ -154,8 +238,7 @@ def test_sign_out_deletes_the_session_and_the_old_cookie_is_401(
     assert response.status_code == 204
     [cleared] = set_cookie_headers(response, SESSION_COOKIE)
     assert cookie_attributes(cleared)["max-age"] == "0"
-    with app.state.engine.connect() as conn:
-        assert conn.scalar(sa.text("SELECT count(*) FROM sessions")) == 0
+    assert auth_service.sessions_of(grace.id) == []
     anonymous_client.cookies.set(SESSION_COOKIE, old_token)
     me = anonymous_client.get("/api/v1/me")
     assert me.status_code == 401
@@ -179,7 +262,7 @@ def test_sign_out_without_a_session_is_harmless(anonymous_client):
 
 
 def test_signing_in_again_replaces_the_previous_session(
-    app: FastAPI, anonymous_client, create_user
+    anonymous_client, create_user, auth_service: AuthService
 ):
     grace = create_user()
     sign_in(anonymous_client, grace.email, grace.password)
@@ -188,5 +271,6 @@ def test_signing_in_again_replaces_the_previous_session(
     sign_in(anonymous_client, grace.email, grace.password)
 
     assert anonymous_client.cookies[SESSION_COOKIE] != first_token
-    with app.state.engine.connect() as conn:
-        assert conn.scalar(sa.text("SELECT count(*) FROM sessions")) == 1
+    assert len(auth_service.sessions_of(grace.id)) == 1
+    anonymous_client.cookies.set(SESSION_COOKIE, first_token)
+    assert anonymous_client.get("/api/v1/me").status_code == 401

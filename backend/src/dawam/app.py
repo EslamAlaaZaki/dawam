@@ -6,6 +6,7 @@ runner, ...) the app uses; tests pass their own ``Services``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ from dawam.modules.jobs import InlineJobRunner, JobRunner
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
 from dawam.platform.clock import Clock, system_clock
-from dawam.platform.config import Settings, load_settings
+from dawam.platform.config import ConfigError, Settings, load_settings
 from dawam.platform.csrf import CsrfCookieMiddleware, require_csrf
 from dawam.platform.db import create_engine
 from dawam.platform.email import EmailSender, LoggingEmailSender
@@ -31,6 +32,8 @@ from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 
 API_PREFIX = "/api/v1"
+
+logger = logging.getLogger("dawam.app")
 
 
 @dataclass
@@ -55,7 +58,13 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.run_migrations_on_startup:
             upgrade_to_head(engine)
-        AuthService(engine, settings, clock=services.clock).ensure_bootstrap_admin()
+        try:
+            AuthService(engine, settings, clock=services.clock).ensure_bootstrap_admin()
+        except ConfigError as exc:
+            logger.error(
+                "startup failed: DAWAM is not configured correctly", extra={"problem": str(exc)}
+            )
+            raise
         yield
         engine.dispose()
 
@@ -70,7 +79,6 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
-    app.state.clock = services.clock
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)

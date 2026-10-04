@@ -25,6 +25,7 @@ def upgrade() -> None:
         sa.Column("password_hash", sa.String(length=255), nullable=False),
         sa.Column("system_role", sa.String(length=16), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("system_role IN ('admin', 'user')", name=op.f("ck_users_system_role")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
         sa.UniqueConstraint("email", name=op.f("uq_users_email")),
@@ -36,6 +37,8 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("ip", sa.String(length=64), nullable=True),
+        sa.Column("user_agent", sa.String(length=512), nullable=True),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["users.id"],

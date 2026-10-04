@@ -254,10 +254,12 @@
         "properties": {
           "email": {
             "type": "string",
+            "maxLength": 254,
             "title": "Email"
           },
           "password": {
             "type": "string",
+            "maxLength": 1024,
             "title": "Password"
           }
         },

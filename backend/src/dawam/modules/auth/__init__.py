@@ -11,12 +11,12 @@ Owns the ``users`` and ``sessions`` tables.
 """
 
 from .api import CurrentUser, router
-from .service import MIN_PASSWORD_LENGTH, AuthService, SignedIn, SystemRole, User
+from .service import AuthService, SessionInfo, SignedIn, SystemRole, User
 
 __all__ = [
-    "MIN_PASSWORD_LENGTH",
     "AuthService",
     "CurrentUser",
+    "SessionInfo",
     "SignedIn",
     "SystemRole",
     "User",

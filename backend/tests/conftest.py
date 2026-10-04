@@ -126,9 +126,15 @@ UserFactory = Callable[..., CreatedUser]
 
 
 @pytest.fixture
-def create_user(app: FastAPI, anonymous_client: TestClient, clock: FakeClock) -> UserFactory:
-    """Create a user through the auth module's service (startup has migrated the database)."""
-    service = AuthService(app.state.engine, app.state.settings, clock=clock)
+def auth_service(app: FastAPI, anonymous_client: TestClient, clock: FakeClock) -> AuthService:
+    """The auth module's service on the test app (startup has migrated the database)."""
+    return AuthService(app.state.engine, app.state.settings, clock=clock)
+
+
+@pytest.fixture
+def create_user(auth_service: AuthService) -> UserFactory:
+    """Create a user through the auth module's service."""
+    service = auth_service
 
     def create(
         email: str = "grace@example.com",

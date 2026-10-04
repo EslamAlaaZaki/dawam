@@ -212,3 +212,46 @@ def test_the_admin_email_without_its_password_is_explained(monkeypatch):
     assert "  - set both DAWAM_ADMIN_EMAIL and DAWAM_ADMIN_PASSWORD, or neither." in str(
         raised.value
     )
+
+
+@pytest.mark.parametrize(
+    ("email", "password", "variable", "problem"),
+    [
+        ("not-an-email", "long enough password", "DAWAM_ADMIN_EMAIL", "email address"),
+        ("admin@example.com", "too short", "DAWAM_ADMIN_PASSWORD", "at least 10 characters"),
+    ],
+)
+def test_startup_fails_clearly_with_an_invalid_admin(
+    monkeypatch, email, password, variable, problem
+):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", email)
+    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", password)
+
+    with pytest.raises(ConfigError) as raised:
+        load_settings()
+
+    message = str(raised.value)
+    assert f"{variable} is invalid" in message
+    assert problem in message
+    assert password not in message
+
+
+@pytest.mark.parametrize("empty", ["", "  "])
+def test_empty_admin_settings_count_as_unset(monkeypatch, empty):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", empty)
+    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", empty)
+
+    settings = load_settings()
+
+    assert settings.admin_email is None
+    assert settings.admin_password is None
+
+
+def test_the_admin_email_is_normalised(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "  Admin@Example.COM ")
+    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", "long enough password")
+
+    assert load_settings().admin_email == "admin@example.com"

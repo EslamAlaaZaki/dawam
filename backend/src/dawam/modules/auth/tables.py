@@ -10,6 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from dawam.platform.db import Base
 
+IP_MAX_LENGTH = 64
+USER_AGENT_MAX_LENGTH = 512
+
 
 class UserRecord(Base):
     __tablename__ = "users"
@@ -23,6 +26,8 @@ class UserRecord(Base):
     """An argon2id hash in PHC string format (``$argon2id$...``)."""
     system_role: Mapped[str] = mapped_column(sa.String(16))
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """The last successful sign-in; None until the first."""
 
 
 class SessionRecord(Base):
@@ -40,3 +45,8 @@ class SessionRecord(Base):
     last_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     """The last request on this session (updated at most once a minute); the idle
     timeout counts from here."""
+    ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
+    """The client address at sign-in, as uvicorn reports it (a proxy's
+    ``X-Forwarded-For`` counts only from ``DAWAM_FORWARDED_ALLOW_IPS``)."""
+    user_agent: Mapped[str | None] = mapped_column(sa.String(USER_AGENT_MAX_LENGTH))
+    """The ``User-Agent`` at sign-in, cut to its first 512 characters."""
