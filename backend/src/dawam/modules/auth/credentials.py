@@ -1,8 +1,4 @@
-"""The rules for account emails and passwords (spec §6.1).
-
-They live in the kernel because both the settings (the bootstrap admin) and the auth
-module apply them; the auth module owns everything else about accounts.
-"""
+"""The auth module's rules for account emails and passwords (spec §6.1)."""
 
 from __future__ import annotations
 

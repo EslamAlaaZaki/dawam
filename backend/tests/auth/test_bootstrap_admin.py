@@ -79,6 +79,38 @@ def test_the_admin_email_of_a_non_admin_user_stops_startup_and_leaves_the_user_a
     assert response.json()["system_role"] == "user"
 
 
+@pytest.mark.parametrize(
+    ("email", "password", "variable", "problem"),
+    [
+        ("not-an-email", ADMIN_PASSWORD, "DAWAM_ADMIN_EMAIL", "email address"),
+        (ADMIN_EMAIL, "too short", "DAWAM_ADMIN_PASSWORD", "at least 10 characters"),
+        (ADMIN_EMAIL, "x" * 1025, "DAWAM_ADMIN_PASSWORD", "at most 1024 characters"),
+    ],
+    ids=["bad-email", "short-password", "long-password"],
+)
+def test_an_invalid_admin_stops_startup_naming_the_variable(
+    boot, anonymous_client, email, password, variable, problem
+):
+    with pytest.raises(ConfigError) as raised:
+        boot(admin_email=email, admin_password=password)
+
+    message = str(raised.value)
+    assert variable in message
+    assert problem in message
+    assert password not in message
+    assert not signs_in(anonymous_client, email, password)
+
+
+def test_stale_invalid_admin_values_do_not_stop_startup_once_an_admin_exists(
+    boot, anonymous_client
+):
+    boot(admin_email=ADMIN_EMAIL, admin_password=ADMIN_PASSWORD)
+
+    boot(admin_email="not-an-email", admin_password="short")
+
+    assert signs_in(anonymous_client, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+
 def test_without_the_settings_no_admin_is_created(boot, anonymous_client):
     boot()
 

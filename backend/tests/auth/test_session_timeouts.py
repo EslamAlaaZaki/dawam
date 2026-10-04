@@ -92,3 +92,20 @@ def test_timeouts_are_configurable(settings, services, create_user, clock: FakeC
 def test_timeouts_must_be_positive(settings, field):
     with pytest.raises(ValidationError):
         Settings(**{**settings.model_dump(), field: 0})
+
+
+def test_the_absolute_timeout_is_fixed_at_sign_in(settings, services, create_user, clock):
+    # A session keeps the expiry it got at sign-in, even if the setting changes later.
+    grace = create_user()
+    with TestClient(create_app(settings, services=services)) as client:
+        sign_in(client, grace.email, grace.password)
+        token = client.cookies["dawam_session"]
+
+    longer = settings.model_copy(update={"session_absolute_timeout_days": 30})
+    with TestClient(create_app(longer, services=services)) as client:
+        client.cookies.set("dawam_session", token)
+        for _ in range(47):  # 47 * 7 h = 13 days 17 h
+            clock.advance(timedelta(hours=7))
+            assert me_status(client) == 200
+        clock.advance(timedelta(hours=7))  # 14 days after sign-in
+        assert me_status(client) == 401

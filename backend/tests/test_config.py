@@ -214,27 +214,17 @@ def test_the_admin_email_without_its_password_is_explained(monkeypatch):
     )
 
 
-@pytest.mark.parametrize(
-    ("email", "password", "variable", "problem"),
-    [
-        ("not-an-email", "long enough password", "DAWAM_ADMIN_EMAIL", "email address"),
-        ("admin@example.com", "too short", "DAWAM_ADMIN_PASSWORD", "at least 10 characters"),
-    ],
-)
-def test_startup_fails_clearly_with_an_invalid_admin(
-    monkeypatch, email, password, variable, problem
-):
+def test_admin_values_are_not_checked_until_an_admin_is_created(monkeypatch):
+    # Bootstrap checks them only when it creates the admin, so stale values left in the
+    # environment after the first start never stop the app or the worker.
     monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
-    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", email)
-    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", password)
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "not-an-email")
+    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", "short")
 
-    with pytest.raises(ConfigError) as raised:
-        load_settings()
+    settings = load_settings()
 
-    message = str(raised.value)
-    assert f"{variable} is invalid" in message
-    assert problem in message
-    assert password not in message
+    assert settings.admin_email == "not-an-email"
+    assert settings.admin_password is not None
 
 
 @pytest.mark.parametrize("empty", ["", "  "])
@@ -247,11 +237,3 @@ def test_empty_admin_settings_count_as_unset(monkeypatch, empty):
 
     assert settings.admin_email is None
     assert settings.admin_password is None
-
-
-def test_the_admin_email_is_normalised(monkeypatch):
-    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
-    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "  Admin@Example.COM ")
-    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", "long enough password")
-
-    assert load_settings().admin_email == "admin@example.com"

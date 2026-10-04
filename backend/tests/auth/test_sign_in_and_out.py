@@ -214,6 +214,22 @@ def test_the_session_is_stored_in_the_database_not_in_the_cookie(
     assert token not in {str(value) for value in sessions[0].values()}
 
 
+def test_the_session_row_holds_its_absolute_expiry(
+    app: FastAPI, anonymous_client, create_user, clock: FakeClock
+):
+    """A deliberate storage-property check: it reads the auth tables directly."""
+    grace = create_user()
+
+    sign_in(anonymous_client, grace.email, grace.password)
+
+    with app.state.engine.connect() as conn:
+        created_at, expires_at = conn.execute(
+            sa.text("SELECT created_at, expires_at FROM sessions")
+        ).one()
+    assert created_at == clock()
+    assert expires_at == clock() + timedelta(days=14)
+
+
 def test_passwords_are_stored_as_argon2id_hashes(app: FastAPI, create_user):
     """A deliberate storage-property check: it reads the auth tables directly."""
     grace = create_user(password="correct horse battery")

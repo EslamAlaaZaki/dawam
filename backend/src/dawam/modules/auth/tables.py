@@ -45,6 +45,8 @@ class SessionRecord(Base):
     last_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     """The last request on this session (updated at most once a minute); the idle
     timeout counts from here."""
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    """``created_at`` plus the absolute timeout in force at sign-in."""
     ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
     """The client address at sign-in, as uvicorn reports it (a proxy's
     ``X-Forwarded-For`` counts only from ``DAWAM_FORWARDED_ALLOW_IPS``)."""

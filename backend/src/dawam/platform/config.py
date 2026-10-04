@@ -22,8 +22,6 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from dawam.platform.credentials import is_valid_email, normalize_email, password_problem
-
 ENCRYPTION_KEY_BYTES = 32
 GENERATE_ENCRYPTION_KEY = (
     'python -c "import base64, secrets; '
@@ -117,33 +115,15 @@ class Settings(DatabaseSettings):
     admin_password: SecretStr | None = None
     """The first admin (the spec's ``ADMIN_EMAIL`` / ``ADMIN_PASSWORD``): created at
     startup only if no admin exists yet. Set both or neither; empty counts as unset.
-    The email is held normalised; the password must meet the password policy."""
+    The auth module checks them, and only when it is about to create the admin."""
 
-    @field_validator("admin_email", mode="before")
+    @field_validator("admin_email", "admin_password", mode="before")
     @classmethod
-    def _check_admin_email(cls, value: object) -> object:
-        if not isinstance(value, str):
-            return value
-        email = normalize_email(value)
-        if not email:
+    def _empty_admin_value_is_unset(cls, value: object) -> object:
+        text = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if isinstance(text, str) and not text.strip():
             return None
-        if not is_valid_email(email):
-            raise PydanticCustomError("invalid_email", "must be an email address")
-        return email
-
-    @field_validator("admin_password", mode="before")
-    @classmethod
-    def _check_admin_password(cls, value: object) -> object:
-        password = value.get_secret_value() if isinstance(value, SecretStr) else value
-        if not isinstance(password, str):
-            return value
-        if not password.strip():
-            return None
-        problem = password_problem(password)
-        if problem:
-            # The message never includes the value itself.
-            raise PydanticCustomError("invalid_password", problem)
-        return password
+        return value
 
     session_idle_timeout_hours: float = Field(default=8, gt=0)
     """A session ends after this long without a request."""

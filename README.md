@@ -62,7 +62,9 @@ on every log line for that request.
 - **First admin.** When the app starts and no admin exists, it creates one from
   `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` (the spec's `ADMIN_EMAIL` /
   `ADMIN_PASSWORD`, with DAWAM's `DAWAM_` prefix). Once an admin exists, later starts
-  never create or change one.
+  never create or change one. If no admin exists but a non-admin user already has
+  `DAWAM_ADMIN_EMAIL`, startup fails with an error naming that variable, and the user
+  is left unchanged.
 - **Sessions** are stored in the database. The browser holds only a random token in
   the `dawam_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` when served over
   HTTPS). A session ends after `DAWAM_SESSION_IDLE_TIMEOUT_HOURS` (default 8) without

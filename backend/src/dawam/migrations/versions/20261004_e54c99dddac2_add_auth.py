@@ -37,6 +37,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ip", sa.String(length=64), nullable=True),
         sa.Column("user_agent", sa.String(length=512), nullable=True),
         sa.ForeignKeyConstraint(

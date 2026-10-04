@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
-from dawam.platform.credentials import is_valid_email, normalize_email, password_problem
 from dawam.platform.errors import ApiError
 
+from .credentials import is_valid_email, normalize_email, password_problem
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,13 @@ def _user(record: UserRecord) -> User:
 
 
 class AuthService:
-    """Users, passwords and server-side sessions."""
+    """Users, passwords and server-side sessions.
+
+    A session is identified by a random token that only the browser's cookie holds;
+    the ``sessions`` row stores its SHA-256 (``token_hash``), not the token, so a
+    database leak yields no usable sessions. (Spec §7 speaks of the session ID in the
+    cookie; the row's ``id`` is never sent.)
+    """
 
     def __init__(self, engine: sa.Engine, settings: Settings, *, clock: Clock) -> None:
         self._engine = engine
@@ -157,8 +163,12 @@ class AuthService:
 
     def ensure_bootstrap_admin(self) -> None:
         """Create the admin from ``DAWAM_ADMIN_EMAIL``/``DAWAM_ADMIN_PASSWORD`` if they are
-        set and no admin exists. Never changes an existing user: if a non-admin user
-        already has that email, raises ``ConfigError`` so startup stops."""
+        set and no admin exists. Never changes an existing user.
+
+        Only when it is about to create the admin does it check the values; it raises
+        ``ConfigError`` (naming the variable, never echoing the password) if the email
+        is not an address, the password breaks the policy, or a non-admin user already
+        has the email. Once an admin exists, stale values never stop startup."""
         if self._settings.admin_email is None or self._settings.admin_password is None:
             return
         email = normalize_email(self._settings.admin_email)
@@ -167,6 +177,11 @@ class AuthService:
             db.execute(sa.select(sa.func.pg_advisory_xact_lock(_BOOTSTRAP_LOCK_KEY)))
             if db.scalar(sa.select(sa.exists().where(UserRecord.system_role == "admin"))):
                 return
+            if not is_valid_email(email):
+                raise ConfigError("DAWAM_ADMIN_EMAIL is invalid: must be an email address.")
+            problem = password_problem(password)
+            if problem:
+                raise ConfigError(f"DAWAM_ADMIN_PASSWORD is invalid: {problem}.")
             if db.scalar(sa.select(sa.exists().where(UserRecord.email == email))):
                 raise ConfigError(
                     "DAWAM_ADMIN_EMAIL belongs to an existing user who is not an admin, and "
@@ -214,6 +229,7 @@ class AuthService:
                     user_id=user.id,
                     created_at=now,
                     last_seen_at=now,
+                    expires_at=now + self.absolute_timeout,
                     ip=ip[:IP_MAX_LENGTH] if ip else None,
                     user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
                 )
@@ -233,7 +249,7 @@ class AuthService:
                 return None
             session, user = row
             if (
-                now >= session.created_at + self.absolute_timeout
+                now >= session.expires_at  # absolute timeout, fixed at sign-in
                 or now >= session.last_seen_at + self.idle_timeout
             ):
                 db.delete(session)
