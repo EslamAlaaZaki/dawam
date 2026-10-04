@@ -123,9 +123,34 @@ on every log line for that request.
   current one and signs out every other session of theirs) and sign out everywhere. A
   wrong current password counts towards the lockout like a failed sign-in.
 - Endpoints: `POST /api/v1/auth/login`, `/auth/logout`, `/auth/logout-all`,
-  `/auth/register`, `/auth/password/change`; `GET /api/v1/auth/registration` (is
+  `/auth/register`, `/auth/password/change`, `/auth/password/forgot`,
+  `/auth/password/reset`; `GET /api/v1/auth/registration` (is
   sign-up open?); `GET|PATCH /api/v1/me`; `GET|PUT /api/v1/admin/settings` (admins
   only).
+- **Forgotten passwords.** The sign-in page links to "Forgot your password?", which
+  emails a reset link (`POST /api/v1/auth/password/forgot`; the answer is the same
+  whether or not the email belongs to a user). The link is single-use and valid
+  for 30 minutes; DAWAM stores only its SHA-256. Setting a new password with it
+  (`POST /api/v1/auth/password/reset`) ends every session of that user. Links start
+  with `DAWAM_PUBLIC_URL` (default `http://localhost:8000`), never with the
+  request's host.
+
+### Email
+
+An admin sets up SMTP in the web UI (**Email settings**, `GET|PUT|DELETE
+/api/v1/admin/smtp`): host, port, `none` / `starttls` / `tls` (certificates are
+always verified), optional username and password, and the From address. **Send test
+email** (`POST /api/v1/admin/smtp/test`) sends one right away and shows the server's
+error if it fails. The SMTP password is stored encrypted with `DAWAM_ENCRYPTION_KEY`
+(AES-256-GCM) and never returned (the API says `has_password` instead); changing the
+host, port or username needs it entered again, so it cannot be sent to another
+server unseen.
+
+**Without SMTP** (air-gapped installs), or when sending fails, links DAWAM would
+email are kept for admins instead: **Links to share** (`GET
+/api/v1/admin/undelivered-links`) lists each with its recipient, so an admin can
+copy it to them. A link leaves the list when it expires or an admin removes it;
+it is stored encrypted too.
 
 ### Workspaces
 
@@ -240,11 +265,14 @@ running**. The harness in `backend/tests/conftest.py` provides:
   including migrations);
 - `signed_in_client`: a client signed in through the API as `signed_in_user` (a
   regular user); it sends the CSRF token on every request;
+- `admin_client`: the same, signed in as `admin_user` (an admin);
 - `create_user`: creates a user (regular by default) and returns its credentials;
   sign in with `tests.helpers.sign_in(client, email, password)`;
 - `clock`: the app's clock, a `FakeClock` that tests move with `clock.advance(...)`;
 - `outbox`: every email the app sends, readable as `outbox.messages` /
-  `outbox.sent_to(address)`;
+  `outbox.sent_to(address)` (it stands in for the SMTP server, so a test saves
+  SMTP settings first; without them links go to the admins' list, as in
+  production; `outbox.fail_with(reason)` makes sending fail);
 - `jobs`: the job runner; background work runs inline in tests, before `submit`
   returns;
 - `fresh_database_url`: an empty, unmigrated database;

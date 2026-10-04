@@ -41,7 +41,11 @@ nothing else.
    `tables`. The module's own code (`service.py`, `internal/`) imports `tables`,
    so importing the package still registers the tables for Alembic.
 3. **`dawam.platform` is the shared kernel**: config, db, errors, logging,
-   email, the clock and running migrations (`dawam.platform.migrations` drives
+   email (the SMTP transport, `EmailSender`, and the `Mailer` port; the delivery
+   service itself, with its SMTP settings and undelivered links, is the `mail`
+   module), crypto (`SecretBox`: AES-256-GCM under `DAWAM_ENCRYPTION_KEY`, for any
+   credential a module must store and use later), the clock and running
+   migrations (`dawam.platform.migrations` drives
    Alembic and points it at the scripts by path; the scripts themselves live in
    `dawam.migrations`, a composition root, not in the kernel), plus the app-wide
    HTTP plumbing that belongs to no module (request context, security headers and
@@ -54,6 +58,13 @@ nothing else.
    modules' public interfaces. `dawam/migrations/env.py` imports `dawam.modules`
    so that every module's tables are registered on `Base.metadata` before Alembic
    compares or migrates.
+5. **`auth` is upstream of every module.** Any module may import it (for
+   `CurrentUser`, `AdminUser`, ...), so `auth` imports no other module: what it
+   needs from one, it gets as a kernel port the composition root fills. Its reset
+   emails go through the `mail` module's `MailService` as the
+   `dawam.platform.email.Mailer` in `app.state.mailer`. Other modules import
+   `dawam.modules.mail` directly; either way every email goes through that one
+   service.
 
 `tools/check_boundaries.py`, which CI runs, enforces:
 
@@ -122,4 +133,4 @@ cannot see. It reads imports and attribute chains only, so it misses:
 `auth`, `admin`, `workspaces`, `sources`, `schema_import`, `analysis`,
 `documents`, `staging`, `design`, `mapping`, `lineage`, `propagation`, `scoring`,
 `collaboration`, `exports`, `jobs`, `pii`, `kpi_suggestions`, `files`,
-`assistant`, `llm_gateway`. Each is created by the ticket that first needs it.
+`assistant`, `llm_gateway`, `mail`. Each is created by the ticket that first needs it.

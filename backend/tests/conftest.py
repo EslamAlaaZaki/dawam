@@ -10,7 +10,9 @@ with Testcontainers (once per test session). Fixtures:
 - ``create_user``: creates a user (default: a regular user) and returns its
   credentials; sign in with ``tests.helpers.sign_in``.
 - ``clock``: the app's clock, a ``FakeClock`` the test moves with ``advance``.
-- ``outbox``: captures every email the app sends (``outbox.messages``).
+- ``outbox``: captures every email the app sends (``outbox.messages``); it stands in
+  for the SMTP server, so emails reach it once SMTP settings are saved (without
+  them, links are kept for admins). ``outbox.fail_with(reason)`` makes sends fail.
 - ``jobs``: the job runner; in tests background work always runs inline.
 - ``fresh_database_url``: an empty, unmigrated database for tests that need one.
 - ``roles``: a client per permission-matrix role (anonymous, non-member user,
