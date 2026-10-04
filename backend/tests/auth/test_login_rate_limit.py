@@ -2,6 +2,7 @@
 15 minutes (both configurable) that address must wait, and only that address
 (spec story 9, §6.1 rate limiting)."""
 
+import logging
 from datetime import timedelta
 
 import pytest
@@ -67,6 +68,20 @@ def test_the_next_attempt_from_that_address_must_wait(anonymous_client, grace):
     assert error["details"] == {"retry_after_seconds": 900}
     assert response.headers["retry-after"] == "900"
     assert "dawam_session" not in response.cookies
+
+
+def test_a_throttled_attempt_is_logged_for_operators(
+    anonymous_client, grace, caplog: pytest.LogCaptureFixture
+):
+    spray(anonymous_client, 20)
+    caplog.set_level(logging.WARNING, logger="dawam")
+
+    attempt(anonymous_client, grace.email, grace.password, ATTACKER)
+
+    [record] = [r for r in caplog.records if r.getMessage() == "sign-in throttled"]
+    assert record.levelno == logging.WARNING
+    assert (record.ip, record.retry_after_seconds) == (ATTACKER, 900)
+    assert grace.password not in str(record.__dict__)
 
 
 def test_other_addresses_are_not_slowed_down(anonymous_client, grace):

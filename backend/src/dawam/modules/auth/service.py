@@ -220,7 +220,13 @@ class AuthService:
         with Session(self._engine) as db:
             throttled_until = self._guard.throttled_until(db, ip, now)
         if throttled_until is not None:
-            raise too_many_attempts(throttled_until, now)
+            error = too_many_attempts(throttled_until, now)
+            # Not a security event (an address may send many); a log line per attempt.
+            logger.warning(
+                "sign-in throttled",
+                extra={"ip": ip, "retry_after_seconds": error.details["retry_after_seconds"]},
+            )
+            raise error
         with Session(self._engine) as db, db.begin():
             # Locked, so concurrent attempts on one account are counted one at a time.
             user = db.scalar(
