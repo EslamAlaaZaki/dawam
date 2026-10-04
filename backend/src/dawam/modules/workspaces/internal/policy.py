@@ -46,6 +46,10 @@ class Action(StrEnum):
     """Rename / edit Workspace details."""
     MANAGE_MEMBERS = "workspace.manage_members"
     """Add / remove members, change roles."""
+    TRANSFER_OWNERSHIP = "workspace.transfer_ownership"
+    """Hand ownership to another member, stepping down to editor."""
+    LEAVE_WORKSPACE = "workspace.leave"
+    """Leave the Workspace (any member; spec story 34). The last owner still cannot."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -105,6 +109,8 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer"),
     Action.EDIT_WORKSPACE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),
+    Action.TRANSFER_OWNERSHIP: _WorkspaceRule(min_role="owner"),
+    Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer"),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 

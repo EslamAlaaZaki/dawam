@@ -3,7 +3,7 @@
 Public interface. Other modules import only what is re-exported here:
 
 - ``AuthService``: create users, the bootstrap admin, self-registration, sessions,
-  display names and password changes.
+  display names and password changes; look users up by id or email.
 - ``RegistrationPolicy``: the port sign-up reads its ``RegistrationRules`` from
   (whether registration is open, and to which domains); the composition root sets
   ``app.state.registration_policy``.
@@ -22,7 +22,9 @@ Public interface. Other modules import only what is re-exported here:
   ``app.state.mailer``: auth never imports another module).
 - ``Invitations``: inviting people by email (``SentInvitation``, pending ones as an
   ``InvitationPage`` of ``Invitation``, revoking) and accepting an invitation; the
-  links go out through the same ``Mailer``.
+  links go out through the same ``Mailer``. Accepting an invitation into a Workspace
+  joins it through the ``InvitedMembership`` port (the ``workspaces`` module implements
+  it; the composition root sets ``app.state.invited_membership``).
 - ``router``: ``GET /auth/registration``; ``POST /auth/register``, ``/auth/login``,
   ``/auth/logout``, ``/auth/logout-all``, ``/auth/password/change``,
   ``/auth/password/forgot``, ``/auth/password/reset``, ``/auth/invitations/lookup``,
@@ -38,6 +40,7 @@ from .internal.invitations import (
     Invitation,
     InvitationPage,
     Invitations,
+    InvitedMembership,
     InvitedRole,
     Inviter,
     SentInvitation,
@@ -68,6 +71,7 @@ __all__ = [
     "Invitation",
     "InvitationPage",
     "Invitations",
+    "InvitedMembership",
     "InvitedRole",
     "Inviter",
     "LoggedSecurityEvent",

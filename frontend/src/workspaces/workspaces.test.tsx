@@ -20,9 +20,15 @@ const ADA: Me = {
 };
 
 const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
-  owner: ["workspace.edit", "workspace.manage_members", "workspace.view"],
-  editor: ["workspace.view"],
-  viewer: ["workspace.view"],
+  owner: [
+    "workspace.edit",
+    "workspace.leave",
+    "workspace.manage_members",
+    "workspace.transfer_ownership",
+    "workspace.view",
+  ],
+  editor: ["workspace.leave", "workspace.view"],
+  viewer: ["workspace.leave", "workspace.view"],
 };
 
 function workspace(id: string, name: string, role: WorkspaceRole, more: Partial<Workspace> = {}) {
@@ -88,6 +94,9 @@ function fakeBackend(
 
     if (request.method !== "GET" && csrf !== CSRF_TOKEN) {
       return apiError(403, "csrf_failed", "The request has no valid CSRF token.");
+    }
+    if (/^\/api\/v1\/workspaces\/[^/]+\/members$/.test(url.pathname)) {
+      return json({ items: [] });
     }
     if (/^\/api\/v1\/workspaces\/[^/]+\/progress$/.test(url.pathname)) {
       return json({

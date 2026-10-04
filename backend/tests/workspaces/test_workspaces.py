@@ -36,7 +36,13 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
         "description": "Warehouse for the retail bank",
         "domain": "Retail banking",
         "role": "owner",
-        "permissions": ["workspace.edit", "workspace.manage_members", "workspace.view"],
+        "permissions": [
+            "workspace.edit",
+            "workspace.leave",
+            "workspace.manage_members",
+            "workspace.transfer_ownership",
+            "workspace.view",
+        ],
         "version": 1,
         "created_at": clock().isoformat().replace("+00:00", "Z"),
         "updated_at": clock().isoformat().replace("+00:00", "Z"),
@@ -214,7 +220,10 @@ def test_editors_and_viewers_open_a_workspace_but_cannot_edit_it(roles: RoleClie
 
         opened = client.get(url)
         assert opened.status_code == 200
-        assert (opened.json()["role"], opened.json()["permissions"]) == (role, ["workspace.view"])
+        assert (opened.json()["role"], opened.json()["permissions"]) == (
+            role,
+            ["workspace.leave", "workspace.view"],
+        )
 
         response = client.patch(url, json={"version": 1, "name": f"Renamed by {role}"})
         assert response.status_code == 403

@@ -16,13 +16,15 @@ import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { FolderTree } from "./FolderTree";
 import { findFolder, workspaceFolders } from "./folders";
+import { MembersPanel } from "./MembersPanel";
 import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
 /**
  * A Workspace's page: its folder tree, the selected folder (kept in the `folder` URL
  * parameter, so it can be linked and reloaded) and the stage progress. The Workspace's
- * own folder shows its details, editable by owners and read-only for everyone else.
+ * own folder shows its details, editable by owners and read-only for everyone else, and
+ * its members.
  */
 export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspace(workspaceId);
@@ -65,7 +67,10 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
         </nav>
         <div className="workspace-main">
           {folder.id === "" ? (
-            <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
+            <>
+              <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
+              <MembersPanel workspace={workspace.data} />
+            </>
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>

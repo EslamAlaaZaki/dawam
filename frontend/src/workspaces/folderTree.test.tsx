@@ -63,6 +63,9 @@ function open(role: WorkspaceRole, query = "") {
     if (path === `/api/v1/workspaces/${ID}/progress`) {
       return json(PROGRESS);
     }
+    if (path === `/api/v1/workspaces/${ID}/members`) {
+      return json({ items: [] });
+    }
     return json({ error: { code: "not_found", message: "Not Found", details: {} } }, 404);
   };
   const client = createApiClient({

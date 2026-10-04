@@ -133,6 +133,60 @@ def _role(value: str) -> WorkspaceRole:
     return value  # type: ignore[return-value]  # checked above
 
 
+def authorized(
+    db: Session,
+    user: User,
+    action: Action,
+    workspace_id: uuid.UUID,
+    *,
+    lock: bool = False,
+) -> tuple[WorkspaceRecord, WorkspaceScope]:
+    """Load the Workspace ``workspace_id`` in ``db`` and check ``user`` may perform
+    ``action`` there (404 ``not_found`` / 403 ``forbidden`` as ``WorkspaceService.authorize``).
+    ``lock`` takes the Workspace row ``FOR UPDATE``, as every change of members must."""
+    query = (
+        sa.select(WorkspaceRecord, MemberRecord.role)
+        .outerjoin(
+            MemberRecord,
+            (MemberRecord.workspace_id == WorkspaceRecord.id) & (MemberRecord.user_id == user.id),
+        )
+        .where(WorkspaceRecord.id == workspace_id)
+    )
+    if lock:
+        query = query.with_for_update(of=WorkspaceRecord)
+    row = db.execute(query).first()
+    if row is None:
+        raise _not_found()
+    record, role = row
+    scope = WorkspaceScope(
+        workspace_id=record.id,
+        user_id=user.id,
+        role=_role(role) if role is not None else None,
+    )
+    if can(user, action, scope):
+        return record, scope
+    raise _forbidden() if scope.role is not None else _not_found()
+
+
+def workspace_view(user: User, record: WorkspaceRecord, role: WorkspaceRole | None) -> Workspace:
+    """``record`` as the member ``user``, whose role is ``role``, sees it."""
+    if role is None:
+        # Only members get a Workspace; an admin-only action never returns one.
+        raise ValueError("a Workspace is only shown to its members")
+    scope = WorkspaceScope(workspace_id=record.id, user_id=user.id, role=role)
+    return Workspace(
+        id=record.id,
+        name=record.name,
+        description=record.description,
+        domain=record.domain,
+        role=role,
+        permissions=frozenset(a for a in WORKSPACE_ACTIONS if can(user, a, scope)),
+        version=record.version,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
 class WorkspaceService:
     """Workspaces and their members. Every method that acts for a user authorizes
     through the policy (``can``) first; callers add no checks of their own."""
@@ -152,7 +206,7 @@ class WorkspaceService:
         ``forbidden`` if a member's role does not allow the action.
         """
         with Session(self._engine) as db:
-            _, scope = self._authorized(db, user, action, workspace_id)
+            _, scope = authorized(db, user, action, workspace_id)
             return scope
 
     def create(
@@ -184,7 +238,7 @@ class WorkspaceService:
                     added_at=now,
                 )
             )
-            return self._workspace(user, record, "owner")
+            return workspace_view(user, record, "owner")
 
     def list_for(
         self, user: User, *, limit: int = DEFAULT_PAGE_SIZE, cursor: str | None = None
@@ -210,7 +264,7 @@ class WorkspaceService:
             )
         with Session(self._engine) as db:
             rows = db.execute(query).all()
-        items = [self._workspace(user, record, _role(role)) for record, role, _ in rows[:limit]]
+        items = [workspace_view(user, record, _role(role)) for record, role, _ in rows[:limit]]
         next_cursor = None
         if len(rows) > limit:
             # The database's own sort key, so the next page starts exactly after it.
@@ -220,13 +274,13 @@ class WorkspaceService:
 
     def get(self, user: User, workspace_id: uuid.UUID) -> Workspace:
         with Session(self._engine) as db:
-            record, scope = self._authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
-            return self._workspace(user, record, scope.role)
+            record, scope = authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
+            return workspace_view(user, record, scope.role)
 
     def stage_progress(self, user: User, workspace_id: uuid.UUID) -> StageProgress:
         """Stage progress of a Workspace, for any member (viewers included)."""
         with Session(self._engine) as db:
-            self._authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
+            authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
         # No Source Systems, KPIs or DW Schema exist yet, so nothing has been started.
         return StageProgress(
             source_analysis=[],
@@ -248,9 +302,7 @@ class WorkspaceService:
         the caller last saw; if the Workspace has changed since, raises ``ApiError``
         409 ``version_conflict`` and changes nothing."""
         with Session(self._engine) as db, db.begin():
-            record, scope = self._authorized(
-                db, user, Action.EDIT_WORKSPACE, workspace_id, lock=True
-            )
+            record, scope = authorized(db, user, Action.EDIT_WORKSPACE, workspace_id, lock=True)
             if record.version != version:
                 raise _version_conflict(record.version)
             if name is not None:
@@ -262,7 +314,7 @@ class WorkspaceService:
             record.version += 1
             record.updated_at = self._clock()
             db.flush()
-            return self._workspace(user, record, scope.role)
+            return workspace_view(user, record, scope.role)
 
     def add_member(
         self,
@@ -275,10 +327,9 @@ class WorkspaceService:
         """Make the user ``member_id`` a member of the Workspace with ``role``, acting
         as ``user``. Raises ``ApiError`` 409 ``already_member``, 404 ``user_not_found``."""
         _role(role)
-        with Session(self._engine) as db:
-            self._authorized(db, user, Action.MANAGE_MEMBERS, workspace_id)
         try:
             with Session(self._engine) as db, db.begin():
+                authorized(db, user, Action.MANAGE_MEMBERS, workspace_id, lock=True)
                 db.add(
                     MemberRecord(
                         workspace_id=workspace_id,
@@ -297,54 +348,3 @@ class WorkspaceService:
             if constraint == "fk_workspace_members_user_id_users":
                 raise ApiError(404, "user_not_found", "No user has that id.") from None
             raise
-
-    def _authorized(
-        self,
-        db: Session,
-        user: User,
-        action: Action,
-        workspace_id: uuid.UUID,
-        *,
-        lock: bool = False,
-    ) -> tuple[WorkspaceRecord, WorkspaceScope]:
-        query = (
-            sa.select(WorkspaceRecord, MemberRecord.role)
-            .outerjoin(
-                MemberRecord,
-                (MemberRecord.workspace_id == WorkspaceRecord.id)
-                & (MemberRecord.user_id == user.id),
-            )
-            .where(WorkspaceRecord.id == workspace_id)
-        )
-        if lock:
-            query = query.with_for_update(of=WorkspaceRecord)
-        row = db.execute(query).first()
-        if row is None:
-            raise _not_found()
-        record, role = row
-        scope = WorkspaceScope(
-            workspace_id=record.id,
-            user_id=user.id,
-            role=_role(role) if role is not None else None,
-        )
-        if can(user, action, scope):
-            return record, scope
-        raise _forbidden() if scope.role is not None else _not_found()
-
-    @staticmethod
-    def _workspace(user: User, record: WorkspaceRecord, role: WorkspaceRole | None) -> Workspace:
-        if role is None:
-            # Only members get a Workspace; an admin-only action never returns one.
-            raise ValueError("a Workspace is only shown to its members")
-        scope = WorkspaceScope(workspace_id=record.id, user_id=user.id, role=role)
-        return Workspace(
-            id=record.id,
-            name=record.name,
-            description=record.description,
-            domain=record.domain,
-            role=role,
-            permissions=frozenset(a for a in WORKSPACE_ACTIONS if can(user, a, scope)),
-            version=record.version,
-            created_at=record.created_at,
-            updated_at=record.updated_at,
-        )

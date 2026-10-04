@@ -4,7 +4,7 @@ import hashlib
 import logging
 import secrets
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -333,6 +333,23 @@ class AuthService:
         with Session(self._engine) as db:
             record = db.get(UserRecord, user_id)
             return _user(record) if record else None
+
+    def find_user_by_email(self, email: str) -> User | None:
+        """The user with ``email`` (compared as normalised), if any."""
+        with Session(self._engine) as db:
+            record = db.scalar(
+                sa.select(UserRecord).where(UserRecord.email == normalize_email(email))
+            )
+            return _user(record) if record else None
+
+    def users_by_id(self, user_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, User]:
+        """The users among ``user_ids`` that exist, by id."""
+        ids = set(user_ids)
+        if not ids:
+            return {}
+        with Session(self._engine) as db:
+            records = db.scalars(sa.select(UserRecord).where(UserRecord.id.in_(ids)))
+            return {record.id: _user(record) for record in records}
 
     def sessions_of(self, user_id: uuid.UUID) -> list[SessionInfo]:
         """The user's sessions, oldest first (expired ones may still be listed)."""

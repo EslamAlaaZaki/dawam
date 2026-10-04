@@ -1,4 +1,4 @@
-"""``/api/v1/workspaces``: create, list, open and edit Workspaces.
+"""``/api/v1/workspaces``: create, list, open and edit Workspaces, and their members.
 
 Handlers only translate HTTP to ``WorkspaceService`` calls; the service authorizes
 every call through the policy (``can``), so no handler looks at roles.
@@ -8,14 +8,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from dawam.modules.auth import CurrentUser
+from dawam.modules.auth import MAX_EMAIL_LENGTH, AuthService, CurrentUser, Invitations
+from dawam.platform.email import Delivery
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
+from dawam.platform.request_context import client_ip
 
+from .internal.members import Member as MemberView
+from .internal.members import MemberAdded, MembershipService
 from .internal.policy import Action, WorkspaceRole
 from .service import Layer, StageStatus, WorkspaceService
 from .service import Workspace as WorkspaceView
@@ -30,6 +34,21 @@ def workspace_service(request: Request) -> WorkspaceService:
 
 
 WorkspaceServiceDep = Annotated[WorkspaceService, Depends(workspace_service)]
+
+
+def membership_service(request: Request) -> MembershipService:
+    state = request.app.state
+    clock = state.services.clock
+    return MembershipService(
+        state.engine,
+        clock=clock,
+        auth=AuthService(state.engine, state.settings, clock=clock),
+        invitations=Invitations(state.engine, state.settings, mailer=state.mailer, clock=clock),
+        registration=getattr(state, "registration_policy", None),
+    )
+
+
+MembershipServiceDep = Annotated[MembershipService, Depends(membership_service)]
 
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX_LENGTH)
@@ -177,3 +196,139 @@ def get_stage_progress(
     """Where the Workspace's work stands: Source Analysis per Source System, KPIs and
     DW Modeling per Layer. Every member sees the same."""
     return StageProgress.model_validate(workspaces.stage_progress(user, workspace_id))
+
+
+class Member(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: uuid.UUID
+    email: str
+    display_name: str
+    role: WorkspaceRole
+    is_active: bool = Field(description="False for a deactivated user, who cannot sign in.")
+    added_at: datetime
+
+
+class MemberList(BaseModel):
+    items: list[Member] = Field(description="Every member, by display name.")
+
+
+class AddMemberRequest(BaseModel):
+    email: str = Field(max_length=MAX_EMAIL_LENGTH)
+    role: WorkspaceRole
+
+
+class InvitationOut(BaseModel):
+    email: str
+    expires_at: datetime
+
+
+class MemberAddedOut(BaseModel):
+    outcome: Literal["added"] = "added"
+    member: Member
+
+
+class MemberInvitedOut(BaseModel):
+    outcome: Literal["invited"] = "invited"
+    invitation: InvitationOut
+    delivery: Delivery = Field(
+        description="`sent`: the invitation was emailed; `link_for_admin`: it could not be, "
+        "so an admin has to share its link."
+    )
+
+
+class ChangeRoleRequest(BaseModel):
+    role: WorkspaceRole
+
+
+class TransferOwnershipRequest(BaseModel):
+    user_id: uuid.UUID = Field(description="The member who becomes an owner.")
+
+
+def _member_out(member: MemberView) -> Member:
+    return Member.model_validate(member)
+
+
+@router.get("/{workspace_id}/members", operation_id="listMembers")
+def list_members(
+    workspace_id: uuid.UUID, user: CurrentUser, members: MembershipServiceDep
+) -> MemberList:
+    """The Workspace's members and their roles (any member)."""
+    return MemberList(items=[_member_out(m) for m in members.list(user, workspace_id)])
+
+
+@router.post("/{workspace_id}/members", operation_id="addMember", status_code=201)
+def add_member(
+    workspace_id: uuid.UUID,
+    body: AddMemberRequest,
+    user: CurrentUser,
+    members: MembershipServiceDep,
+    request: Request,
+) -> Annotated[MemberAddedOut | MemberInvitedOut, Field(discriminator="outcome")]:
+    """Add someone by email with a role (owners only). If no account has the email, they
+    are invited into the Workspace instead (`outcome: invited`): only admins may invite,
+    or anyone while self-registration is open to that email (403 `invite_not_allowed`
+    otherwise). 409 `already_member` if they are a member."""
+    result = members.add(
+        user, workspace_id, email=body.email, role=body.role, ip=client_ip(request)
+    )
+    if isinstance(result, MemberAdded):
+        return MemberAddedOut(member=_member_out(result.member))
+    return MemberInvitedOut(
+        invitation=InvitationOut(
+            email=result.invitation.email, expires_at=result.invitation.expires_at
+        ),
+        delivery=result.delivery,
+    )
+
+
+@router.patch("/{workspace_id}/members/{member_id}", operation_id="changeMemberRole")
+def change_member_role(
+    workspace_id: uuid.UUID,
+    member_id: uuid.UUID,
+    body: ChangeRoleRequest,
+    user: CurrentUser,
+    members: MembershipServiceDep,
+) -> Member:
+    """Change a member's role (owners only). 409 `last_owner` if it would leave the
+    Workspace without an owner."""
+    return _member_out(members.change_role(user, workspace_id, member_id, body.role))
+
+
+@router.delete(
+    "/{workspace_id}/members/{member_id}",
+    operation_id="removeMember",
+    status_code=204,
+    response_class=Response,
+)
+def remove_member(
+    workspace_id: uuid.UUID, member_id: uuid.UUID, user: CurrentUser, members: MembershipServiceDep
+) -> Response:
+    """Remove a member (owners only); their access ends at once. 409 `last_owner` for
+    the last owner."""
+    members.remove(user, workspace_id, member_id)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{workspace_id}/leave", operation_id="leaveWorkspace", status_code=204, response_class=Response
+)
+def leave_workspace(
+    workspace_id: uuid.UUID, user: CurrentUser, members: MembershipServiceDep
+) -> Response:
+    """Leave the Workspace (any member). The last owner cannot (409 `last_owner`):
+    make someone else an owner first."""
+    members.leave(user, workspace_id)
+    return Response(status_code=204)
+
+
+@router.post("/{workspace_id}/transfer-ownership", operation_id="transferOwnership")
+def transfer_ownership(
+    workspace_id: uuid.UUID,
+    body: TransferOwnershipRequest,
+    user: CurrentUser,
+    members: MembershipServiceDep,
+) -> Workspace:
+    """Hand ownership to another member (owners only): they become an owner and you an
+    editor. Returns the Workspace as you now see it."""
+    return _out(members.transfer_ownership(user, workspace_id, body.user_id))

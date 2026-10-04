@@ -8,7 +8,7 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Literal, Protocol
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -39,6 +39,25 @@ LINK_PURPOSE = "invitation"
 InvitedRole = Literal["owner", "editor", "viewer"]
 """A Workspace role an invitation may carry (the ``workspaces`` module's roles; auth
 cannot import them)."""
+
+
+class InvitedMembership(Protocol):
+    """Joins an invited user to the Workspace their invitation carries. Auth cannot
+    import the ``workspaces`` module, which implements this; the composition root hands
+    it over as ``app.state.invited_membership``."""
+
+    def join(
+        self,
+        db: Session,
+        *,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
+        role: InvitedRole,
+        invited_by: uuid.UUID,
+    ) -> None:
+        """Make ``user_id`` a member as ``role`` inside ``db``'s transaction, the one that
+        accepts the invitation, so the account and its membership commit together."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -105,10 +124,18 @@ class Invitations:
     change is recorded as a security event."""
 
     def __init__(
-        self, engine: sa.Engine, settings: Settings, *, mailer: Mailer, clock: Clock
+        self,
+        engine: sa.Engine,
+        settings: Settings,
+        *,
+        mailer: Mailer,
+        clock: Clock,
+        membership: InvitedMembership | None = None,
     ) -> None:
+        """``membership`` is needed to accept an invitation into a Workspace."""
         self._engine = engine
         self._mailer = mailer
+        self._membership = membership
         self._clock = clock
         self._public_url = settings.public_url
         self._session_lifetime = timedelta(days=settings.session_absolute_timeout_days)
@@ -121,10 +148,12 @@ class Invitations:
         actor_id: uuid.UUID,
         workspace_id: uuid.UUID | None = None,
         workspace_role: InvitedRole | None = None,
+        workspace_name: str | None = None,
         ip: str | None = None,
     ) -> SentInvitation:
         """Invite ``email`` as ``actor_id`` from ``ip``, optionally into a Workspace as
-        ``workspace_role``, and send the link. A pending invitation to the same email is
+        ``workspace_role`` (its name, ``workspace_name``, goes into the email), and send
+        the link. A pending invitation to the same email is
         replaced: its link stops working. Records an ``invitation_created`` security event.
 
         Raises ``ApiError`` 422 ``invalid_email``, 409 ``email_taken`` (the email has an
@@ -174,7 +203,7 @@ class Invitations:
             invitation = _invitation(record, inviter)
         if replaced:
             self._mailer.withdraw_links(recipient=email, purpose=LINK_PURPOSE)
-        delivery = self._send_link(invitation, token)
+        delivery = self._send_link(invitation, token, workspace_name)
         logger.info("invitation sent", extra={"invitation_id": str(invitation.id)})
         return SentInvitation(invitation=invitation, delivery=delivery)
 
@@ -275,6 +304,16 @@ class Invitations:
             db.add(user)
             db.flush()
             invitation.accepted_at = now
+            if invitation.workspace_id is not None:
+                if self._membership is None:
+                    raise RuntimeError("accepting a Workspace invitation needs the membership")
+                self._membership.join(
+                    db,
+                    workspace_id=invitation.workspace_id,
+                    user_id=user.id,
+                    role=invitation.workspace_role,  # type: ignore[arg-type]  # a check constraint
+                    invited_by=invitation.invited_by,
+                )
             self._events.record(
                 "invitation_accepted",
                 actor_id=user.id,
@@ -311,15 +350,20 @@ class Invitations:
             InvitationRecord.expires_at > now,
         )
 
-    def _send_link(self, invitation: Invitation, token: str) -> Delivery:
+    def _send_link(
+        self, invitation: Invitation, token: str, workspace_name: str | None
+    ) -> Delivery:
         url = f"{self._public_url}/accept-invitation#token={token}"
         days = INVITATION_LIFETIME.days
+        to_join = "DAWAM"
+        if workspace_name is not None:
+            to_join = f'the Workspace "{workspace_name}" in DAWAM'
         return self._mailer.send(
             EmailMessage(
                 to=invitation.email,
                 subject="You are invited to DAWAM",
                 body=(
-                    f"{invitation.invited_by.display_name} has invited you to join DAWAM.\n\n"
+                    f"{invitation.invited_by.display_name} has invited you to join {to_join}.\n\n"
                     f"To accept, open this link within {days} days and choose a display "
                     f"name and a password:\n\n"
                     f"{url}\n\n"
