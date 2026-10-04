@@ -889,7 +889,7 @@ These are recommended defaults. Any of them can be changed during review.
 
 ### 8.1 Architecture
 
-- **Modular monolith.** One backend service, one frontend, one Postgres database, one background worker. This fits a solo maintainer and keeps self-hosting simple.
+- **Modular monolith.** One backend service, one frontend service (Next.js, which proxies `/api` to the backend so the browser sees one origin; see ADR 0003), one Postgres database, one background worker. This fits a solo maintainer and keeps self-hosting simple.
 - **Deep modules with narrow interfaces**, each owning its tables and exposing a service API: `auth`, `admin`, `workspaces` (incl. membership & authorization policy), `sources` (connections, extraction, snapshots), `schema_import`, `analysis` (profiling, inference), `documents`, `staging`, `design` (DW Schema, KPIs), `mapping`, `lineage`, `propagation` (impact analysis, change sets, audit), `scoring`, `collaboration` (comments, activity), `exports`, `jobs`, `pii`, `kpi_suggestions`, `files`, `assistant` (agent loop, tools), `llm_gateway` (provider adapters, capability detection, budgets).
 - Modules talk only through service interfaces, never by reading another module's tables directly.
 
@@ -904,9 +904,9 @@ These are recommended defaults. Any of them can be changed during review.
 | Migrations | Alembic | Standard with SQLAlchemy |
 | Background jobs | Postgres-backed queue (`SELECT … FOR UPDATE SKIP LOCKED`) worker | No extra infrastructure (no Redis needed) |
 | File storage | Local volume by default, S3-compatible optional | Self-host friendly |
-| Frontend | React + TypeScript + Vite, TanStack Query, React Flow (diagrams & lineage) | Mature graph tooling |
+| Frontend | Next.js (App Router) + React + TypeScript, TanStack Query, React Flow (diagrams & lineage) | Framework routing and layouts; mature graph tooling (ADR 0003) |
 | XLSX | openpyxl | Schema Import, mapping import/export |
-| Packaging | Docker Compose (`app`, `worker`, `db`, optional `ollama` profile) | One-command install; fully local AI optional |
+| Packaging | Docker Compose (`web`, `app`, `worker`, `db`, optional `ollama` profile) | One-command install; fully local AI optional |
 | LLM access | Own thin gateway: the `openai` SDK for every OpenAI-compatible server, plus Anthropic, Azure OpenAI, Gemini and Bedrock adapters | One internal interface; self-hosted and cloud models are interchangeable |
 | Chat streaming | Server-Sent Events | Simple one-way streaming |
 | Document text | pypdf, python-docx, openpyxl | Text extraction for assistant search (no OCR) |
