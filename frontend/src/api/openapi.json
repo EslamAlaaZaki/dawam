@@ -445,7 +445,7 @@
           "admin"
         ],
         "summary": "Update Admin Settings",
-        "description": "Change installation-wide settings (admins only); returns all of them.",
+        "description": "Change installation-wide settings (admins only); returns all of them. Each change\nis recorded as a security event.",
         "operationId": "updateAdminSettings",
         "requestBody": {
           "content": {

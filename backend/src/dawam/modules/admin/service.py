@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -8,6 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from dawam.modules.auth import SecurityEventRecorder
 from dawam.platform.errors import ApiError
 
 from .internal.domains import (
@@ -38,8 +40,11 @@ class SystemSettingsService:
     It also answers the auth module's ``RegistrationPolicy`` questions, so the
     composition root hands it to auth for sign-up."""
 
-    def __init__(self, engine: sa.Engine) -> None:
+    def __init__(self, engine: sa.Engine, *, events: SecurityEventRecorder | None = None) -> None:
+        """``events`` records who changed the settings. Reading them (as sign-up does)
+        needs none; changes made without one go unrecorded."""
         self._engine = engine
+        self._events = events
 
     def registration(self) -> RegistrationSettings:
         with Session(self._engine) as db:
@@ -50,10 +55,16 @@ class SystemSettingsService:
         )
 
     def set_registration(
-        self, *, enabled: bool, allowed_email_domains: Sequence[str]
+        self,
+        *,
+        enabled: bool,
+        allowed_email_domains: Sequence[str],
+        actor_id: uuid.UUID | None = None,
+        ip: str | None = None,
     ) -> RegistrationSettings:
-        """Replace the registration settings. Domains are stored trimmed, lower-cased,
-        without a leading ``@`` or duplicates. Raises ``ApiError`` 422
+        """Replace the registration settings, as ``actor_id`` from ``ip`` (recorded as a
+        ``registration_settings_changed`` security event). Domains are stored trimmed,
+        lower-cased, without a leading ``@`` or duplicates. Raises ``ApiError`` 422
         ``invalid_email_domain`` (nothing changes then)."""
         if len(allowed_email_domains) > MAX_ALLOWED_DOMAINS:
             raise ApiError(
@@ -72,6 +83,14 @@ class SystemSettingsService:
             ) from None
         with Session(self._engine) as db, db.begin():
             self._write(db, {_REGISTRATION_ENABLED: enabled, _REGISTRATION_DOMAINS: domains})
+            if self._events is not None:
+                self._events.record(
+                    "registration_settings_changed",
+                    actor_id=actor_id,
+                    metadata={"enabled": enabled, "allowed_email_domains": domains},
+                    ip=ip,
+                    db=db,
+                )
         return RegistrationSettings(enabled=enabled, allowed_email_domains=tuple(domains))
 
     # --- the auth module's RegistrationPolicy ---------------------------------------

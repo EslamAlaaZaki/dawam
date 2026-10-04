@@ -4,6 +4,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from dawam.modules.auth import SecurityEventRecorder
 from dawam.platform.csrf import CSRF_HEADER
 from tests.helpers import csrf_token
 
@@ -101,3 +102,15 @@ def test_anonymous_visitors_can_neither_read_nor_change_the_settings(anonymous_c
     )
 
     assert response.status_code == 401
+
+
+def test_changing_the_registration_settings_is_a_security_event(
+    app, admin_client, admin_user, clock
+):
+    put_registration(admin_client, True, ["Example.com"])
+
+    recorder = SecurityEventRecorder(app.state.engine, clock=clock)
+    [event] = [e for e in recorder.recent() if e.event_type == "registration_settings_changed"]
+    assert event.actor_id == admin_user.id
+    assert event.metadata == {"enabled": True, "allowed_email_domains": ["example.com"]}
+    assert event.ip == "testclient"

@@ -182,7 +182,8 @@ export interface paths {
         get: operations["getAdminSettings"];
         /**
          * Update Admin Settings
-         * @description Change installation-wide settings (admins only); returns all of them.
+         * @description Change installation-wide settings (admins only); returns all of them. Each change
+         *     is recorded as a security event.
          */
         put: operations["updateAdminSettings"];
         post?: never;

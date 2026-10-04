@@ -413,11 +413,13 @@ class AuthService:
         new_password: str,
         *,
         keep_session: str | None = None,
+        ip: str | None = None,
     ) -> None:
         """Replace the user's password, given the current one, and end every session of
         theirs except the one whose token is ``keep_session`` (the browser asking), so a
-        stolen session dies with the old password. Raises ``ApiError``: 400
-        ``wrong_password``, 422 ``invalid_password``, 404 ``not_found``."""
+        stolen session dies with the old password. Records a ``password_changed``
+        security event from ``ip``. Raises ``ApiError``: 400 ``wrong_password``, 422
+        ``invalid_password``, 404 ``not_found``."""
         with Session(self._engine) as db, db.begin():
             user = self._existing_user(db, user_id)
             if not self._verify(user.password_hash, current_password):
@@ -426,12 +428,33 @@ class AuthService:
             others = sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
             if keep_session:
                 others = others.where(SessionRecord.token_hash != _token_hash(keep_session))
-            db.execute(others)
+            ended = db.execute(others).rowcount
+            self._events.record(
+                "password_changed",
+                actor_id=user.id,
+                target_type="user",
+                target_id=user.id,
+                metadata={"other_sessions_ended": ended},
+                ip=ip,
+                db=db,
+            )
 
-    def sign_out_everywhere(self, user_id: uuid.UUID) -> None:
-        """End every session of the user, the caller's own included."""
+    def sign_out_everywhere(self, user_id: uuid.UUID, *, ip: str | None = None) -> None:
+        """End every session of the user, the caller's own included. Records a
+        ``signed_out_everywhere`` security event from ``ip``."""
         with Session(self._engine) as db, db.begin():
-            db.execute(sa.delete(SessionRecord).where(SessionRecord.user_id == user_id))
+            ended = db.execute(
+                sa.delete(SessionRecord).where(SessionRecord.user_id == user_id)
+            ).rowcount
+            self._events.record(
+                "signed_out_everywhere",
+                actor_id=user_id,
+                target_type="user",
+                target_id=user_id,
+                metadata={"sessions_ended": ended},
+                ip=ip,
+                db=db,
+            )
 
     def sign_out(self, token: str) -> None:
         """End the session with this token (nothing happens if there is none)."""

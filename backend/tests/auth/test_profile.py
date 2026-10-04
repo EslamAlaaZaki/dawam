@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dawam.modules.auth import AuthService
+from dawam.modules.auth import AuthService, SecurityEventRecorder
 from dawam.platform.csrf import CSRF_HEADER
 from tests.conftest import CreatedUser
 from tests.helpers import csrf_token, set_cookie_headers, sign_in
@@ -164,3 +164,38 @@ def test_anonymous_visitors_cannot_sign_out_everywhere(anonymous_client):
     )
 
     assert response.status_code == 401
+
+
+# --- Security events ------------------------------------------------------------------
+
+
+def events_of_type(app: FastAPI, clock, event_type: str):
+    recorder = SecurityEventRecorder(app.state.engine, clock=clock)
+    return [event for event in recorder.recent() if event.event_type == event_type]
+
+
+def test_a_password_change_is_a_security_event(app, signed_in_client, signed_in_user, clock):
+    change_password(signed_in_client, "not my password", NEW_PASSWORD)
+    assert events_of_type(app, clock, "password_changed") == []
+
+    change_password(signed_in_client, signed_in_user.password, NEW_PASSWORD)
+
+    [event] = events_of_type(app, clock, "password_changed")
+    assert (event.actor_id, event.target_type, event.target_id) == (
+        signed_in_user.id,
+        "user",
+        signed_in_user.id,
+    )
+    assert event.ip == "testclient"
+    assert NEW_PASSWORD not in str(event.metadata)
+
+
+def test_signing_out_everywhere_is_a_security_event(app, signed_in_client, signed_in_user, clock):
+    signed_in_client.post("/api/v1/auth/logout-all")
+
+    [event] = events_of_type(app, clock, "signed_out_everywhere")
+    assert (event.actor_id, event.target_id, event.ip) == (
+        signed_in_user.id,
+        signed_in_user.id,
+        "testclient",
+    )

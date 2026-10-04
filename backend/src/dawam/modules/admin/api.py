@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from dawam.modules.auth import CurrentUser, User
+from dawam.modules.auth import CurrentUser, SecurityEventRecorder, User
 from dawam.platform.errors import ApiError
 
 from .service import RegistrationSettings, SystemSettingsService
@@ -32,7 +32,9 @@ AdminUser = Annotated[User, Depends(current_admin)]
 
 
 def system_settings(request: Request) -> SystemSettingsService:
-    return SystemSettingsService(request.app.state.engine)
+    state = request.app.state
+    events = SecurityEventRecorder(state.engine, clock=state.services.clock)
+    return SystemSettingsService(state.engine, events=events)
 
 
 SystemSettingsDep = Annotated[SystemSettingsService, Depends(system_settings)]
@@ -78,12 +80,15 @@ def get_admin_settings(_admin: AdminUser, settings: SystemSettingsDep) -> AdminS
 
 @router.put("/admin/settings", operation_id="updateAdminSettings")
 def update_admin_settings(
-    body: AdminSettingsUpdate, _admin: AdminUser, settings: SystemSettingsDep
+    body: AdminSettingsUpdate, admin: AdminUser, settings: SystemSettingsDep, request: Request
 ) -> AdminSettings:
-    """Change installation-wide settings (admins only); returns all of them."""
+    """Change installation-wide settings (admins only); returns all of them. Each change
+    is recorded as a security event."""
     if body.registration is not None:
         settings.set_registration(
             enabled=body.registration.enabled,
             allowed_email_domains=body.registration.allowed_email_domains,
+            actor_id=admin.id,
+            ip=request.client.host if request.client else None,
         )
     return _current(settings)

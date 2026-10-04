@@ -153,7 +153,7 @@ def sign_out(request: Request, auth: AuthServiceDep) -> Response:
 )
 def sign_out_everywhere(user: CurrentUser, request: Request, auth: AuthServiceDep) -> Response:
     """End every session of the signed-in user (this one too) and clear this cookie."""
-    auth.sign_out_everywhere(user.id)
+    auth.sign_out_everywhere(user.id, ip=_client_of(request)["ip"])
     return _signed_out(request)
 
 
@@ -173,6 +173,7 @@ def change_password(
         body.current_password,
         body.new_password,
         keep_session=request.cookies.get(SESSION_COOKIE),
+        ip=_client_of(request)["ip"],
     )
     return Response(status_code=204)
 

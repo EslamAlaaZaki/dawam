@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from dawam.modules.admin import SystemSettingsService
-from dawam.modules.auth import AuthService
+from dawam.modules.auth import AuthService, SecurityEventRecorder
 from tests.helpers import csrf_token, set_cookie_headers, sign_in
 
 SESSION_COOKIE = "dawam_session"
@@ -139,3 +139,19 @@ def test_an_email_that_has_an_account_cannot_sign_up_again(
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "email_taken"
     assert sign_in(anonymous_client, existing.email, existing.password).status_code == 200
+
+
+def test_a_sign_up_is_a_security_event(app, anonymous_client, open_registration, clock):
+    open_registration()
+
+    me = register(anonymous_client, "grace@example.com").json()
+
+    recorder = SecurityEventRecorder(app.state.engine, clock=clock)
+    [event] = [e for e in recorder.recent() if e.event_type == "user_registered"]
+    assert (event.actor_id, event.target_type, event.target_id) == (
+        uuid.UUID(me["id"]),
+        "user",
+        uuid.UUID(me["id"]),
+    )
+    assert event.metadata == {"email": "grace@example.com"}
+    assert event.ip == "testclient"
