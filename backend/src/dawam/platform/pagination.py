@@ -36,6 +36,18 @@ def encode_cursor(*values: str) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
+def _is_clean(value: object) -> bool:
+    """A string the database can compare: no NUL, no unpaired surrogate (a tampered
+    cursor could carry either, and the driver would fail on it)."""
+    if not isinstance(value, str) or "\x00" in value:
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def decode_cursor(cursor: str, length: int) -> tuple[str, ...]:
     """The ``length`` values ``encode_cursor`` put in ``cursor``.
 
@@ -49,7 +61,7 @@ def decode_cursor(cursor: str, length: int) -> tuple[str, ...]:
     if (
         not isinstance(values, list)
         or len(values) != length
-        or not all(isinstance(value, str) for value in values)
+        or not all(_is_clean(value) for value in values)
     ):
         raise ApiError(422, "invalid_cursor", "The cursor is not valid; start from the first page.")
     return tuple(values)

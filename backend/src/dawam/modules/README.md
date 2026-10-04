@@ -110,7 +110,9 @@ cannot see. It reads imports and attribute chains only, so it misses:
    Workspace-scoped resource, load it, take the `workspace_id` stored on it (never
    one from the URL or body alone) and call `WorkspaceService.authorize(user,
    action, workspace_id)`: non-members (admins included) get 404, members whose role
-   is too low get 403.
+   is too low get 403. Code that changes Workspace members or roles must lock the
+   Workspace row (`SELECT ... FOR UPDATE`) first: the deferred "at least one owner"
+   trigger cannot stop two concurrent transactions each removing a different owner.
 8. **Every route needs a row in the permission suite**
    (`tests/authz/test_permission_matrix.py`): the endpoint and what each role gets,
    copied from the §4.3 matrix. The suite fails for a route without one.

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import uuid
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.roles import RoleClients
@@ -108,6 +110,33 @@ def test_paging_through_the_list_returns_every_workspace_once(signed_in_client: 
             break
 
     assert sorted(seen) == sorted(created)
+
+
+def _cursor(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        _cursor(b'["a\\u0000b","00000000-0000-0000-0000-000000000000"]'),  # NUL
+        _cursor(b'["\\ud800","00000000-0000-0000-0000-000000000000"]'),  # lone surrogate
+        _cursor(b'["a","not-a-uuid"]'),
+        _cursor(b'["a",1]'),
+        _cursor(b'{"a":"b"}'),
+        _cursor(b"not json"),
+        _cursor(b"\xff\xfe"),  # not UTF-8
+        "%%%",  # not base64
+        "a",  # bad base64 length
+    ],
+)
+def test_a_tampered_cursor_is_rejected_with_422(signed_in_client: TestClient, cursor: str):
+    create(signed_in_client, "One")
+
+    response = signed_in_client.get("/api/v1/workspaces", params={"cursor": cursor})
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "invalid_cursor"
 
 
 def test_a_bad_cursor_or_limit_is_rejected(signed_in_client: TestClient):

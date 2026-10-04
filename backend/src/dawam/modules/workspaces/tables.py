@@ -5,6 +5,11 @@ database backs it with deferred constraint triggers (created by the migration th
 adds these tables): at commit, a Workspace that exists must have an ``owner`` row in
 ``workspace_members``, otherwise the transaction fails with a ``check_violation``
 naming ``workspace_has_owner``.
+
+The trigger does not serialise writers: two concurrent transactions demoting or
+removing two different owners each still see the other one and both commit. So every
+path that changes members (add, remove, change role, transfer) must first lock the
+Workspace row ``FOR UPDATE``, as ``update`` does.
 """
 
 from __future__ import annotations

@@ -94,6 +94,9 @@ def upgrade() -> None:
     op.execute(_OWNER_CHECK)
     # Deferred to commit, so a Workspace and its first owner can be inserted in either
     # order, and an ownership transfer can add the new owner after removing the old.
+    # Not a lock: two concurrent transactions each demoting or removing a different
+    # one of two owners both see the other owner still there and both commit. Every
+    # member-management path must lock the Workspace row (SELECT ... FOR UPDATE) first.
     op.execute(
         "CREATE CONSTRAINT TRIGGER workspace_has_owner AFTER INSERT ON workspaces "
         "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
