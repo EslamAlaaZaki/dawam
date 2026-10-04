@@ -28,6 +28,8 @@ DOMAIN_MAX_LENGTH = 200
 
 OWNER_CONSTRAINT = "workspace_has_owner"
 """The constraint name the owner triggers raise with."""
+MEMBER_PRIMARY_KEY = "pk_workspace_members"
+"""Violated by adding someone who is a member already."""
 
 
 class WorkspaceRecord(Base):

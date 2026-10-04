@@ -296,8 +296,13 @@ def reset_password(
 
 def invitations(request: Request) -> Invitations:
     state = request.app.state
+    # The workspaces module's InvitedMembership, set by the composition root.
     return Invitations(
-        state.engine, state.settings, mailer=state.mailer, clock=state.services.clock
+        state.engine,
+        state.settings,
+        mailer=state.mailer,
+        clock=state.services.clock,
+        membership=getattr(state, "invited_membership", None),
     )
 
 

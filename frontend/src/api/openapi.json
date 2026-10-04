@@ -1896,6 +1896,377 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/members": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "List Members",
+        "description": "The Workspace's members and their roles (any member). Not paged, unlike other\nlists: a Workspace has a team's worth of members, and the list is sorted by display\nname, which lives with the users.",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Add Member",
+        "description": "Add someone by email with a role (owners only). If no account has the email, they\nare invited into the Workspace instead (`outcome: invited`): only admins may invite,\nor anyone while self-registration is open to that email (403 `invite_not_allowed`\notherwise). 409 `already_member` if they are a member.",
+        "operationId": "addMember",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MemberAddedOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MemberInvitedOut"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "outcome",
+                    "mapping": {
+                      "added": "#/components/schemas/MemberAddedOut",
+                      "invited": "#/components/schemas/MemberInvitedOut"
+                    }
+                  },
+                  "title": "Response Addmember"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/{member_id}": {
+      "patch": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Change Member Role",
+        "description": "Change a member's role (owners only). 409 `last_owner` if it would leave the\nWorkspace without an owner.",
+        "operationId": "changeMemberRole",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeRoleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Remove Member",
+        "description": "Remove a member (owners only); their access ends at once. 409 `last_owner` for\nthe last owner.",
+        "operationId": "removeMember",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/leave": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Leave Workspace",
+        "description": "Leave the Workspace (any member). The last owner cannot (409 `last_owner`):\nmake someone else an owner first.",
+        "operationId": "leaveWorkspace",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/transfer-ownership": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Transfer Ownership",
+        "description": "Hand ownership to another member (owners only): they become an owner and you an\neditor. Returns the Workspace as you now see it.",
+        "operationId": "transferOwnership",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnershipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1933,6 +2304,8 @@
           "workspace.view",
           "workspace.edit",
           "workspace.manage_members",
+          "workspace.transfer_ownership",
+          "workspace.leave",
           "installation.manage_settings",
           "installation.manage_users",
           "installation.view_security_events",
@@ -1940,6 +2313,30 @@
         ],
         "title": "Action",
         "description": "What a user wants to do: one row of the spec's permission matrix (§4.3)."
+      },
+      "AddMemberRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "editor",
+              "owner"
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "AddMemberRequest"
       },
       "AdminSettings": {
         "properties": {
@@ -2082,6 +2479,24 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest"
+      },
+      "ChangeRoleRequest": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "editor",
+              "owner"
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "ChangeRoleRequest"
       },
       "CreateUserRequest": {
         "properties": {
@@ -2238,6 +2653,25 @@
         ],
         "title": "InvitationLinkOut"
       },
+      "InvitationOut": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "expires_at"
+        ],
+        "title": "InvitationOut"
+      },
       "InvitationTokenRequest": {
         "properties": {
           "token": {
@@ -2369,6 +2803,116 @@
           "must_change_password"
         ],
         "title": "Me"
+      },
+      "Member": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "editor",
+              "owner"
+            ],
+            "title": "Role"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "False for a deactivated user, who cannot sign in."
+          },
+          "added_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Added At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "role",
+          "is_active",
+          "added_at"
+        ],
+        "title": "Member"
+      },
+      "MemberAddedOut": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "const": "added",
+            "title": "Outcome",
+            "default": "added"
+          },
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member"
+        ],
+        "title": "MemberAddedOut"
+      },
+      "MemberInvitedOut": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "const": "invited",
+            "title": "Outcome",
+            "default": "invited"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/InvitationOut"
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "link_for_admin",
+              "not_sent"
+            ],
+            "title": "Delivery",
+            "description": "`sent`: the invitation was emailed; `link_for_admin`: it could not be, so an admin has to share its link."
+          }
+        },
+        "type": "object",
+        "required": [
+          "invitation",
+          "delivery"
+        ],
+        "title": "MemberInvitedOut"
+      },
+      "MemberList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Every member, by display name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MemberList"
       },
       "PendingInvitation": {
         "properties": {
@@ -2929,6 +3473,21 @@
           "to"
         ],
         "title": "TestEmailOut"
+      },
+      "TransferOwnershipRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id",
+            "description": "The member who becomes an owner."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "TransferOwnershipRequest"
       },
       "UndeliveredLinkOut": {
         "properties": {

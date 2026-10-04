@@ -34,7 +34,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
 
-from dawam.modules.auth import Invitations
+from dawam.modules.auth import AuthService, Invitations
 from dawam.modules.mail import MailService
 from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
@@ -111,6 +111,9 @@ class Row:
     expect: Expectations
     json: Body | None = field(default=None, kw_only=True)
     """A request body that would succeed for an allowed role."""
+    setup: Callable[[RoleClients], object] | None = field(default=None, kw_only=True)
+    """Run before the request, for state an allowed role needs to succeed (e.g. a
+    second owner, so the owner may leave)."""
 
     @property
     def key(self) -> tuple[str, str]:
@@ -151,11 +154,33 @@ def invitation_id(roles: RoleClients) -> uuid.UUID:
     return invitations.invite("invitee@example.com", actor_id=roles.user("admin").id).invitation.id
 
 
+COLLEAGUE_EMAIL = "colleague@example.com"
+
+
+def colleague_id(roles: RoleClients) -> uuid.UUID:
+    """A viewer of the Workspace who is none of the roles, for members to act on; the
+    owner adds them through the API."""
+    state = roles.app.state
+    auth = AuthService(state.engine, state.settings, clock=state.services.clock)
+    colleague = auth.find_user_by_email(COLLEAGUE_EMAIL)
+    if colleague is None:
+        colleague = auth.create_user(
+            email=COLLEAGUE_EMAIL, password=PASSWORD, display_name="Colleague", system_role="user"
+        )
+        response = roles.client("owner").post(
+            f"/api/v1/workspaces/{roles.workspace_id}/members",
+            json={"email": COLLEAGUE_EMAIL, "role": "viewer"},
+        )
+        assert response.status_code == 201, response.text
+    return colleague.id
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
     "user_id": lambda roles: roles.user("non_member").id,
     "invitation_id": invitation_id,
+    "member_id": colleague_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 
@@ -173,6 +198,8 @@ def request_path(row: Row, roles: RoleClients) -> str:
 
 def send(row: Row, role: Role, roles: RoleClients) -> Any:
     client = roles.client(role)
+    if row.setup is not None:
+        row.setup(roles)
     path = request_path(row, roles)
     json = row.json(roles) if row.json is not None else None
     return client.request(row.method, path, json=json)

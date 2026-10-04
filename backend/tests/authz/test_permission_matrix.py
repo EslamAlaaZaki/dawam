@@ -18,6 +18,7 @@ from dawam.modules.mail import MailService
 from tests.authz.matrix import (
     Row,
     admin_only,
+    colleague_id,
     credentials_of,
     describe,
     outcome_of,
@@ -28,6 +29,15 @@ from tests.authz.matrix import (
     workspace,
 )
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
+
+
+def _second_owner(roles: RoleClients) -> None:
+    """Makes the colleague an owner too, so the owner is not the last one and may leave."""
+    response = roles.client("owner").patch(
+        f"/api/v1/workspaces/{roles.workspace_id}/members/{colleague_id(roles)}",
+        json={"role": "owner"},
+    )
+    assert response.status_code == 200, response.text
 
 
 def _open_registration_and_sign_up(roles: RoleClients) -> dict[str, str]:
@@ -264,6 +274,46 @@ ROWS: list[Row] = [
         "Rename / edit Workspace details",
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"version": roles.workspace["version"], "name": "Renamed"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/members",
+        "Open Workspace content (the member list)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/members",
+        "Add / remove members, change roles",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"email": roles.user("non_member").email, "role": "viewer"},
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/members/{member_id}",
+        "Add / remove members, change roles",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"role": "editor"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/members/{member_id}",
+        "Add / remove members, change roles",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/leave",
+        "Leave a Workspace (any member, story 34)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_second_owner,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/transfer-ownership",
+        "Transfer ownership",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"user_id": str(colleague_id(roles))},
     ),
 ]
 

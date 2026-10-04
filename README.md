@@ -187,6 +187,17 @@ paged with `limit` and an opaque `cursor` (the previous page's `next_cursor`).
 - A Workspace opens as a folder tree (Systems; Data Warehouse with KPIs, Staging, Core and
   Mart, each with Model, Mappings and Evaluation; Lineage, Score, DDL). The selected folder
   is the `folder` URL parameter, so it can be linked and reloaded.
+- Members: every member sees who belongs (`GET .../members`, not paged: a team's worth
+  of members, by display name) and can leave (`POST
+  .../leave`). Owners add an existing user by email with a role (`POST .../members`),
+  change roles and remove members (`PATCH|DELETE .../members/{member_id}`; access ends at
+  once), and transfer ownership (`POST .../transfer-ownership`: the other member becomes
+  an owner, you an editor). An email with no account gets an invitation into the Workspace
+  instead, which only an admin may send, or anyone while self-registration is open to that
+  email (`403 invite_not_allowed` otherwise); accepting it joins the Workspace, unless its
+  sender is no longer an owner there (`400 invalid_invitation`). A Workspace
+  always keeps an owner: the last one cannot leave, be removed or be demoted (`409
+  last_owner`), backed by a database trigger.
 
 ## Develop
 

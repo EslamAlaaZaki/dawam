@@ -11,13 +11,27 @@ Public interface. Other modules import only what is re-exported here:
   resources calls with the ``workspace_id`` it read from its own resource (never one
   from client input), getting 404 for non-members and 403 for too low a role.
 - ``Workspace``, ``WorkspacePage``, ``WorkspaceRole``: what the service returns.
+- ``MembershipService``: list members (``Member``), add someone by email or invite
+  them into the Workspace (``MemberAdded`` / ``MemberInvited``), change roles, remove
+  members, leave and transfer ownership; a Workspace always keeps an owner.
+- ``InvitedWorkspaceMembership``: the auth module's ``InvitedMembership`` port, which
+  the composition root sets as ``app.state.invited_membership``.
 - ``router``: ``GET|POST /workspaces``, ``GET|PATCH /workspaces/{workspace_id}``,
-  ``GET /workspaces/{workspace_id}/progress``.
+  ``GET /workspaces/{workspace_id}/progress``, ``GET|POST .../members``,
+  ``PATCH|DELETE .../members/{member_id}``, ``POST .../leave``,
+  ``POST .../transfer-ownership``.
 
 Owns the ``workspaces`` and ``workspace_members`` tables.
 """
 
 from .api import router
+from .internal.members import (
+    InvitedWorkspaceMembership,
+    Member,
+    MemberAdded,
+    MemberInvited,
+    MembershipService,
+)
 from .internal.policy import INSTALLATION, Action, Installation, WorkspaceRole, WorkspaceScope, can
 from .service import Workspace, WorkspacePage, WorkspaceService
 
@@ -25,6 +39,11 @@ __all__ = [
     "INSTALLATION",
     "Action",
     "Installation",
+    "InvitedWorkspaceMembership",
+    "Member",
+    "MemberAdded",
+    "MemberInvited",
+    "MembershipService",
     "Workspace",
     "WorkspacePage",
     "WorkspaceRole",
