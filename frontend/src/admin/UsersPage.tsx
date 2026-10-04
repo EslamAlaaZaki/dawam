@@ -41,7 +41,8 @@ export function UsersPage() {
     <section className="page admin-page">
       <h2>Users</h2>
       <p>
-        <Link href="/admin/users/new">Create user</Link>
+        <Link href="/admin/users/new">Create user</Link> ·{" "}
+        <Link href="/admin/invitations">Invite user</Link>
       </p>
       <form className="admin-filters" role="search" onSubmit={onSearch}>
         <label>

@@ -212,6 +212,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/invitations/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Look Up Invitation
+         * @description Which email an invitation link is for, while it can still be accepted (400
+         *     ``invalid_invitation`` otherwise). The token travels in the body, never the URL.
+         */
+        post: operations["lookUpInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invitation
+         * @description Accept an invitation with the token from its link: creates the account (with the
+         *     invited email, this display name and password) and signs it in. Works whether or not
+         *     self-registration is open; the link then stops working.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -277,6 +320,70 @@ export interface paths {
          */
         post: operations["forcePasswordReset"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite User
+         * @description Invite someone by email (admins only): they get a link, valid 7 days, to choose a
+         *     display name and password and join, even while self-registration is off. An email
+         *     that has an account already is refused (409 ``email_taken``); a pending invitation
+         *     to the same email is replaced. Recorded as a security event.
+         */
+        post: operations["inviteUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invitations
+         * @description Invitations not yet accepted, revoked or expired, by email (admins only).
+         */
+        get: operations["listInvitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Invitation
+         * @description Revoke a pending invitation (admins only): its link stops working. Recorded as a
+         *     security event.
+         */
+        delete: operations["revokeInvitation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -489,6 +596,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptInvitationRequest */
+        AcceptInvitationRequest: {
+            /** Token */
+            token: string;
+            /** Display Name */
+            display_name: string;
+            /** Password */
+            password: string;
+        };
         /**
          * Action
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
@@ -629,6 +745,39 @@ export interface components {
             /** Email */
             email: string;
         };
+        /** InvitationLinkOut */
+        InvitationLinkOut: {
+            /**
+             * Email
+             * @description The email the invitation is for; the new account gets it.
+             */
+            email: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** InvitationTokenRequest */
+        InvitationTokenRequest: {
+            /** Token */
+            token: string;
+        };
+        /** InviteRequest */
+        InviteRequest: {
+            /** Email */
+            email: string;
+        };
+        /** InviterOut */
+        InviterOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
         /** KpiProgress */
         KpiProgress: {
             /**
@@ -671,6 +820,47 @@ export interface components {
              * @description True until a user created with a temporary password changes it; until then only this, the password change and signing out are allowed.
              */
             must_change_password: boolean;
+        };
+        /** PendingInvitation */
+        PendingInvitation: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            invited_by: components["schemas"]["InviterOut"];
+            /**
+             * Workspace Id
+             * @description The Workspace the invitee joins on accepting, if any.
+             */
+            workspace_id: string | null;
+            /**
+             * Workspace Role
+             * @description Their role in that Workspace.
+             */
+            workspace_role: ("owner" | "editor" | "viewer") | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** PendingInvitationPage */
+        PendingInvitationPage: {
+            /** Items */
+            items: components["schemas"]["PendingInvitation"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -756,6 +946,16 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** SentInvitationOut */
+        SentInvitationOut: {
+            invitation: components["schemas"]["PendingInvitation"];
+            /**
+             * Delivery
+             * @description `sent`: the invitation was emailed; `link_for_admin`: it could not be, so its link waits in the undelivered links for you to share.
+             * @enum {string}
+             */
+            delivery: "sent" | "link_for_admin" | "not_sent";
         };
         /** SignInRequest */
         SignInRequest: {
@@ -1432,6 +1632,90 @@ export interface operations {
             };
         };
     };
+    lookUpInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationLinkOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listUsers: {
         parameters: {
             query?: {
@@ -1586,6 +1870,129 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ForcedReset"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    inviteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentInvitationOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listInvitations: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingInvitationPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revokeInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {

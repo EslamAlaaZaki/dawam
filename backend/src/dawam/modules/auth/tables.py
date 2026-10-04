@@ -154,3 +154,36 @@ class PasswordResetRecord(Base):
     """When the link set a new password, or was voided by another one doing so."""
     requested_ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
     """The client address that asked for it, for the per-address limit."""
+
+
+class InvitationRecord(Base):
+    """An invitation to join DAWAM: single use, valid 7 days, bound to one email and
+    optionally to a Workspace and a role in it. The link carries a random token; only its
+    SHA-256 is stored."""
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "workspace_role IN ('owner', 'editor', 'viewer')", name="workspace_role"
+        ),
+        sa.CheckConstraint(
+            "(workspace_id IS NULL) = (workspace_role IS NULL)", name="workspace_and_role"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(sa.String(320), index=True)
+    """Stored trimmed and lower-cased, like ``users.email``; the account that accepts the
+    invitation gets exactly this email."""
+    token_hash: Mapped[str] = mapped_column(sa.String(64), unique=True)
+    invited_by: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    """The Workspace the invitee joins on accepting, if any, as ``workspace_role``."""
+    workspace_role: Mapped[str | None] = mapped_column(sa.String(16))
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """When an admin revoked it, or a newer invitation to the same email replaced it."""

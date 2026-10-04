@@ -134,6 +134,16 @@ on every log line for that request.
   (`POST /api/v1/auth/password/reset`) ends every session of that user. Links start
   with `DAWAM_PUBLIC_URL` (default `http://localhost:8000`), never with the
   request's host.
+- **Invitations.** An admin invites someone by email from **Users → Invite user**
+  (`POST /api/v1/admin/users/invite`); an email that already has an account gets `409
+  email_taken`, and inviting the same email again replaces the pending invitation. The
+  link is single-use, valid 7 days and bound to that email; DAWAM stores only its
+  SHA-256. The invitee opens it, chooses a display name and password (same policy) and
+  is signed in (`POST /api/v1/auth/invitations/lookup` and `/accept`, the token in the
+  body), whether or not self-registration is open. Admins see pending invitations and
+  revoke them (`GET /api/v1/admin/invitations`, `DELETE
+  /api/v1/admin/invitations/{invitation_id}`). Without SMTP the link waits in **Links
+  to share**.
 
 ### Email
 
@@ -158,7 +168,8 @@ answer, sends nothing and stores nothing.
 email are kept for admins instead: **Links to share** (`GET
 /api/v1/admin/undelivered-links`) lists each with its recipient, so an admin can
 copy it to them. A link leaves the list when it expires, when it stops working
-(a used or voided reset link) or when an admin removes it;
+(a used or voided reset link, an accepted or revoked invitation) or when an admin
+removes it;
 it is stored encrypted too.
 
 ### Workspaces
@@ -242,7 +253,7 @@ node .next/standalone/server.js   # pages only: put edge (or another proxy) in f
 ```
 
 The app lives in `frontend/src/`: routes in `app/` (`login/`, `signup/`,
-`forgot-password/`, `reset-password/`, and the signed-in pages in the `(signed-in)`
+`forgot-password/`, `reset-password/`, `accept-invitation/`, and the signed-in pages in the `(signed-in)`
 group, `profile/` and `admin/` (settings, email) among them, whose layout sends anyone
 not signed in to `/login?from=<page>`), screens in `auth/`, `profile/`, `admin/`,
 `shell/` and `workspaces/`, the API client and its
