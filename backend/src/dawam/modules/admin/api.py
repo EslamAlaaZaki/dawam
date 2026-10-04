@@ -81,11 +81,13 @@ def update_admin_settings(
 ) -> AdminSettings:
     """Change installation-wide settings (admins only); returns all of them. Each change
     is recorded as a security event."""
-    if body.registration is not None:
-        settings.set_registration(
-            enabled=body.registration.enabled,
-            allowed_email_domains=body.registration.allowed_email_domains,
-            actor_id=admin.id,
-            ip=request.client.host if request.client else None,
-        )
-    return _current(settings)
+    if body.registration is None:
+        return _current(settings)
+    registration = settings.set_registration(
+        enabled=body.registration.enabled,
+        allowed_email_domains=body.registration.allowed_email_domains,
+        actor_id=admin.id,
+        ip=request.client.host if request.client else None,
+    )
+    # The only section so far: what was saved is all there is to return.
+    return AdminSettings(registration=RegistrationSettingsBody.of(registration))

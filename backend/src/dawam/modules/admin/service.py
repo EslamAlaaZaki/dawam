@@ -9,13 +9,12 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from dawam.modules.auth import SecurityEventRecorder
+from dawam.modules.auth import RegistrationRules, SecurityEventRecorder
 from dawam.platform.errors import ApiError
 
 from .internal.domains import (
     MAX_ALLOWED_DOMAINS,
     InvalidDomainError,
-    email_domain,
     normalize_domains,
 )
 from .tables import SystemSettingRecord
@@ -95,12 +94,11 @@ class SystemSettingsService:
 
     # --- the auth module's RegistrationPolicy ---------------------------------------
 
-    def registration_open(self) -> bool:
-        return self.registration().enabled
-
-    def email_domain_allowed(self, email: str) -> bool:
-        domains = self.registration().allowed_email_domains
-        return not domains or email_domain(email) in domains
+    def registration_rules(self) -> RegistrationRules:
+        settings = self.registration()
+        return RegistrationRules(
+            open=settings.enabled, allowed_email_domains=frozenset(settings.allowed_email_domains)
+        )
 
     # --- storage -----------------------------------------------------------------------
 

@@ -87,17 +87,32 @@ def _checked_display_name(display_name: str) -> str:
     return display_name
 
 
+@dataclass(frozen=True)
+class RegistrationRules:
+    """Who may sign up on their own (spec stories 1, 20): nobody unless ``open``; then,
+    if ``allowed_email_domains`` is not empty, only emails at exactly one of them."""
+
+    open: bool = False
+    allowed_email_domains: frozenset[str] = frozenset()
+
+    def allows(self, email: str) -> bool:
+        """Whether a normalised email may sign up."""
+        domain = email.rpartition("@")[2]
+        return self.open and (
+            not self.allowed_email_domains or domain in self.allowed_email_domains
+        )
+
+
+_CLOSED = RegistrationRules()
+
+
 class RegistrationPolicy(Protocol):
-    """Who may sign up on their own (spec stories 1, 20). The auth module does not keep
-    these settings: the admin module's system settings implement this, and the
-    composition root hands them to auth."""
+    """Where the registration rules come from. The auth module does not keep them: the
+    admin module's system settings implement this, and the composition root hands them
+    to auth."""
 
-    def registration_open(self) -> bool:
-        """Whether self-registration is on at all."""
-        ...
-
-    def email_domain_allowed(self, email: str) -> bool:
-        """Whether a (normalised, valid) email's domain may sign up."""
+    def registration_rules(self) -> RegistrationRules:
+        """The rules in force now."""
         ...
 
 
@@ -186,19 +201,22 @@ class AuthService:
         email: str,
         password: str,
         display_name: str,
-        policy: RegistrationPolicy,
+        policy: RegistrationPolicy | None,
         replacing: str | None = None,
         ip: str | None = None,
         user_agent: str | None = None,
     ) -> SignedIn:
-        """Self-registration: create a regular user and sign them in, if ``policy``
-        allows it. Raises ``ApiError``: 403 ``registration_closed`` or
-        ``email_domain_not_allowed``, 429 ``too_many_attempts`` (too many sign-ups from
-        ``ip``; ``internal.login_guard``), 422 ``invalid_email``, ``invalid_display_name`` or
+        """Self-registration: create a regular user and sign them in, if ``policy``'s
+        rules (read once; no policy: closed) allow it.
+
+        Raises ``ApiError``: 403 ``registration_closed`` or ``email_domain_not_allowed``,
+        429 ``too_many_attempts`` (too many sign-ups from ``ip``;
+        ``internal.login_guard``), 422 ``invalid_email``, ``invalid_display_name`` or
         ``invalid_password``, 409 ``email_taken``. ``replacing``, ``ip`` and
         ``user_agent`` are as for ``sign_in``. Records a ``user_registered`` security
         event."""
-        if not policy.registration_open():
+        rules = policy.registration_rules() if policy else _CLOSED
+        if not rules.open:
             raise ApiError(403, "registration_closed", "Self-registration is turned off.")
         now = self._clock()
         # Every attempt from an address counts, committed before anything is checked or
@@ -211,7 +229,7 @@ class AuthService:
             logger.warning("sign-up throttled", extra={"ip": ip})
             raise too_many_sign_ups(throttled_until, now)
         normalized = normalize_email(email)
-        if is_valid_email(normalized) and not policy.email_domain_allowed(normalized):
+        if is_valid_email(normalized) and not rules.allows(normalized):
             raise ApiError(
                 403,
                 "email_domain_not_allowed",

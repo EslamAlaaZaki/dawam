@@ -113,7 +113,7 @@ def sign_in(body: SignInRequest, request: Request, response: Response, auth: Aut
 def get_registration(policy: RegistrationPolicyDep) -> RegistrationStatus:
     """Whether self-registration is open (anyone may ask; the sign-up link shows only
     then)."""
-    return RegistrationStatus(open=policy is not None and policy.registration_open())
+    return RegistrationStatus(open=policy is not None and policy.registration_rules().open)
 
 
 @router.post("/auth/register", operation_id="register", status_code=201)
@@ -126,8 +126,6 @@ def register(
 ) -> Me:
     """Sign up with email, display name and password while self-registration is open
     (and the email's domain is allowed); signs the new user in."""
-    if policy is None:
-        raise ApiError(403, "registration_closed", "Self-registration is turned off.")
     signed_in = auth.register(
         email=body.email,
         password=body.password,

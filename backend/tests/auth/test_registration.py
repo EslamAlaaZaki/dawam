@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from dawam.modules.admin import SystemSettingsService
-from dawam.modules.auth import AuthService, SecurityEventRecorder
+from dawam.modules.auth import AuthService, RegistrationRules, SecurityEventRecorder
+from dawam.platform.errors import ApiError
 from tests.helpers import csrf_token, set_cookie_headers, sign_in
 
 SESSION_COOKIE = "dawam_session"
@@ -155,3 +156,29 @@ def test_a_sign_up_is_a_security_event(app, anonymous_client, open_registration,
     )
     assert event.metadata == {"email": "grace@example.com"}
     assert event.ip == "testclient"
+
+
+def test_a_sign_up_reads_the_registration_settings_once(auth_service: AuthService):
+    class CountingPolicy:
+        reads = 0
+
+        def registration_rules(self) -> RegistrationRules:
+            self.reads += 1
+            return RegistrationRules(open=True, allowed_email_domains=frozenset({"example.com"}))
+
+    policy = CountingPolicy()
+
+    auth_service.register(
+        email="grace@example.com", password=PASSWORD, display_name="Grace", policy=policy
+    )
+
+    assert policy.reads == 1
+
+
+def test_without_a_policy_registration_is_closed(auth_service: AuthService):
+    with pytest.raises(ApiError) as raised:
+        auth_service.register(
+            email="grace@example.com", password=PASSWORD, display_name="Grace", policy=None
+        )
+
+    assert raised.value.code == "registration_closed"

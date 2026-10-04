@@ -31,8 +31,3 @@ def normalize_domains(domains: Iterable[str]) -> list[str]:
         if domain not in normalized:
             normalized.append(domain)
     return normalized
-
-
-def email_domain(email: str) -> str:
-    """The domain of an email address (after its last ``@``), lower-cased."""
-    return email.rpartition("@")[2].strip().lower()

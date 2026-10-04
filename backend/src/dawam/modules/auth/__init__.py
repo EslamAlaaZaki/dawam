@@ -4,8 +4,9 @@ Public interface. Other modules import only what is re-exported here:
 
 - ``AuthService``: create users, the bootstrap admin, self-registration, sessions,
   display names and password changes.
-- ``RegistrationPolicy``: the port sign-up asks whether registration is open and a
-  domain allowed; the composition root sets ``app.state.registration_policy``.
+- ``RegistrationPolicy``: the port sign-up reads its ``RegistrationRules`` from
+  (whether registration is open, and to which domains); the composition root sets
+  ``app.state.registration_policy``.
 - ``CurrentUser``: annotate a route parameter with it to require a signed-in user
   (anonymous requests get ``401 unauthenticated``); ``User`` is what it holds.
 - ``SecurityEventRecorder``: the one way to record a ``SecurityEvent`` (sign-ins and
@@ -18,12 +19,21 @@ Owns the ``users``, ``sessions`` and ``security_events`` tables.
 
 from .api import CurrentUser, router
 from .internal.security_events import SecurityEvent, SecurityEventRecorder
-from .service import AuthService, RegistrationPolicy, SessionInfo, SignedIn, SystemRole, User
+from .service import (
+    AuthService,
+    RegistrationPolicy,
+    RegistrationRules,
+    SessionInfo,
+    SignedIn,
+    SystemRole,
+    User,
+)
 
 __all__ = [
     "AuthService",
     "CurrentUser",
     "RegistrationPolicy",
+    "RegistrationRules",
     "SecurityEvent",
     "SecurityEventRecorder",
     "SessionInfo",
