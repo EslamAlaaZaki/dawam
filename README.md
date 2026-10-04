@@ -95,8 +95,9 @@ on every log line for that request.
 - **Lockout.** After `DAWAM_LOGIN_MAX_FAILURES` (default 5) consecutive failed
   sign-ins an account is locked for `DAWAM_LOGIN_LOCKOUT_MINUTES` (default 15): even
   the right password gets `429 account_locked` (with `Retry-After`) until then. A
-  successful sign-in resets the count. An email without an account behaves the same,
-  so the lock does not reveal which emails have accounts.
+  successful sign-in resets the count, and failures more than a day apart do not add
+  up. An email without an account behaves the same, so the lock does not reveal which
+  emails have accounts.
 - **Rate limiting per address.** A client address with `DAWAM_LOGIN_IP_MAX_FAILURES`
   (default 20) failed sign-ins in the last `DAWAM_LOGIN_IP_WINDOW_MINUTES` (default
   15) gets `429 too_many_attempts` until the oldest leaves the window. Only that

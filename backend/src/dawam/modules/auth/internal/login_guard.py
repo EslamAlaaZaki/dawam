@@ -6,31 +6,41 @@ extra infrastructure.
 **Per account (lockout).** After ``DAWAM_LOGIN_MAX_FAILURES`` consecutive failed
 sign-ins an account locks for ``DAWAM_LOGIN_LOCKOUT_MINUTES``; while locked, even the
 right password is refused. A successful sign-in resets the count, and so does locking.
-An email without an account locks in exactly the same way, so neither the lock nor its
-timing reveals which emails have accounts. Its state is derived from its rows in
-``login_failures`` instead of a ``users`` row: of its failures whose password was
-checked, every ``max_failures``-th one locks it for the lockout period.
+Failures more than a day apart do not add up: a streak is forgotten a day after its
+last failure. An email without an account locks in exactly the same way, so neither
+the lock nor its timing reveals which emails have accounts; its state is a
+``login_lockouts`` row (keyed by the email's hash) instead of a ``users`` row. Either
+row is locked for the whole attempt, so concurrent attempts are counted one at a time.
 
 **Per address (throttling).** An address with ``DAWAM_LOGIN_IP_MAX_FAILURES`` failed
 sign-ins in the last ``DAWAM_LOGIN_IP_WINDOW_MINUTES`` must wait until the oldest of
 them leaves the window. Its attempts are refused before any account is looked at, so
 they are not recorded, count towards nothing and lock no account: the limit slows
 that address alone, and caps how many accounts it can lock per window.
+
+After each failure, ``prune`` deletes what no longer matters: failures older than the
+address window, and ``login_lockouts`` rows that are no different from no row.
 """
 
 from __future__ import annotations
 
+import hashlib
 import math
 from datetime import datetime, timedelta
+from typing import Protocol
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from dawam.platform.config import Settings
 from dawam.platform.errors import ApiError
 
-from ..tables import IP_MAX_LENGTH, LoginFailureRecord, UserRecord
+from ..tables import IP_MAX_LENGTH, LoginFailureRecord, LoginLockoutRecord, UserRecord
 from .security_events import SecurityEventRecorder
+
+FAILURE_STREAK_TTL = timedelta(hours=24)
+"""A failure this long after the previous one starts a new streak."""
 
 
 def invalid_credentials() -> ApiError:
@@ -38,17 +48,16 @@ def invalid_credentials() -> ApiError:
     return ApiError(401, "invalid_credentials", "The email or password is incorrect.")
 
 
-def _retry_after(until: datetime, now: datetime) -> tuple[int, dict[str, str], str]:
+def _must_wait(code: str, why: str, until: datetime, now: datetime) -> ApiError:
     seconds = max(1, math.ceil((until - now).total_seconds()))
     minutes = math.ceil(seconds / 60)
     wait = f"{minutes} minute{'' if minutes == 1 else 's'}"
-    return seconds, {"Retry-After": str(seconds)}, wait
-
-
-def _must_wait(code: str, why: str, until: datetime, now: datetime) -> ApiError:
-    seconds, headers, wait = _retry_after(until, now)
     return ApiError(
-        429, code, f"{why} Try again in {wait}.", {"retry_after_seconds": seconds}, headers
+        429,
+        code,
+        f"{why} Try again in {wait}.",
+        {"retry_after_seconds": seconds},
+        {"Retry-After": str(seconds)},
     )
 
 
@@ -64,13 +73,25 @@ def too_many_attempts(until: datetime, now: datetime) -> ApiError:
     )
 
 
+class LockoutState(Protocol):
+    """What a ``users`` row and a ``login_lockouts`` row both hold."""
+
+    failed_login_count: int
+    locked_until: datetime | None
+    last_failed_login_at: datetime | None
+
+
+def _email_key(email: str) -> str:
+    return hashlib.sha256(email.encode("utf-8")).hexdigest()
+
+
 class LoginGuard:
     def __init__(self, settings: Settings, events: SecurityEventRecorder) -> None:
         self._max_failures = settings.login_max_failures
         self._lockout = timedelta(minutes=settings.login_lockout_minutes)
-        self._events = events
         self._ip_max_failures = settings.login_ip_max_failures
         self._ip_window = timedelta(minutes=settings.login_ip_window_minutes)
+        self._events = events
 
     def throttled_until(self, db: Session, ip: str | None, now: datetime) -> datetime | None:
         """When this address may try again; None if it may now."""
@@ -89,24 +110,37 @@ class LoginGuard:
         )
         return oldest_that_counts + self._ip_window if oldest_that_counts else None
 
-    def locked_until(
+    def state_of(
         self, db: Session, user: UserRecord | None, email: str, now: datetime
-    ) -> datetime | None:
-        """When the lock on this account (or email without one) ends; None if unlocked."""
+    ) -> LockoutState:
+        """The lockout state of ``user`` (locked ``FOR UPDATE`` by the caller), or of
+        ``email`` if it has no account: its ``login_lockouts`` row, created if missing
+        and locked for the rest of the transaction."""
         if user is not None:
-            until = user.locked_until
-        else:
-            count, last = db.execute(
-                sa.select(sa.func.count(), sa.func.max(LoginFailureRecord.failed_at)).where(
-                    LoginFailureRecord.email == email, LoginFailureRecord.password_checked
-                )
-            ).one()
-            until = last + self._lockout if count and count % self._max_failures == 0 else None
+            return user
+        key = _email_key(email)
+        db.execute(
+            pg_insert(LoginLockoutRecord)
+            .values(email_key=key, failed_login_count=0, last_failed_login_at=now)
+            .on_conflict_do_nothing(index_elements=[LoginLockoutRecord.email_key])
+        )
+        return db.scalars(
+            sa.select(LoginLockoutRecord)
+            .where(LoginLockoutRecord.email_key == key)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).one()
+
+    @staticmethod
+    def locked_until(state: LockoutState, now: datetime) -> datetime | None:
+        """When the lock ends; None if not locked."""
+        until = state.locked_until
         return until if until is not None and now < until else None
 
     def failed(
         self,
         db: Session,
+        state: LockoutState,
         user: UserRecord | None,
         email: str,
         *,
@@ -119,14 +153,8 @@ class LoginGuard:
         ``locked_until`` is the lock the attempt met (it was refused unchecked), or
         None if its password was checked and wrong; such a failure counts and may
         lock the account."""
-        db.add(
-            LoginFailureRecord(
-                email=email,
-                ip=ip[:IP_MAX_LENGTH] if ip else None,
-                failed_at=now,
-                password_checked=locked_until is None,
-            )
-        )
+        if ip:
+            db.add(LoginFailureRecord(ip=ip[:IP_MAX_LENGTH], failed_at=now))
         target = {"target_type": "user", "target_id": user.id} if user else {}
         reason = "account_locked" if locked_until else "invalid_credentials"
         self._events.record(
@@ -134,12 +162,16 @@ class LoginGuard:
         )
         if locked_until is not None:
             return account_locked(locked_until, now)
-        if not self._reaches_the_limit(db, user, email):
+        last = state.last_failed_login_at
+        if last is None or now - last >= FAILURE_STREAK_TTL:
+            state.failed_login_count = 0
+        state.failed_login_count += 1
+        state.last_failed_login_at = now
+        if state.failed_login_count < self._max_failures:
             return invalid_credentials()
         until = now + self._lockout
-        if user is not None:
-            user.failed_login_count = 0
-            user.locked_until = until
+        state.failed_login_count = 0
+        state.locked_until = until
         self._events.record(
             "account_locked",
             metadata={
@@ -153,18 +185,25 @@ class LoginGuard:
         )
         return account_locked(until, now)
 
-    def succeeded(self, user: UserRecord) -> None:
-        user.failed_login_count = 0
-        user.locked_until = None
-
-    def _reaches_the_limit(self, db: Session, user: UserRecord | None, email: str) -> bool:
-        if user is not None:
-            user.failed_login_count += 1
-            return user.failed_login_count >= self._max_failures
-        db.flush()
-        count = db.scalar(
-            sa.select(sa.func.count()).where(
-                LoginFailureRecord.email == email, LoginFailureRecord.password_checked
-            )
+    def prune(self, db: Session, now: datetime) -> None:
+        """Delete failures older than the address window, and lockout rows of unknown
+        emails that are not locked and whose last failure is forgotten. Rows another
+        attempt holds are skipped (the next prune gets them), so this never waits."""
+        old_failures = (
+            sa.select(LoginFailureRecord.id)
+            .where(LoginFailureRecord.failed_at <= now - self._ip_window)
+            .with_for_update(skip_locked=True)
         )
-        return bool(count) and count % self._max_failures == 0
+        db.execute(sa.delete(LoginFailureRecord).where(LoginFailureRecord.id.in_(old_failures)))
+        forgotten = (
+            sa.select(LoginLockoutRecord.email_key)
+            .where(
+                LoginLockoutRecord.last_failed_login_at <= now - FAILURE_STREAK_TTL,
+                sa.or_(
+                    LoginLockoutRecord.locked_until.is_(None),
+                    LoginLockoutRecord.locked_until <= now,
+                ),
+            )
+            .with_for_update(skip_locked=True)
+        )
+        db.execute(sa.delete(LoginLockoutRecord).where(LoginLockoutRecord.email_key.in_(forgotten)))

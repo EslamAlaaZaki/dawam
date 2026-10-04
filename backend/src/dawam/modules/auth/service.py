@@ -226,13 +226,14 @@ class AuthService:
             user = db.scalar(
                 sa.select(UserRecord).where(UserRecord.email == email).with_for_update()
             )
-            locked_until = self._guard.locked_until(db, user, email, now)
+            state = self._guard.state_of(db, user, email, now)
+            locked_until = self._guard.locked_until(state, now)
             # A locked email is refused without checking the password, account or not.
             correct = locked_until is None and self._verify(
                 user.password_hash if user else _DUMMY_HASH, password
             )
             if correct and user is not None:
-                self._guard.succeeded(user)
+                user.failed_login_count = 0  # a success ends the streak
                 signed_in = self._start_session(db, user, password, now, replacing, ip, user_agent)
                 self._events.record(
                     "login_succeeded",
@@ -245,7 +246,11 @@ class AuthService:
                 )
                 return signed_in
             # Committed: a failure is recorded before it is raised.
-            failure = self._guard.failed(db, user, email, ip=ip, now=now, locked_until=locked_until)
+            failure = self._guard.failed(
+                db, state, user, email, ip=ip, now=now, locked_until=locked_until
+            )
+        with Session(self._engine) as db, db.begin():
+            self._guard.prune(db, now)
         raise failure
 
     def _start_session(

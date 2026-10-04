@@ -1,5 +1,5 @@
-"""add login lockout and security events: users.failed_login_count and locked_until,
-and the auth module's login_failures and security_events tables.
+"""add login lockout and security events: users' lockout columns, and the auth
+module's login_lockouts, login_failures and security_events tables.
 
 Revision ID: 57d75041af55
 Revises: e54c99dddac2
@@ -24,20 +24,32 @@ def upgrade() -> None:
         sa.Column("failed_login_count", sa.Integer(), server_default="0", nullable=False),
     )
     op.add_column("users", sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "users", sa.Column("last_failed_login_at", sa.DateTime(timezone=True), nullable=True)
+    )
+    op.create_table(
+        "login_lockouts",
+        sa.Column("email_key", sa.String(length=64), nullable=False),
+        sa.Column("failed_login_count", sa.Integer(), nullable=False),
+        sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_failed_login_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("email_key", name=op.f("pk_login_lockouts")),
+    )
+    op.create_index(
+        op.f("ix_login_lockouts_last_failed_login_at"),
+        "login_lockouts",
+        ["last_failed_login_at"],
+        unique=False,
+    )
     op.create_table(
         "login_failures",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("email", sa.String(length=320), nullable=False),
-        sa.Column("ip", sa.String(length=64), nullable=True),
+        sa.Column("ip", sa.String(length=64), nullable=False),
         sa.Column("failed_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("password_checked", sa.Boolean(), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_login_failures")),
     )
     op.create_index(
-        "ix_login_failures_email_failed_at",
-        "login_failures",
-        ["email", "failed_at"],
-        unique=False,
+        op.f("ix_login_failures_failed_at"), "login_failures", ["failed_at"], unique=False
     )
     op.create_index(
         "ix_login_failures_ip_failed_at", "login_failures", ["ip", "failed_at"], unique=False
@@ -73,7 +85,10 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_security_events_actor_id"), table_name="security_events")
     op.drop_table("security_events")
     op.drop_index("ix_login_failures_ip_failed_at", table_name="login_failures")
-    op.drop_index("ix_login_failures_email_failed_at", table_name="login_failures")
+    op.drop_index(op.f("ix_login_failures_failed_at"), table_name="login_failures")
     op.drop_table("login_failures")
+    op.drop_index(op.f("ix_login_lockouts_last_failed_login_at"), table_name="login_lockouts")
+    op.drop_table("login_lockouts")
+    op.drop_column("users", "last_failed_login_at")
     op.drop_column("users", "locked_until")
     op.drop_column("users", "failed_login_count")

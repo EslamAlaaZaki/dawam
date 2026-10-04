@@ -5,6 +5,8 @@
 from datetime import timedelta
 
 import pytest
+import sqlalchemy as sa
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -141,3 +143,18 @@ def test_the_address_limit_is_configurable(settings, services, grace, clock: Fak
 def test_address_limit_settings_must_be_positive(settings, field, value):
     with pytest.raises(ValidationError):
         Settings(**{**settings.model_dump(), field: value})
+
+
+def test_failures_older_than_the_window_are_not_kept(
+    app: FastAPI, anonymous_client, clock: FakeClock
+):
+    """A deliberate storage-property check: it reads the auth tables directly."""
+    spray(anonymous_client, 10)
+    spray(anonymous_client, 5, ip=NEIGHBOUR, start=10)
+    clock.advance(WINDOW)
+
+    spray(anonymous_client, 1, start=20)
+
+    with app.state.engine.connect() as conn:
+        rows = conn.execute(sa.text("SELECT ip, failed_at FROM login_failures")).all()
+    assert rows == [(ATTACKER, clock())]

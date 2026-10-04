@@ -32,10 +32,13 @@ class UserRecord(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """The last successful sign-in; None until the first."""
     failed_login_count: Mapped[int] = mapped_column(default=0, server_default="0")
-    """Failed sign-ins since the last successful one (or the last lock); at
-    ``DAWAM_LOGIN_MAX_FAILURES`` the account locks and this goes back to 0."""
+    """Consecutive failed sign-ins (since the last success or lock, and none more than
+    a day after the one before); at ``DAWAM_LOGIN_MAX_FAILURES`` the account locks and
+    this goes back to 0."""
     locked_until: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """Sign-in is refused, even with the right password, until then."""
+    last_failed_login_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """The last failure counted in ``failed_login_count``."""
 
 
 class SessionRecord(Base):
@@ -63,28 +66,33 @@ class SessionRecord(Base):
     """The ``User-Agent`` at sign-in, cut to its first 512 characters."""
 
 
-class LoginFailureRecord(Base):
-    """A failed sign-in attempt, for any email (with an account or not).
+class LoginLockoutRecord(Base):
+    """The lockout state of an email that has no account, kept like an account's
+    (``users.failed_login_count``, ``locked_until``, ``last_failed_login_at``), so an
+    unknown email locks exactly as an account would and locking reveals nothing about
+    which emails have accounts. A row is deleted once it is no different from no row
+    (not locked, last failure over a day old)."""
 
-    The per-address rate limit counts an ``ip``'s recent rows. An email's rows let it
-    lock exactly as an account would even if it has none, so locking reveals nothing
-    about which emails have accounts.
-    """
+    __tablename__ = "login_lockouts"
+
+    email_key: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
+    """SHA-256 (hex) of the email as typed, trimmed and lower-cased: what people type
+    into the email field (a password, by mistake) is never stored."""
+    failed_login_count: Mapped[int]
+    locked_until: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    last_failed_login_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), index=True)
+
+
+class LoginFailureRecord(Base):
+    """A failed sign-in from a client address, for the per-address rate limit. Only
+    the rate limit's window is kept: older rows are deleted."""
 
     __tablename__ = "login_failures"
-    __table_args__ = (
-        sa.Index("ix_login_failures_email_failed_at", "email", "failed_at"),
-        sa.Index("ix_login_failures_ip_failed_at", "ip", "failed_at"),
-    )
+    __table_args__ = (sa.Index("ix_login_failures_ip_failed_at", "ip", "failed_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(sa.String(320))
-    """As typed, trimmed and lower-cased."""
-    ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
-    failed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
-    password_checked: Mapped[bool]
-    """False when the attempt was refused unchecked because the email was locked;
-    such attempts never count towards a lock."""
+    ip: Mapped[str] = mapped_column(sa.String(IP_MAX_LENGTH))
+    failed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), index=True)
 
 
 class SecurityEventRecord(Base):

@@ -1,9 +1,12 @@
 """After 5 consecutive failed sign-ins an account locks for 15 minutes, both configurable
 (spec story 9, §6.1 rate limiting; §10 auth flows: lockout)."""
 
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
+import sqlalchemy as sa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -12,6 +15,7 @@ from dawam.app import create_app
 from dawam.modules.auth import AuthService, SecurityEventRecorder
 from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
+from dawam.platform.errors import ApiError
 from tests.helpers import set_cookie_headers, sign_in
 
 SECOND = timedelta(seconds=1)
@@ -107,14 +111,24 @@ def test_after_a_lock_ends_the_count_starts_again(anonymous_client, grace, clock
     assert code_of(fifth) == "account_locked"
 
 
-def test_failures_count_however_far_apart_they_are(anonymous_client, grace, clock: FakeClock):
+def test_failures_up_to_a_day_apart_add_up(anonymous_client, grace, clock: FakeClock):
     for _ in range(4):
         fail(anonymous_client, grace.email, 1)
-        clock.advance(timedelta(days=1))
+        clock.advance(timedelta(hours=24) - SECOND)
 
     [fifth] = fail(anonymous_client, grace.email, 1)
 
     assert code_of(fifth) == "account_locked"
+
+
+def test_failures_older_than_a_day_are_forgotten(anonymous_client, grace, clock: FakeClock):
+    fail(anonymous_client, grace.email, 4)
+    clock.advance(timedelta(hours=24))
+
+    responses = fail(anonymous_client, grace.email, 4)
+
+    assert {r.status_code for r in responses} == {401}
+    assert code_of(fail(anonymous_client, grace.email, 1)[0]) == "account_locked"
 
 
 def test_the_lock_is_per_account(anonymous_client, grace, create_user):
@@ -141,6 +155,12 @@ def test_an_unknown_email_locks_just_like_an_account(anonymous_client, grace, cl
         responses += fail(anonymous_client, email, 1)
         clock.advance(timedelta(minutes=10))
         responses += fail(anonymous_client, email, 5)
+        clock.advance(LOCKOUT)
+        responses += fail(anonymous_client, email, 3)
+        clock.advance(timedelta(hours=24))  # forgotten...
+        responses += fail(anonymous_client, email, 4)
+        clock.advance(timedelta(hours=23))  # ...remembered
+        responses += fail(anonymous_client, email, 1)
         clock.advance(LOCKOUT)
         return [(r.status_code, r.json(), r.headers.get("retry-after")) for r in responses]
 
@@ -205,3 +225,39 @@ def test_the_lock_does_not_change_the_users_last_login(
     sign_in(anonymous_client, grace.email, grace.password)
 
     assert auth_service.get_user(grace.id).last_login_at is None
+
+
+@pytest.mark.parametrize("email", ["grace@example.com", "nobody@example.com"])
+def test_concurrent_failures_cannot_skip_the_lock(auth_service: AuthService, grace, email):
+    """Ten simultaneous wrong guesses: exactly five are checked, the fifth locks."""
+
+    def guess(_: int) -> str:
+        try:
+            auth_service.sign_in(email, WRONG)
+        except ApiError as exc:
+            return exc.code
+        return "signed_in"
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        codes = Counter(pool.map(guess, range(10)))
+
+    assert codes == {"invalid_credentials": 4, "account_locked": 6}
+
+
+def test_an_unknown_emails_lock_state_is_kept_by_hash_and_not_for_ever(
+    app: FastAPI, anonymous_client, clock: FakeClock
+):
+    """A deliberate storage-property check: it reads the auth tables directly."""
+    fail(anonymous_client, "nobody@example.com", 2)
+
+    def rows() -> list:
+        with app.state.engine.connect() as conn:
+            return conn.execute(sa.text("SELECT * FROM login_lockouts")).mappings().all()
+
+    [row] = rows()
+    assert "nobody@example.com" not in {str(value) for value in row.values()}
+
+    clock.advance(timedelta(hours=24))
+    fail(anonymous_client, "someone@example.com", 1)
+
+    assert len(rows()) == 1  # nobody@'s forgotten failures are gone
