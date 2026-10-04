@@ -17,8 +17,8 @@ from dawam.modules.auth import CurrentUser
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
 from .internal.policy import Action, WorkspaceRole
+from .service import Layer, StageStatus, WorkspaceService
 from .service import Workspace as WorkspaceView
-from .service import WorkspaceService
 from .tables import DESCRIPTION_MAX_LENGTH, DOMAIN_MAX_LENGTH, NAME_MAX_LENGTH
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -73,6 +73,37 @@ class UpdateWorkspaceRequest(BaseModel):
     name: Name | None = None
     description: Description | None = None
     domain: Domain | None = None
+
+
+class SystemProgress(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    system_id: uuid.UUID
+    name: str
+    status: StageStatus
+
+
+class KpiProgress(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: StageStatus
+
+
+class LayerProgress(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    layer: Layer
+    status: StageStatus
+
+
+class StageProgress(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source_analysis: list[SystemProgress] = Field(
+        description="Source Analysis, one entry per Source System (none until one is added)."
+    )
+    kpis: KpiProgress
+    dw_modeling: list[LayerProgress] = Field(description="DW Modeling, one entry per Layer.")
 
 
 def _out(workspace: WorkspaceView) -> Workspace:
@@ -137,3 +168,12 @@ def update_workspace(
             domain=body.domain,
         )
     )
+
+
+@router.get("/{workspace_id}/progress", operation_id="getStageProgress")
+def get_stage_progress(
+    workspace_id: uuid.UUID, user: CurrentUser, workspaces: WorkspaceServiceDep
+) -> StageProgress:
+    """Where the Workspace's work stands: Source Analysis per Source System, KPIs and
+    DW Modeling per Layer. Every member sees the same."""
+    return StageProgress.model_validate(workspaces.stage_progress(user, workspace_id))

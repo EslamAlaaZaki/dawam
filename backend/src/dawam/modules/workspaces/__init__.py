@@ -11,7 +11,8 @@ Public interface. Other modules import only what is re-exported here:
   resources calls with the ``workspace_id`` it read from its own resource (never one
   from client input), getting 404 for non-members and 403 for too low a role.
 - ``Workspace``, ``WorkspacePage``, ``WorkspaceRole``: what the service returns.
-- ``router``: ``GET|POST /workspaces``, ``GET|PATCH /workspaces/{workspace_id}``.
+- ``router``: ``GET|POST /workspaces``, ``GET|PATCH /workspaces/{workspace_id}``,
+  ``GET /workspaces/{workspace_id}/progress``.
 
 Owns the ``workspaces`` and ``workspace_members`` tables.
 """

@@ -1559,6 +1559,60 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/progress": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Stage Progress",
+        "description": "Where the Workspace's work stands: Source Analysis per Source System, KPIs and\nDW Modeling per Layer. Every member sees the same.",
+        "operationId": "getStageProgress",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageProgress"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1854,6 +1908,52 @@
           "email"
         ],
         "title": "ForgotPasswordRequest"
+      },
+      "KpiProgress": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "in_progress",
+              "complete"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "KpiProgress"
+      },
+      "LayerProgress": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "in_progress",
+              "complete"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "status"
+        ],
+        "title": "LayerProgress"
       },
       "Me": {
         "properties": {
@@ -2243,6 +2343,65 @@
           "updated_at"
         ],
         "title": "SmtpSettingsOut"
+      },
+      "StageProgress": {
+        "properties": {
+          "source_analysis": {
+            "items": {
+              "$ref": "#/components/schemas/SystemProgress"
+            },
+            "type": "array",
+            "title": "Source Analysis",
+            "description": "Source Analysis, one entry per Source System (none until one is added)."
+          },
+          "kpis": {
+            "$ref": "#/components/schemas/KpiProgress"
+          },
+          "dw_modeling": {
+            "items": {
+              "$ref": "#/components/schemas/LayerProgress"
+            },
+            "type": "array",
+            "title": "Dw Modeling",
+            "description": "DW Modeling, one entry per Layer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_analysis",
+          "kpis",
+          "dw_modeling"
+        ],
+        "title": "StageProgress"
+      },
+      "SystemProgress": {
+        "properties": {
+          "system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "System Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "in_progress",
+              "complete"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "system_id",
+          "name",
+          "status"
+        ],
+        "title": "SystemProgress"
       },
       "TestEmailIn": {
         "properties": {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
@@ -46,6 +47,43 @@ class Workspace:
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+StageStatus = Literal["not_started", "in_progress", "complete"]
+Layer = Literal["staging", "core", "mart"]
+LAYERS: tuple[Layer, ...] = ("staging", "core", "mart")
+
+
+@dataclass(frozen=True)
+class SystemProgress:
+    """Source Analysis of one Source System."""
+
+    system_id: uuid.UUID
+    name: str
+    status: StageStatus
+
+
+@dataclass(frozen=True)
+class LayerProgress:
+    """DW Modeling of one Layer."""
+
+    layer: Layer
+    status: StageStatus
+
+
+@dataclass(frozen=True)
+class KpiProgress:
+    status: StageStatus
+
+
+@dataclass(frozen=True)
+class StageProgress:
+    """Where a Workspace's work stands. Later tickets fill in the statuses (and the
+    Source Systems) from what they build; today nothing can be started."""
+
+    source_analysis: list[SystemProgress]
+    kpis: KpiProgress
+    dw_modeling: list[LayerProgress]
 
 
 @dataclass(frozen=True)
@@ -184,6 +222,17 @@ class WorkspaceService:
         with Session(self._engine) as db:
             record, scope = self._authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
             return self._workspace(user, record, scope.role)
+
+    def stage_progress(self, user: User, workspace_id: uuid.UUID) -> StageProgress:
+        """Stage progress of a Workspace, for any member (viewers included)."""
+        with Session(self._engine) as db:
+            self._authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
+        # No Source Systems, KPIs or DW Schema exist yet, so nothing has been started.
+        return StageProgress(
+            source_analysis=[],
+            kpis=KpiProgress(status="not_started"),
+            dw_modeling=[LayerProgress(layer=layer, status="not_started") for layer in LAYERS],
+        )
 
     def update(
         self,
