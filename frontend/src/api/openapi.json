@@ -743,7 +743,8 @@
           "workspace.create",
           "workspace.view",
           "workspace.edit",
-          "workspace.manage_members"
+          "workspace.manage_members",
+          "installation.manage_settings"
         ],
         "title": "Action",
         "description": "What a user wants to do: one row of the spec's permission matrix (§4.3)."

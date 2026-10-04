@@ -250,7 +250,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "installation.manage_settings";
         /** AdminSettings */
         AdminSettings: {
             registration: components["schemas"]["RegistrationSettingsBody"];

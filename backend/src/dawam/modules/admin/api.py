@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from dawam.modules.auth import CurrentUser, SecurityEventRecorder, User
+from dawam.modules.workspaces import INSTALLATION, Action, can
 from dawam.platform.errors import ApiError
 
 from .service import RegistrationSettings, SystemSettingsService
@@ -15,20 +16,16 @@ from .service import RegistrationSettings, SystemSettingsService
 router = APIRouter(tags=["admin"])
 
 
-def current_admin(user: CurrentUser) -> User:
-    """The signed-in user if they are an admin; anyone else gets ``403 forbidden``
-    (anonymous requests ``401 unauthenticated``).
-
-    A stand-in until the central policy ``can(user, action, resource)`` (spec §6.2,
-    #29) exists: every admin-only route takes ``AdminUser``, so folding this check into
-    ``can()`` later is a change in this one place."""
-    if user.system_role != "admin":
+def settings_manager(user: CurrentUser) -> User:
+    """The signed-in user if the central policy lets them manage the system settings
+    (admins); anyone else gets ``403 forbidden`` (anonymous ``401 unauthenticated``)."""
+    if not can(user, Action.MANAGE_SYSTEM_SETTINGS, INSTALLATION):
         raise ApiError(403, "forbidden", "Only admins can do this.")
     return user
 
 
-AdminUser = Annotated[User, Depends(current_admin)]
-"""Declare a parameter of this type to make a route admin-only."""
+SettingsManager = Annotated[User, Depends(settings_manager)]
+"""Declare a parameter of this type to make a route need ``MANAGE_SYSTEM_SETTINGS``."""
 
 
 def system_settings(request: Request) -> SystemSettingsService:
@@ -73,14 +70,14 @@ def _current(settings: SystemSettingsService) -> AdminSettings:
 
 
 @router.get("/admin/settings", operation_id="getAdminSettings")
-def get_admin_settings(_admin: AdminUser, settings: SystemSettingsDep) -> AdminSettings:
+def get_admin_settings(_admin: SettingsManager, settings: SystemSettingsDep) -> AdminSettings:
     """The installation-wide settings (admins only)."""
     return _current(settings)
 
 
 @router.put("/admin/settings", operation_id="updateAdminSettings")
 def update_admin_settings(
-    body: AdminSettingsUpdate, admin: AdminUser, settings: SystemSettingsDep, request: Request
+    body: AdminSettingsUpdate, admin: SettingsManager, settings: SystemSettingsDep, request: Request
 ) -> AdminSettings:
     """Change installation-wide settings (admins only); returns all of them. Each change
     is recorded as a security event."""
