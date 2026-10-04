@@ -17,6 +17,7 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "argon2-cffi>=23.1",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +26,7 @@ dev = [
     "httpx2>=2.13",
     "testcontainers[postgres]>=4.15",
     "ruff>=0.6",
+    "aiosmtpd>=1.4.6",
 ]
 
 [tool.hatch.build.targets.wheel]
