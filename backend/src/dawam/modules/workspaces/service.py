@@ -9,6 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from dawam.modules.activity import record_activity
 from dawam.modules.auth import User
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -240,6 +241,16 @@ class WorkspaceService:
                     added_at=now,
                 )
             )
+            record_activity(
+                db,
+                workspace_id=record.id,
+                actor_id=user.id,
+                verb="workspace.created",
+                object_type="workspace",
+                object_id=record.id,
+                object_label=record.name,
+                at=now,
+            )
             return workspace_view(user, record, "owner")
 
     def list_for(
@@ -307,14 +318,36 @@ class WorkspaceService:
             record, scope = authorized(db, user, Action.EDIT_WORKSPACE, workspace_id, lock=True)
             if record.version != version:
                 raise _version_conflict(record.version)
+            changed: list[str] = []
             if name is not None:
-                record.name = _clean(name, "name", NAME_MAX_LENGTH, required=True)
+                cleaned = _clean(name, "name", NAME_MAX_LENGTH, required=True)
+                if cleaned != record.name:
+                    changed.append("name")
+                record.name = cleaned
             if description is not None:
-                record.description = _clean(description, "description", DESCRIPTION_MAX_LENGTH)
+                cleaned = _clean(description, "description", DESCRIPTION_MAX_LENGTH)
+                if cleaned != record.description:
+                    changed.append("description")
+                record.description = cleaned
             if domain is not None:
-                record.domain = _clean(domain, "domain", DOMAIN_MAX_LENGTH)
+                cleaned = _clean(domain, "domain", DOMAIN_MAX_LENGTH)
+                if cleaned != record.domain:
+                    changed.append("domain")
+                record.domain = cleaned
             record.version += 1
             record.updated_at = self._clock()
+            if changed:
+                record_activity(
+                    db,
+                    workspace_id=record.id,
+                    actor_id=user.id,
+                    verb="workspace.updated",
+                    object_type="workspace",
+                    object_id=record.id,
+                    object_label=record.name,
+                    details={"changed": changed},
+                    at=record.updated_at,
+                )
             db.flush()
             return workspace_view(user, record, scope.role)
 
@@ -332,15 +365,27 @@ class WorkspaceService:
         try:
             with Session(self._engine) as db, db.begin():
                 authorized(db, user, Action.MANAGE_MEMBERS, workspace_id, lock=True)
+                now = self._clock()
                 db.add(
                     MemberRecord(
                         workspace_id=workspace_id,
                         user_id=member_id,
                         role=role,
                         added_by=user.id,
-                        added_at=self._clock(),
+                        added_at=now,
                     )
                 )
+                record_activity(
+                    db,
+                    workspace_id=workspace_id,
+                    actor_id=user.id,
+                    verb="member.added",
+                    object_type="user",
+                    object_id=member_id,
+                    details={"role": role},
+                    at=now,
+                )
+                db.flush()
         except IntegrityError as exc:
             constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
             if constraint == MEMBER_PRIMARY_KEY:

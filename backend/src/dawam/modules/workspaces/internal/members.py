@@ -19,6 +19,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from dawam.modules.activity import record_activity
 from dawam.modules.auth import (
     AuthService,
     Invitation,
@@ -158,6 +159,15 @@ class MembershipService:
                     added_at=self._clock(),
                 )
                 db.add(member)
+                _record(
+                    db,
+                    workspace_id,
+                    user.id,
+                    "member.added",
+                    existing.id,
+                    member.added_at,
+                    {"role": role},
+                )
                 db.flush()
                 return MemberAdded(member=_member(member, existing))
         except IntegrityError as exc:
@@ -178,6 +188,16 @@ class MembershipService:
             member = self._member_record(db, workspace_id, member_id)
             if member.role == "owner" and role != "owner":
                 self._ensure_another_owner(db, workspace_id)
+            if member.role != role:
+                _record(
+                    db,
+                    workspace_id,
+                    user.id,
+                    "member.role_changed",
+                    member_id,
+                    self._clock(),
+                    {"from": member.role, "to": role},
+                )
             member.role = role
             db.flush()
             users = self._auth.users_by_id([member_id])
@@ -207,6 +227,15 @@ class MembershipService:
             target = self._member_record(db, workspace_id, to_user_id)
             target.role = "owner"
             self._member_record(db, workspace_id, user.id).role = "editor"
+            _record(
+                db,
+                workspace_id,
+                user.id,
+                "workspace.ownership_transferred",
+                to_user_id,
+                self._clock(),
+                {"from_user_id": str(user.id)},
+            )
             db.flush()
             return workspace_view(user, record, "editor")
 
@@ -248,6 +277,15 @@ class MembershipService:
             if member.role == "owner":
                 self._ensure_another_owner(db, workspace_id)
             db.delete(member)
+            _record(
+                db,
+                workspace_id,
+                user.id,
+                "member.left" if member_id == user.id else "member.removed",
+                member_id,
+                self._clock(),
+                {"role": member.role},
+            )
 
     @staticmethod
     def _member_record(db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID) -> MemberRecord:
@@ -305,8 +343,39 @@ class InvitedWorkspaceMembership:
                 added_at=self._clock(),
             )
         )
+        _record(
+            db,
+            workspace_id,
+            invited_by,
+            "member.added",
+            user_id,
+            self._clock(),
+            {"role": role, "invited": True},
+        )
         db.flush()
         return True
+
+
+def _record(
+    db: Session,
+    workspace_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    verb: str,
+    user_id: uuid.UUID,
+    at: datetime,
+    details: dict[str, object],
+) -> None:
+    """An activity event about the user ``user_id`` (the feed shows their current name)."""
+    record_activity(
+        db,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        verb=verb,
+        object_type="user",
+        object_id=user_id,
+        details=details,
+        at=at,
+    )
 
 
 def _member(record: MemberRecord, user: User) -> Member:

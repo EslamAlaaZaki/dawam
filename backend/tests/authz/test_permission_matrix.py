@@ -269,6 +269,12 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
     Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/activity",
+        "Open Workspace content (activity feed, story 38)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
         "PATCH",
         "/api/v1/workspaces/{workspace_id}",
         "Rename / edit Workspace details",

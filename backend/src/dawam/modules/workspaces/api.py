@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from dawam.modules.activity import ActivityService
 from dawam.modules.auth import MAX_EMAIL_LENGTH, AuthService, CurrentUser, Invitations
 from dawam.platform.email import Delivery
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
@@ -49,6 +50,15 @@ def membership_service(request: Request) -> MembershipService:
 
 
 MembershipServiceDep = Annotated[MembershipService, Depends(membership_service)]
+
+
+def activity_service(request: Request) -> ActivityService:
+    state = request.app.state
+    auth = AuthService(state.engine, state.settings, clock=state.services.clock)
+    return ActivityService(state.engine, auth=auth)
+
+
+ActivityServiceDep = Annotated[ActivityService, Depends(activity_service)]
 
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX_LENGTH)
@@ -334,3 +344,59 @@ def transfer_ownership(
     """Hand ownership to another member (owners only): they become an owner and you an
     editor. Returns the Workspace as you now see it."""
     return _out(members.transfer_ownership(user, workspace_id, body.user_id))
+
+
+class ActivityActor(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: uuid.UUID
+    display_name: str
+
+
+class ActivityItem(BaseModel):
+    id: uuid.UUID
+    actor: ActivityActor | None = Field(description="Who did it; null if that user is gone.")
+    verb: str = Field(description="What was done, e.g. `workspace.updated`, `member.added`.")
+    object_type: str = Field(description="What it was done to: `workspace`, `user`, ...")
+    object_id: str | None
+    object_label: str = Field(description="The object's name (a user's current display name).")
+    details: dict[str, Any] | None = Field(
+        description='Extra context, e.g. `{"role": "editor"}`; shape depends on the verb.'
+    )
+    created_at: datetime
+
+
+class ActivityPage(BaseModel):
+    items: list[ActivityItem] = Field(description="Newest first.")
+    next_cursor: str | None = Field(description="The `cursor` of the next page; null on the last.")
+
+
+@router.get("/{workspace_id}/activity", operation_id="listActivity")
+def list_activity(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    workspaces: WorkspaceServiceDep,
+    activity: ActivityServiceDep,
+    limit: PageLimit = DEFAULT_PAGE_SIZE,
+    cursor: PageCursor = None,
+) -> ActivityPage:
+    """Who changed what in the Workspace and when, newest first (any member, viewers
+    included; 404 for anyone else)."""
+    workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+    page = activity.list(workspace_id, limit=limit, cursor=cursor)
+    return ActivityPage(
+        items=[
+            ActivityItem(
+                id=i.id,
+                actor=ActivityActor.model_validate(i.actor) if i.actor else None,
+                verb=i.verb,
+                object_type=i.object_type,
+                object_id=i.object_id,
+                object_label=i.object_label,
+                details=i.details,
+                created_at=i.created_at,
+            )
+            for i in page.items
+        ],
+        next_cursor=page.next_cursor,
+    )
