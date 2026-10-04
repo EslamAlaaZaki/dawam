@@ -89,6 +89,13 @@ function fakeBackend(
     if (request.method !== "GET" && csrf !== CSRF_TOKEN) {
       return apiError(403, "csrf_failed", "The request has no valid CSRF token.");
     }
+    if (/^\/api\/v1\/workspaces\/[^/]+\/progress$/.test(url.pathname)) {
+      return json({
+        source_analysis: [],
+        kpis: { status: "not_started" },
+        dw_modeling: [],
+      });
+    }
     const one = /^\/api\/v1\/workspaces\/([^/]+)$/.exec(url.pathname)?.[1];
     if (one !== undefined) {
       const found = store.get(one);

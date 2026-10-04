@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent } from "react";
 
 import { ApiError } from "../api/client";
@@ -13,11 +14,21 @@ import {
 } from "../api/workspaces";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
+import { FolderTree } from "./FolderTree";
+import { findFolder, workspaceFolders } from "./folders";
+import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
-/** A Workspace's page: its details, editable by owners and read-only for everyone else. */
+/**
+ * A Workspace's page: its folder tree, the selected folder (kept in the `folder` URL
+ * parameter, so it can be linked and reloaded) and the stage progress. The Workspace's
+ * own folder shows its details, editable by owners and read-only for everyone else.
+ */
 export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspace(workspaceId);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   if (workspace.isPending) {
     return <Loading />;
@@ -34,6 +45,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
     );
   }
+  const root = workspaceFolders(workspace.data.name);
+  const folder = findFolder(root, searchParams.get("folder") ?? "") ?? root;
+
+  function select(id: string) {
+    router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
+  }
+
   return (
     <section className="page">
       <p>
@@ -41,7 +59,22 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
       <h2>{workspace.data.name}</h2>
       <p>Your role: {ROLE_LABELS[workspace.data.role]}</p>
-      <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
+      <div className="workspace-layout">
+        <nav aria-label="Folders">
+          <FolderTree root={root} selected={folder.id} onSelect={select} />
+        </nav>
+        <div className="workspace-main">
+          {folder.id === "" ? (
+            <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
+          ) : (
+            <section aria-labelledby="folder-title">
+              <h3 id="folder-title">{folder.label}</h3>
+              <p className="empty-state">{folder.empty}</p>
+            </section>
+          )}
+          <StageProgressPanel workspaceId={workspaceId} />
+        </div>
+      </div>
     </section>
   );
 }

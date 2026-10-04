@@ -170,7 +170,12 @@ owners edit a Workspace's details. Anyone who is not a member, admins included, 
 client last saw, and a stale one gets `409 version_conflict`. List endpoints are
 paged with `limit` and an opaque `cursor` (the previous page's `next_cursor`).
 
-- Endpoints: `GET|POST /api/v1/workspaces`, `GET|PATCH /api/v1/workspaces/{workspace_id}`.
+- Endpoints: `GET|POST /api/v1/workspaces`, `GET|PATCH /api/v1/workspaces/{workspace_id}`,
+  `GET /api/v1/workspaces/{workspace_id}/progress` (stage progress: Source Analysis per
+  Source System, KPIs, DW Modeling per Layer; every member sees the same).
+- A Workspace opens as a folder tree (Systems; Data Warehouse with KPIs, Staging, Core and
+  Mart, each with Model, Mappings and Evaluation; Lineage, Score, DDL). The selected folder
+  is the `folder` URL parameter, so it can be linked and reloaded.
 
 ## Develop
 

@@ -464,6 +464,27 @@ export interface paths {
         patch: operations["updateWorkspace"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stage Progress
+         * @description Where the Workspace's work stands: Source Analysis per Source System, KPIs and
+         *     DW Modeling per Layer. Every member sees the same.
+         */
+        get: operations["getStageProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -607,6 +628,27 @@ export interface components {
         ForgotPasswordRequest: {
             /** Email */
             email: string;
+        };
+        /** KpiProgress */
+        KpiProgress: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_started" | "in_progress" | "complete";
+        };
+        /** LayerProgress */
+        LayerProgress: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_started" | "in_progress" | "complete";
         };
         /** Me */
         Me: {
@@ -772,6 +814,35 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** StageProgress */
+        StageProgress: {
+            /**
+             * Source Analysis
+             * @description Source Analysis, one entry per Source System (none until one is added).
+             */
+            source_analysis: components["schemas"]["SystemProgress"][];
+            kpis: components["schemas"]["KpiProgress"];
+            /**
+             * Dw Modeling
+             * @description DW Modeling, one entry per Layer.
+             */
+            dw_modeling: components["schemas"]["LayerProgress"][];
+        };
+        /** SystemProgress */
+        SystemProgress: {
+            /**
+             * System Id
+             * Format: uuid
+             */
+            system_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_started" | "in_progress" | "complete";
         };
         /** TestEmailIn */
         TestEmailIn: {
@@ -2048,6 +2119,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getStageProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageProgress"];
                 };
             };
             /** @description Validation error */

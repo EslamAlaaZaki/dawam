@@ -105,3 +105,25 @@ export function useUpdateWorkspace(id: string) {
     },
   });
 }
+
+export type StageProgress = components["schemas"]["StageProgress"];
+export type StageStatus = StageProgress["kpis"]["status"];
+
+/** Where the Workspace's work stands; every member sees the same. */
+export function useStageProgress(id: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workspace", id, "progress"] as const,
+    retry: retryUnlessRefused,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/progress",
+        { params: { path: { workspace_id: id } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+  });
+}

@@ -371,3 +371,97 @@ body {
   margin-top: 0.75rem;
   background: #ab091e;
 }
+
+/* Folder tree and stage progress. Colours keep WCAG AA: 4.5:1 for text, 3:1 for the
+   focus ring, which is also never the only sign of selection (bold + marker). */
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 40rem) {
+  .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.folder-tree,
+.folder-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.folder-group {
+  margin-left: 1rem;
+}
+
+.folder-item {
+  outline: none;
+}
+
+.folder-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  color: #1f2933;
+  cursor: pointer;
+}
+
+.folder-label:hover {
+  background: #e4ecf4;
+}
+
+.folder-item[aria-selected="true"] > .folder-label {
+  background: #d9e2ec;
+  color: #102a43;
+  font-weight: 600;
+}
+
+.folder-item:focus-visible > .folder-label {
+  outline: 2px solid #1c4ed8;
+  outline-offset: 1px;
+}
+
+.folder-toggle {
+  display: inline-block;
+  width: 1rem;
+  text-align: center;
+  color: #323f4b;
+}
+
+.empty-state {
+  max-width: 40rem;
+  padding: 1rem;
+  border: 1px dashed #52606d;
+  border-radius: 4px;
+  color: #323f4b;
+}
+
+.stage-progress {
+  margin-top: 1.5rem;
+}
+
+.stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 28rem;
+}
+
+.stage-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #bcccdc;
+}
+
+.stage-status {
+  color: #323f4b;
+  font-size: 0.875rem;
+}
