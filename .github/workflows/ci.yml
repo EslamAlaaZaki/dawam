@@ -50,6 +50,8 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -58,9 +60,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+      - name: Lint (ESLint)
+        run: npm run lint
+      - name: Component tests (Vitest + Testing Library)
+        run: npm test
+      - name: Build (next build, also type-checks)
+        run: npm run build
 
   api-client:
     name: API client is up to date

@@ -14,7 +14,7 @@ export const CSRF_HEADER = "X-CSRF-Token";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 
 export interface ApiClientOptions {
-  /** Origin of the backend; defaults to the page's own origin. */
+  /** Origin of the API; defaults to the page's own origin. */
   baseUrl?: string;
   fetch?: typeof fetch;
 }
@@ -45,7 +45,9 @@ const sendCsrfToken: Middleware = {
 
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const client = createClient<paths>({
-    baseUrl: options.baseUrl ?? window.location.origin,
+    // Same origin: `web` proxies the API. (No `window` while Next.js renders the page
+    // on the server, where screens never call the API.)
+    baseUrl: options.baseUrl ?? (typeof window === "undefined" ? "" : window.location.origin),
     fetch: options.fetch,
   });
   client.use(sendCsrfToken);

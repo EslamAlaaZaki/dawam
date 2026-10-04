@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { App } from "./App";
 import { createApiClient } from "./api/client";
 import { ApiClientContext } from "./api/context";
 import type { Me } from "./api/queries";
+import { currentLocation, setLocation } from "./test/navigation";
+import { TestApp } from "./test/TestApp";
 
 const CSRF_TOKEN = "csrf-token-from-the-cookie";
 
@@ -73,11 +73,8 @@ function fakeBackend(options: { signedIn?: boolean; versionResponse?: () => Resp
   return { handle, requests };
 }
 
-function CurrentPath() {
-  return <output data-testid="path">{useLocation().pathname}</output>;
-}
-
 function renderApp(backend: ReturnType<typeof fakeBackend>, path = "/") {
+  setLocation(path);
   const fetchStub = async (input: RequestInfo | URL, init?: RequestInit) =>
     backend.handle(new Request(input, init));
   const client = createApiClient({ baseUrl: "http://dawam.test", fetch: fetchStub });
@@ -85,17 +82,14 @@ function renderApp(backend: ReturnType<typeof fakeBackend>, path = "/") {
   render(
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[path]}>
-          <App />
-          <CurrentPath />
-        </MemoryRouter>
+        <TestApp />
       </QueryClientProvider>
     </ApiClientContext.Provider>,
   );
 }
 
 function currentPath() {
-  return screen.getByTestId("path").textContent;
+  return currentLocation().split("?")[0];
 }
 
 async function submitSignIn(email: string, password: string) {
@@ -117,7 +111,7 @@ describe("signing in", () => {
     renderApp(fakeBackend());
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(currentPath()).toBe("/login");
+    expect(currentLocation()).toBe("/login");
     expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
   });
 
@@ -129,7 +123,8 @@ describe("signing in", () => {
 
     const header = await screen.findByRole("banner");
     expect(await within(header).findByText("Ada Lovelace")).toBeInTheDocument();
-    expect(currentPath()).toBe("/");
+    await waitFor(() => expect(currentLocation()).toBe("/"));
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
     const login = backend.requests.find((r) => r.path === "/api/v1/auth/login");
     expect(login).toEqual({
       method: "POST",
@@ -154,14 +149,58 @@ describe("signing in", () => {
     renderApp(fakeBackend({ signedIn: true }), "/login");
 
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
-    expect(currentPath()).toBe("/");
+    await waitFor(() => expect(currentLocation()).toBe("/"));
   });
 
   it("redirects unknown pages of an anonymous visitor to the login page", async () => {
     renderApp(fakeBackend(), "/workspaces/42");
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(currentPath()).toBe("/login");
+    expect(currentLocation()).toBe("/login?from=%2Fworkspaces%2F42");
+  });
+
+  it("returns to the page the visitor asked for after signing in", async () => {
+    renderApp(fakeBackend(), "/?view=recent");
+
+    await submitSignIn(ADA.email, ADA_PASSWORD);
+
+    await waitFor(() => expect(currentLocation()).toBe("/?view=recent"));
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+  });
+
+  it.each([
+    "https://evil.example/",
+    "//evil.example/",
+    "/\\evil.example/",
+    "/\t/evil.example/",
+    "javascript:alert(1)",
+    "/login",
+  ])("never follows a return path that leaves the site or loops (%s)", async (from) => {
+    renderApp(fakeBackend(), `/login?from=${encodeURIComponent(from)}`);
+
+    await submitSignIn(ADA.email, ADA_PASSWORD);
+
+    await waitFor(() => expect(currentLocation()).toBe("/"));
+  });
+
+  it("sends a signed-in user on an unknown page home", async () => {
+    renderApp(fakeBackend({ signedIn: true }), "/workspaces/42");
+
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(currentLocation()).toBe("/");
+  });
+
+  it("says so when the session cannot be checked", async () => {
+    const backend = fakeBackend();
+    const handle = backend.handle;
+    backend.handle = async (request) =>
+      new URL(request.url).pathname === "/api/v1/me"
+        ? apiError(503, "not_ready", "DAWAM is not ready.")
+        : handle(request);
+    renderApp(backend);
+
+    expect(await screen.findByText("Could not check your session: DAWAM is not ready.")).toBeInTheDocument();
+    expect(currentLocation()).toBe("/");
   });
 });
 
@@ -181,7 +220,7 @@ describe("the signed-in shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(currentPath()).toBe("/login");
+    expect(currentLocation()).toBe("/login");
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
     const logout = backend.requests.find((r) => r.path === "/api/v1/auth/logout");
     expect(logout).toMatchObject({ method: "POST", csrf: CSRF_TOKEN });
