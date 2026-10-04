@@ -45,12 +45,15 @@ class ApiError(Exception):
         code: str,
         message: str,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
         self.details = details or {}
+        self.headers = headers
+        """Extra response headers, e.g. ``Retry-After``."""
 
 
 _CODES_BY_STATUS = {
@@ -97,7 +100,7 @@ def _phrase(status_code: int) -> str:
 
 async def _handle_api_error(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ApiError)
-    return error_response(exc.status_code, exc.code, exc.message, exc.details)
+    return error_response(exc.status_code, exc.code, exc.message, exc.details, headers=exc.headers)
 
 
 async def _handle_http_exception(request: Request, exc: Exception) -> JSONResponse:

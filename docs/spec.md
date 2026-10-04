@@ -409,7 +409,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 - **Password storage:** argon2id with per-password salt. Minimum length 10, checked against a common-password list.
 - **Sessions:** server-side sessions stored in the database. The session ID is sent in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie. Idle timeout is 8 hours and absolute timeout 14 days, both configurable.
 - **CSRF:** double-submit token required on all state-changing requests.
-- **Rate limiting:** login attempts are limited per IP and per account. After 5 consecutive failures the account locks for 15 minutes (configurable). Locking is logged.
+- **Rate limiting:** login attempts are limited per IP and per account. After 5 consecutive failures the account locks for 15 minutes (configurable); consecutive failures more than 24 hours apart don't accumulate. An email without an account locks the same way, so locking reveals nothing about which emails exist. An IP with 20 failures in 15 minutes (configurable) must wait until the oldest leaves the window; only that IP is slowed. Locking is logged.
 - **Password reset:** single-use token, valid 30 minutes, stored hashed. Using it invalidates all of the user's sessions. The response is identical whether or not the email exists.
 - **Invitations:** single-use token, valid 7 days, bound to an email and optionally to a Workspace and role.
 - **Admin-created users:** an admin can create a user with email, display name, system role and a temporary password (same password policy). The user is flagged `must_change_password`. Until they change it, the session allows only `GET /me`, password change and sign-out; every other request returns `403 password_change_required`, and the frontend sends them to the change-password page. Changing it clears the flag. Creation writes a security event. This is an alternative to invitations, mainly for installations without SMTP.
@@ -734,12 +734,16 @@ Every AI feature goes through one internal gateway. Nothing else in the codebase
 
 ```
 User(id, email UNIQUE, display_name, password_hash, system_role[admin|user],
-     is_active, must_change_password, failed_login_count, locked_until, created_at, last_login_at)
+     is_active, must_change_password, failed_login_count, locked_until, last_failed_login_at,
+     created_at, last_login_at)
 Session(id, user_id, created_at, last_seen_at, expires_at, ip, user_agent)
 Invitation(id, email, token_hash, invited_by, workspace_id?, workspace_role?, expires_at, accepted_at)
 PasswordReset(id, user_id, token_hash, expires_at, used_at)
 SystemSetting(key, value)                         -- registration, allowed domains, SMTP
-SecurityEvent(id, actor_id?, event_type, target_type, target_id, metadata JSON, ip, created_at)
+LoginLockout(email_key, failed_login_count, locked_until, last_failed_login_at)
+                                                  -- emails without an account; key = SHA-256 of the email
+LoginFailure(id, ip, failed_at)                   -- per-IP rate limit; only its window is kept
+SecurityEvent(id, seq, actor_id?, event_type, target_type?, target_id?, metadata JSON, ip, created_at)
 UserMfa(user_id, totp_secret_encrypted, recovery_codes_hashed[], enabled_at)
 UserIdentity(user_id, provider, subject, email)   -- OIDC links
 

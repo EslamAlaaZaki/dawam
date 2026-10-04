@@ -19,6 +19,8 @@ from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import is_valid_email, normalize_email, password_problem
+from .internal.login_guard import LoginGuard, too_many_attempts
+from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
 logger = logging.getLogger(__name__)
@@ -42,11 +44,6 @@ _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(16))
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _invalid_credentials() -> ApiError:
-    # One error for an unknown email and a wrong password, so neither can be probed.
-    return ApiError(401, "invalid_credentials", "The email or password is incorrect.")
 
 
 def _email_taken() -> ApiError:
@@ -105,6 +102,8 @@ class AuthService:
         self._engine = engine
         self._settings = settings
         self._clock = clock
+        self._events = SecurityEventRecorder(engine, clock=clock)
+        self._guard = LoginGuard(settings, self._events)
 
     @property
     def idle_timeout(self) -> timedelta:
@@ -209,39 +208,87 @@ class AuthService:
     ) -> SignedIn:
         """Check the credentials and start a session. ``replacing`` is the token of the
         browser's current session, if any, which is ended. ``ip`` and ``user_agent`` are
-        recorded on the session."""
+        recorded on the session.
+
+        Raises ``ApiError`` 401 ``invalid_credentials``, or 429 ``account_locked`` once
+        too many consecutive attempts on the account have failed, or 429
+        ``too_many_attempts`` once too many from ``ip`` have (``internal.login_guard``). Every
+        attempt is recorded as a security event (``login_succeeded`` or
+        ``login_failed``, plus ``account_locked`` when it locks the account)."""
         now = self._clock()
+        email = normalize_email(email)
+        with Session(self._engine) as db:
+            throttled_until = self._guard.throttled_until(db, ip, now)
+        if throttled_until is not None:
+            error = too_many_attempts(throttled_until, now)
+            # Not a security event (an address may send many); a log line per attempt.
+            logger.warning(
+                "sign-in throttled",
+                extra={"ip": ip, "retry_after_seconds": error.details["retry_after_seconds"]},
+            )
+            raise error
         with Session(self._engine) as db, db.begin():
+            # Locked, so concurrent attempts on one account are counted one at a time.
             user = db.scalar(
-                sa.select(UserRecord).where(UserRecord.email == normalize_email(email))
+                sa.select(UserRecord).where(UserRecord.email == email).with_for_update()
             )
-            if user is None:
-                self._verify(_DUMMY_HASH, password)
-                raise _invalid_credentials()
-            if not self._verify(user.password_hash, password):
-                raise _invalid_credentials()
-            if _hasher.check_needs_rehash(user.password_hash):
-                user.password_hash = _hasher.hash(password)
-            user.last_login_at = now
-            if replacing:
-                db.execute(
-                    sa.delete(SessionRecord).where(
-                        SessionRecord.token_hash == _token_hash(replacing)
-                    )
-                )
-            token = secrets.token_urlsafe(32)
-            db.add(
-                SessionRecord(
-                    token_hash=_token_hash(token),
-                    user_id=user.id,
-                    created_at=now,
-                    last_seen_at=now,
-                    expires_at=now + self.absolute_timeout,
-                    ip=ip[:IP_MAX_LENGTH] if ip else None,
-                    user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
-                )
+            state = self._guard.state_of(db, user, email, now)
+            locked_until = self._guard.locked_until(state, now)
+            # A locked email is refused without checking the password, account or not.
+            correct = locked_until is None and self._verify(
+                user.password_hash if user else _DUMMY_HASH, password
             )
-            return SignedIn(token=token, user=_user(user))
+            if correct and user is not None:
+                user.failed_login_count = 0  # a success ends the streak
+                signed_in = self._start_session(db, user, password, now, replacing, ip, user_agent)
+                self._events.record(
+                    "login_succeeded",
+                    actor_id=user.id,
+                    target_type="user",
+                    target_id=user.id,
+                    metadata={"email": email},
+                    ip=ip,
+                    db=db,
+                )
+                return signed_in
+            # Committed: a failure is recorded before it is raised.
+            failure = self._guard.failed(
+                db, state, user, email, ip=ip, now=now, locked_until=locked_until
+            )
+        with Session(self._engine) as db, db.begin():
+            self._guard.prune(db, now)
+        raise failure
+
+    def _start_session(
+        self,
+        db: Session,
+        user: UserRecord,
+        password: str,
+        now: datetime,
+        replacing: str | None,
+        ip: str | None,
+        user_agent: str | None,
+    ) -> SignedIn:
+        if _hasher.check_needs_rehash(user.password_hash):
+            user.password_hash = _hasher.hash(password)
+        user.last_login_at = now
+        if replacing:
+            db.execute(
+                sa.delete(SessionRecord).where(SessionRecord.token_hash == _token_hash(replacing))
+            )
+        token = secrets.token_urlsafe(32)
+        db.add(
+            SessionRecord(
+                token_hash=_token_hash(token),
+                user_id=user.id,
+                created_at=now,
+                last_seen_at=now,
+                expires_at=now + self.absolute_timeout,
+                ip=ip[:IP_MAX_LENGTH] if ip else None,
+                user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
+            )
+        )
+        return SignedIn(token=token, user=_user(user))
 
     def user_for_session(self, token: str) -> User | None:
         """The signed-in user of a live session, or None. An expired session is deleted."""

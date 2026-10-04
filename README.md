@@ -92,6 +92,20 @@ on every log line for that request.
 - **CSRF.** Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` must send the value
   of the `dawam_csrf` cookie in the `X-CSRF-Token` header (double submit); any
   response sets that cookie for a client without one.
+- **Lockout.** After `DAWAM_LOGIN_MAX_FAILURES` (default 5) consecutive failed
+  sign-ins an account is locked for `DAWAM_LOGIN_LOCKOUT_MINUTES` (default 15): even
+  the right password gets `429 account_locked` (with `Retry-After`) until then. A
+  successful sign-in resets the count, and failures more than a day apart do not add
+  up. An email without an account behaves the same, so the lock does not reveal which
+  emails have accounts.
+- **Rate limiting per address.** A client address with `DAWAM_LOGIN_IP_MAX_FAILURES`
+  (default 20) failed sign-ins in the last `DAWAM_LOGIN_IP_WINDOW_MINUTES` (default
+  15) gets `429 too_many_attempts` until the oldest leaves the window. Only that
+  address waits; users behind one shared NAT address share its limit. Both limits are
+  kept in PostgreSQL, so they need no extra service and hold across restarts.
+- **Security events.** Successful and failed sign-ins and lockouts are recorded (who,
+  if known, the account, the client address and the time; never a password) in the
+  `security_events` table, for the admin's security log.
 - Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`.
 
 ## Develop

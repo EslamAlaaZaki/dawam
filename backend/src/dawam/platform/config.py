@@ -127,6 +127,15 @@ class Settings(DatabaseSettings):
     session_absolute_timeout_days: float = Field(default=14, gt=0)
     """A session ends this long after sign-in, however active it is."""
 
+    login_max_failures: int = Field(default=5, ge=1)
+    """Consecutive failed sign-ins after which an account locks."""
+    login_lockout_minutes: float = Field(default=15, gt=0)
+    """How long a locked account stays locked."""
+    login_ip_max_failures: int = Field(default=20, ge=1)
+    """Failed sign-ins from one client address, within ``login_ip_window_minutes``,
+    after which that address must wait before trying again."""
+    login_ip_window_minutes: float = Field(default=15, gt=0)
+
 
 def load_settings() -> Settings:
     """Read the settings from the environment.
