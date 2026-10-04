@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
+
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from dawam.modules.auth import RegistrationRules, SecurityEventRecorder
+from dawam.platform.errors import ApiError
+
+from .internal.domains import (
+    MAX_ALLOWED_DOMAINS,
+    InvalidDomainError,
+    normalize_domains,
+)
+from .tables import SystemSettingRecord
+
+_REGISTRATION_ENABLED = "registration_enabled"
+_REGISTRATION_DOMAINS = "registration_allowed_email_domains"
+
+
+@dataclass(frozen=True)
+class RegistrationSettings:
+    """Self-registration (spec story 20): off by default. ``allowed_email_domains``
+    empty means any domain may sign up; otherwise only an email whose domain is exactly
+    one of them (a subdomain must be listed on its own)."""
+
+    enabled: bool = False
+    allowed_email_domains: tuple[str, ...] = ()
+
+
+class SystemSettingsService:
+    """The installation-wide settings an admin manages (the ``system_settings`` table).
+
+    It also answers the auth module's ``RegistrationPolicy`` questions, so the
+    composition root hands it to auth for sign-up."""
+
+    def __init__(self, engine: sa.Engine, *, events: SecurityEventRecorder | None = None) -> None:
+        """``events`` records who changed the settings. Reading them (as sign-up does)
+        needs none; changes made without one go unrecorded."""
+        self._engine = engine
+        self._events = events
+
+    def registration(self) -> RegistrationSettings:
+        with Session(self._engine) as db:
+            values = self._read(db, (_REGISTRATION_ENABLED, _REGISTRATION_DOMAINS))
+        return RegistrationSettings(
+            enabled=bool(values.get(_REGISTRATION_ENABLED, False)),
+            allowed_email_domains=tuple(values.get(_REGISTRATION_DOMAINS, ())),
+        )
+
+    def set_registration(
+        self,
+        *,
+        enabled: bool,
+        allowed_email_domains: Sequence[str],
+        actor_id: uuid.UUID | None = None,
+        ip: str | None = None,
+    ) -> RegistrationSettings:
+        """Replace the registration settings, as ``actor_id`` from ``ip`` (recorded as a
+        ``registration_settings_changed`` security event). Domains are stored trimmed,
+        lower-cased, without a leading ``@`` or duplicates. Raises ``ApiError`` 422
+        ``invalid_email_domain`` (nothing changes then)."""
+        if len(allowed_email_domains) > MAX_ALLOWED_DOMAINS:
+            raise ApiError(
+                422,
+                "invalid_email_domain",
+                f"At most {MAX_ALLOWED_DOMAINS} allowed email domains can be set.",
+            )
+        try:
+            domains = normalize_domains(allowed_email_domains)
+        except InvalidDomainError as exc:
+            raise ApiError(
+                422,
+                "invalid_email_domain",
+                f"{exc.domain!r} is not a domain name (e.g. example.com).",
+                {"domain": exc.domain},
+            ) from None
+        with Session(self._engine) as db, db.begin():
+            self._write(db, {_REGISTRATION_ENABLED: enabled, _REGISTRATION_DOMAINS: domains})
+            if self._events is not None:
+                self._events.record(
+                    "registration_settings_changed",
+                    actor_id=actor_id,
+                    metadata={"enabled": enabled, "allowed_email_domains": domains},
+                    ip=ip,
+                    db=db,
+                )
+        return RegistrationSettings(enabled=enabled, allowed_email_domains=tuple(domains))
+
+    # --- the auth module's RegistrationPolicy ---------------------------------------
+
+    def registration_rules(self) -> RegistrationRules:
+        settings = self.registration()
+        return RegistrationRules(
+            open=settings.enabled, allowed_email_domains=frozenset(settings.allowed_email_domains)
+        )
+
+    # --- storage -----------------------------------------------------------------------
+
+    @staticmethod
+    def _read(db: Session, keys: Sequence[str]) -> dict[str, Any]:
+        rows = db.execute(
+            sa.select(SystemSettingRecord.key, SystemSettingRecord.value).where(
+                SystemSettingRecord.key.in_(keys)
+            )
+        )
+        return {key: value for key, value in rows}
+
+    @staticmethod
+    def _write(db: Session, values: dict[str, Any]) -> None:
+        statement = insert(SystemSettingRecord).values(
+            [{"key": key, "value": value} for key, value in values.items()]
+        )
+        db.execute(
+            statement.on_conflict_do_update(
+                index_elements=[SystemSettingRecord.key], set_={"value": statement.excluded.value}
+            )
+        )

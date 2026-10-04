@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "./client";
 import { useApiClient } from "./context";
@@ -21,7 +21,7 @@ export function useApiVersion() {
   });
 }
 
-const meQueryKey = ["me"] as const;
+export const meQueryKey = ["me"] as const;
 
 // Queries that hold nothing about the signed-in user and survive signing out.
 const PUBLIC_QUERIES = new Set(["me", "version"]);
@@ -73,12 +73,14 @@ export function useSignOut() {
         throw new ApiError(response.status, error.error);
       }
     },
-    onSuccess: () => {
-      // Drop everything the previous user loaded, then show the signed-out state.
-      queryClient.removeQueries({
-        predicate: (query) => !PUBLIC_QUERIES.has(String(query.queryKey[0])),
-      });
-      queryClient.setQueryData(meQueryKey, null);
-    },
+    onSuccess: () => forgetSignedInUser(queryClient),
   });
+}
+
+/** Drop everything the previous user loaded, then show the signed-out state. */
+export function forgetSignedInUser(queryClient: QueryClient): void {
+  queryClient.removeQueries({
+    predicate: (query) => !PUBLIC_QUERIES.has(String(query.queryKey[0])),
+  });
+  queryClient.setQueryData(meQueryKey, null);
 }

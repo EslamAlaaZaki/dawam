@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 from tests.authz.matrix import (
     Row,
+    admin_only,
     credentials_of,
     describe,
     outcome_of,
@@ -24,7 +25,18 @@ from tests.authz.matrix import (
     signed_in,
     workspace,
 )
-from tests.roles import ROLES, Role, RoleClients
+from tests.roles import PASSWORD, ROLES, Role, RoleClients
+
+
+def _open_registration_and_sign_up(roles: RoleClients) -> dict[str, str]:
+    """Sign-up is closed by default: an admin opens it first, through the API."""
+    response = roles.client("admin").put(
+        "/api/v1/admin/settings",
+        json={"registration": {"enabled": True, "allowed_email_domains": []}},
+    )
+    assert response.status_code == 200, response.text
+    return {"email": "newcomer@example.com", "password": PASSWORD, "display_name": "New"}
+
 
 ROWS: list[Row] = [
     # Probes, API docs and version: no data, open to all.
@@ -37,6 +49,38 @@ ROWS: list[Row] = [
     Row("POST", "/api/v1/auth/login", "sign in", public(), json=credentials_of("owner")),
     Row("POST", "/api/v1/auth/logout", "sign out", public()),
     Row("GET", "/api/v1/me", "the signed-in user", signed_in()),
+    Row(
+        "PATCH",
+        "/api/v1/me",
+        "edit my display name (story 8)",
+        signed_in(),
+        json=lambda roles: {"display_name": "Renamed"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/auth/password/change",
+        "change my password (story 7)",
+        signed_in(),
+        json=lambda roles: {"current_password": PASSWORD, "new_password": "a new passphrase"},
+    ),
+    Row("POST", "/api/v1/auth/logout-all", "sign out everywhere (story 5)", signed_in()),
+    Row("GET", "/api/v1/auth/registration", "is sign-up open? (story 1)", public()),
+    Row(
+        "POST",
+        "/api/v1/auth/register",
+        "sign up while self-registration is open (story 1)",
+        public(),
+        json=_open_registration_and_sign_up,
+    ),
+    # Administration.
+    Row("GET", "/api/v1/admin/settings", "registration settings (story 20)", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/settings",
+        "registration settings (story 20)",
+        admin_only(),
+        json=lambda roles: {"registration": {"enabled": True, "allowed_email_domains": []}},
+    ),
     # Workspaces.
     Row("GET", "/api/v1/workspaces", "list my Workspaces (story 28)", signed_in()),
     Row(

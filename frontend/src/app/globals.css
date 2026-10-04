@@ -208,3 +208,91 @@ body {
 .details dd {
   margin: 0 0 0.75rem;
 }
+
+.shell-user a {
+  color: #f0f4f8;
+}
+
+.form-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #52606d;
+}
+
+.form-ok {
+  margin: 0;
+  color: #0e7c48;
+}
+
+.login-form a {
+  color: #243b53;
+}
+
+.settings {
+  max-width: 36rem;
+}
+
+.settings h2 {
+  margin-top: 0;
+}
+
+.settings-section {
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.settings-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.settings-form label.settings-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-form input:not([type="checkbox"]),
+.settings-form textarea {
+  padding: 0.5rem;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.settings-section button {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  color: #ffffff;
+  background: #243b53;
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-section button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.settings-section button.settings-danger {
+  margin-top: 0.75rem;
+  background: #ab091e;
+}

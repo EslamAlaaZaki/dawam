@@ -1,14 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, type FormEvent } from "react";
 
+import { useRegistration } from "../api/account";
 import { useMe, useSignIn } from "../api/queries";
 import { safeReturnPath } from "./returnPath";
 
 export function LoginPage() {
   const me = useMe();
   const signIn = useSignIn();
+  // The sign-up link shows only while self-registration is open.
+  const registrationOpen = useRegistration().data?.open === true;
   const router = useRouter();
   const from = useSearchParams().get("from");
   // Signed in already, or just now: signing in fills the `me` query.
@@ -53,6 +57,11 @@ export function LoginPage() {
         <button type="submit" disabled={signIn.isPending}>
           Sign in
         </button>
+        {registrationOpen && (
+          <p className="form-hint">
+            New here? <Link href="/signup">Create an account</Link>
+          </p>
+        )}
       </form>
     </section>
   );

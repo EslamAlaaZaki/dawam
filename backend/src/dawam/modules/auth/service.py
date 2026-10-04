@@ -4,9 +4,11 @@ import hashlib
 import logging
 import secrets
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal, get_args
+from typing import Literal, Protocol, get_args
 
 import sqlalchemy as sa
 from argon2 import PasswordHasher
@@ -18,8 +20,14 @@ from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
-from .internal.credentials import is_valid_email, normalize_email, password_problem
-from .internal.login_guard import LoginGuard, too_many_attempts
+from .internal.credentials import (
+    display_name_problem,
+    is_valid_email,
+    normalize_display_name,
+    normalize_email,
+    password_problem,
+)
+from .internal.login_guard import LoginGuard, too_many_attempts, too_many_sign_ups
 from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
@@ -48,6 +56,64 @@ def _token_hash(token: str) -> str:
 
 def _email_taken() -> ApiError:
     return ApiError(409, "email_taken", "A user with this email already exists.")
+
+
+@contextmanager
+def _email_must_be_free() -> Iterator[None]:
+    """Turn the unique-email violation of an insert into ``409 email_taken``. The
+    constraint, not a pre-check, decides: two concurrent creates of one email cannot
+    both succeed."""
+    try:
+        yield
+    except IntegrityError as exc:
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint == "uq_users_email":
+            raise _email_taken() from None
+        raise
+
+
+def _checked_password(password: str) -> str:
+    problem = password_problem(password)
+    if problem:
+        raise ApiError(422, "invalid_password", f"The password {problem}.")
+    return password
+
+
+def _checked_display_name(display_name: str) -> str:
+    display_name = normalize_display_name(display_name)
+    problem = display_name_problem(display_name)
+    if problem:
+        raise ApiError(422, "invalid_display_name", f"The display name {problem}.")
+    return display_name
+
+
+@dataclass(frozen=True)
+class RegistrationRules:
+    """Who may sign up on their own (spec stories 1, 20): nobody unless ``open``; then,
+    if ``allowed_email_domains`` is not empty, only emails at exactly one of them."""
+
+    open: bool = False
+    allowed_email_domains: frozenset[str] = frozenset()
+
+    def allows(self, email: str) -> bool:
+        """Whether a normalised email may sign up."""
+        domain = email.rpartition("@")[2]
+        return self.open and (
+            not self.allowed_email_domains or domain in self.allowed_email_domains
+        )
+
+
+_CLOSED = RegistrationRules()
+
+
+class RegistrationPolicy(Protocol):
+    """Where the registration rules come from. The auth module does not keep them: the
+    admin module's system settings implement this, and the composition root hands them
+    to auth."""
+
+    def registration_rules(self) -> RegistrationRules:
+        """The rules in force now."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -124,18 +190,65 @@ class AuthService:
         """Create a user. Raises ``ApiError``: 422 ``invalid_email`` or
         ``invalid_password``, 409 ``email_taken``."""
         record = self._new_user(email, password, display_name, system_role)
-        try:
-            with Session(self._engine) as db, db.begin():
-                db.add(record)
-                db.flush()
-                return _user(record)
-        except IntegrityError as exc:
-            # The unique constraint, not a pre-check, decides: two concurrent creates
-            # of one email cannot both succeed.
-            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-            if constraint == "uq_users_email":
-                raise _email_taken() from None
-            raise
+        with _email_must_be_free(), Session(self._engine) as db, db.begin():
+            db.add(record)
+            db.flush()
+            return _user(record)
+
+    def register(
+        self,
+        *,
+        email: str,
+        password: str,
+        display_name: str,
+        policy: RegistrationPolicy | None,
+        replacing: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> SignedIn:
+        """Self-registration: create a regular user and sign them in, if ``policy``'s
+        rules (read once; no policy: closed) allow it.
+
+        Raises ``ApiError``: 403 ``registration_closed`` or ``email_domain_not_allowed``,
+        429 ``too_many_attempts`` (too many sign-ups from ``ip``;
+        ``internal.login_guard``), 422 ``invalid_email``, ``invalid_display_name`` or
+        ``invalid_password``, 409 ``email_taken``. ``replacing``, ``ip`` and
+        ``user_agent`` are as for ``sign_in``. Records a ``user_registered`` security
+        event."""
+        rules = policy.registration_rules() if policy else _CLOSED
+        if not rules.open:
+            raise ApiError(403, "registration_closed", "Self-registration is turned off.")
+        now = self._clock()
+        # Every attempt from an address counts, committed before anything is checked or
+        # hashed, so a refused or failing one costs the address too.
+        with Session(self._engine) as db, db.begin():
+            throttled_until = self._guard.sign_up_throttled_until(db, ip, now)
+            if throttled_until is None:
+                self._guard.sign_up_attempted(db, ip, now)
+        if throttled_until is not None:
+            logger.warning("sign-up throttled", extra={"ip": ip})
+            raise too_many_sign_ups(throttled_until, now)
+        normalized = normalize_email(email)
+        if is_valid_email(normalized) and not rules.allows(normalized):
+            raise ApiError(
+                403,
+                "email_domain_not_allowed",
+                "Self-registration is not open to this email domain.",
+            )
+        record = self._new_user(normalized, password, display_name, "user")
+        with _email_must_be_free(), Session(self._engine) as db, db.begin():
+            db.add(record)
+            db.flush()
+            self._events.record(
+                "user_registered",
+                actor_id=record.id,
+                target_type="user",
+                target_id=record.id,
+                metadata={"email": record.email},
+                ip=ip,
+                db=db,
+            )
+            return self._start_session(db, record, password, now, replacing, ip, user_agent)
 
     def get_user(self, user_id: uuid.UUID) -> User | None:
         with Session(self._engine) as db:
@@ -312,6 +425,80 @@ class AuthService:
                 session.last_seen_at = now
             return _user(user)
 
+    def update_display_name(self, user_id: uuid.UUID, display_name: str) -> User:
+        """Change a user's display name (stored trimmed). Raises ``ApiError``: 422
+        ``invalid_display_name``, 404 ``not_found``."""
+        display_name = _checked_display_name(display_name)
+        with Session(self._engine) as db, db.begin():
+            user = self._existing_user(db, user_id)
+            user.display_name = display_name
+            return _user(user)
+
+    def change_password(
+        self,
+        user_id: uuid.UUID,
+        current_password: str,
+        new_password: str,
+        *,
+        keep_session: str | None = None,
+        ip: str | None = None,
+    ) -> None:
+        """Replace the user's password, given the current one, and end every session of
+        theirs except the one whose token is ``keep_session`` (the browser asking), so a
+        stolen session dies with the old password. Records a ``password_changed``
+        security event from ``ip``.
+
+        A wrong current password counts against the account like a failed sign-in
+        (and is recorded as ``password_change_failed``), so it cannot be guessed here
+        either. Raises ``ApiError``: 400 ``wrong_password``, 429 ``account_locked``
+        (when that locks the account, or it was locked), 422 ``invalid_password``, 404
+        ``not_found``."""
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            user = self._existing_user(db, user_id)
+            # Like a sign-in: a locked account is refused unchecked, and a wrong
+            # password counts towards the lock (``internal.login_guard``).
+            locked_until = self._guard.locked_until(user, now)
+            if locked_until is None and self._verify(user.password_hash, current_password):
+                user.failed_login_count = 0  # knowing the password ends the streak
+                user.password_hash = _hasher.hash(_checked_password(new_password))
+                others = sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
+                if keep_session:
+                    others = others.where(SessionRecord.token_hash != _token_hash(keep_session))
+                ended = db.execute(others).rowcount
+                self._events.record(
+                    "password_changed",
+                    actor_id=user.id,
+                    target_type="user",
+                    target_id=user.id,
+                    metadata={"other_sessions_ended": ended},
+                    ip=ip,
+                    db=db,
+                )
+                return
+            # Committed with the transaction: the failure is recorded before it is raised.
+            failure = self._guard.password_check_failed(
+                db, user, ip=ip, now=now, locked_until=locked_until
+            )
+        raise failure
+
+    def sign_out_everywhere(self, user_id: uuid.UUID, *, ip: str | None = None) -> None:
+        """End every session of the user, the caller's own included. Records a
+        ``signed_out_everywhere`` security event from ``ip``."""
+        with Session(self._engine) as db, db.begin():
+            ended = db.execute(
+                sa.delete(SessionRecord).where(SessionRecord.user_id == user_id)
+            ).rowcount
+            self._events.record(
+                "signed_out_everywhere",
+                actor_id=user_id,
+                target_type="user",
+                target_id=user_id,
+                metadata={"sessions_ended": ended},
+                ip=ip,
+                db=db,
+            )
+
     def sign_out(self, token: str) -> None:
         """End the session with this token (nothing happens if there is none)."""
         with Session(self._engine) as db, db.begin():
@@ -325,16 +512,21 @@ class AuthService:
         email = normalize_email(email)
         if not is_valid_email(email):
             raise ApiError(422, "invalid_email", "The email address is not valid.")
-        problem = password_problem(password)
-        if problem:
-            raise ApiError(422, "invalid_password", f"The password {problem}.")
+        display_name = _checked_display_name(display_name)
         return UserRecord(
             email=email,
-            display_name=display_name.strip(),
-            password_hash=_hasher.hash(password),
+            display_name=display_name,
+            password_hash=_hasher.hash(_checked_password(password)),
             system_role=system_role,
             created_at=self._clock(),
         )
+
+    @staticmethod
+    def _existing_user(db: Session, user_id: uuid.UUID) -> UserRecord:
+        user = db.get(UserRecord, user_id, with_for_update=True)
+        if user is None:
+            raise ApiError(404, "not_found", "The user does not exist.")
+        return user
 
     @staticmethod
     def _verify(password_hash: str, password: str) -> bool:

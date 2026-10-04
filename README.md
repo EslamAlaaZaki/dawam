@@ -103,10 +103,29 @@ on every log line for that request.
   15) gets `429 too_many_attempts` until the oldest leaves the window. Only that
   address waits; users behind one shared NAT address share its limit. Both limits are
   kept in PostgreSQL, so they need no extra service and hold across restarts.
-- **Security events.** Successful and failed sign-ins and lockouts are recorded (who,
-  if known, the account, the client address and the time; never a password) in the
-  `security_events` table, for the admin's security log.
-- Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`.
+- **Security events.** Successful and failed sign-ins, lockouts, sign-ups, password
+  changes, signing out everywhere and changes to the registration settings are
+  recorded (who, if known, the account, the client address and the time; never a
+  password) in the `security_events` table, for the admin's security log.
+- **Passwords** must be at least 10 characters long and not on DAWAM's list of
+  common passwords (compared ignoring case), whenever one is set: sign-up, the first
+  admin, and every password change. The list ships with DAWAM, so it works offline: it
+  is zxcvbn's list of 47,000 common passwords, under the MIT licence
+  (`backend/src/dawam/modules/auth/internal/common_passwords.LICENSE.txt`).
+- **Self-registration** is off until an admin turns it on (Admin settings, or
+  `PUT /api/v1/admin/settings`), optionally only for some email domains (exact
+  matches; list subdomains separately). While it is off the login page shows no
+  sign-up link and `POST /api/v1/auth/register` answers `403 registration_closed`; an
+  email outside the allowed domains gets `403 email_domain_not_allowed`. An address
+  that tried to sign up `DAWAM_REGISTER_IP_MAX_ATTEMPTS` (default 10) times in the
+  last `DAWAM_REGISTER_IP_WINDOW_MINUTES` (default 60) gets `429 too_many_attempts`.
+- **Profile.** Users edit their display name, change their password (which needs the
+  current one and signs out every other session of theirs) and sign out everywhere. A
+  wrong current password counts towards the lockout like a failed sign-in.
+- Endpoints: `POST /api/v1/auth/login`, `/auth/logout`, `/auth/logout-all`,
+  `/auth/register`, `/auth/password/change`; `GET /api/v1/auth/registration` (is
+  sign-up open?); `GET|PATCH /api/v1/me`; `GET|PUT /api/v1/admin/settings` (admins
+  only).
 
 ### Workspaces
 
@@ -183,9 +202,10 @@ cp -r .next/static .next/standalone/.next/
 node .next/standalone/server.js   # pages only: put edge (or another proxy) in front for /api
 ```
 
-The app lives in `frontend/src/`: routes in `app/` (`login/`, and the signed-in pages
-in the `(signed-in)` group, whose layout sends anyone not signed in to
-`/login?from=<page>`), screens in `auth/`, `shell/` and `workspaces/`, the API client and its
+The app lives in `frontend/src/`: routes in `app/` (`login/`, `signup/`, and the
+signed-in pages in the `(signed-in)` group, `profile/` and `admin/settings/` among
+them, whose layout sends anyone not signed in to `/login?from=<page>`), screens in
+`auth/`, `profile/`, `admin/`, `shell/` and `workspaces/`, the API client and its
 TanStack Query hooks in `api/`, and the security headers in `security/` and
 `proxy.ts`. Screens are client components that call the API from the browser;
 server components only lay out the static shell. The frontend has no API routes,
@@ -193,7 +213,8 @@ server actions or database access: FastAPI is the only backend (ADR 0003).
 
 Component tests render the screens without Next.js: `src/test/TestApp.tsx` puts the
 pages and layouts together as Next.js routes them, `src/test/navigation.ts` stands in
-for `next/navigation`, and each test fakes the API behind the generated client.
+for `next/navigation` (and `link.tsx` for `next/link`), and each test fakes the API
+behind the generated client (`src/test/fakeApi.tsx` fakes the account API).
 
 ### The generated API client
 

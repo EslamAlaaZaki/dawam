@@ -46,6 +46,9 @@ class Action(StrEnum):
     """Rename / edit Workspace details."""
     MANAGE_MEMBERS = "workspace.manage_members"
     """Add / remove members, change roles."""
+    MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
+    """Read and change the installation-wide settings, e.g. self-registration (admins
+    only; spec §4.1, story 20)."""
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer"),
     Action.EDIT_WORKSPACE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),
+    Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 
 if set(_RULES) != set(Action):  # pragma: no cover - a programming error, caught on import

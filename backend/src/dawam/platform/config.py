@@ -136,6 +136,11 @@ class Settings(DatabaseSettings):
     after which that address must wait before trying again."""
     login_ip_window_minutes: float = Field(default=15, gt=0)
 
+    register_ip_max_attempts: int = Field(default=10, ge=1)
+    """Sign-up attempts from one client address, within ``register_ip_window_minutes``,
+    after which that address must wait before signing up again."""
+    register_ip_window_minutes: float = Field(default=60, gt=0)
+
 
 def load_settings() -> Settings:
     """Read the settings from the environment.

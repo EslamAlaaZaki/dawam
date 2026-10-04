@@ -9,6 +9,7 @@ To build expectations, use the helper that matches the endpoint:
 
 - ``public()``: everyone, signed in or not;
 - ``signed_in()``: every signed-in user (anonymous gets 401);
+- ``admin_only()``: system administration; admins only (other users get 403);
 - ``workspace(admin=, owner=, editor=, viewer=)``: a Workspace's content, with the
   four columns of the §4.3 matrix row copied as they are. Anonymous gets 401; a
   non-member user, and a non-member admin where the matrix says ❌, get 404 (the
@@ -69,6 +70,15 @@ def public() -> Expectations:
 
 def signed_in() -> Expectations:
     return {**dict.fromkeys(ROLES, ALLOWED), "anonymous": UNAUTHENTICATED}
+
+
+def admin_only() -> Expectations:
+    """System administration (§4.1): admins only, member of any Workspace or not."""
+    return {
+        **dict.fromkeys(ROLES, FORBIDDEN),
+        "anonymous": UNAUTHENTICATED,
+        "admin": ALLOWED,
+    }
 
 
 def workspace(*, admin: bool, owner: bool, editor: bool, viewer: bool) -> Expectations:
