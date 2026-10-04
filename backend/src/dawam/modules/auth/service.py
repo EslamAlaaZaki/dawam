@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
+from dawam.platform.email import EmailMessage, Mailer, OneTimeLink
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import (
@@ -29,7 +30,13 @@ from .internal.credentials import (
 )
 from .internal.login_guard import LoginGuard, too_many_attempts, too_many_sign_ups
 from .internal.security_events import SecurityEventRecorder
-from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
+from .tables import (
+    IP_MAX_LENGTH,
+    USER_AGENT_MAX_LENGTH,
+    PasswordResetRecord,
+    SessionRecord,
+    UserRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -534,3 +541,101 @@ class AuthService:
             return _hasher.verify(password_hash, password)
         except (VerificationError, InvalidHashError):
             return False
+
+
+RESET_LINK_LIFETIME = timedelta(minutes=30)
+
+
+def _invalid_reset_token() -> ApiError:
+    # One error for unknown, used and expired links, so none can be told apart.
+    return ApiError(
+        400,
+        "invalid_reset_token",
+        "This password reset link is invalid, used or expired. Ask for a new one.",
+    )
+
+
+class PasswordResets:
+    """Forgotten passwords (spec §6.1): a single-use link, valid 30 minutes, emailed
+    through the ``Mailer``. The link carries a random token; the ``password_resets``
+    row stores only its SHA-256. Using it sets the new password and ends every session
+    of the user."""
+
+    def __init__(self, engine: sa.Engine, *, mailer: Mailer, clock: Clock, public_url: str) -> None:
+        self._engine = engine
+        self._mailer = mailer
+        self._clock = clock
+        self._public_url = public_url
+
+    def request_reset(self, email: str) -> None:
+        """Email a reset link to the user with this email, if there is one. Says
+        nothing either way, so callers can answer the same whether or not it exists."""
+        now = self._clock()
+        token = secrets.token_urlsafe(32)
+        expires_at = now + RESET_LINK_LIFETIME
+        with Session(self._engine) as db, db.begin():
+            user = db.scalar(
+                sa.select(UserRecord).where(UserRecord.email == normalize_email(email))
+            )
+            if user is None:
+                return
+            user_id, address = user.id, user.email
+            db.add(
+                PasswordResetRecord(
+                    user_id=user_id,
+                    token_hash=_token_hash(token),
+                    created_at=now,
+                    expires_at=expires_at,
+                )
+            )
+        url = f"{self._public_url}/reset-password#token={token}"
+        minutes = int(RESET_LINK_LIFETIME.total_seconds() // 60)
+        self._mailer.send(
+            EmailMessage(
+                to=address,
+                subject="Reset your DAWAM password",
+                body=(
+                    "Someone (hopefully you) asked to reset the password of your DAWAM "
+                    "account.\n\n"
+                    f"To choose a new password, open this link within {minutes} minutes:\n\n"
+                    f"{url}\n\n"
+                    "The link works once. If you did not ask for it, ignore this email: "
+                    "your password stays as it is.\n"
+                ),
+            ),
+            link=OneTimeLink(url=url, purpose="password_reset", expires_at=expires_at),
+        )
+        logger.info("password reset requested", extra={"user_id": str(user_id)})
+
+    def reset_password(self, token: str, new_password: str) -> None:
+        """Set a new password with a reset link's token, and end every session of the
+        user. Every other unused link of the user stops working too.
+
+        Raises ``ApiError``: 422 ``invalid_password``, 400 ``invalid_reset_token``."""
+        problem = password_problem(new_password)
+        if problem:
+            raise ApiError(422, "invalid_password", f"The password {problem}.")
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            reset = db.scalar(
+                sa.select(PasswordResetRecord)
+                .where(PasswordResetRecord.token_hash == _token_hash(token))
+                .with_for_update()
+            )
+            if reset is None or reset.used_at is not None or now >= reset.expires_at:
+                raise _invalid_reset_token()
+            user = db.get(UserRecord, reset.user_id, with_for_update=True)
+            if user is None:
+                raise _invalid_reset_token()
+            user.password_hash = _hasher.hash(new_password)
+            db.execute(
+                sa.update(PasswordResetRecord)
+                .where(
+                    PasswordResetRecord.user_id == user.id,
+                    PasswordResetRecord.used_at.is_(None),
+                )
+                .values(used_at=now)
+            )
+            db.execute(sa.delete(SessionRecord).where(SessionRecord.user_id == user.id))
+            user_id = user.id
+        logger.info("password reset", extra={"user_id": str(user_id)})

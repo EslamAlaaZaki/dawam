@@ -141,6 +141,23 @@ class Settings(DatabaseSettings):
     after which that address must wait before signing up again."""
     register_ip_window_minutes: float = Field(default=60, gt=0)
 
+    public_url: str = "http://localhost:8000"
+    """Where users reach DAWAM (scheme, host, port and any path prefix): the start of
+    every link DAWAM emails. Configured, never taken from a request's ``Host``, so a
+    forged request cannot point a reset link elsewhere."""
+
+    @field_validator("public_url")
+    @classmethod
+    def _public_url_is_an_http_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        scheme, _, rest = value.partition("://")
+        if scheme.lower() not in ("http", "https") or not rest or rest.startswith("/"):
+            raise PydanticCustomError(
+                "invalid_public_url",
+                "must be an http:// or https:// URL, e.g. https://dawam.example.com",
+            )
+        return value
+
 
 def load_settings() -> Settings:
     """Read the settings from the environment.

@@ -19,6 +19,7 @@ from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
 from dawam.modules.jobs import InlineJobRunner, JobRunner
+from dawam.modules.mail import MailService
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
 from dawam.platform.clock import Clock, system_clock
@@ -82,6 +83,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.engine = engine
     # Sign-up (auth) asks the admin module's system settings who may register.
     app.state.registration_policy = SystemSettingsService(engine)
+    # The one email-delivery service; auth reaches it here, as its Mailer port.
+    app.state.mailer = MailService(engine, settings, sender=services.email, clock=services.clock)
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)

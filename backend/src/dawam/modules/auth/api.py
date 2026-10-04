@@ -1,6 +1,7 @@
 """Sign-up (``/api/v1/auth/register``, ``/registration``), sign-in and sessions
 (``/api/v1/auth/login``, ``/logout``, ``/logout-all``), the password change
-(``/api/v1/auth/password/change``) and the user's profile (``/api/v1/me``).
+(``/api/v1/auth/password/change``), the password reset
+(``/api/v1/auth/password/forgot``, ``/reset``) and the user's profile (``/api/v1/me``).
 
 The session token travels only in the ``dawam_session`` cookie: ``HttpOnly``,
 ``SameSite=Lax``, ``Secure`` when the request came over TLS, and kept by the browser
@@ -13,13 +14,13 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
-from .service import AuthService, RegistrationPolicy, SignedIn, SystemRole, User
+from .service import AuthService, PasswordResets, RegistrationPolicy, SignedIn, SystemRole, User
 
 SESSION_COOKIE = "dawam_session"
 
@@ -228,3 +229,56 @@ def _signed_out(request: Request) -> Response:
         SESSION_COOKIE, path="/", secure=_is_tls(request), httponly=True, samesite="lax"
     )
     return response
+
+
+
+
+def password_resets(request: Request) -> PasswordResets:
+    state = request.app.state
+    # The composition root puts the mail module's delivery service (a Mailer) here.
+    return PasswordResets(
+        state.engine,
+        mailer=state.mailer,
+        clock=state.services.clock,
+        public_url=state.settings.public_url,
+    )
+
+
+PasswordResetsDep = Annotated[PasswordResets, Depends(password_resets)]
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(max_length=MAX_EMAIL_LENGTH)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(max_length=128)
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+
+
+@router.post(
+    "/auth/password/forgot",
+    operation_id="forgotPassword",
+    status_code=202,
+    response_class=Response,
+    responses={202: {"description": "Always, whether or not a user has this email."}},
+)
+def forgot_password(
+    body: ForgotPasswordRequest, background: BackgroundTasks, resets: PasswordResetsDep
+) -> Response:
+    """Email a password reset link, valid 30 minutes, to the user with this email (or
+    keep it for an admin to share when SMTP is off). The answer is the same whether or
+    not the email belongs to a user, and comes before any email is sent, so neither its
+    content nor its timing tells."""
+    background.add_task(resets.request_reset, body.email)
+    return Response(status_code=202)
+
+
+@router.post(
+    "/auth/password/reset", operation_id="resetPassword", status_code=204, response_class=Response
+)
+def reset_password(body: ResetPasswordRequest, resets: PasswordResetsDep) -> Response:
+    """Set a new password with the token from a reset link. The link stops working, and
+    every session of the user ends: they sign in again with the new password."""
+    resets.reset_password(body.token, body.password)
+    return Response(status_code=204)
