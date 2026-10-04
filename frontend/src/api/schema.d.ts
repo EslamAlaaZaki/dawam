@@ -913,7 +913,10 @@ export interface components {
             end_year: number;
             /**
              * Weekend Days
-             * @default ["saturday","sunday"]
+             * @default [
+             *       "saturday",
+             *       "sunday"
+             *     ]
              */
             weekend_days: ("monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday")[];
             /**
@@ -1332,8 +1335,35 @@ export interface components {
              * @enum {string}
              */
             target_platform: "postgresql" | "sqlserver" | "oracle" | "snowflake" | "bigquery";
+            /**
+             * @default {
+             *       "staging": "staging",
+             *       "core": "core",
+             *       "mart": "mart"
+             *     }
+             */
             layer_schemas: components["schemas"]["LayerSchemas"];
+            /**
+             * @default {
+             *       "case_style": "lower",
+             *       "dimension_prefix": "dim_",
+             *       "fact_prefix": "fact_",
+             *       "bridge_prefix": "bridge_"
+             *     }
+             */
             naming_rules: components["schemas"]["NamingRules"];
+            /**
+             * @default {
+             *       "start_year": 2000,
+             *       "end_year": 2040,
+             *       "weekend_days": [
+             *         "saturday",
+             *         "sunday"
+             *       ],
+             *       "include_hijri": false,
+             *       "include_time_dimension": false
+             *     }
+             */
             date_dimension: components["schemas"]["DateDimension"];
         };
         /** SignInRequest */
