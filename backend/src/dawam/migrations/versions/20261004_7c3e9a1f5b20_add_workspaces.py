@@ -4,7 +4,7 @@ Also the deferred constraint triggers that keep every Workspace owned (spec §6.
 commit, a Workspace that exists must have at least one ``owner`` member.
 
 Revision ID: 7c3e9a1f5b20
-Revises: e54c99dddac2
+Revises: 57d75041af55
 Create Date: 2026-10-04 12:00:00.000000
 """
 
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "7c3e9a1f5b20"
-down_revision: str | Sequence[str] | None = "e54c99dddac2"
+down_revision: str | Sequence[str] | None = "57d75041af55"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
