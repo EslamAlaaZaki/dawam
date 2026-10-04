@@ -11,16 +11,21 @@ Public interface. Other modules import only what is re-exported here:
   (anonymous requests get ``401 unauthenticated``); ``User`` is what it holds.
 - ``SecurityEventRecorder``: the one way to record a ``SecurityEvent`` (sign-ins and
   lockouts here; role changes, deactivations, ownership reassignments elsewhere).
+- ``PasswordResets``: forgotten passwords (reset links, emailed through the
+  ``dawam.platform.email.Mailer`` the composition root provides as
+  ``app.state.mailer``: auth never imports another module).
 - ``router``: ``GET /auth/registration``; ``POST /auth/register``, ``/auth/login``,
-  ``/auth/logout``, ``/auth/logout-all``, ``/auth/password/change``; ``GET|PATCH /me``.
+  ``/auth/logout``, ``/auth/logout-all``, ``/auth/password/change``,
+  ``/auth/password/forgot``, ``/auth/password/reset``; ``GET|PATCH /me``.
 
-Owns the ``users``, ``sessions`` and ``security_events`` tables.
+Owns the ``users``, ``sessions``, ``security_events`` and ``password_resets`` tables.
 """
 
 from .api import CurrentUser, router
 from .internal.security_events import SecurityEvent, SecurityEventRecorder
 from .service import (
     AuthService,
+    PasswordResets,
     RegistrationPolicy,
     RegistrationRules,
     SessionInfo,
@@ -32,6 +37,7 @@ from .service import (
 __all__ = [
     "AuthService",
     "CurrentUser",
+    "PasswordResets",
     "RegistrationPolicy",
     "RegistrationRules",
     "SecurityEvent",

@@ -78,3 +78,8 @@ def test_can_rejects_a_resource_of_the_wrong_kind_or_for_another_user(roles: Rol
         can(owner, Action.EDIT_WORKSPACE, INSTALLATION)
     with pytest.raises(ValueError):
         can(roles.user("viewer"), Action.VIEW_WORKSPACE, scope)
+
+
+def test_only_admins_may_manage_email(roles: RoleClients):
+    assert can(roles.user("admin"), Action.MANAGE_EMAIL, INSTALLATION)
+    assert not can(roles.user("owner"), Action.MANAGE_EMAIL, INSTALLATION)

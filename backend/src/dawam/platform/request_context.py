@@ -9,6 +9,9 @@ security headers. For every HTTP request it
   in the ``X-Request-ID`` response header,
 - turns any unhandled exception into the standard ``internal_error`` response, and
 - logs one ``request completed`` line with method, path, status and duration.
+
+``client_ip(request)`` is the client address every module records (sessions,
+security events, rate limits).
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ import uuid
 from contextvars import ContextVar
 
 from starlette.datastructures import MutableHeaders
+from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from dawam.platform.errors import internal_error_response
@@ -34,6 +38,13 @@ logger = logging.getLogger("dawam.request")
 
 def current_request_id() -> str | None:
     return request_id_var.get()
+
+
+def client_ip(request: HTTPConnection) -> str | None:
+    """The client's address. uvicorn's proxy-headers middleware (``dawam.app``) sets it
+    from ``X-Forwarded-For`` only for ``DAWAM_FORWARDED_ALLOW_IPS``; otherwise it is
+    the peer's own address. ``None`` when the server does not know it."""
+    return request.client.host if request.client else None
 
 
 def _incoming_request_id(scope: Scope) -> str | None:

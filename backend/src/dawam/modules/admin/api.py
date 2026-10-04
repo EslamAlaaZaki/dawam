@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from dawam.modules.auth import CurrentUser, SecurityEventRecorder, User
 from dawam.modules.workspaces import INSTALLATION, Action, can
 from dawam.platform.errors import ApiError
+from dawam.platform.request_context import client_ip
 
 from .service import RegistrationSettings, SystemSettingsService
 
@@ -87,7 +88,7 @@ def update_admin_settings(
         enabled=body.registration.enabled,
         allowed_email_domains=body.registration.allowed_email_domains,
         actor_id=admin.id,
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     # The only section so far: what was saved is all there is to return.
     return AdminSettings(registration=RegistrationSettingsBody.of(registration))

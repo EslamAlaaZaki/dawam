@@ -23,8 +23,10 @@ parameter (e.g. ``{system_id}``) adds a provider there.
 from __future__ import annotations
 
 import string
+import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import timedelta
 from enum import Enum
 from typing import Any
 
@@ -32,6 +34,8 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
 
+from dawam.modules.mail import MailService
+from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
 
 try:
@@ -120,8 +124,26 @@ def credentials_of(role: Role) -> Body:
     return lambda roles: {"email": roles.user(role).email, "password": PASSWORD}
 
 
+def undelivered_link_id(roles: RoleClients) -> uuid.UUID:
+    """A link kept for admins (SMTP is off in the suite), made through the mail module."""
+    app = roles.app
+    mail = MailService(
+        app.state.engine,
+        app.state.settings,
+        sender=app.state.services.email,
+        clock=app.state.services.clock,
+    )
+    now = app.state.services.clock()
+    mail.send(
+        EmailMessage(to="someone@example.com", subject="Join", body="..."),
+        link=OneTimeLink(url="http://x/l", purpose="invitation", expires_at=now + timedelta(1)),
+    )
+    return mail.undelivered_links()[0].id
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
+    "link_id": undelivered_link_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 

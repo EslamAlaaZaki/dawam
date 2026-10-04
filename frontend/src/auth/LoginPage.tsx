@@ -62,6 +62,9 @@ export function LoginPage() {
             New here? <Link href="/signup">Create an account</Link>
           </p>
         )}
+        <p className="form-hint">
+          <Link href="/forgot-password">Forgot your password?</Link>
+        </p>
       </form>
     </section>
   );

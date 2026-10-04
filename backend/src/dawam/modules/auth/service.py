@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.config import ConfigError, Settings
+from dawam.platform.email import EmailMessage, Mailer, OneTimeLink
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import (
@@ -29,7 +30,13 @@ from .internal.credentials import (
 )
 from .internal.login_guard import LoginGuard, too_many_attempts, too_many_sign_ups
 from .internal.security_events import SecurityEventRecorder
-from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
+from .tables import (
+    IP_MAX_LENGTH,
+    USER_AGENT_MAX_LENGTH,
+    PasswordResetRecord,
+    SessionRecord,
+    UserRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -534,3 +541,170 @@ class AuthService:
             return _hasher.verify(password_hash, password)
         except (VerificationError, InvalidHashError):
             return False
+
+
+RESET_LINK_LIFETIME = timedelta(minutes=30)
+
+
+def _invalid_reset_token() -> ApiError:
+    # One error for unknown, used and expired links, so none can be told apart.
+    return ApiError(
+        400,
+        "invalid_reset_token",
+        "This password reset link is invalid, used or expired. Ask for a new one.",
+    )
+
+
+class PasswordResets:
+    """Forgotten passwords (spec §6.1): a single-use link, valid 30 minutes, emailed
+    through the ``Mailer``. The link carries a random token; the ``password_resets``
+    row stores only its SHA-256. Using it sets the new password and ends every session
+    of the user.
+
+    Requests are throttled so the endpoint cannot flood a mailbox or the database: at
+    most one link per account per ``DAWAM_PASSWORD_RESET_COOLDOWN_MINUTES``, and at most
+    ``DAWAM_PASSWORD_RESET_IP_MAX_REQUESTS`` links caused by one client address per
+    ``DAWAM_PASSWORD_RESET_IP_WINDOW_MINUTES``. A throttled request sends nothing and
+    stores nothing; it is logged once."""
+
+    def __init__(
+        self, engine: sa.Engine, settings: Settings, *, mailer: Mailer, clock: Clock
+    ) -> None:
+        self._engine = engine
+        self._mailer = mailer
+        self._clock = clock
+        self._public_url = settings.public_url
+        self._cooldown = timedelta(minutes=settings.password_reset_cooldown_minutes)
+        self._ip_max = settings.password_reset_ip_max_requests
+        self._ip_window = timedelta(minutes=settings.password_reset_ip_window_minutes)
+        self._events = SecurityEventRecorder(engine, clock=clock)
+
+    def request_reset(self, email: str, *, ip: str | None = None) -> None:
+        """Email a reset link to the user with this email, if there is one, and record
+        a ``password_reset_requested`` security event (from ``ip``). Says nothing either
+        way, so callers can answer the same whether or not it exists."""
+        now = self._clock()
+        token = secrets.token_urlsafe(32)
+        expires_at = now + RESET_LINK_LIFETIME
+        with Session(self._engine) as db, db.begin():
+            user = db.scalar(
+                sa.select(UserRecord).where(UserRecord.email == normalize_email(email))
+            )
+            if user is None:
+                return
+            user_id, address = user.id, user.email
+            if self._throttled(db, user_id, ip, now):
+                logger.warning(
+                    "password reset request throttled", extra={"user_id": str(user_id), "ip": ip}
+                )
+                return
+            db.add(
+                PasswordResetRecord(
+                    user_id=user_id,
+                    token_hash=_token_hash(token),
+                    created_at=now,
+                    expires_at=expires_at,
+                    requested_ip=ip[:IP_MAX_LENGTH] if ip else None,
+                )
+            )
+            self._events.record(
+                "password_reset_requested",
+                actor_id=user_id,
+                target_type="user",
+                target_id=user_id,
+                ip=ip,
+                db=db,
+            )
+        url = f"{self._public_url}/reset-password#token={token}"
+        minutes = int(RESET_LINK_LIFETIME.total_seconds() // 60)
+        self._mailer.send(
+            EmailMessage(
+                to=address,
+                subject="Reset your DAWAM password",
+                body=(
+                    "Someone (hopefully you) asked to reset the password of your DAWAM "
+                    "account.\n\n"
+                    f"To choose a new password, open this link within {minutes} minutes:\n\n"
+                    f"{url}\n\n"
+                    "The link works once. If you did not ask for it, ignore this email: "
+                    "your password stays as it is.\n"
+                ),
+            ),
+            link=OneTimeLink(url=url, purpose="password_reset", expires_at=expires_at),
+        )
+        logger.info("password reset requested", extra={"user_id": str(user_id)})
+
+    def _throttled(self, db: Session, user_id: uuid.UUID, ip: str | None, now: datetime) -> bool:
+        # Locks serialise concurrent requests for one account and for one address, so
+        # neither limit can be raced past.
+        db.execute(sa.select(UserRecord.id).where(UserRecord.id == user_id).with_for_update())
+        recent_for_user = db.scalar(
+            sa.select(
+                sa.exists().where(
+                    PasswordResetRecord.user_id == user_id,
+                    PasswordResetRecord.created_at > now - self._cooldown,
+                )
+            )
+        )
+        if recent_for_user:
+            return True
+        if ip is None:
+            return False
+        ip = ip[:IP_MAX_LENGTH]
+        db.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"reset:{ip}"))))
+        recent_for_ip = db.scalar(
+            sa.select(sa.func.count()).where(
+                PasswordResetRecord.requested_ip == ip,
+                PasswordResetRecord.created_at > now - self._ip_window,
+            )
+        )
+        return (recent_for_ip or 0) >= self._ip_max
+
+    def reset_password(self, token: str, new_password: str, *, ip: str | None = None) -> None:
+        """Set a new password with a reset link's token, end every session of the user
+        and lift a sign-in lockout. Every other unused link of the user stops working
+        too. Records a ``password_reset`` security event (from ``ip``).
+
+        Raises ``ApiError``: 422 ``invalid_password``, 400 ``invalid_reset_token``."""
+        problem = password_problem(new_password)
+        if problem:
+            raise ApiError(422, "invalid_password", f"The password {problem}.")
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            reset = db.scalar(
+                sa.select(PasswordResetRecord)
+                .where(PasswordResetRecord.token_hash == _token_hash(token))
+                .with_for_update()
+            )
+            if reset is None or reset.used_at is not None or now >= reset.expires_at:
+                raise _invalid_reset_token()
+            user = db.get(UserRecord, reset.user_id, with_for_update=True)
+            if user is None:
+                raise _invalid_reset_token()
+            user.password_hash = _hasher.hash(new_password)
+            # Whoever reads the user's email may choose their password, so a lock
+            # against password guessing has nothing left to protect.
+            user.failed_login_count = 0
+            user.locked_until = None
+            user.last_failed_login_at = None
+            self._events.record(
+                "password_reset",
+                actor_id=user.id,
+                target_type="user",
+                target_id=user.id,
+                ip=ip,
+                db=db,
+            )
+            db.execute(
+                sa.update(PasswordResetRecord)
+                .where(
+                    PasswordResetRecord.user_id == user.id,
+                    PasswordResetRecord.used_at.is_(None),
+                )
+                .values(used_at=now)
+            )
+            db.execute(sa.delete(SessionRecord).where(SessionRecord.user_id == user.id))
+            user_id, address = user.id, user.email
+        # Every reset link of the user is dead now: an admin need not share any.
+        self._mailer.withdraw_links(recipient=address, purpose="password_reset")
+        logger.info("password reset", extra={"user_id": str(user_id)})

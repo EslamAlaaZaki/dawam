@@ -49,6 +49,9 @@ class Action(StrEnum):
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
+    MANAGE_EMAIL = "installation.manage_email"
+    """Configure SMTP, send a test email and see the links DAWAM could not email
+    (admins only; spec story 24, §6.1 "Without SMTP")."""
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,7 @@ class _WorkspaceRule:
 
 _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.CREATE_WORKSPACE: _SystemRule(),
+    Action.MANAGE_EMAIL: _SystemRule(admin_only=True),
     Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer"),
     Action.EDIT_WORKSPACE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),

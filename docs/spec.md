@@ -936,6 +936,8 @@ GET    /admin/users            POST /admin/users   POST /admin/users/invite
 PATCH  /admin/users/{id}       (role, is_active)   POST /admin/users/{id}/force-reset
 GET    /admin/workspaces       POST /admin/workspaces/{id}/reassign-owner
 GET|PUT /admin/settings        GET /admin/security-events
+GET|PUT|DELETE /admin/smtp     POST /admin/smtp/test
+GET    /admin/undelivered-links   DELETE /admin/undelivered-links/{id}   (links to copy without SMTP)
 
 GET|POST /workspaces           GET|PATCH|DELETE /workspaces/{id}
 GET|POST /workspaces/{id}/members  PATCH|DELETE /workspaces/{id}/members/{userId}
