@@ -127,6 +127,7 @@ ROWS: list[Row] = [
         admin_only(),
         json=lambda roles: {"registration": {"enabled": True, "allowed_email_domains": []}},
     ),
+    Row(
         "POST",
         "/api/v1/auth/password/forgot",
         "forgot password: same answer for any email (story 6)",

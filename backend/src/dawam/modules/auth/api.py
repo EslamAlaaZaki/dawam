@@ -218,8 +218,6 @@ def _signed_out(request: Request) -> Response:
     return response
 
 
-
-
 def password_resets(request: Request) -> PasswordResets:
     state = request.app.state
     # The composition root puts the mail module's delivery service (a Mailer) here.
