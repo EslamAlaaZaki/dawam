@@ -103,9 +103,10 @@ on every log line for that request.
   15) gets `429 too_many_attempts` until the oldest leaves the window. Only that
   address waits; users behind one shared NAT address share its limit. Both limits are
   kept in PostgreSQL, so they need no extra service and hold across restarts.
-- **Security events.** Successful and failed sign-ins and lockouts are recorded (who,
-  if known, the account, the client address and the time; never a password) in the
-  `security_events` table, for the admin's security log.
+- **Security events.** Successful and failed sign-ins, lockouts, sign-ups, password
+  changes, signing out everywhere and changes to the registration settings are
+  recorded (who, if known, the account, the client address and the time; never a
+  password) in the `security_events` table, for the admin's security log.
 - **Passwords** must be at least 10 characters long and not on DAWAM's list of
   common passwords (compared ignoring case), whenever one is set: sign-up, the first
   admin, and every password change. The list ships with DAWAM, so it works offline: it
