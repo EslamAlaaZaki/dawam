@@ -141,6 +141,13 @@ class Settings(DatabaseSettings):
     after which that address must wait before signing up again."""
     register_ip_window_minutes: float = Field(default=60, gt=0)
 
+    password_reset_cooldown_minutes: float = Field(default=5, gt=0)
+    """At most one password reset email per account this often."""
+    password_reset_ip_max_requests: int = Field(default=10, ge=1)
+    """Password reset emails one client address may cause within
+    ``password_reset_ip_window_minutes``; further requests send nothing."""
+    password_reset_ip_window_minutes: float = Field(default=60, gt=0)
+
     public_url: str = "http://localhost:8000"
     """Where users reach DAWAM (scheme, host, port and any path prefix): the start of
     every link DAWAM emails. Configured, never taken from a request's ``Host``, so a

@@ -76,10 +76,7 @@ def reset_body(roles: RoleClients) -> dict:
     state = roles.app.state
     catcher = _LinkCatcher()
     PasswordResets(
-        state.engine,
-        mailer=catcher,
-        clock=state.services.clock,
-        public_url=state.settings.public_url,
+        state.engine, state.settings, mailer=catcher, clock=state.services.clock
     ).request_reset(roles.user("owner").email)
     return {"token": catcher.url.rsplit("token=", 1)[1], "password": "a brand new password"}
 

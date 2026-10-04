@@ -133,6 +133,9 @@ class PasswordResetRecord(Base):
     token; only its SHA-256 is stored."""
 
     __tablename__ = "password_resets"
+    __table_args__ = (
+        sa.Index("ix_password_resets_requested_ip_created_at", "requested_ip", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -143,3 +146,5 @@ class PasswordResetRecord(Base):
     expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """When the link set a new password, or was voided by another one doing so."""
+    requested_ip: Mapped[str | None] = mapped_column(sa.String(IP_MAX_LENGTH))
+    """The client address that asked for it, for the per-address limit."""

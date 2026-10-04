@@ -559,13 +559,24 @@ class PasswordResets:
     """Forgotten passwords (spec §6.1): a single-use link, valid 30 minutes, emailed
     through the ``Mailer``. The link carries a random token; the ``password_resets``
     row stores only its SHA-256. Using it sets the new password and ends every session
-    of the user."""
+    of the user.
 
-    def __init__(self, engine: sa.Engine, *, mailer: Mailer, clock: Clock, public_url: str) -> None:
+    Requests are throttled so the endpoint cannot flood a mailbox or the database: at
+    most one link per account per ``DAWAM_PASSWORD_RESET_COOLDOWN_MINUTES``, and at most
+    ``DAWAM_PASSWORD_RESET_IP_MAX_REQUESTS`` links caused by one client address per
+    ``DAWAM_PASSWORD_RESET_IP_WINDOW_MINUTES``. A throttled request sends nothing and
+    stores nothing; it is logged once."""
+
+    def __init__(
+        self, engine: sa.Engine, settings: Settings, *, mailer: Mailer, clock: Clock
+    ) -> None:
         self._engine = engine
         self._mailer = mailer
         self._clock = clock
-        self._public_url = public_url
+        self._public_url = settings.public_url
+        self._cooldown = timedelta(minutes=settings.password_reset_cooldown_minutes)
+        self._ip_max = settings.password_reset_ip_max_requests
+        self._ip_window = timedelta(minutes=settings.password_reset_ip_window_minutes)
         self._events = SecurityEventRecorder(engine, clock=clock)
 
     def request_reset(self, email: str, *, ip: str | None = None) -> None:
@@ -582,12 +593,18 @@ class PasswordResets:
             if user is None:
                 return
             user_id, address = user.id, user.email
+            if self._throttled(db, user_id, ip, now):
+                logger.warning(
+                    "password reset request throttled", extra={"user_id": str(user_id), "ip": ip}
+                )
+                return
             db.add(
                 PasswordResetRecord(
                     user_id=user_id,
                     token_hash=_token_hash(token),
                     created_at=now,
                     expires_at=expires_at,
+                    requested_ip=ip[:IP_MAX_LENGTH] if ip else None,
                 )
             )
             self._events.record(
@@ -616,6 +633,32 @@ class PasswordResets:
             link=OneTimeLink(url=url, purpose="password_reset", expires_at=expires_at),
         )
         logger.info("password reset requested", extra={"user_id": str(user_id)})
+
+    def _throttled(self, db: Session, user_id: uuid.UUID, ip: str | None, now: datetime) -> bool:
+        # Locks serialise concurrent requests for one account and for one address, so
+        # neither limit can be raced past.
+        db.execute(sa.select(UserRecord.id).where(UserRecord.id == user_id).with_for_update())
+        recent_for_user = db.scalar(
+            sa.select(
+                sa.exists().where(
+                    PasswordResetRecord.user_id == user_id,
+                    PasswordResetRecord.created_at > now - self._cooldown,
+                )
+            )
+        )
+        if recent_for_user:
+            return True
+        if ip is None:
+            return False
+        ip = ip[:IP_MAX_LENGTH]
+        db.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"reset:{ip}"))))
+        recent_for_ip = db.scalar(
+            sa.select(sa.func.count()).where(
+                PasswordResetRecord.requested_ip == ip,
+                PasswordResetRecord.created_at > now - self._ip_window,
+            )
+        )
+        return (recent_for_ip or 0) >= self._ip_max
 
     def reset_password(self, token: str, new_password: str, *, ip: str | None = None) -> None:
         """Set a new password with a reset link's token, end every session of the user

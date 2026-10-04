@@ -180,8 +180,9 @@ def test_a_reset_leaves_other_users_signed_in(anonymous_client, signed_in_client
 
 
 @pytest.mark.usefixtures("smtp")
-def test_a_reset_voids_the_users_other_links(anonymous_client, grace, outbox):
+def test_a_reset_voids_the_users_other_links(anonymous_client, grace, outbox, clock):
     older = request_token(anonymous_client, outbox, grace.email)
+    clock.advance(timedelta(minutes=5))  # past the per-account cooldown
     newer = request_token(anonymous_client, outbox, grace.email)
 
     assert reset(anonymous_client, newer).status_code == 204

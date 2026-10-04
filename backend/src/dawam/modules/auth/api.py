@@ -224,10 +224,7 @@ def password_resets(request: Request) -> PasswordResets:
     state = request.app.state
     # The composition root puts the mail module's delivery service (a Mailer) here.
     return PasswordResets(
-        state.engine,
-        mailer=state.mailer,
-        clock=state.services.clock,
-        public_url=state.settings.public_url,
+        state.engine, state.settings, mailer=state.mailer, clock=state.services.clock
     )
 
 

@@ -41,6 +41,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("requested_ip", sa.String(length=64), nullable=True),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["users.id"],
@@ -52,6 +53,12 @@ def upgrade() -> None:
     )
     op.create_index(
         op.f("ix_password_resets_user_id"), "password_resets", ["user_id"], unique=False
+    )
+    op.create_index(
+        "ix_password_resets_requested_ip_created_at",
+        "password_resets",
+        ["requested_ip", "created_at"],
+        unique=False,
     )
     op.create_table(
         "smtp_settings",
@@ -81,6 +88,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("smtp_settings")
+    op.drop_index("ix_password_resets_requested_ip_created_at", table_name="password_resets")
     op.drop_index(op.f("ix_password_resets_user_id"), table_name="password_resets")
     op.drop_table("password_resets")
     op.drop_index(op.f("ix_undelivered_links_expires_at"), table_name="undelivered_links")
