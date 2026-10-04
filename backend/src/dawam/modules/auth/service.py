@@ -673,7 +673,7 @@ class PasswordResets:
         for an admin to share when it cannot be emailed). Not throttled. Records a
         ``password_reset_forced`` security event naming ``actor_id``, from ``ip``.
 
-        Raises ``ApiError`` 404 ``not_found``."""
+        Raises ``ApiError`` 404 ``not_found``, 409 ``user_deactivated``."""
         now = self._clock()
         token = secrets.token_urlsafe(32)
         expires_at = now + RESET_LINK_LIFETIME
@@ -681,6 +681,12 @@ class PasswordResets:
             user = db.get(UserRecord, user_id, with_for_update=True)
             if user is None:
                 raise ApiError(404, "not_found", "The user does not exist.")
+            if not user.is_active:
+                raise ApiError(
+                    409,
+                    "user_deactivated",
+                    "The user is deactivated: reactivate them first.",
+                )
             # Nobody knows this password: only the link lets the user back in.
             user.password_hash = _hasher.hash(secrets.token_urlsafe(32))
             ended = db.execute(
@@ -765,9 +771,9 @@ class PasswordResets:
         return (recent_for_ip or 0) >= self._ip_max
 
     def reset_password(self, token: str, new_password: str, *, ip: str | None = None) -> None:
-        """Set a new password with a reset link's token, end every session of the user
-        and lift a sign-in lockout. Every other unused link of the user stops working
-        too. Records a ``password_reset`` security event (from ``ip``).
+        """Set a new password with a reset link's token, end every session of the user,
+        lift a sign-in lockout and clear ``must_change_password``. Every other unused link
+        of the user stops working too. Records a ``password_reset`` security event (from ``ip``).
 
         Raises ``ApiError``: 422 ``invalid_password``, 400 ``invalid_reset_token``."""
         problem = password_problem(new_password)
@@ -786,6 +792,8 @@ class PasswordResets:
             if user is None:
                 raise _invalid_reset_token()
             user.password_hash = _hasher.hash(new_password)
+            # A password the user chose themselves: no temporary one left to replace.
+            user.must_change_password = False
             # Whoever reads the user's email may choose their password, so a lock
             # against password guessing has nothing left to protect.
             user.failed_login_count = 0

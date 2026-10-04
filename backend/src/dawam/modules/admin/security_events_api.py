@@ -4,29 +4,22 @@ story 23)."""
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
-from dawam.modules.auth import CurrentUser, LoggedSecurityEvent, SecurityEventRecorder, User
-from dawam.modules.workspaces import INSTALLATION, Action, can
-from dawam.platform.errors import ApiError
+from dawam.modules.auth import LoggedSecurityEvent, SecurityEventRecorder, User
+from dawam.modules.workspaces import Action
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
+
+from .internal.access import allowed_to
 
 router = APIRouter(tags=["admin"])
 
 
-def security_event_reviewer(user: CurrentUser) -> User:
-    """The signed-in user if the central policy lets them review security events
-    (admins); anyone else gets ``403 forbidden``."""
-    if not can(user, Action.VIEW_SECURITY_EVENTS, INSTALLATION):
-        raise ApiError(403, "forbidden", "Only admins can do this.")
-    return user
-
-
-SecurityEventReviewer = Annotated[User, Depends(security_event_reviewer)]
+SecurityEventReviewer = Annotated[User, Depends(allowed_to(Action.VIEW_SECURITY_EVENTS))]
 
 
 def security_events(request: Request) -> SecurityEventRecorder:
@@ -69,6 +62,12 @@ class SecurityEventPageOut(BaseModel):
     next_cursor: str | None = Field(description="The `cursor` of the next page; null on the last.")
 
 
+def _utc(moment: datetime | None) -> datetime | None:
+    if moment is None or moment.tzinfo is not None:
+        return moment
+    return moment.replace(tzinfo=UTC)
+
+
 @router.get("/admin/security-events", operation_id="listSecurityEvents")
 def list_security_events(
     _admin: SecurityEventReviewer,
@@ -87,14 +86,15 @@ def list_security_events(
     ] = None,
     until: Annotated[datetime | None, Query(description="Only events before this time.")] = None,
 ) -> SecurityEventPageOut:
-    """Security events, newest first, optionally filtered (admins only)."""
+    """Security events, newest first, optionally filtered (admins only). A time without
+    a time zone is UTC."""
     page = events.search(
         limit=limit,
         cursor=cursor,
         event_type=event_type,
         actor_email=actor,
-        since=since,
-        until=until,
+        since=_utc(since),
+        until=_utc(until),
     )
     return SecurityEventPageOut(
         items=[SecurityEventOut.of(logged) for logged in page.items], next_cursor=page.next_cursor

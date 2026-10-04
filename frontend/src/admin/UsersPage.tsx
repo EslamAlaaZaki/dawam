@@ -147,7 +147,7 @@ function UserRow({ user }: { user: AdminUser }) {
           >
             {user.is_active ? "Deactivate" : "Reactivate"}
           </button>
-          {!isMe && (
+          {!isMe && user.is_active && (
             <button
               type="button"
               className="secondary"

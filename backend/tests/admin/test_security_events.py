@@ -102,3 +102,14 @@ def test_regular_users_cannot_see_security_events(signed_in_client):
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
+
+
+def test_dates_without_a_time_zone_are_read_as_utc(admin_client, create_user, anonymous_client):
+    grace = create_user(email="grace@example.com")
+    sign_in(anonymous_client, grace.email, "not the password")  # at 09:00 UTC
+
+    after = admin_client.get(EVENTS, params={"since": "2026-01-05T09:30:00"})
+    before = admin_client.get(EVENTS, params={"until": "2026-01-05T09:30:00"})
+
+    assert _types(after) == []
+    assert "login_failed" in _types(before)

@@ -272,7 +272,8 @@ export interface paths {
         /**
          * Force Password Reset
          * @description Answer a suspected compromise (admins only): every session of the user ends, their
-         *     password stops working, and they get a reset link. Recorded as a security event.
+         *     password stops working, and they get a reset link. A deactivated user's cannot be
+         *     reset (409 ``user_deactivated``). Recorded as a security event.
          */
         post: operations["forcePasswordReset"];
         delete?: never;
@@ -290,7 +291,8 @@ export interface paths {
         };
         /**
          * List Security Events
-         * @description Security events, newest first, optionally filtered (admins only).
+         * @description Security events, newest first, optionally filtered (admins only). A time without
+         *     a time zone is UTC.
          */
         get: operations["listSecurityEvents"];
         put?: never;

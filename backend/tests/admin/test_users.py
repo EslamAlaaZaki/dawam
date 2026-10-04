@@ -410,3 +410,27 @@ def test_a_deactivated_user_is_sent_no_reset_link(
 
     assert response.status_code == 202
     assert outbox.sent_to(signed_in_user.email) == []
+
+
+def test_a_reset_link_also_clears_a_temporary_password_flag(
+    admin_client, anonymous_client, outbox: InMemoryOutbox, smtp
+):
+    created = _create(admin_client).json()
+    _force_reset(admin_client, created["id"])
+    [message] = outbox.sent_to("grace@example.com")
+    token = RESET_LINK.search(message.body)["token"]
+
+    assert _reset_password(anonymous_client, token, "chosen by grace").status_code == 204
+
+    signed_in = sign_in(anonymous_client, "grace@example.com", "chosen by grace")
+    assert signed_in.json()["must_change_password"] is False
+
+
+def test_a_deactivated_users_password_cannot_be_force_reset(admin_client, signed_in_user):
+    _patch(admin_client, signed_in_user.id, is_active=False)
+
+    response = _force_reset(admin_client, signed_in_user.id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "user_deactivated"
+    assert admin_client.get("/api/v1/admin/undelivered-links").json()["items"] == []

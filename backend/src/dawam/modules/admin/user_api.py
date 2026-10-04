@@ -12,30 +12,22 @@ from pydantic import BaseModel, ConfigDict, Field
 from dawam.modules.auth import (
     MAX_EMAIL_LENGTH,
     MAX_PASSWORD_LENGTH,
-    CurrentUser,
     PasswordResets,
     SystemRole,
     User,
     UserAdministration,
 )
-from dawam.modules.workspaces import INSTALLATION, Action, can
+from dawam.modules.workspaces import Action
 from dawam.platform.email import Delivery
-from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 from dawam.platform.request_context import client_ip
+
+from .internal.access import allowed_to
 
 router = APIRouter(tags=["admin"])
 
 
-def user_manager(user: CurrentUser) -> User:
-    """The signed-in user if the central policy lets them manage users (admins); anyone
-    else gets ``403 forbidden``."""
-    if not can(user, Action.MANAGE_USERS, INSTALLATION):
-        raise ApiError(403, "forbidden", "Only admins can do this.")
-    return user
-
-
-UserManager = Annotated[User, Depends(user_manager)]
+UserManager = Annotated[User, Depends(allowed_to(Action.MANAGE_USERS))]
 
 
 def user_administration(request: Request) -> UserAdministration:
@@ -146,7 +138,8 @@ def force_password_reset(
     user_id: uuid.UUID, admin: UserManager, resets: PasswordResetsDep, request: Request
 ) -> ForcedReset:
     """Answer a suspected compromise (admins only): every session of the user ends, their
-    password stops working, and they get a reset link. Recorded as a security event."""
+    password stops working, and they get a reset link. A deactivated user's cannot be
+    reset (409 ``user_deactivated``). Recorded as a security event."""
     delivery = resets.force_reset(user_id, actor_id=admin.id, ip=client_ip(request))
     return ForcedReset(delivery=delivery)
 
