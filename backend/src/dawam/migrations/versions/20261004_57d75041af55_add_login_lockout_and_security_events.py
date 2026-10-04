@@ -39,6 +39,9 @@ def upgrade() -> None:
         ["email", "failed_at"],
         unique=False,
     )
+    op.create_index(
+        "ix_login_failures_ip_failed_at", "login_failures", ["ip", "failed_at"], unique=False
+    )
     op.create_table(
         "security_events",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -69,6 +72,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_security_events_created_at"), table_name="security_events")
     op.drop_index(op.f("ix_security_events_actor_id"), table_name="security_events")
     op.drop_table("security_events")
+    op.drop_index("ix_login_failures_ip_failed_at", table_name="login_failures")
     op.drop_index("ix_login_failures_email_failed_at", table_name="login_failures")
     op.drop_table("login_failures")
     op.drop_column("users", "locked_until")

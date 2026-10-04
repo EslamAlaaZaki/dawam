@@ -19,7 +19,7 @@ from dawam.platform.config import ConfigError, Settings
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import is_valid_email, normalize_email, password_problem
-from .internal.login_guard import LoginGuard
+from .internal.login_guard import LoginGuard, too_many_attempts
 from .internal.security_events import SecurityEventRecorder
 from .tables import IP_MAX_LENGTH, USER_AGENT_MAX_LENGTH, SessionRecord, UserRecord
 
@@ -211,11 +211,16 @@ class AuthService:
         recorded on the session.
 
         Raises ``ApiError`` 401 ``invalid_credentials``, or 429 ``account_locked`` once
-        too many consecutive attempts have failed (see ``internal.login_guard``). Every
+        too many consecutive attempts on the account have failed, or 429
+        ``too_many_attempts`` once too many from ``ip`` have (``internal.login_guard``). Every
         attempt is recorded as a security event (``login_succeeded`` or
         ``login_failed``, plus ``account_locked`` when it locks the account)."""
         now = self._clock()
         email = normalize_email(email)
+        with Session(self._engine) as db:
+            throttled_until = self._guard.throttled_until(db, ip, now)
+        if throttled_until is not None:
+            raise too_many_attempts(throttled_until, now)
         with Session(self._engine) as db, db.begin():
             # Locked, so concurrent attempts on one account are counted one at a time.
             user = db.scalar(

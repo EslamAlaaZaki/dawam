@@ -1,15 +1,21 @@
-"""Brute-force protection for sign-in (spec §6.1 rate limiting): account lockout.
+"""Brute-force protection for sign-in (spec §6.1 rate limiting), per account and
+per client address. All its state lives in PostgreSQL (``login_failures`` and the
+``users`` lock columns), so it holds across app replicas and restarts and needs no
+extra infrastructure.
 
-After ``DAWAM_LOGIN_MAX_FAILURES`` consecutive failed sign-ins an account locks for
-``DAWAM_LOGIN_LOCKOUT_MINUTES``; while locked, even the right password is refused.
-A successful sign-in resets the count, and so does locking.
-
-An email without an account locks in exactly the same way, so neither the lock nor
-its timing reveals which emails have accounts. Its state is derived from its rows in
+**Per account (lockout).** After ``DAWAM_LOGIN_MAX_FAILURES`` consecutive failed
+sign-ins an account locks for ``DAWAM_LOGIN_LOCKOUT_MINUTES``; while locked, even the
+right password is refused. A successful sign-in resets the count, and so does locking.
+An email without an account locks in exactly the same way, so neither the lock nor its
+timing reveals which emails have accounts. Its state is derived from its rows in
 ``login_failures`` instead of a ``users`` row: of its failures whose password was
 checked, every ``max_failures``-th one locks it for the lockout period.
 
-All state lives in PostgreSQL, so it holds across app replicas and restarts.
+**Per address (throttling).** An address with ``DAWAM_LOGIN_IP_MAX_FAILURES`` failed
+sign-ins in the last ``DAWAM_LOGIN_IP_WINDOW_MINUTES`` must wait until the oldest of
+them leaves the window. Its attempts are refused before any account is looked at, so
+they are not recorded, count towards nothing and lock no account: the limit slows
+that address alone, and caps how many accounts it can lock per window.
 """
 
 from __future__ import annotations
@@ -39,14 +45,22 @@ def _retry_after(until: datetime, now: datetime) -> tuple[int, dict[str, str], s
     return seconds, {"Retry-After": str(seconds)}, wait
 
 
-def account_locked(until: datetime, now: datetime) -> ApiError:
+def _must_wait(code: str, why: str, until: datetime, now: datetime) -> ApiError:
     seconds, headers, wait = _retry_after(until, now)
     return ApiError(
-        429,
-        "account_locked",
-        f"Too many failed sign-ins: this account is locked. Try again in {wait}.",
-        {"retry_after_seconds": seconds},
-        headers=headers,
+        429, code, f"{why} Try again in {wait}.", {"retry_after_seconds": seconds}, headers
+    )
+
+
+def account_locked(until: datetime, now: datetime) -> ApiError:
+    return _must_wait(
+        "account_locked", "Too many failed sign-ins: this account is locked.", until, now
+    )
+
+
+def too_many_attempts(until: datetime, now: datetime) -> ApiError:
+    return _must_wait(
+        "too_many_attempts", "Too many failed sign-ins from your network.", until, now
     )
 
 
@@ -55,6 +69,25 @@ class LoginGuard:
         self._max_failures = settings.login_max_failures
         self._lockout = timedelta(minutes=settings.login_lockout_minutes)
         self._events = events
+        self._ip_max_failures = settings.login_ip_max_failures
+        self._ip_window = timedelta(minutes=settings.login_ip_window_minutes)
+
+    def throttled_until(self, db: Session, ip: str | None, now: datetime) -> datetime | None:
+        """When this address may try again; None if it may now."""
+        if not ip:
+            return None
+        # The failure whose leaving the window brings the address back under the limit.
+        oldest_that_counts = db.scalar(
+            sa.select(LoginFailureRecord.failed_at)
+            .where(
+                LoginFailureRecord.ip == ip[:IP_MAX_LENGTH],
+                LoginFailureRecord.failed_at > now - self._ip_window,
+            )
+            .order_by(LoginFailureRecord.failed_at.desc())
+            .offset(self._ip_max_failures - 1)
+            .limit(1)
+        )
+        return oldest_that_counts + self._ip_window if oldest_that_counts else None
 
     def locked_until(
         self, db: Session, user: UserRecord | None, email: str, now: datetime

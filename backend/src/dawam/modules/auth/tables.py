@@ -66,12 +66,16 @@ class SessionRecord(Base):
 class LoginFailureRecord(Base):
     """A failed sign-in attempt, for any email (with an account or not).
 
-    It lets an email without an account lock exactly as an account would, so locking
-    reveals nothing about which emails have accounts.
+    The per-address rate limit counts an ``ip``'s recent rows. An email's rows let it
+    lock exactly as an account would even if it has none, so locking reveals nothing
+    about which emails have accounts.
     """
 
     __tablename__ = "login_failures"
-    __table_args__ = (sa.Index("ix_login_failures_email_failed_at", "email", "failed_at"),)
+    __table_args__ = (
+        sa.Index("ix_login_failures_email_failed_at", "email", "failed_at"),
+        sa.Index("ix_login_failures_ip_failed_at", "ip", "failed_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(sa.String(320))
