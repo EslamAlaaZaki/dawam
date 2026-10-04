@@ -566,10 +566,12 @@ class PasswordResets:
         self._mailer = mailer
         self._clock = clock
         self._public_url = public_url
+        self._events = SecurityEventRecorder(engine, clock=clock)
 
-    def request_reset(self, email: str) -> None:
-        """Email a reset link to the user with this email, if there is one. Says
-        nothing either way, so callers can answer the same whether or not it exists."""
+    def request_reset(self, email: str, *, ip: str | None = None) -> None:
+        """Email a reset link to the user with this email, if there is one, and record
+        a ``password_reset_requested`` security event (from ``ip``). Says nothing either
+        way, so callers can answer the same whether or not it exists."""
         now = self._clock()
         token = secrets.token_urlsafe(32)
         expires_at = now + RESET_LINK_LIFETIME
@@ -587,6 +589,14 @@ class PasswordResets:
                     created_at=now,
                     expires_at=expires_at,
                 )
+            )
+            self._events.record(
+                "password_reset_requested",
+                actor_id=user_id,
+                target_type="user",
+                target_id=user_id,
+                ip=ip,
+                db=db,
             )
         url = f"{self._public_url}/reset-password#token={token}"
         minutes = int(RESET_LINK_LIFETIME.total_seconds() // 60)
@@ -607,9 +617,10 @@ class PasswordResets:
         )
         logger.info("password reset requested", extra={"user_id": str(user_id)})
 
-    def reset_password(self, token: str, new_password: str) -> None:
-        """Set a new password with a reset link's token, and end every session of the
-        user. Every other unused link of the user stops working too.
+    def reset_password(self, token: str, new_password: str, *, ip: str | None = None) -> None:
+        """Set a new password with a reset link's token, end every session of the user
+        and lift a sign-in lockout. Every other unused link of the user stops working
+        too. Records a ``password_reset`` security event (from ``ip``).
 
         Raises ``ApiError``: 422 ``invalid_password``, 400 ``invalid_reset_token``."""
         problem = password_problem(new_password)
@@ -628,6 +639,19 @@ class PasswordResets:
             if user is None:
                 raise _invalid_reset_token()
             user.password_hash = _hasher.hash(new_password)
+            # Whoever reads the user's email may choose their password, so a lock
+            # against password guessing has nothing left to protect.
+            user.failed_login_count = 0
+            user.locked_until = None
+            user.last_failed_login_at = None
+            self._events.record(
+                "password_reset",
+                actor_id=user.id,
+                target_type="user",
+                target_id=user.id,
+                ip=ip,
+                db=db,
+            )
             db.execute(
                 sa.update(PasswordResetRecord)
                 .where(

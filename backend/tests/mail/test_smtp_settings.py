@@ -4,6 +4,7 @@ and never returned (spec story 24, §6.3)."""
 import pytest
 import sqlalchemy as sa
 
+from dawam.modules.auth import SecurityEventRecorder
 from dawam.platform.crypto import SecretBox
 from dawam.platform.csrf import CSRF_HEADER
 from dawam.platform.email import InMemoryOutbox, SmtpConfig
@@ -215,3 +216,18 @@ def test_only_admins_may_manage_smtp(anonymous_client, signed_in_client, method,
     assert user.status_code == 403
     assert user.json()["error"]["code"] == "forbidden"
     assert signed_in_client.get("/api/v1/me").status_code == 200
+
+
+def test_changing_smtp_settings_is_a_security_event(app, admin_client, admin_user, clock):
+    save(admin_client)
+    admin_client.delete(SMTP)
+
+    removed, changed = SecurityEventRecorder(app.state.engine, clock=clock).recent()[:2]
+
+    assert changed.event_type == "smtp_settings_changed"
+    assert changed.actor_id == admin_user.id
+    assert changed.metadata["host"] == "smtp.example.com"
+    assert changed.metadata["credentials_replaced"] is True
+    assert "smtp password 1" not in str(changed.metadata)
+    assert removed.event_type == "smtp_settings_removed"
+    assert removed.actor_id == admin_user.id

@@ -31,6 +31,10 @@ def mail_service(request: Request) -> MailService:
 MailServiceDep = Annotated[MailService, Depends(mail_service)]
 
 
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
 class SmtpSettingsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -98,7 +102,7 @@ def get_smtp_settings(admin: AdminUser, mail: MailServiceDep) -> SmtpSettingsOut
 
 @router.put("/admin/smtp", operation_id="saveSmtpSettings")
 def save_smtp_settings(
-    body: SmtpSettingsIn, admin: AdminUser, mail: MailServiceDep
+    body: SmtpSettingsIn, request: Request, admin: AdminUser, mail: MailServiceDep
 ) -> SmtpSettingsOut:
     """Save the SMTP settings; DAWAM emails links from now on."""
     settings = mail.save_smtp_settings(
@@ -109,6 +113,7 @@ def save_smtp_settings(
         username=body.username,
         password=body.password if "password" in body.model_fields_set else KEEP_PASSWORD,
         by=admin.id,
+        ip=_client_ip(request),
     )
     return SmtpSettingsOut.model_validate(settings)
 
@@ -116,9 +121,9 @@ def save_smtp_settings(
 @router.delete(
     "/admin/smtp", operation_id="clearSmtpSettings", status_code=204, response_class=Response
 )
-def clear_smtp_settings(admin: AdminUser, mail: MailServiceDep) -> Response:
+def clear_smtp_settings(request: Request, admin: AdminUser, mail: MailServiceDep) -> Response:
     """Turn SMTP off: links are then kept for admins to copy."""
-    mail.clear_smtp_settings()
+    mail.clear_smtp_settings(by=admin.id, ip=_client_ip(request))
     return Response(status_code=204)
 
 

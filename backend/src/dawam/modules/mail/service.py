@@ -11,6 +11,7 @@ from typing import Final, Literal
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from dawam.modules.auth import SecurityEventRecorder
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
 from dawam.platform.crypto import DecryptionError, SecretBox
@@ -104,6 +105,7 @@ class MailService:
         self._box = SecretBox(settings.encryption_key.get_secret_value())
         self._sender = sender
         self._clock = clock
+        self._events = SecurityEventRecorder(engine, clock=clock)
 
     # --- Delivery -------------------------------------------------------------------
 
@@ -164,10 +166,13 @@ class MailService:
         username: str | None,
         password: str | _Keep | None = KEEP_PASSWORD,
         by: uuid.UUID | None = None,
+        ip: str | None = None,
     ) -> SmtpSettings:
         """Save the SMTP settings. ``username`` None means no authentication (and no
         password). The stored password is kept only while host, port and username stay
-        the same: moving it to another server needs it entered again.
+        the same: moving it to another server needs it entered again. Records an
+        ``smtp_settings_changed`` security event (by ``by``, from ``ip``; never the
+        password).
 
         Raises ``ApiError`` 422: ``invalid_smtp_host``, ``invalid_sender``,
         ``smtp_password_required``."""
@@ -207,12 +212,26 @@ class MailService:
             record.updated_at = self._clock()
             record.updated_by = by
             db.flush()
+            self._events.record(
+                "smtp_settings_changed",
+                actor_id=by,
+                metadata={
+                    "host": host,
+                    "port": port,
+                    "security": security,
+                    "username": username,
+                    "credentials_replaced": isinstance(password, str) and username is not None,
+                },
+                ip=ip,
+                db=db,
+            )
             return _settings(record)
 
-    def clear_smtp_settings(self) -> None:
+    def clear_smtp_settings(self, *, by: uuid.UUID | None = None, ip: str | None = None) -> None:
         """Turn SMTP off: links are kept for admins again."""
         with Session(self._engine) as db, db.begin():
             db.execute(sa.delete(SmtpSettingsRecord))
+            self._events.record("smtp_settings_removed", actor_id=by, ip=ip, db=db)
 
     def send_test(self, to: str) -> None:
         """Send a test email through the saved settings, now.

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from dawam.app import create_app
+from dawam.modules.auth import SecurityEventRecorder
 from dawam.modules.mail import MailService
 from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
@@ -199,6 +200,38 @@ def test_a_password_that_breaks_the_policy_is_refused_and_the_link_still_works(
     assert short.status_code == 422
     assert short.json()["error"]["code"] == "invalid_password"
     assert reset(anonymous_client, token).status_code == 204
+
+
+@pytest.mark.usefixtures("smtp")
+def test_a_reset_unlocks_a_locked_account(anonymous_client, grace, outbox):
+    """Whoever reads the user's email may choose their password, so the lock (there to
+    stop password guessing) has nothing left to protect."""
+    for _ in range(5):
+        sign_in(anonymous_client, grace.email, "not the password")
+    assert sign_in(anonymous_client, grace.email, grace.password).status_code == 429
+    token = request_token(anonymous_client, outbox, grace.email)
+
+    reset(anonymous_client, token)
+
+    assert sign_in(anonymous_client, grace.email, NEW_PASSWORD).status_code == 200
+
+
+@pytest.mark.usefixtures("smtp")
+def test_requesting_and_using_a_link_are_security_events(
+    app, anonymous_client, grace, outbox, clock
+):
+    token = request_token(anonymous_client, outbox, grace.email)
+    forgot(anonymous_client, "nobody@example.com")
+    reset(anonymous_client, token)
+
+    used, requested = SecurityEventRecorder(app.state.engine, clock=clock).recent()[:2]
+
+    assert requested.event_type == "password_reset_requested"
+    assert used.event_type == "password_reset"
+    for event in (requested, used):
+        assert (event.actor_id, event.target_type, event.target_id) == (grace.id, "user", grace.id)
+        assert event.ip == "testclient"
+        assert token not in str(event.metadata)
 
 
 @pytest.mark.usefixtures("smtp")
