@@ -1,7 +1,8 @@
 """Sign-up (``/api/v1/auth/register``, ``/registration``), sign-in and sessions
 (``/api/v1/auth/login``, ``/logout``, ``/logout-all``), the password change
 (``/api/v1/auth/password/change``), the password reset
-(``/api/v1/auth/password/forgot``, ``/reset``) and the user's profile (``/api/v1/me``).
+(``/api/v1/auth/password/forgot``, ``/reset``), accepting an invitation
+(``/api/v1/auth/invitations/lookup``, ``/accept``) and the user's profile (``/api/v1/me``).
 
 The session token travels only in the ``dawam_session`` cookie: ``HttpOnly``,
 ``SameSite=Lax``, ``Secure`` when the request came over TLS, and kept by the browser
@@ -12,6 +13,7 @@ request by the API router (``dawam.platform.csrf``), sign-in included.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
@@ -21,6 +23,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.request_context import client_ip
 
 from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
+from .internal.invitations import Invitations
 from .service import AuthService, PasswordResets, RegistrationPolicy, SignedIn, SystemRole, User
 
 SESSION_COOKIE = "dawam_session"
@@ -289,3 +292,59 @@ def reset_password(
     every session of the user ends: they sign in again with the new password."""
     resets.reset_password(body.token, body.password, ip=client_ip(request))
     return Response(status_code=204)
+
+
+def invitations(request: Request) -> Invitations:
+    state = request.app.state
+    return Invitations(
+        state.engine, state.settings, mailer=state.mailer, clock=state.services.clock
+    )
+
+
+InvitationsDep = Annotated[Invitations, Depends(invitations)]
+
+
+class InvitationTokenRequest(BaseModel):
+    token: str = Field(max_length=128)
+
+
+class InvitationLinkOut(BaseModel):
+    email: str = Field(description="The email the invitation is for; the new account gets it.")
+    expires_at: datetime
+
+
+class AcceptInvitationRequest(BaseModel):
+    token: str = Field(max_length=128)
+    display_name: str = Field(max_length=_MAX_DISPLAY_NAME_INPUT)
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+
+
+@router.post("/auth/invitations/lookup", operation_id="lookUpInvitation")
+def look_up_invitation(
+    body: InvitationTokenRequest, invitations: InvitationsDep
+) -> InvitationLinkOut:
+    """Which email an invitation link is for, while it can still be accepted (400
+    ``invalid_invitation`` otherwise). The token travels in the body, never the URL."""
+    link = invitations.look_up(body.token)
+    return InvitationLinkOut(email=link.email, expires_at=link.expires_at)
+
+
+@router.post("/auth/invitations/accept", operation_id="acceptInvitation", status_code=201)
+def accept_invitation(
+    body: AcceptInvitationRequest,
+    request: Request,
+    response: Response,
+    auth: AuthServiceDep,
+    invitations: InvitationsDep,
+) -> Me:
+    """Accept an invitation with the token from its link: creates the account (with the
+    invited email, this display name and password) and signs it in. Works whether or not
+    self-registration is open; the link then stops working."""
+    signed_in = invitations.accept(
+        body.token,
+        display_name=body.display_name,
+        password=body.password,
+        replacing=request.cookies.get(SESSION_COOKIE),
+        **_client_of(request),
+    )
+    return _signed_in(signed_in, request, response, auth)

@@ -13,7 +13,7 @@ from collections import Counter
 import pytest
 from fastapi import FastAPI
 
-from dawam.modules.auth import PasswordResets
+from dawam.modules.auth import Invitations, PasswordResets
 from dawam.modules.mail import MailService
 from tests.authz.matrix import (
     Row,
@@ -82,6 +82,17 @@ def reset_body(roles: RoleClients) -> dict:
         state.engine, state.settings, mailer=catcher, clock=state.services.clock
     ).request_reset(roles.user("owner").email)
     return {"token": catcher.url.rsplit("token=", 1)[1], "password": "a brand new password"}
+
+
+def invitation_token(roles: RoleClients) -> str:
+    """A fresh invitation token, caught from its link (the admin invites, through the
+    auth module)."""
+    state = roles.app.state
+    catcher = _LinkCatcher()
+    Invitations(state.engine, state.settings, mailer=catcher, clock=state.services.clock).invite(
+        "invitee@example.com", actor_id=roles.user("admin").id
+    )
+    return catcher.url.rsplit("token=", 1)[1]
 
 
 ROWS: list[Row] = [
@@ -155,6 +166,39 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row("GET", "/api/v1/admin/security-events", "review security events", admin_only()),
+    # Invitations (stories 10, 15).
+    Row(
+        "POST",
+        "/api/v1/admin/users/invite",
+        "invite someone by email",
+        admin_only(),
+        json=lambda roles: {"email": "invitee@example.com"},
+    ),
+    Row("GET", "/api/v1/admin/invitations", "see pending invitations", admin_only()),
+    Row(
+        "DELETE",
+        "/api/v1/admin/invitations/{invitation_id}",
+        "revoke an invitation",
+        admin_only(),
+    ),
+    Row(
+        "POST",
+        "/api/v1/auth/invitations/lookup",
+        "who an invitation is for: the token is the credential (story 10)",
+        public(),
+        json=lambda roles: {"token": invitation_token(roles)},
+    ),
+    Row(
+        "POST",
+        "/api/v1/auth/invitations/accept",
+        "accept an invitation: the token is the credential (story 10)",
+        public(),
+        json=lambda roles: {
+            "token": invitation_token(roles),
+            "display_name": "Invitee",
+            "password": "a brand new password",
+        },
+    ),
     Row(
         "POST",
         "/api/v1/auth/password/forgot",

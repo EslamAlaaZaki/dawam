@@ -199,6 +199,41 @@ def _user(record: UserRecord) -> User:
     )
 
 
+def _start_session(
+    db: Session,
+    user: UserRecord,
+    password: str,
+    now: datetime,
+    *,
+    lifetime: timedelta,
+    replacing: str | None,
+    ip: str | None,
+    user_agent: str | None,
+) -> SignedIn:
+    """Sign ``user`` in, having just checked or set ``password``: a new session that
+    ends ``lifetime`` from ``now``, replacing the browser's session ``replacing``."""
+    if _hasher.check_needs_rehash(user.password_hash):
+        user.password_hash = _hasher.hash(password)
+    user.last_login_at = now
+    if replacing:
+        db.execute(
+            sa.delete(SessionRecord).where(SessionRecord.token_hash == _token_hash(replacing))
+        )
+    token = secrets.token_urlsafe(32)
+    db.add(
+        SessionRecord(
+            token_hash=_token_hash(token),
+            user_id=user.id,
+            created_at=now,
+            last_seen_at=now,
+            expires_at=now + lifetime,
+            ip=ip[:IP_MAX_LENGTH] if ip else None,
+            user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
+        )
+    )
+    return SignedIn(token=token, user=_user(user))
+
+
 class AuthService:
     """Users, passwords and server-side sessions.
 
@@ -438,26 +473,16 @@ class AuthService:
         ip: str | None,
         user_agent: str | None,
     ) -> SignedIn:
-        if _hasher.check_needs_rehash(user.password_hash):
-            user.password_hash = _hasher.hash(password)
-        user.last_login_at = now
-        if replacing:
-            db.execute(
-                sa.delete(SessionRecord).where(SessionRecord.token_hash == _token_hash(replacing))
-            )
-        token = secrets.token_urlsafe(32)
-        db.add(
-            SessionRecord(
-                token_hash=_token_hash(token),
-                user_id=user.id,
-                created_at=now,
-                last_seen_at=now,
-                expires_at=now + self.absolute_timeout,
-                ip=ip[:IP_MAX_LENGTH] if ip else None,
-                user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
-            )
+        return _start_session(
+            db,
+            user,
+            password,
+            now,
+            lifetime=self.absolute_timeout,
+            replacing=replacing,
+            ip=ip,
+            user_agent=user_agent,
         )
-        return SignedIn(token=token, user=_user(user))
 
     def user_for_session(self, token: str) -> User | None:
         """The signed-in user of a live session, or None. An expired session is deleted."""

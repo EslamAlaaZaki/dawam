@@ -50,7 +50,7 @@ class Action(StrEnum):
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
     MANAGE_USERS = "installation.manage_users"
-    """List, create, deactivate, promote and demote users and force password resets
+    """List, create, invite, deactivate, promote and demote users and force password resets
     (admins only; spec stories 14-19)."""
     VIEW_SECURITY_EVENTS = "installation.view_security_events"
     """Review the security-event log (admins only; spec story 23)."""

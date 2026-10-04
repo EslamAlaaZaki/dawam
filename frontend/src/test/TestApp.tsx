@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import EmailSettingsPage from "../app/(signed-in)/admin/email/page";
 import LinksToSharePage from "../app/(signed-in)/admin/email/links/page";
 import SignedInLayout from "../app/(signed-in)/layout";
+import InvitationsPage from "../app/(signed-in)/admin/invitations/page";
 import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
 import SecurityEventsPage from "../app/(signed-in)/admin/security-events/page";
 import CreateUserPage from "../app/(signed-in)/admin/users/new/page";
@@ -13,6 +14,7 @@ import ChangePasswordPage from "../app/(signed-in)/change-password/page";
 import HomePage from "../app/(signed-in)/page";
 import ProfilePage from "../app/(signed-in)/profile/page";
 import NewWorkspace from "../app/(signed-in)/workspaces/new/page";
+import AcceptInvitationPage from "../app/accept-invitation/page";
 import ForgotPasswordPage from "../app/forgot-password/page";
 import LoginPage from "../app/login/page";
 import ResetPasswordPage from "../app/reset-password/page";
@@ -53,6 +55,12 @@ function Page({ pathname }: { pathname: string }) {
           <CreateUserPage />
         </SignedInLayout>
       );
+    case "/admin/invitations":
+      return (
+        <SignedInLayout>
+          <InvitationsPage />
+        </SignedInLayout>
+      );
     case "/admin/security-events":
       return (
         <SignedInLayout>
@@ -69,6 +77,8 @@ function Page({ pathname }: { pathname: string }) {
       return <ForgotPasswordPage />;
     case "/reset-password":
       return <ResetPasswordPage />;
+    case "/accept-invitation":
+      return <AcceptInvitationPage />;
     case "/admin/email":
       return (
         <SignedInLayout>

@@ -34,6 +34,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
 
+from dawam.modules.auth import Invitations
 from dawam.modules.mail import MailService
 from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
@@ -141,10 +142,20 @@ def undelivered_link_id(roles: RoleClients) -> uuid.UUID:
     return mail.undelivered_links()[0].id
 
 
+def invitation_id(roles: RoleClients) -> uuid.UUID:
+    """A pending invitation, made through the auth module (its link is kept for admins)."""
+    state = roles.app.state
+    invitations = Invitations(
+        state.engine, state.settings, mailer=state.mailer, clock=state.services.clock
+    )
+    return invitations.invite("invitee@example.com", actor_id=roles.user("admin").id).invitation.id
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
     "user_id": lambda roles: roles.user("non_member").id,
+    "invitation_id": invitation_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 

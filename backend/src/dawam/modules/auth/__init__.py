@@ -20,15 +20,28 @@ Public interface. Other modules import only what is re-exported here:
 - ``PasswordResets``: forgotten passwords (reset links, emailed through the
   ``dawam.platform.email.Mailer`` the composition root provides as
   ``app.state.mailer``: auth never imports another module).
+- ``Invitations``: inviting people by email (``SentInvitation``, pending ones as an
+  ``InvitationPage`` of ``Invitation``, revoking) and accepting an invitation; the
+  links go out through the same ``Mailer``.
 - ``router``: ``GET /auth/registration``; ``POST /auth/register``, ``/auth/login``,
   ``/auth/logout``, ``/auth/logout-all``, ``/auth/password/change``,
-  ``/auth/password/forgot``, ``/auth/password/reset``; ``GET|PATCH /me``.
+  ``/auth/password/forgot``, ``/auth/password/reset``, ``/auth/invitations/lookup``,
+  ``/auth/invitations/accept``; ``GET|PATCH /me``.
 
-Owns the ``users``, ``sessions``, ``security_events`` and ``password_resets`` tables.
+Owns the ``users``, ``sessions``, ``security_events``, ``password_resets`` and
+``invitations`` tables.
 """
 
 from .api import CurrentUser, router
 from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
+from .internal.invitations import (
+    Invitation,
+    InvitationPage,
+    Invitations,
+    InvitedRole,
+    Inviter,
+    SentInvitation,
+)
 from .internal.security_events import (
     LoggedSecurityEvent,
     SecurityEvent,
@@ -52,6 +65,11 @@ __all__ = [
     "MAX_PASSWORD_LENGTH",
     "AuthService",
     "CurrentUser",
+    "Invitation",
+    "InvitationPage",
+    "Invitations",
+    "InvitedRole",
+    "Inviter",
     "LoggedSecurityEvent",
     "PasswordResets",
     "RegistrationPolicy",
@@ -59,6 +77,7 @@ __all__ = [
     "SecurityEvent",
     "SecurityEventPage",
     "SecurityEventRecorder",
+    "SentInvitation",
     "SessionInfo",
     "SignedIn",
     "SystemRole",

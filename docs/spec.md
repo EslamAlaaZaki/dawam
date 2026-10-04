@@ -737,7 +737,8 @@ User(id, email UNIQUE, display_name, password_hash, system_role[admin|user],
      is_active, must_change_password, failed_login_count, locked_until, last_failed_login_at,
      created_at, last_login_at)
 Session(id, user_id, created_at, last_seen_at, expires_at, ip, user_agent)
-Invitation(id, email, token_hash, invited_by, workspace_id?, workspace_role?, expires_at, accepted_at)
+Invitation(id, email, token_hash, invited_by, workspace_id?, workspace_role?, created_at, expires_at,
+           accepted_at?, revoked_at?)
 PasswordReset(id, user_id, token_hash, expires_at, used_at)
 SystemSetting(key, value)                         -- registration, allowed domains, SMTP
 LoginLockout(email_key, failed_login_count, locked_until, last_failed_login_at)
@@ -929,10 +930,11 @@ Key endpoint groups:
 ```
 POST   /auth/register | /auth/login | /auth/logout | /auth/logout-all
 POST   /auth/password/forgot | /auth/password/reset | /auth/password/change
-POST   /auth/invitations/{token}/accept
+POST   /auth/invitations/lookup | /auth/invitations/accept   (the token in the body, never the URL)
 GET    /me
 
 GET    /admin/users            POST /admin/users   POST /admin/users/invite
+GET    /admin/invitations      DELETE /admin/invitations/{id}   (pending invitations, revoke)
 PATCH  /admin/users/{id}       (role, is_active)   POST /admin/users/{id}/force-reset
 GET    /admin/workspaces       POST /admin/workspaces/{id}/reassign-owner
 GET|PUT /admin/settings        GET /admin/security-events

@@ -1,28 +1,13 @@
 "use client";
 
-import { useState, useSyncExternalStore, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import { useResetPassword } from "../api/passwordReset";
-
-// The token travels in the link's fragment (`/reset-password#token=…`), which the
-// browser never sends to a server, so it stays out of proxy logs and Referer headers.
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener("hashchange", onChange);
-  return () => window.removeEventListener("hashchange", onChange);
-}
-
-function tokenFromHash(): string {
-  return new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
-}
-
-/** The token in the page's fragment; `null` while rendering on the server. */
-function useResetToken(): string | null {
-  return useSyncExternalStore(subscribe, tokenFromHash, () => null);
-}
+import { useFragmentToken } from "./fragmentToken";
 
 export function ResetPasswordPage() {
-  const token = useResetToken();
+  const token = useFragmentToken();
   const reset = useResetPassword();
   const [mismatch, setMismatch] = useState(false);
 
