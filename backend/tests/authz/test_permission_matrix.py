@@ -50,6 +50,15 @@ def _open_registration_and_sign_up(roles: RoleClients) -> dict[str, str]:
     return {"email": "newcomer@example.com", "password": PASSWORD, "display_name": "New"}
 
 
+def _set_up_data_warehouse(roles: RoleClients) -> None:
+    """Sets the Data Warehouse up first, so there is something to edit."""
+    response = roles.client("owner").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse",
+        json={"target_platform": "postgresql"},
+    )
+    assert response.status_code == 201, response.text
+
+
 SMTP_SETTINGS = {
     "host": "smtp.example.com",
     "port": 25,
@@ -314,6 +323,34 @@ ROWS: list[Row] = [
         "Transfer ownership",
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"user_id": str(colleague_id(roles))},
+    ),
+    # Data Warehouse.
+    Row(
+        "GET",
+        "/api/v1/data-warehouse/platforms",
+        "identifier limits and reserved words per target platform (story 87)",
+        signed_in(),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse",
+        "Open Workspace content (the Data Warehouse setup)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse",
+        "Set up the Data Warehouse",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"target_platform": "postgresql"},
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse",
+        "Set up the Data Warehouse (settings other than the platform)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+        json=lambda roles: {"version": 1, "naming_rules": {"case_style": "upper"}},
     ),
 ]
 
