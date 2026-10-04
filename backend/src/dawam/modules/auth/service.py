@@ -4,9 +4,11 @@ import hashlib
 import logging
 import secrets
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal, get_args
+from typing import Literal, Protocol, get_args
 
 import sqlalchemy as sa
 from argon2 import PasswordHasher
@@ -56,6 +58,20 @@ def _email_taken() -> ApiError:
     return ApiError(409, "email_taken", "A user with this email already exists.")
 
 
+@contextmanager
+def _email_must_be_free() -> Iterator[None]:
+    """Turn the unique-email violation of an insert into ``409 email_taken``. The
+    constraint, not a pre-check, decides: two concurrent creates of one email cannot
+    both succeed."""
+    try:
+        yield
+    except IntegrityError as exc:
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint == "uq_users_email":
+            raise _email_taken() from None
+        raise
+
+
 def _checked_password(password: str) -> str:
     problem = password_problem(password)
     if problem:
@@ -69,6 +85,20 @@ def _checked_display_name(display_name: str) -> str:
     if problem:
         raise ApiError(422, "invalid_display_name", f"The display name {problem}.")
     return display_name
+
+
+class RegistrationPolicy(Protocol):
+    """Who may sign up on their own (spec stories 1, 20). The auth module does not keep
+    these settings: the admin module's system settings implement this, and the
+    composition root hands them to auth."""
+
+    def registration_open(self) -> bool:
+        """Whether self-registration is on at all."""
+        ...
+
+    def email_domain_allowed(self, email: str) -> bool:
+        """Whether a (normalised, valid) email's domain may sign up."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -145,18 +175,52 @@ class AuthService:
         """Create a user. Raises ``ApiError``: 422 ``invalid_email`` or
         ``invalid_password``, 409 ``email_taken``."""
         record = self._new_user(email, password, display_name, system_role)
-        try:
-            with Session(self._engine) as db, db.begin():
-                db.add(record)
-                db.flush()
-                return _user(record)
-        except IntegrityError as exc:
-            # The unique constraint, not a pre-check, decides: two concurrent creates
-            # of one email cannot both succeed.
-            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-            if constraint == "uq_users_email":
-                raise _email_taken() from None
-            raise
+        with _email_must_be_free(), Session(self._engine) as db, db.begin():
+            db.add(record)
+            db.flush()
+            return _user(record)
+
+    def register(
+        self,
+        *,
+        email: str,
+        password: str,
+        display_name: str,
+        policy: RegistrationPolicy,
+        replacing: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> SignedIn:
+        """Self-registration: create a regular user and sign them in, if ``policy``
+        allows it. Raises ``ApiError``: 403 ``registration_closed`` or
+        ``email_domain_not_allowed``, 422 ``invalid_email``, ``invalid_display_name`` or
+        ``invalid_password``, 409 ``email_taken``. ``replacing``, ``ip`` and
+        ``user_agent`` are as for ``sign_in``. Records a ``user_registered`` security
+        event."""
+        if not policy.registration_open():
+            raise ApiError(403, "registration_closed", "Self-registration is turned off.")
+        normalized = normalize_email(email)
+        if is_valid_email(normalized) and not policy.email_domain_allowed(normalized):
+            raise ApiError(
+                403,
+                "email_domain_not_allowed",
+                "Self-registration is not open to this email domain.",
+            )
+        record = self._new_user(normalized, password, display_name, "user")
+        now = self._clock()
+        with _email_must_be_free(), Session(self._engine) as db, db.begin():
+            db.add(record)
+            db.flush()
+            self._events.record(
+                "user_registered",
+                actor_id=record.id,
+                target_type="user",
+                target_id=record.id,
+                metadata={"email": record.email},
+                ip=ip,
+                db=db,
+            )
+            return self._start_session(db, record, password, now, replacing, ip, user_agent)
 
     def get_user(self, user_id: uuid.UUID) -> User | None:
         with Session(self._engine) as db:

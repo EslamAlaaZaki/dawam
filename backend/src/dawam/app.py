@@ -16,6 +16,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
 from dawam.modules import ALL_MODULES
+from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
 from dawam.modules.jobs import InlineJobRunner, JobRunner
 from dawam.platform import health, meta
@@ -79,6 +80,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
+    # Sign-up (auth) asks the admin module's system settings who may register.
+    app.state.registration_policy = SystemSettingsService(engine)
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)

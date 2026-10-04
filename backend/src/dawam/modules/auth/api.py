@@ -1,5 +1,6 @@
-"""Sign-in and sessions (``/api/v1/auth/login``, ``/logout``, ``/logout-all``), the
-password change (``/api/v1/auth/password/change``) and the user's profile (``/api/v1/me``).
+"""Sign-up (``/api/v1/auth/register``, ``/registration``), sign-in and sessions
+(``/api/v1/auth/login``, ``/logout``, ``/logout-all``), the password change
+(``/api/v1/auth/password/change``) and the user's profile (``/api/v1/me``).
 
 The session token travels only in the ``dawam_session`` cookie: ``HttpOnly``,
 ``SameSite=Lax``, ``Secure`` when the request came over TLS, and kept by the browser
@@ -18,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dawam.platform.errors import ApiError
 
 from .internal.credentials import MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
-from .service import AuthService, SystemRole, User
+from .service import AuthService, RegistrationPolicy, SignedIn, SystemRole, User
 
 SESSION_COOKIE = "dawam_session"
 
@@ -55,6 +56,25 @@ class SignInRequest(BaseModel):
     password: str = Field(max_length=MAX_PASSWORD_LENGTH)
 
 
+def registration_policy(request: Request) -> RegistrationPolicy | None:
+    """Set by the composition root (``app.state.registration_policy``); without one,
+    self-registration is closed."""
+    return getattr(request.app.state, "registration_policy", None)
+
+
+RegistrationPolicyDep = Annotated[RegistrationPolicy | None, Depends(registration_policy)]
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(max_length=MAX_EMAIL_LENGTH)
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+    display_name: str = Field(max_length=_MAX_DISPLAY_NAME_INPUT)
+
+
+class RegistrationStatus(BaseModel):
+    open: bool = Field(description="Whether visitors may sign up on their own.")
+
+
 class UpdateMeRequest(BaseModel):
     display_name: str = Field(max_length=_MAX_DISPLAY_NAME_INPUT)
 
@@ -84,20 +104,39 @@ def sign_in(body: SignInRequest, request: Request, response: Response, auth: Aut
         body.email,
         body.password,
         replacing=request.cookies.get(SESSION_COOKIE),
-        # uvicorn sets the client from X-Forwarded-For only for DAWAM_FORWARDED_ALLOW_IPS.
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        **_client_of(request),
     )
-    response.set_cookie(
-        SESSION_COOKIE,
-        signed_in.token,
-        max_age=int(auth.absolute_timeout.total_seconds()),
-        path="/",
-        secure=_is_tls(request),
-        httponly=True,
-        samesite="lax",
+    return _signed_in(signed_in, request, response, auth)
+
+
+@router.get("/auth/registration", operation_id="getRegistration")
+def get_registration(policy: RegistrationPolicyDep) -> RegistrationStatus:
+    """Whether self-registration is open (anyone may ask; the sign-up link shows only
+    then)."""
+    return RegistrationStatus(open=policy is not None and policy.registration_open())
+
+
+@router.post("/auth/register", operation_id="register", status_code=201)
+def register(
+    body: RegisterRequest,
+    request: Request,
+    response: Response,
+    auth: AuthServiceDep,
+    policy: RegistrationPolicyDep,
+) -> Me:
+    """Sign up with email, display name and password while self-registration is open
+    (and the email's domain is allowed); signs the new user in."""
+    if policy is None:
+        raise ApiError(403, "registration_closed", "Self-registration is turned off.")
+    signed_in = auth.register(
+        email=body.email,
+        password=body.password,
+        display_name=body.display_name,
+        policy=policy,
+        replacing=request.cookies.get(SESSION_COOKIE),
+        **_client_of(request),
     )
-    return Me.model_validate(signed_in.user)
+    return _signed_in(signed_in, request, response, auth)
 
 
 @router.post("/auth/logout", operation_id="signOut", status_code=204, response_class=Response)
@@ -148,6 +187,27 @@ def get_me(user: CurrentUser) -> Me:
 def update_me(body: UpdateMeRequest, user: CurrentUser, auth: AuthServiceDep) -> Me:
     """Change the signed-in user's display name."""
     return Me.model_validate(auth.update_display_name(user.id, body.display_name))
+
+
+def _client_of(request: Request) -> dict[str, str | None]:
+    return {
+        # uvicorn sets the client from X-Forwarded-For only for DAWAM_FORWARDED_ALLOW_IPS.
+        "ip": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+    }
+
+
+def _signed_in(signed_in: SignedIn, request: Request, response: Response, auth: AuthService) -> Me:
+    response.set_cookie(
+        SESSION_COOKIE,
+        signed_in.token,
+        max_age=int(auth.absolute_timeout.total_seconds()),
+        path="/",
+        secure=_is_tls(request),
+        httponly=True,
+        samesite="lax",
+    )
+    return Me.model_validate(signed_in.user)
 
 
 def _signed_out(request: Request) -> Response:
