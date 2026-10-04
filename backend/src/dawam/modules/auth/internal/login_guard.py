@@ -18,6 +18,10 @@ them leaves the window. Its attempts are refused before any account is looked at
 they are not recorded, count towards nothing and lock no account: the limit slows
 that address alone, and caps how many accounts it can lock per window.
 
+**The password change** checks the current password, so guessing it there counts
+against the same per-account state (``password_check_failed``): it locks the account
+like failed sign-ins do, and a locked account cannot change its password either.
+
 After each failure, ``prune`` deletes what no longer matters: failures older than the
 address window, and ``login_lockouts`` rows that are no different from no row.
 """
@@ -50,6 +54,10 @@ def _email_metadata(email: str) -> dict[str, object]:
     if is_valid_email(email):
         return {"email": email}
     return {"email": None, "email_invalid": True}
+
+
+def wrong_password() -> ApiError:
+    return ApiError(400, "wrong_password", "The current password is incorrect.")
 
 
 def invalid_credentials() -> ApiError:
@@ -177,20 +185,62 @@ class LoginGuard:
         )
         if locked_until is not None:
             return account_locked(locked_until, now)
+        until = self._count_failure(db, state, _email_metadata(email), target, ip, now)
+        return account_locked(until, now) if until else invalid_credentials()
+
+    def password_check_failed(
+        self,
+        db: Session,
+        user: UserRecord,
+        *,
+        ip: str | None,
+        now: datetime,
+        locked_until: datetime | None,
+    ) -> ApiError:
+        """Record a refused password change of ``user`` (locked ``FOR UPDATE`` by the
+        caller) and return the error to answer it with: its current password was wrong,
+        which counts like a failed sign-in and may lock the account, or the account was
+        already locked until ``locked_until`` (the password was not checked)."""
+        target = {"target_type": "user", "target_id": user.id}
+        reason = "account_locked" if locked_until else "wrong_password"
+        self._events.record(
+            "password_change_failed",
+            actor_id=user.id,
+            metadata={"reason": reason},
+            ip=ip,
+            db=db,
+            **target,
+        )
+        if locked_until is not None:
+            return account_locked(locked_until, now)
+        until = self._count_failure(db, user, {"email": user.email}, target, ip, now)
+        return account_locked(until, now) if until else wrong_password()
+
+    def _count_failure(
+        self,
+        db: Session,
+        state: LockoutState,
+        email_metadata: dict[str, object],
+        target: dict[str, object],
+        ip: str | None,
+        now: datetime,
+    ) -> datetime | None:
+        """Add a failure to the streak; lock and return the lock's end once it is long
+        enough, else None."""
         last = state.last_failed_login_at
         if last is None or now - last >= FAILURE_STREAK_TTL:
             state.failed_login_count = 0
         state.failed_login_count += 1
         state.last_failed_login_at = now
         if state.failed_login_count < self._max_failures:
-            return invalid_credentials()
+            return None
         until = now + self._lockout
         state.failed_login_count = 0
         state.locked_until = until
         self._events.record(
             "account_locked",
             metadata={
-                **_email_metadata(email),
+                **email_metadata,
                 "failed_attempts": self._max_failures,
                 "locked_until": until.isoformat(),
             },
@@ -198,7 +248,7 @@ class LoginGuard:
             db=db,
             **target,
         )
-        return account_locked(until, now)
+        return until
 
     def prune(self, db: Session, now: datetime) -> None:
         """Delete failures older than the address window, and lockout rows of unknown

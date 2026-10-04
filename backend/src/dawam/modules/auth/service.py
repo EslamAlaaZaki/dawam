@@ -418,26 +418,41 @@ class AuthService:
         """Replace the user's password, given the current one, and end every session of
         theirs except the one whose token is ``keep_session`` (the browser asking), so a
         stolen session dies with the old password. Records a ``password_changed``
-        security event from ``ip``. Raises ``ApiError``: 400 ``wrong_password``, 422
-        ``invalid_password``, 404 ``not_found``."""
+        security event from ``ip``.
+
+        A wrong current password counts against the account like a failed sign-in
+        (and is recorded as ``password_change_failed``), so it cannot be guessed here
+        either. Raises ``ApiError``: 400 ``wrong_password``, 429 ``account_locked``
+        (when that locks the account, or it was locked), 422 ``invalid_password``, 404
+        ``not_found``."""
+        now = self._clock()
         with Session(self._engine) as db, db.begin():
             user = self._existing_user(db, user_id)
-            if not self._verify(user.password_hash, current_password):
-                raise ApiError(400, "wrong_password", "The current password is incorrect.")
-            user.password_hash = _hasher.hash(_checked_password(new_password))
-            others = sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
-            if keep_session:
-                others = others.where(SessionRecord.token_hash != _token_hash(keep_session))
-            ended = db.execute(others).rowcount
-            self._events.record(
-                "password_changed",
-                actor_id=user.id,
-                target_type="user",
-                target_id=user.id,
-                metadata={"other_sessions_ended": ended},
-                ip=ip,
-                db=db,
+            # Like a sign-in: a locked account is refused unchecked, and a wrong
+            # password counts towards the lock (``internal.login_guard``).
+            locked_until = self._guard.locked_until(user, now)
+            if locked_until is None and self._verify(user.password_hash, current_password):
+                user.failed_login_count = 0  # knowing the password ends the streak
+                user.password_hash = _hasher.hash(_checked_password(new_password))
+                others = sa.delete(SessionRecord).where(SessionRecord.user_id == user.id)
+                if keep_session:
+                    others = others.where(SessionRecord.token_hash != _token_hash(keep_session))
+                ended = db.execute(others).rowcount
+                self._events.record(
+                    "password_changed",
+                    actor_id=user.id,
+                    target_type="user",
+                    target_id=user.id,
+                    metadata={"other_sessions_ended": ended},
+                    ip=ip,
+                    db=db,
+                )
+                return
+            # Committed with the transaction: the failure is recorded before it is raised.
+            failure = self._guard.password_check_failed(
+                db, user, ip=ip, now=now, locked_until=locked_until
             )
+        raise failure
 
     def sign_out_everywhere(self, user_id: uuid.UUID, *, ip: str | None = None) -> None:
         """End every session of the user, the caller's own included. Records a
