@@ -15,10 +15,10 @@ export function setLocation(path: string): void {
   }
 }
 
-/** The current path and query, e.g. `/login?from=%2F`. */
+/** The current path and query, e.g. `/login?from=%2F`; the whole URL once off-site. */
 export function currentLocation(): string {
   const url = new URL(href);
-  return url.pathname + url.search;
+  return url.origin === ORIGIN ? url.pathname + url.search : url.href;
 }
 
 function subscribe(listener: () => void): () => void {

@@ -20,8 +20,21 @@ export function safeReturnPath(from: string | null, origin = window.location.ori
   } catch {
     return "/";
   }
-  if (url.origin !== origin || url.pathname === "/login") {
+  // Check the path as the URL parser normalised it: `/.//host` and `/a/..//host` only
+  // become `//host` (another site, to the router) after dot segments are removed. The
+  // decoded form is checked too, so `/%2F%2Fhost` fails wherever it gets decoded.
+  if (url.origin !== origin || leavesTheSite(url.pathname) || url.pathname === "/login") {
     return "/";
   }
   return url.pathname + url.search + url.hash;
+}
+
+function leavesTheSite(pathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return [pathname, decoded].some((path) => /^\/[/\\]/.test(path) || /^\/\.+[/\\]/.test(path));
 }

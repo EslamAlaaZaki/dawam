@@ -173,6 +173,12 @@ describe("signing in", () => {
     "//evil.example/",
     "/\\evil.example/",
     "/\t/evil.example/",
+    "/.//evil.example/",
+    "/a/..//evil.example/",
+    "/./\\evil.example/",
+    "/%2F%2Fevil.example/",
+    "/.%2F%2Fevil.example/",
+    "/%5C%5Cevil.example/",
     "javascript:alert(1)",
     "/login",
   ])("never follows a return path that leaves the site or loops (%s)", async (from) => {
