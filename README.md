@@ -108,6 +108,17 @@ on every log line for that request.
   `security_events` table, for the admin's security log.
 - Endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`.
 
+### Workspaces
+
+Any signed-in user can create a Workspace and becomes its owner. The list shows only
+the Workspaces you are a member of, with your role (owner, editor or viewer); only
+owners edit a Workspace's details. Anyone who is not a member, admins included, gets
+404 for a Workspace, so its existence is not revealed. Edits carry the `version` the
+client last saw, and a stale one gets `409 version_conflict`. List endpoints are
+paged with `limit` and an opaque `cursor` (the previous page's `next_cursor`).
+
+- Endpoints: `GET|POST /api/v1/workspaces`, `GET|PATCH /api/v1/workspaces/{workspace_id}`.
+
 ## Develop
 
 Repository layout:
@@ -174,7 +185,7 @@ node .next/standalone/server.js   # pages only: put edge (or another proxy) in f
 
 The app lives in `frontend/src/`: routes in `app/` (`login/`, and the signed-in pages
 in the `(signed-in)` group, whose layout sends anyone not signed in to
-`/login?from=<page>`), screens in `auth/` and `shell/`, the API client and its
+`/login?from=<page>`), screens in `auth/`, `shell/` and `workspaces/`, the API client and its
 TanStack Query hooks in `api/`, and the security headers in `security/` and
 `proxy.ts`. Screens are client components that call the API from the browser;
 server components only lay out the static shell. The frontend has no API routes,
@@ -215,9 +226,17 @@ running**. The harness in `backend/tests/conftest.py` provides:
   `outbox.sent_to(address)`;
 - `jobs`: the job runner; background work runs inline in tests, before `submit`
   returns;
-- `fresh_database_url`: an empty, unmigrated database.
+- `fresh_database_url`: an empty, unmigrated database;
+- `roles`: a client per role of the permission matrix (anonymous, non-member user,
+  viewer, editor, owner, non-member admin) on one Workspace (`tests/roles.py`).
 
 Application tables are emptied between tests.
+
+The permission suite (`tests/authz/test_permission_matrix.py`) sends every endpoint
+as every one of those roles and checks the outcome (allowed, 401, 403 or 404)
+against the spec's §4.3 matrix. It finds the routes from the app itself and fails
+for any route without a row, so a new endpoint needs one (see
+`tests/authz/matrix.py`).
 
 CI (GitHub Actions, `.github/workflows/ci.yml`) runs on every push and pull request:
 backend lint and tests, the module-boundary check, frontend lint, tests and build, and

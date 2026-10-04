@@ -174,10 +174,291 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "List Workspaces",
+        "description": "The Workspaces you are a member of, with your role in each, ordered by name.",
+        "operationId": "listWorkspaces",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Create Workspace",
+        "description": "Create a Workspace; you become its owner.",
+        "operationId": "createWorkspace",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Workspace",
+        "description": "Open a Workspace you are a member of (404 for anyone else, admins included).",
+        "operationId": "getWorkspace",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Update Workspace",
+        "description": "Edit the Workspace's details (owners only). Fields left out stay as they are.",
+        "operationId": "updateWorkspace",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Action": {
+        "type": "string",
+        "enum": [
+          "workspace.create",
+          "workspace.view",
+          "workspace.edit",
+          "workspace.manage_members"
+        ],
+        "title": "Action",
+        "description": "What a user wants to do: one row of the spec's permission matrix (§4.3)."
+      },
+      "CreateWorkspaceRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Description",
+            "default": ""
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Domain",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateWorkspaceRequest"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -270,6 +551,57 @@
         ],
         "title": "SignInRequest"
       },
+      "UpdateWorkspaceRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateWorkspaceRequest"
+      },
       "VersionInfo": {
         "properties": {
           "name": {
@@ -287,6 +619,103 @@
           "version"
         ],
         "title": "VersionInfo"
+      },
+      "Workspace": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain",
+            "description": "The business domain, e.g. “Retail banking”."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "editor",
+              "owner"
+            ],
+            "title": "Role",
+            "description": "Your role in this Workspace."
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": "array",
+            "title": "Permissions",
+            "description": "The Workspace actions you may perform. The UI uses it to show or hide controls; the server checks every request regardless."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back when editing; a stale one gets 409."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "domain",
+          "role",
+          "permissions",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Workspace"
+      },
+      "WorkspacePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Workspace"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "WorkspacePage"
       }
     }
   }
