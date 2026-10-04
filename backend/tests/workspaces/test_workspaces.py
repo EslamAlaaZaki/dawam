@@ -93,6 +93,23 @@ def test_the_list_is_ordered_by_name_and_paged_with_a_cursor(signed_in_client: T
     assert second["next_cursor"] is None
 
 
+def test_paging_through_the_list_returns_every_workspace_once(signed_in_client: TestClient):
+    names = ["İstanbul", "ÄRZTE", "äpfel", "Same", "same", "Same", "Zeta", "ẞtraße", "عربي"]
+    created = {create(signed_in_client, name)["id"] for name in names}
+
+    seen: list[str] = []
+    cursor = None
+    while True:
+        params = {"limit": 1, **({"cursor": cursor} if cursor else {})}
+        page = signed_in_client.get("/api/v1/workspaces", params=params).json()
+        seen += [w["id"] for w in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+
+    assert sorted(seen) == sorted(created)
+
+
 def test_a_bad_cursor_or_limit_is_rejected(signed_in_client: TestClient):
     for cursor in ("not-a-cursor", "WyJhIl0", "WyJhIiwiYiJd"):  # junk, ["a"], ["a","b"]
         response = signed_in_client.get("/api/v1/workspaces", params={"cursor": cursor})

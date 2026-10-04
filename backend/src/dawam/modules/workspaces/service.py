@@ -154,7 +154,7 @@ class WorkspaceService:
         """The Workspaces ``user`` is a member of, with their role, ordered by name."""
         sort_key = sa.func.lower(WorkspaceRecord.name)
         query = (
-            sa.select(WorkspaceRecord, MemberRecord.role)
+            sa.select(WorkspaceRecord, MemberRecord.role, sort_key)
             .join(MemberRecord, MemberRecord.workspace_id == WorkspaceRecord.id)
             .where(MemberRecord.user_id == user.id)
             .order_by(sort_key, WorkspaceRecord.id)
@@ -172,11 +172,12 @@ class WorkspaceService:
             )
         with Session(self._engine) as db:
             rows = db.execute(query).all()
-        items = [self._workspace(user, record, _role(role)) for record, role in rows[:limit]]
+        items = [self._workspace(user, record, _role(role)) for record, role, _ in rows[:limit]]
         next_cursor = None
         if len(rows) > limit:
-            last = items[-1]
-            next_cursor = encode_cursor(last.name.lower(), str(last.id))
+            # The database's own sort key, so the next page starts exactly after it.
+            last, _, last_key = rows[limit - 1]
+            next_cursor = encode_cursor(last_key, str(last.id))
         return WorkspacePage(items=items, next_cursor=next_cursor)
 
     def get(self, user: User, workspace_id: uuid.UUID) -> Workspace:
