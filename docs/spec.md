@@ -177,8 +177,8 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 8. As a user, I want to edit my display name, so that teammates recognise me.
 9. As a visitor, I want login to slow down and temporarily lock after repeated failures, so that my account resists brute force.
 10. As a visitor invited by email, I want to accept the invitation and set my password, so that I can join without open registration.
-11. As a user, I want to sign in with my organisation's identity provider through OpenID Connect (e.g. Microsoft Entra ID, Google Workspace, Keycloak) when the admin has configured it, so that I can use my existing work account.
-12. As a user, I want to turn on two-factor authentication with an authenticator app (TOTP) and receive recovery codes, so that my account stays safe even if my password leaks.
+11. As a user, I want to sign in with my organisation's identity provider through OpenID Connect (e.g. Microsoft Entra ID, Google Workspace, Keycloak) when the admin has configured it, so that I can use my existing work account. *(Backlog — not in Release 1.)*
+12. As a user, I want to turn on two-factor authentication with an authenticator app (TOTP) and receive recovery codes, so that my account stays safe even if my password leaks. *(Backlog — not in Release 1.)*
 
 ### Epic B: Administration
 
@@ -195,8 +195,8 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 22. As an admin, I want to reassign ownership of a Workspace whose owners have all been deactivated, so that Workspaces are never orphaned.
 23. As an admin, I want to see a system audit log of security events (logins, failed logins, role changes, deactivations), so that I can investigate incidents.
 24. As an admin, I want to configure SMTP settings, so that invitation and reset emails work.
-25. As an admin, I want to configure OIDC single sign-on (issuer, client ID and secret, allowed email domains, automatic account creation) and optionally disable password login, so that access follows our company directory.
-26. As an admin, I want to require two-factor authentication for all users or for admins only, so that accounts meet our security policy.
+25. As an admin, I want to configure OIDC single sign-on (issuer, client ID and secret, allowed email domains, automatic account creation) and optionally disable password login, so that access follows our company directory. *(Backlog — not in Release 1.)*
+26. As an admin, I want to require two-factor authentication for all users or for admins only, so that accounts meet our security policy. *(Backlog — not in Release 1.)*
 
 ### Epic C: Workspaces & Sharing
 
@@ -415,8 +415,8 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 - **Admin-created users:** an admin can create a user with email, display name, system role and a temporary password (same password policy). The user is flagged `must_change_password`. Until they change it, the session allows only `GET /me`, password change and sign-out; every other request returns `403 password_change_required`, and the frontend sends them to the change-password page. Changing it clears the flag. Creation writes a security event. This is an alternative to invitations, mainly for installations without SMTP.
 - **Bootstrap admin:** `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars create the first admin on first boot only, if no admin exists.
 - **Without SMTP:** invitation and reset links are shown to the admin to copy manually, so the tool works on air-gapped installs.
-- **OIDC SSO:** authorization-code flow with PKCE against any OpenID Connect provider. Users are matched by verified email, and new users can be created automatically with the User role if the admin allows it. Admins can disable password login once SSO works, but the bootstrap admin keeps a password as break-glass access.
-- **Two-factor (TOTP):** RFC 6238 authenticator apps, with 10 single-use recovery codes stored hashed. Admins can require it for everyone or for admins only. For SSO sign-ins, MFA is left to the identity provider.
+- **OIDC SSO** *(Backlog — not in Release 1)*: authorization-code flow with PKCE against any OpenID Connect provider. Users are matched by verified email, and new users can be created automatically with the User role if the admin allows it. Admins can disable password login once SSO works, but the bootstrap admin keeps a password as break-glass access.
+- **Two-factor (TOTP)** *(Backlog — not in Release 1)*: RFC 6238 authenticator apps, with 10 single-use recovery codes stored hashed. Admins can require it for everyone or for admins only. For SSO sign-ins, MFA is left to the identity provider.
 
 ### 6.2 Authorization
 
@@ -1026,17 +1026,17 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel
 - **KPI suggestions:** fixture models with known expected rule-based suggestions and feasibility.
 - **Assistant:** a fake LLM provider replays scripted tool calls, so the agent loop, DW generation, mapping drafts, change-set creation and partial acceptance are tested deterministically. A table-driven test confirms every tool refuses actions the user's role can't perform, that viewers can't trigger write or source-query tools, and that `run_source_query` is unavailable below the `samples` data level. For internal-only Workspaces, no request reaches an external provider for any model role, including upload-time embedding. Aborted jobs produce no Change Set. `suggest_kpis` never updates, deletes or duplicates existing KPIs. A small set of real tasks against a sample Workspace is run against the real model before each release.
 - **LLM gateway:** a contract test suite every adapter must pass (streaming, tool-call round trip, error mapping, usage reporting), run against recorded fixtures. A CI job runs the assistant against Ollama with a small tool-capable model. Before each release the evaluation set runs against vLLM, SGLang and at least one cloud model. The prompted-tool fallback is tested with malformed and invalid JSON.
-- **SSO and MFA:** the OIDC flow is tested against a Keycloak container. TOTP enrolment, verification, recovery codes and enforcement policies are covered.
+- **SSO and MFA** *(Backlog — not in Release 1)*: the OIDC flow is tested against a Keycloak container. TOTP enrolment, verification, recovery codes and enforcement policies are covered.
 
 ---
 
 ## 11. Delivery Phases
 
-**Release 1 contains everything in this document except DW Implementation (Epic S).** Phases 0–6 are the build order within Release 1. Use this ordering when turning the PRD into GitHub issues.
+**Release 1 contains everything in this document except DW Implementation (Epic S) and the items marked *Backlog*: OIDC single sign-on and TOTP two-factor authentication (stories 11, 12, 25, 26).** Phases 0–6 are the build order within Release 1. Use this ordering when turning the PRD into GitHub issues.
 
 **Phase 0: Foundations.** Repo, CI, Docker Compose, DB migrations, module skeletons, error format, OpenAPI client generation.
 
-**Phase 1: Auth, Admin & Workspaces** (Epics A, B, C). Bootstrap admin, sessions, invitations, password reset, OIDC SSO, TOTP two-factor, admin console, Workspaces, membership, folder-tree shell, authorization policy with the full permission test suite, activity log.
+**Phase 1: Auth, Admin & Workspaces** (Epics A, B, C). Bootstrap admin, sessions, invitations, password reset, admin console, Workspaces, membership, folder-tree shell, authorization policy with the full permission test suite, activity log.
 
 **Phase 2: LLM Gateway & Assistant foundations** (Epic Q core). Provider registry; the `openai_compatible` adapter (vLLM, SGLang, Ollama, OpenAI and other compatible APIs) and the `anthropic` adapter first, with `azure_openai`, `gemini` and `bedrock` added later in Release 1 through the same plugin interface; capability detection, prompted-tool fallback, model roles, budgets, internal-only Workspaces, data-sharing levels, the agent loop and Change Sets. The AI is required, so it comes before the features that use it.
 
