@@ -13,13 +13,17 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
+from dawam.platform.errors import ApiError
+from dawam.platform.pagination import decode_cursor, encode_cursor
 
 from ..tables import (
     EVENT_TYPE_MAX_LENGTH,
     IP_MAX_LENGTH,
     TARGET_TYPE_MAX_LENGTH,
     SecurityEventRecord,
+    UserRecord,
 )
+from .credentials import normalize_email
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -42,6 +46,21 @@ class SecurityEvent:
     metadata: dict[str, Any]
     ip: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class LoggedSecurityEvent:
+    """An event as the log shows it: with the email of its actor, if they are a user."""
+
+    event: SecurityEvent
+    actor_email: str | None
+
+
+@dataclass(frozen=True)
+class SecurityEventPage:
+    items: list[LoggedSecurityEvent]
+    next_cursor: str | None
+    """Pass it as ``cursor`` for the next page; None on the last."""
 
 
 def _check_name(kind: str, value: str, max_length: int) -> None:
@@ -136,3 +155,47 @@ class SecurityEventRecorder:
                 .limit(limit)
             )
             return [_event(record) for record in records]
+
+    def search(
+        self,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        event_type: str | None = None,
+        actor_email: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> SecurityEventPage:
+        """Events newest first, ``limit`` at a time, for admins to review (spec story
+        23): only those of ``event_type``, done by the user with ``actor_email``
+        (ignoring case), and recorded at or after ``since`` and before ``until``, when
+        given. Raises ``ApiError`` 422 ``invalid_cursor``."""
+        statement = (
+            sa.select(SecurityEventRecord, UserRecord.email)
+            .outerjoin(UserRecord, UserRecord.id == SecurityEventRecord.actor_id)
+            .order_by(SecurityEventRecord.seq.desc())
+            .limit(limit + 1)
+        )
+        if event_type is not None:
+            statement = statement.where(SecurityEventRecord.event_type == event_type)
+        if actor_email is not None:
+            statement = statement.where(UserRecord.email == normalize_email(actor_email))
+        if since is not None:
+            statement = statement.where(SecurityEventRecord.created_at >= since)
+        if until is not None:
+            statement = statement.where(SecurityEventRecord.created_at < until)
+        if cursor is not None:
+            (after,) = decode_cursor(cursor, 1)
+            if not (after.isdigit() and len(after) <= 18):  # a positive BIGINT
+                raise ApiError(
+                    422, "invalid_cursor", "The cursor is not valid; start from the first page."
+                )
+            statement = statement.where(SecurityEventRecord.seq < int(after))
+        with Session(self._engine) as db:
+            rows = db.execute(statement).all()
+        page = rows[:limit]
+        next_cursor = encode_cursor(str(page[-1][0].seq)) if len(rows) > limit else None
+        return SecurityEventPage(
+            items=[LoggedSecurityEvent(event=_event(r), actor_email=email) for r, email in page],
+            next_cursor=next_cursor,
+        )

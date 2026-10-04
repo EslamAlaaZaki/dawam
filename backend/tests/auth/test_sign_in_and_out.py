@@ -33,6 +33,7 @@ def test_sign_in_returns_the_user_and_me_returns_them_too(anonymous_client, crea
         "email": "grace@example.com",
         "display_name": "Grace Hopper",
         "system_role": "user",
+        "must_change_password": False,
     }
     assert response.json() == expected
     me = anonymous_client.get("/api/v1/me")

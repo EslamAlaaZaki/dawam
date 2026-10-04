@@ -127,6 +127,34 @@ ROWS: list[Row] = [
         admin_only(),
         json=lambda roles: {"registration": {"enabled": True, "allowed_email_domains": []}},
     ),
+    # User management (stories 14-19, 15a) and the security-event log (story 23).
+    Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
+    Row(
+        "POST",
+        "/api/v1/admin/users",
+        "create a user with a temporary password",
+        admin_only(),
+        json=lambda roles: {
+            "email": "new-user@example.com",
+            "display_name": "New User",
+            "system_role": "user",
+            "temporary_password": "temporary password 1",
+        },
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/admin/users/{user_id}",
+        "promote, demote, deactivate, reactivate",
+        admin_only(),
+        json=lambda roles: {"is_active": True},
+    ),
+    Row(
+        "POST",
+        "/api/v1/admin/users/{user_id}/force-reset",
+        "force a password reset",
+        admin_only(),
+    ),
+    Row("GET", "/api/v1/admin/security-events", "review security events", admin_only()),
     Row(
         "POST",
         "/api/v1/auth/password/forgot",

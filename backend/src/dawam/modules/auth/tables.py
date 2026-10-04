@@ -28,6 +28,12 @@ class UserRecord(Base):
     password_hash: Mapped[str] = mapped_column(sa.String(255))
     """An argon2id hash in PHC string format (``$argon2id$...``)."""
     system_role: Mapped[str] = mapped_column(sa.String(16))
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=sa.true())
+    """False once an admin deactivates the user: they cannot sign in and have no
+    sessions, but everything they did is kept."""
+    must_change_password: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    """Set when an admin creates the user with a temporary password; until the user
+    changes it, their session may do almost nothing else."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """The last successful sign-in; None until the first."""

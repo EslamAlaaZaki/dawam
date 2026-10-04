@@ -16,6 +16,7 @@ def test_signed_in_client_is_signed_in_as_the_signed_in_user(
         "email": "ada@example.com",
         "display_name": "Ada Lovelace",
         "system_role": "user",
+        "must_change_password": False,
     }
 
 

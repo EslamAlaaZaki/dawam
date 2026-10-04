@@ -39,12 +39,28 @@ def auth_service(request: Request) -> AuthService:
 AuthServiceDep = Annotated[AuthService, Depends(auth_service)]
 
 
-def current_user(request: Request, auth: AuthServiceDep) -> User:
-    """The signed-in user; anonymous requests (or ended sessions) get ``401 unauthenticated``."""
+def signed_in_user(request: Request, auth: AuthServiceDep) -> User:
+    """The user of the request's session, even one who must still change a temporary
+    password; anonymous requests (or ended sessions) get ``401 unauthenticated``."""
     token = request.cookies.get(SESSION_COOKIE)
     user = auth.user_for_session(token) if token else None
     if user is None:
         raise ApiError(401, "unauthenticated", "Sign in to continue.")
+    return user
+
+
+SignedInUser = Annotated[User, Depends(signed_in_user)]
+"""Only for what a user with a temporary password may do: ``GET /me``, the password
+change and signing out (spec §6.1). Every other route takes ``CurrentUser``."""
+
+
+def current_user(user: SignedInUser) -> User:
+    """The signed-in user. A user who must change a temporary password first gets
+    ``403 password_change_required``."""
+    if user.must_change_password:
+        raise ApiError(
+            403, "password_change_required", "Change your temporary password to continue."
+        )
     return user
 
 
@@ -93,6 +109,10 @@ class Me(BaseModel):
     email: str
     display_name: str
     system_role: SystemRole
+    must_change_password: bool = Field(
+        description="True until a user created with a temporary password changes it; "
+        "until then only this, the password change and signing out are allowed."
+    )
 
 
 def _is_tls(request: Request) -> bool:
@@ -151,7 +171,7 @@ def sign_out(request: Request, auth: AuthServiceDep) -> Response:
 @router.post(
     "/auth/logout-all", operation_id="signOutEverywhere", status_code=204, response_class=Response
 )
-def sign_out_everywhere(user: CurrentUser, request: Request, auth: AuthServiceDep) -> Response:
+def sign_out_everywhere(user: SignedInUser, request: Request, auth: AuthServiceDep) -> Response:
     """End every session of the signed-in user (this one too) and clear this cookie."""
     auth.sign_out_everywhere(user.id, ip=_client_of(request)["ip"])
     return _signed_out(request)
@@ -164,7 +184,7 @@ def sign_out_everywhere(user: CurrentUser, request: Request, auth: AuthServiceDe
     response_class=Response,
 )
 def change_password(
-    body: ChangePasswordRequest, user: CurrentUser, request: Request, auth: AuthServiceDep
+    body: ChangePasswordRequest, user: SignedInUser, request: Request, auth: AuthServiceDep
 ) -> Response:
     """Change the signed-in user's password, given the current one. Every other session
     of the user ends; this one stays signed in."""
@@ -179,7 +199,7 @@ def change_password(
 
 
 @router.get("/me", operation_id="getMe")
-def get_me(user: CurrentUser) -> Me:
+def get_me(user: SignedInUser) -> Me:
     """The signed-in user."""
     return Me.model_validate(user)
 

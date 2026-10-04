@@ -6,6 +6,10 @@ import EmailSettingsPage from "../app/(signed-in)/admin/email/page";
 import LinksToSharePage from "../app/(signed-in)/admin/email/links/page";
 import SignedInLayout from "../app/(signed-in)/layout";
 import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
+import SecurityEventsPage from "../app/(signed-in)/admin/security-events/page";
+import CreateUserPage from "../app/(signed-in)/admin/users/new/page";
+import UsersPage from "../app/(signed-in)/admin/users/page";
+import ChangePasswordPage from "../app/(signed-in)/change-password/page";
 import HomePage from "../app/(signed-in)/page";
 import ProfilePage from "../app/(signed-in)/profile/page";
 import NewWorkspace from "../app/(signed-in)/workspaces/new/page";
@@ -35,6 +39,30 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <AdminSettingsPage />
+        </SignedInLayout>
+      );
+    case "/admin/users":
+      return (
+        <SignedInLayout>
+          <UsersPage />
+        </SignedInLayout>
+      );
+    case "/admin/users/new":
+      return (
+        <SignedInLayout>
+          <CreateUserPage />
+        </SignedInLayout>
+      );
+    case "/admin/security-events":
+      return (
+        <SignedInLayout>
+          <SecurityEventsPage />
+        </SignedInLayout>
+      );
+    case "/change-password":
+      return (
+        <SignedInLayout>
+          <ChangePasswordPage />
         </SignedInLayout>
       );
     case "/forgot-password":

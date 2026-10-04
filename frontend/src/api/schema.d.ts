@@ -212,6 +212,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Users
+         * @description Users by email, optionally searched and filtered (admins only).
+         */
+        get: operations["listUsers"];
+        put?: never;
+        /**
+         * Create User
+         * @description Create a user with a temporary password (admins only). Until they change it, the
+         *     user can do nothing but read ``/me``, change the password and sign out. Recorded as a
+         *     security event.
+         */
+        post: operations["createUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update User
+         * @description Promote or demote, deactivate or reactivate a user (admins only). The last active
+         *     admin can be neither demoted nor deactivated (409 ``last_admin``). Each change is
+         *     recorded as a security event.
+         */
+        patch: operations["updateUser"];
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/force-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force Password Reset
+         * @description Answer a suspected compromise (admins only): every session of the user ends, their
+         *     password stops working, and they get a reset link. Recorded as a security event.
+         */
+        post: operations["forcePasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/security-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Security Events
+         * @description Security events, newest first, optionally filtered (admins only).
+         */
+        get: operations["listSecurityEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/settings": {
         parameters: {
             query?: never;
@@ -382,7 +471,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "installation.manage_settings" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** AdminSettings */
         AdminSettings: {
             registration: components["schemas"]["RegistrationSettingsBody"];
@@ -395,12 +484,74 @@ export interface components {
         AdminSettingsUpdate: {
             registration?: components["schemas"]["RegistrationSettingsBody"] | null;
         };
+        /** AdminUser */
+        AdminUser: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * System Role
+             * @enum {string}
+             */
+            system_role: "admin" | "user";
+            /**
+             * Is Active
+             * @description False once deactivated: they cannot sign in.
+             */
+            is_active: boolean;
+            /**
+             * Must Change Password
+             * @description Created with a temporary password they have not changed yet.
+             */
+            must_change_password: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Login At */
+            last_login_at: string | null;
+        };
+        /** AdminUserPage */
+        AdminUserPage: {
+            /** Items */
+            items: components["schemas"]["AdminUser"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** CreateUserRequest */
+        CreateUserRequest: {
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * System Role
+             * @default user
+             * @enum {string}
+             */
+            system_role: "admin" | "user";
+            /**
+             * Temporary Password
+             * @description Meets the password policy; the user must change it at first sign-in.
+             */
+            temporary_password: string;
         };
         /** CreateWorkspaceRequest */
         CreateWorkspaceRequest: {
@@ -441,6 +592,15 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** ForcedReset */
+        ForcedReset: {
+            /**
+             * Delivery
+             * @description `sent`: the reset link was emailed; `link_for_admin`: it could not be, so it waits in the undelivered links for you to share.
+             * @enum {string}
+             */
+            delivery: "sent" | "link_for_admin" | "not_sent";
+        };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /** Email */
@@ -462,6 +622,11 @@ export interface components {
              * @enum {string}
              */
             system_role: "admin" | "user";
+            /**
+             * Must Change Password
+             * @description True until a user created with a temporary password changes it; until then only this, the password change and signing out are allowed.
+             */
+            must_change_password: boolean;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -499,6 +664,54 @@ export interface components {
             token: string;
             /** Password */
             password: string;
+        };
+        /** SecurityEventOut */
+        SecurityEventOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Event Type
+             * @description What happened, e.g. `login_failed`, `user_deactivated`.
+             */
+            event_type: string;
+            /**
+             * Actor Id
+             * @description Who did it, when known.
+             */
+            actor_id: string | null;
+            /**
+             * Actor Email
+             * @description The actor's email, if they are a user.
+             */
+            actor_email: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** Target Id */
+            target_id: string | null;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Ip */
+            ip: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SecurityEventPageOut */
+        SecurityEventPageOut: {
+            /** Items */
+            items: components["schemas"]["SecurityEventOut"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
         };
         /** SignInRequest */
         SignInRequest: {
@@ -614,6 +827,22 @@ export interface components {
         UpdateMeRequest: {
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * UpdateUserRequest
+         * @description The changes to make; a field left out stays as it is.
+         */
+        UpdateUserRequest: {
+            /**
+             * System Role
+             * @description Promote to `admin` or demote to `user`.
+             */
+            system_role?: ("admin" | "user") | null;
+            /**
+             * Is Active
+             * @description False deactivates the user (their sessions end at once); true reactivates them.
+             */
+            is_active?: boolean | null;
         };
         /** UpdateWorkspaceRequest */
         UpdateWorkspaceRequest: {
@@ -1109,6 +1338,232 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+                /** @description Only users whose email or display name contains it. */
+                q?: string | null;
+                /** @description Only users with this role. */
+                role?: ("admin" | "user") | null;
+                /** @description Only active (true) or deactivated (false) users. */
+                active?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    forcePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForcedReset"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSecurityEvents: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+                /** @description Only events of this type. */
+                event_type?: string | null;
+                /** @description Only events done by the user with this email. */
+                actor?: string | null;
+                /** @description Only events at or after this time. */
+                since?: string | null;
+                /** @description Only events before this time. */
+                until?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityEventPageOut"];
+                };
             };
             /** @description Validation error */
             422: {

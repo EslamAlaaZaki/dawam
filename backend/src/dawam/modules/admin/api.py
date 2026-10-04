@@ -1,4 +1,5 @@
-"""``GET|PUT /api/v1/admin/settings``: the installation-wide settings, for admins only."""
+"""``GET|PUT /api/v1/admin/settings``: the installation-wide settings, for admins only;
+``user_api`` adds user management and ``security_events_api`` the security-event log."""
 
 from __future__ import annotations
 
@@ -12,9 +13,13 @@ from dawam.modules.workspaces import INSTALLATION, Action, can
 from dawam.platform.errors import ApiError
 from dawam.platform.request_context import client_ip
 
+from .security_events_api import router as security_events_router
 from .service import RegistrationSettings, SystemSettingsService
+from .user_api import router as user_router
 
 router = APIRouter(tags=["admin"])
+router.include_router(user_router)
+router.include_router(security_events_router)
 
 
 def settings_manager(user: CurrentUser) -> User:

@@ -489,6 +489,468 @@
         }
       }
     },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List Users",
+        "description": "Users by email, optionally searched and filtered (admins only).",
+        "operationId": "listUsers",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 320
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only users whose email or display name contains it.",
+              "title": "Q"
+            },
+            "description": "Only users whose email or display name contains it."
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "admin",
+                    "user"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only users with this role.",
+              "title": "Role"
+            },
+            "description": "Only users with this role."
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only active (true) or deactivated (false) users.",
+              "title": "Active"
+            },
+            "description": "Only active (true) or deactivated (false) users."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Create User",
+        "description": "Create a user with a temporary password (admins only). Until they change it, the\nuser can do nothing but read ``/me``, change the password and sign out. Recorded as a\nsecurity event.",
+        "operationId": "createUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{user_id}": {
+      "patch": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Update User",
+        "description": "Promote or demote, deactivate or reactivate a user (admins only). The last active\nadmin can be neither demoted nor deactivated (409 ``last_admin``). Each change is\nrecorded as a security event.",
+        "operationId": "updateUser",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{user_id}/force-reset": {
+      "post": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Force Password Reset",
+        "description": "Answer a suspected compromise (admins only): every session of the user ends, their\npassword stops working, and they get a reset link. Recorded as a security event.",
+        "operationId": "forcePasswordReset",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForcedReset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/security-events": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List Security Events",
+        "description": "Security events, newest first, optionally filtered (admins only).",
+        "operationId": "listSecurityEvents",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events of this type.",
+              "title": "Event Type"
+            },
+            "description": "Only events of this type."
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 320
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events done by the user with this email.",
+              "title": "Actor"
+            },
+            "description": "Only events done by the user with this email."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events at or after this time.",
+              "title": "Since"
+            },
+            "description": "Only events at or after this time."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events before this time.",
+              "title": "Until"
+            },
+            "description": "Only events before this time."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityEventPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/settings": {
       "get": {
         "tags": [
@@ -1109,6 +1571,8 @@
           "workspace.edit",
           "workspace.manage_members",
           "installation.manage_settings",
+          "installation.manage_users",
+          "installation.view_security_events",
           "installation.manage_email"
         ],
         "title": "Action",
@@ -1143,6 +1607,99 @@
         "title": "AdminSettingsUpdate",
         "description": "The sections to change; each one given replaces that section, and the others are\nleft as they are."
       },
+      "AdminUser": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "system_role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "title": "System Role"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "False once deactivated: they cannot sign in."
+          },
+          "must_change_password": {
+            "type": "boolean",
+            "title": "Must Change Password",
+            "description": "Created with a temporary password they have not changed yet."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "system_role",
+          "is_active",
+          "must_change_password",
+          "created_at",
+          "last_login_at"
+        ],
+        "title": "AdminUser"
+      },
+      "AdminUserPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUser"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AdminUserPage"
+      },
       "ChangePasswordRequest": {
         "properties": {
           "current_password": {
@@ -1162,6 +1719,42 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest"
+      },
+      "CreateUserRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Display Name"
+          },
+          "system_role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "title": "System Role",
+            "default": "user"
+          },
+          "temporary_password": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Temporary Password",
+            "description": "Meets the password policy; the user must change it at first sign-in."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "display_name",
+          "temporary_password"
+        ],
+        "title": "CreateUserRequest"
       },
       "CreateWorkspaceRequest": {
         "properties": {
@@ -1229,6 +1822,25 @@
         ],
         "title": "ErrorResponse"
       },
+      "ForcedReset": {
+        "properties": {
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "link_for_admin",
+              "not_sent"
+            ],
+            "title": "Delivery",
+            "description": "`sent`: the reset link was emailed; `link_for_admin`: it could not be, so it waits in the undelivered links for you to share."
+          }
+        },
+        "type": "object",
+        "required": [
+          "delivery"
+        ],
+        "title": "ForcedReset"
+      },
       "ForgotPasswordRequest": {
         "properties": {
           "email": {
@@ -1265,6 +1877,11 @@
               "user"
             ],
             "title": "System Role"
+          },
+          "must_change_password": {
+            "type": "boolean",
+            "title": "Must Change Password",
+            "description": "True until a user created with a temporary password changes it; until then only this, the password change and signing out are allowed."
           }
         },
         "type": "object",
@@ -1272,7 +1889,8 @@
           "id",
           "email",
           "display_name",
-          "system_role"
+          "system_role",
+          "must_change_password"
         ],
         "title": "Me"
       },
@@ -1359,6 +1977,131 @@
           "password"
         ],
         "title": "ResetPasswordRequest"
+      },
+      "SecurityEventOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "What happened, e.g. `login_failed`, `user_deactivated`."
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id",
+            "description": "Who did it, when known."
+          },
+          "actor_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Email",
+            "description": "The actor's email, if they are a user."
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "actor_id",
+          "actor_email",
+          "target_type",
+          "target_id",
+          "metadata",
+          "ip",
+          "created_at"
+        ],
+        "title": "SecurityEventOut"
+      },
+      "SecurityEventPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityEventOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SecurityEventPageOut"
       },
       "SignInRequest": {
         "properties": {
@@ -1618,6 +2361,41 @@
           "display_name"
         ],
         "title": "UpdateMeRequest"
+      },
+      "UpdateUserRequest": {
+        "properties": {
+          "system_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "user"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Role",
+            "description": "Promote to `admin` or demote to `user`."
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active",
+            "description": "False deactivates the user (their sessions end at once); true reactivates them."
+          }
+        },
+        "type": "object",
+        "title": "UpdateUserRequest",
+        "description": "The changes to make; a field left out stays as it is."
       },
       "UpdateWorkspaceRequest": {
         "properties": {

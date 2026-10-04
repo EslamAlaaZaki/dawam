@@ -7,7 +7,12 @@ import { useMe } from "../api/queries";
 import { Loading } from "../shell/Loading";
 import { loginPath } from "./returnPath";
 
-/** Renders `children` for a signed-in user; sends anyone else to `/login`, and back after. */
+const CHANGE_PASSWORD = "/change-password";
+
+/**
+ * Renders `children` for a signed-in user; sends anyone else to `/login`, and back after.
+ * A user who must replace a temporary password is kept on `/change-password` until then.
+ */
 export function RequireSignIn({ children }: { children: ReactNode }) {
   const me = useMe();
   const router = useRouter();
@@ -15,12 +20,16 @@ export function RequireSignIn({ children }: { children: ReactNode }) {
   const search = useSearchParams().toString();
   const anonymous = me.data === null;
   const here = search ? `${pathname}?${search}` : pathname;
+  const mustChangePassword = me.data?.must_change_password === true;
+  const misplaced = Boolean(me.data) && mustChangePassword !== (pathname === CHANGE_PASSWORD);
 
   useEffect(() => {
     if (anonymous) {
       router.replace(loginPath(here));
+    } else if (misplaced) {
+      router.replace(mustChangePassword ? CHANGE_PASSWORD : "/");
     }
-  }, [anonymous, here, router]);
+  }, [anonymous, here, misplaced, mustChangePassword, router]);
 
   if (me.isPending) {
     return <Loading />;
@@ -32,7 +41,7 @@ export function RequireSignIn({ children }: { children: ReactNode }) {
       </p>
     );
   }
-  if (anonymous) {
+  if (anonymous || misplaced) {
     return null;
   }
   return children;

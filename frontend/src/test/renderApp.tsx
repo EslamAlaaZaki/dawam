@@ -13,6 +13,8 @@ export const CSRF_TOKEN = "csrf-token-from-the-cookie";
 export interface ApiRequest {
   method: string;
   path: string;
+  /** The query parameters, e.g. `{ q: "grace" }`. */
+  query: Record<string, string>;
   csrf: string | null;
   body: unknown;
 }
@@ -50,9 +52,11 @@ export function renderApp(api: FakeApi, path: string): ApiRequest[] {
   const fetchStub = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     const text = await request.text();
+    const url = new URL(request.url);
     const recorded: ApiRequest = {
       method: request.method,
-      path: new URL(request.url).pathname,
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
       csrf: request.headers.get("X-CSRF-Token"),
       body: text ? JSON.parse(text) : undefined,
     };
