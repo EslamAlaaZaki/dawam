@@ -4,11 +4,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
 import { useMe } from "../api/queries";
+import { Loading } from "../shell/Loading";
 import { loginPath } from "./returnPath";
-
-export function Loading() {
-  return <p className="page">Loading…</p>;
-}
 
 /** Renders `children` for a signed-in user; sends anyone else to `/login`, and back after. */
 export function RequireSignIn({ children }: { children: ReactNode }) {
