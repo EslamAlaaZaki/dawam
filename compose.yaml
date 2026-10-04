@@ -1,5 +1,7 @@
 # DAWAM: `cp .env.example .env` (optional), then `docker compose up --build`.
-# The app (API + web UI) listens on http://localhost:${DAWAM_PORT:-8000}.
+# DAWAM listens on http://localhost:${DAWAM_PORT:-8000}: the `web` service, which
+# serves the UI and forwards /api, /healthz and /readyz to `app`. Only `web` is
+# published; `app`, `worker` and `db` are reachable inside the Compose network only.
 # Optional local LLM server: `docker compose --profile ollama up`.
 
 name: dawam
@@ -36,8 +38,6 @@ services:
 
   app:
     <<: *dawam
-    ports:
-      - "${DAWAM_PORT:-8000}:8000"
     healthcheck:
       test:
         - CMD
@@ -52,6 +52,32 @@ services:
   worker:
     <<: *dawam
     command: ["python", "-m", "dawam", "worker"]
+
+  web:
+    build:
+      context: frontend
+      args:
+        # Baked into the build: change it, then `docker compose up --build`.
+        DAWAM_API_URL: ${DAWAM_API_URL:-http://app:8000}
+    # Only what the web server needs; it holds no secrets.
+    environment:
+      DAWAM_HSTS_MAX_AGE_SECONDS: ${DAWAM_HSTS_MAX_AGE_SECONDS:-31536000}
+    ports:
+      - "${DAWAM_PORT:-8000}:3000"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+    restart: unless-stopped
 
   ollama:
     image: ollama/ollama
