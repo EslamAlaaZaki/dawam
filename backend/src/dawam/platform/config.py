@@ -11,7 +11,13 @@ import base64
 import binascii
 from pathlib import Path
 
-from pydantic import Field, SecretBytes, ValidationError, field_validator
+from pydantic import (
+    Field,
+    SecretBytes,
+    SecretStr,
+    ValidationError,
+    field_validator,
+)
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -103,6 +109,25 @@ class Settings(DatabaseSettings):
             "invalid_encryption_key",
             f"must be {ENCRYPTION_KEY_BYTES} bytes, base64-encoded (43 or 44 characters)",
         )
+
+    admin_email: str | None = None
+    admin_password: SecretStr | None = None
+    """The first admin (the spec's ``ADMIN_EMAIL`` / ``ADMIN_PASSWORD``): created at
+    startup only if no admin exists yet. Empty counts as unset. The auth module
+    checks them (both set, valid), and only when it is about to create the admin."""
+
+    @field_validator("admin_email", "admin_password", mode="before")
+    @classmethod
+    def _empty_admin_value_is_unset(cls, value: object) -> object:
+        text = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if isinstance(text, str) and not text.strip():
+            return None
+        return value
+
+    session_idle_timeout_hours: float = Field(default=8, gt=0)
+    """A session ends after this long without a request."""
+    session_absolute_timeout_days: float = Field(default=14, gt=0)
+    """A session ends this long after sign-in, however active it is."""
 
 
 def load_settings() -> Settings:

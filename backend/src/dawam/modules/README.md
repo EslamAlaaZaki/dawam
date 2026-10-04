@@ -41,13 +41,13 @@ nothing else.
    `tables`. The module's own code (`service.py`, `internal/`) imports `tables`,
    so importing the package still registers the tables for Alembic.
 3. **`dawam.platform` is the shared kernel**: config, db, errors, logging,
-   email and running migrations (`dawam.platform.migrations` drives Alembic and
-   points it at the scripts by path; the scripts themselves live in
+   email, the clock and running migrations (`dawam.platform.migrations` drives
+   Alembic and points it at the scripts by path; the scripts themselves live in
    `dawam.migrations`, a composition root, not in the kernel), plus the app-wide
-   HTTP plumbing that belongs to no module (request context and security headers
-   middleware, the `/healthz` and `/readyz` probes, `GET /api/v1/version` and the
-   API docs page). Every module may
-   use it; it must never import `dawam.modules` or `dawam.app`.
+   HTTP plumbing that belongs to no module (request context, security headers and
+   CSRF middleware, serving the built frontend, the `/healthz` and `/readyz`
+   probes, `GET /api/v1/version` and the API docs page). Every module may use it;
+   it must never import `dawam.modules` or `dawam.app`.
 4. **Composition roots** (`dawam.app`, `dawam.worker`, `dawam.__main__` and
    `dawam.migrations`) may import `dawam.modules`; they wire modules together and
    choose concrete implementations (e.g. which `EmailSender`), using only
@@ -96,8 +96,14 @@ cannot see. It reads imports and attribute chains only, so it misses:
    generated revision in `dawam/migrations/versions/`.
 4. Raise `dawam.platform.errors.ApiError` with a stable `code` for expected
    failures; never build error responses by hand.
-5. Test behaviour through the HTTP API (`anonymous_client`, later
-   `signed_in_client`) or the public service interface, not internals (spec §10).
+5. Routes that need a signed-in user take a parameter annotated
+   `dawam.modules.auth.CurrentUser`; anonymous requests then get `401
+   unauthenticated`. Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` already
+   requires the double-submit CSRF token (`dawam.platform.csrf`); add nothing.
+6. Test behaviour through the HTTP API (`anonymous_client`, `signed_in_client`)
+   or the public service interface, not internals (spec §10). The one exception
+   is a deliberate storage-property check (e.g. a token is stored only hashed),
+   which may read the module's own tables; say so in the test's docstring.
 
 ## Planned modules
 

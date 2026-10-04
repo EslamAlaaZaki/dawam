@@ -200,3 +200,39 @@ def test_migrations_from_the_command_line_fail_clearly_without_the_database_url(
 
     assert "DAWAM_DATABASE_URL is not set" in str(raised.value)
     assert "DAWAM_ENCRYPTION_KEY" not in str(raised.value)
+
+
+def test_one_admin_value_without_the_other_loads(monkeypatch):
+    # Whether both are needed is decided at bootstrap, only while no admin exists.
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "admin@example.com")
+
+    settings = load_settings()
+
+    assert settings.admin_email == "admin@example.com"
+    assert settings.admin_password is None
+
+
+def test_admin_values_are_not_checked_until_an_admin_is_created(monkeypatch):
+    # Bootstrap checks them only when it creates the admin, so stale values left in the
+    # environment after the first start never stop the app or the worker.
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", "not-an-email")
+    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", "short")
+
+    settings = load_settings()
+
+    assert settings.admin_email == "not-an-email"
+    assert settings.admin_password is not None
+
+
+@pytest.mark.parametrize("empty", ["", "  "])
+def test_empty_admin_settings_count_as_unset(monkeypatch, empty):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_ADMIN_EMAIL", empty)
+    monkeypatch.setenv("DAWAM_ADMIN_PASSWORD", empty)
+
+    settings = load_settings()
+
+    assert settings.admin_email is None
+    assert settings.admin_password is None

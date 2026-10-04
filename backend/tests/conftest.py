@@ -4,7 +4,11 @@ Tests drive the HTTP API through a test client against a real PostgreSQL 16 star
 with Testcontainers (once per test session). Fixtures:
 
 - ``anonymous_client``: a test client with no session.
-- ``signed_in_client``: extension point; becomes real when auth lands (#23).
+- ``signed_in_client``: a test client signed in as ``signed_in_user`` (a regular
+  user) through the API; it sends the CSRF token on every request.
+- ``create_user``: creates a user (default: a regular user) and returns its
+  credentials; sign in with ``tests.helpers.sign_in``.
+- ``clock``: the app's clock, a ``FakeClock`` the test moves with ``advance``.
 - ``outbox``: captures every email the app sends (``outbox.messages``).
 - ``jobs``: the job runner; in tests background work always runs inline.
 - ``fresh_database_url``: an empty, unmigrated database for tests that need one.
@@ -16,7 +20,9 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
@@ -25,10 +31,14 @@ from fastapi.testclient import TestClient
 from testcontainers.community.postgres import PostgresContainer
 
 from dawam.app import Services, create_app
+from dawam.modules.auth import AuthService, SystemRole
 from dawam.modules.jobs import InlineJobRunner
+from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
+from dawam.platform.csrf import CSRF_HEADER
 from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
+from tests.helpers import csrf_token, sign_in
 
 POSTGRES_IMAGE = "postgres:16"
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
@@ -81,8 +91,13 @@ def jobs() -> InlineJobRunner:
 
 
 @pytest.fixture
-def services(outbox: InMemoryOutbox, jobs: InlineJobRunner) -> Services:
-    return Services(email=outbox, jobs=jobs)
+def clock() -> FakeClock:
+    return FakeClock(datetime(2026, 1, 5, 9, 0, tzinfo=UTC))
+
+
+@pytest.fixture
+def services(outbox: InMemoryOutbox, jobs: InlineJobRunner, clock: FakeClock) -> Services:
+    return Services(email=outbox, jobs=jobs, clock=clock)
 
 
 @pytest.fixture
@@ -99,14 +114,63 @@ def anonymous_client(app: FastAPI) -> Iterator[TestClient]:
         yield client
 
 
-@pytest.fixture
-def signed_in_client() -> TestClient:
-    """Extension point for a client signed in as a regular user.
+@dataclass(frozen=True)
+class CreatedUser:
+    id: uuid.UUID
+    email: str
+    password: str
+    display_name: str
 
-    Auth arrives in #23, which replaces this body with: create a user, sign in
-    through the API and return a client carrying the session cookie and CSRF token.
+
+UserFactory = Callable[..., CreatedUser]
+
+
+@pytest.fixture
+def auth_service(app: FastAPI, anonymous_client: TestClient, clock: FakeClock) -> AuthService:
+    """The auth module's service on the test app (startup has migrated the database)."""
+    return AuthService(app.state.engine, app.state.settings, clock=clock)
+
+
+@pytest.fixture
+def create_user(auth_service: AuthService) -> UserFactory:
+    """Create a user through the auth module's service."""
+    service = auth_service
+
+    def create(
+        email: str = "grace@example.com",
+        password: str = "correct horse battery",
+        display_name: str = "Grace Hopper",
+        system_role: SystemRole = "user",
+    ) -> CreatedUser:
+        user = service.create_user(
+            email=email, password=password, display_name=display_name, system_role=system_role
+        )
+        return CreatedUser(
+            id=user.id, email=user.email, password=password, display_name=display_name
+        )
+
+    return create
+
+
+@pytest.fixture
+def signed_in_user(create_user: UserFactory) -> CreatedUser:
+    return create_user(
+        email="ada@example.com", password="analytical engine", display_name="Ada Lovelace"
+    )
+
+
+@pytest.fixture
+def signed_in_client(app: FastAPI, signed_in_user: CreatedUser) -> Iterator[TestClient]:
+    """A client signed in as ``signed_in_user`` (a regular user) through the API.
+
+    It carries the session cookie and sends the CSRF token on every request, as the
+    frontend does. It is separate from ``anonymous_client``, so a test can use both.
     """
-    pytest.fail("signed_in_client is not available until auth exists (#23)")
+    with TestClient(app) as client:
+        response = sign_in(client, signed_in_user.email, signed_in_user.password)
+        assert response.status_code == 200, response.text
+        client.headers[CSRF_HEADER] = csrf_token(client)
+        yield client
 
 
 def _reset_database(engine: sa.Engine) -> None:
