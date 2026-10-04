@@ -13,7 +13,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
-from .policy import (
+from .internal.policy import (
     INSTALLATION,
     WORKSPACE_ACTIONS,
     WORKSPACE_ROLES,

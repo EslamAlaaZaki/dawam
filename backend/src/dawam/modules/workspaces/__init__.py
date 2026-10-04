@@ -17,7 +17,7 @@ Owns the ``workspaces`` and ``workspace_members`` tables.
 """
 
 from .api import router
-from .policy import INSTALLATION, Action, Installation, WorkspaceRole, WorkspaceScope, can
+from .internal.policy import INSTALLATION, Action, Installation, WorkspaceRole, WorkspaceScope, can
 from .service import Workspace, WorkspacePage, WorkspaceService
 
 __all__ = [

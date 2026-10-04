@@ -104,6 +104,16 @@ cannot see. It reads imports and attribute chains only, so it misses:
    or the public service interface, not internals (spec §10). The one exception
    is a deliberate storage-property check (e.g. a token is stored only hashed),
    which may read the module's own tables; say so in the test's docstring.
+7. **Authorize through the policy, never by comparing roles.** Every decision goes
+   through `dawam.modules.workspaces.can(user, action, resource)` (spec §6.2); add
+   an `Action` and its rule there for a new row of the §4.3 matrix. For a
+   Workspace-scoped resource, load it, take the `workspace_id` stored on it (never
+   one from the URL or body alone) and call `WorkspaceService.authorize(user,
+   action, workspace_id)`: non-members (admins included) get 404, members whose role
+   is too low get 403.
+8. **Every route needs a row in the permission suite**
+   (`tests/authz/test_permission_matrix.py`): the endpoint and what each role gets,
+   copied from the §4.3 matrix. The suite fails for a route without one.
 
 ## Planned modules
 

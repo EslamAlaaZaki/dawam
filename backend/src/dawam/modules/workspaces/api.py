@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from dawam.modules.auth import CurrentUser
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
-from .policy import Action, WorkspaceRole
+from .internal.policy import Action, WorkspaceRole
 from .service import Workspace as WorkspaceView
 from .service import WorkspaceService
 from .tables import DESCRIPTION_MAX_LENGTH, DOMAIN_MAX_LENGTH, NAME_MAX_LENGTH
