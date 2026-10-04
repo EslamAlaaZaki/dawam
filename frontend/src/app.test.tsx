@@ -65,6 +65,10 @@ function fakeBackend(options: { signedIn?: boolean; versionResponse?: () => Resp
       case "POST /api/v1/auth/logout":
         signedIn = false;
         return new Response(null, { status: 204 });
+      case "GET /api/v1/workspaces":
+        return signedIn
+          ? json({ items: [], next_cursor: null })
+          : apiError(401, "unauthenticated", "Sign in to continue.");
       default:
         return apiError(404, "not_found", "Not Found");
     }
@@ -124,7 +128,7 @@ describe("signing in", () => {
     const header = await screen.findByRole("banner");
     expect(await within(header).findByText("Ada Lovelace")).toBeInTheDocument();
     await waitFor(() => expect(currentLocation()).toBe("/"));
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
     const login = backend.requests.find((r) => r.path === "/api/v1/auth/login");
     expect(login).toEqual({
       method: "POST",
@@ -165,7 +169,7 @@ describe("signing in", () => {
     await submitSignIn(ADA.email, ADA_PASSWORD);
 
     await waitFor(() => expect(currentLocation()).toBe("/?view=recent"));
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
   });
 
   it.each([
@@ -190,9 +194,9 @@ describe("signing in", () => {
   });
 
   it("sends a signed-in user on an unknown page home", async () => {
-    renderApp(fakeBackend({ signedIn: true }), "/workspaces/42");
+    renderApp(fakeBackend({ signedIn: true }), "/no-such-page");
 
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
     expect(currentLocation()).toBe("/");
   });
 

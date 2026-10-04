@@ -4,6 +4,7 @@ import { afterEach, vi } from "vitest";
 
 // Components use Next.js's router; tests drive an in-memory one instead.
 vi.mock("next/navigation", () => import("./navigation"));
+vi.mock("next/link", () => import("./link"));
 
 afterEach(() => {
   cleanup();
