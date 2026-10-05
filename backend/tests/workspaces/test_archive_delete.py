@@ -175,6 +175,8 @@ def test_archiving_applies_to_active_workspaces_and_unarchiving_to_archived_ones
 
 
 def test_archiving_and_unarchiving_are_in_the_activity_feed(roles: RoleClients, clock):
+    assert roles.workspace
+    clock.advance(timedelta(minutes=1))
     assert archive(roles, "admin").status_code == 204
     clock.advance(timedelta(minutes=1))
     assert unarchive(roles).status_code == 204
