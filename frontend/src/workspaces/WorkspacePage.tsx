@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent } from "react";
 
 import { ApiError } from "../api/client";
+import { useDataWarehouse } from "../api/dataWarehouse";
 import {
   ROLE_LABELS,
   allows,
@@ -14,6 +15,7 @@ import {
 } from "../api/workspaces";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
+import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
@@ -31,6 +33,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const warehouse = useDataWarehouse(workspaceId);
 
   if (workspace.isPending) {
     return <Loading />;
@@ -47,8 +50,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
     );
   }
-  const root = workspaceFolders(workspace.data.name);
-  const folder = findFolder(root, searchParams.get("folder") ?? "") ?? root;
+  const root = workspaceFolders(workspace.data.name, warehouse.data?.set_up ?? false);
+  const requested = searchParams.get("folder") ?? "";
+  // The setup step becomes the Data Warehouse folder itself once it is done, so a
+  // link (or the page right after saving) to it still lands in the Data Warehouse.
+  const wanted = warehouse.data?.set_up && requested === "dw/setup" ? "dw" : requested;
+  const folder = findFolder(root, wanted) ?? root;
+  // Whether the Data Warehouse is set up decides which of its folders exist, so do not
+  // resolve one (and fall back to the root) before that is known.
+  const inDataWarehouse = wanted === "dw" || wanted.startsWith("dw/");
 
   function select(id: string) {
     router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
@@ -66,11 +76,17 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           <FolderTree root={root} selected={folder.id} onSelect={select} />
         </nav>
         <div className="workspace-main">
-          {folder.id === "" ? (
+          {inDataWarehouse && warehouse.isPending ? (
+            <Loading />
+          ) : inDataWarehouse && warehouse.isError ? (
+            <p role="alert">Could not load the Data Warehouse: {warehouse.error.message}</p>
+          ) : folder.id === "" ? (
             <>
               <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
               <MembersPanel workspace={workspace.data} />
             </>
+          ) : folder.id === "dw" || folder.id === "dw/setup" ? (
+            <DataWarehouseSetup workspace={workspace.data} />
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>

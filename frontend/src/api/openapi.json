@@ -1600,6 +1600,226 @@
         }
       }
     },
+    "/api/v1/data-warehouse/platforms": {
+      "get": {
+        "tags": [
+          "data-warehouse"
+        ],
+        "summary": "List Platforms",
+        "description": "The target platforms and what each allows in an identifier, for the setup form\n(any signed-in user).",
+        "operationId": "listDataWarehousePlatforms",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse": {
+      "get": {
+        "tags": [
+          "data-warehouse"
+        ],
+        "summary": "Get Data Warehouse",
+        "description": "The Data Warehouse's setup (any member). `set_up: false` until the step is done.",
+        "operationId": "getDataWarehouse",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataWarehouse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "data-warehouse"
+        ],
+        "summary": "Set Up Data Warehouse",
+        "description": "Set up the Data Warehouse (editors and owners): target platform, a schema or\ndataset name per Layer, naming rules and date-dimension settings. 422\n`invalid_data_warehouse` if a name breaks the platform's rules; 409 `already_set_up`\nthe second time.",
+        "operationId": "setUpDataWarehouse",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUpRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataWarehouse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "data-warehouse"
+        ],
+        "summary": "Update Data Warehouse",
+        "description": "Change the setup (editors and owners). Fields left out stay as they are. Changing\nthe target platform is for owners (403 for an editor). 404 `not_set_up` before setup.",
+        "operationId": "updateDataWarehouse",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataWarehouse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces": {
       "get": {
         "tags": [
@@ -2393,6 +2613,8 @@
           "workspace.manage_members",
           "workspace.transfer_ownership",
           "workspace.leave",
+          "data_warehouse.set_up",
+          "data_warehouse.change_platform",
           "installation.manage_settings",
           "installation.manage_users",
           "installation.view_security_events",
@@ -2773,6 +2995,189 @@
         ],
         "title": "CreateWorkspaceRequest"
       },
+      "DataWarehouse": {
+        "properties": {
+          "set_up": {
+            "type": "boolean",
+            "title": "Set Up",
+            "description": "False until the step is done; then only this step (and Data Warehouse KPIs) is available, and the other fields are null."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "target_platform": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "postgresql",
+                  "sqlserver",
+                  "oracle",
+                  "snowflake",
+                  "bigquery"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Platform"
+          },
+          "layer_schemas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayerSchemas"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "naming_rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamingRules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date_dimension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateDimension"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "set_up_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set Up At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Send it back when editing; a stale one gets 409."
+          }
+        },
+        "type": "object",
+        "required": [
+          "set_up",
+          "id",
+          "target_platform",
+          "layer_schemas",
+          "naming_rules",
+          "date_dimension",
+          "set_up_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "DataWarehouse"
+      },
+      "DateDimension": {
+        "properties": {
+          "start_year": {
+            "type": "integer",
+            "maximum": 9999.0,
+            "minimum": 1.0,
+            "title": "Start Year",
+            "default": 2000
+          },
+          "end_year": {
+            "type": "integer",
+            "maximum": 9999.0,
+            "minimum": 1.0,
+            "title": "End Year",
+            "default": 2040
+          },
+          "weekend_days": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday"
+              ]
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Weekend Days",
+            "default": [
+              "saturday",
+              "sunday"
+            ]
+          },
+          "include_hijri": {
+            "type": "boolean",
+            "title": "Include Hijri",
+            "default": false
+          },
+          "fiscal_year_start_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Year Start Month",
+            "description": "First month of the fiscal year; null for no fiscal attributes."
+          },
+          "include_time_dimension": {
+            "type": "boolean",
+            "title": "Include Time Dimension",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DateDimension"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -2977,6 +3382,33 @@
         ],
         "title": "LayerProgress"
       },
+      "LayerSchemas": {
+        "properties": {
+          "staging": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Staging",
+            "default": "staging"
+          },
+          "core": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Core",
+            "default": "core"
+          },
+          "mart": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Mart",
+            "default": "mart"
+          }
+        },
+        "type": "object",
+        "title": "LayerSchemas"
+      },
       "Me": {
         "properties": {
           "id": {
@@ -3126,6 +3558,40 @@
         ],
         "title": "MemberList"
       },
+      "NamingRules": {
+        "properties": {
+          "case_style": {
+            "type": "string",
+            "enum": [
+              "lower",
+              "upper"
+            ],
+            "title": "Case Style",
+            "description": "Case of generated identifiers.",
+            "default": "lower"
+          },
+          "dimension_prefix": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Dimension Prefix",
+            "default": "dim_"
+          },
+          "fact_prefix": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Fact Prefix",
+            "default": "fact_"
+          },
+          "bridge_prefix": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Bridge Prefix",
+            "default": "bridge_"
+          }
+        },
+        "type": "object",
+        "title": "NamingRules"
+      },
       "PendingInvitation": {
         "properties": {
           "id": {
@@ -3221,6 +3687,72 @@
           "next_cursor"
         ],
         "title": "PendingInvitationPage"
+      },
+      "Platform": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "sqlserver",
+              "oracle",
+              "snowflake",
+              "bigquery"
+            ],
+            "title": "Platform"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "schema_term": {
+            "type": "string",
+            "enum": [
+              "schema",
+              "dataset"
+            ],
+            "title": "Schema Term",
+            "description": "What the platform calls a Layer's physical home."
+          },
+          "max_identifier_length": {
+            "type": "integer",
+            "title": "Max Identifier Length",
+            "description": "In bytes."
+          },
+          "reserved_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reserved Words",
+            "description": "Lower-cased, sorted."
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "label",
+          "schema_term",
+          "max_identifier_length",
+          "reserved_words"
+        ],
+        "title": "Platform"
+      },
+      "PlatformList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Platform"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "PlatformList"
       },
       "RegisterRequest": {
         "properties": {
@@ -3453,6 +3985,56 @@
           "delivery"
         ],
         "title": "SentInvitationOut"
+      },
+      "SetUpRequest": {
+        "properties": {
+          "target_platform": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "sqlserver",
+              "oracle",
+              "snowflake",
+              "bigquery"
+            ],
+            "title": "Target Platform"
+          },
+          "layer_schemas": {
+            "$ref": "#/components/schemas/LayerSchemas",
+            "default": {
+              "staging": "staging",
+              "core": "core",
+              "mart": "mart"
+            }
+          },
+          "naming_rules": {
+            "$ref": "#/components/schemas/NamingRules",
+            "default": {
+              "case_style": "lower",
+              "dimension_prefix": "dim_",
+              "fact_prefix": "fact_",
+              "bridge_prefix": "bridge_"
+            }
+          },
+          "date_dimension": {
+            "$ref": "#/components/schemas/DateDimension",
+            "default": {
+              "start_year": 2000,
+              "end_year": 2040,
+              "weekend_days": [
+                "saturday",
+                "sunday"
+              ],
+              "include_hijri": false,
+              "include_time_dimension": false
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_platform"
+        ],
+        "title": "SetUpRequest"
       },
       "SignInRequest": {
         "properties": {
@@ -3786,6 +4368,69 @@
           "display_name"
         ],
         "title": "UpdateMeRequest"
+      },
+      "UpdateRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "target_platform": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "postgresql",
+                  "sqlserver",
+                  "oracle",
+                  "snowflake",
+                  "bigquery"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Platform",
+            "description": "Changing it (not repeating the current one) is for owners only."
+          },
+          "layer_schemas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayerSchemas"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "naming_rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamingRules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date_dimension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateDimension"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateRequest"
       },
       "UpdateUserRequest": {
         "properties": {
