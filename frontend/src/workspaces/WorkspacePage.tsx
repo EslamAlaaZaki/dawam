@@ -18,6 +18,7 @@ import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
+import { JobsPanel } from "./JobsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
@@ -138,6 +139,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             </section>
           )}
           <StageProgressPanel workspaceId={workspaceId} />
+          <JobsPanel workspace={workspace.data} />
         </div>
       </div>
     </section>

@@ -514,6 +514,27 @@ ROWS: list[Row] = [
         "Open Workspace content (download a file)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    # Background jobs (story 46). Members see every job of the Workspace; they cancel
+    # their own, and only an owner cancels one somebody else started (the job here is
+    # the owner's, so the owner is its creator and an editor is not).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/jobs",
+        "Open Workspace content (list jobs)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
+        "/api/v1/jobs/{job_id}",
+        "Open Workspace content (a job's status, progress and log)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/jobs/{job_id}/cancel",
+        "Cancel a job (your own; anyone's is owner-only)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
 ]
 
 

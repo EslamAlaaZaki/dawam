@@ -13,6 +13,7 @@ from dawam.modules.activity import record_activity
 from dawam.modules.auth import SecurityEventRecorder, User
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.hooks import WorkspaceArchivedHook
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
 from .internal.policy import (
@@ -234,12 +235,20 @@ class WorkspaceService:
     through the policy (``can``) first; callers add no checks of their own."""
 
     def __init__(
-        self, engine: sa.Engine, *, clock: Clock, events: SecurityEventRecorder | None = None
+        self,
+        engine: sa.Engine,
+        *,
+        clock: Clock,
+        events: SecurityEventRecorder | None = None,
+        on_archived: WorkspaceArchivedHook | None = None,
     ) -> None:
-        """``events`` records Workspace deletions; ``delete`` needs it."""
+        """``events`` records Workspace deletions; ``delete`` needs it. ``on_archived`` is
+        called in the transaction that archives a Workspace (the composition root sets
+        it, e.g. to cancel the Workspace's jobs)."""
         self._engine = engine
         self._clock = clock
         self._events = events
+        self._on_archived = on_archived
 
     def authorize(self, user: User, action: Action, workspace_id: uuid.UUID) -> WorkspaceScope:
         """Check that ``user`` may perform ``action`` in the Workspace ``workspace_id``
@@ -416,6 +425,8 @@ class WorkspaceService:
                 object_label=record.name,
                 at=now,
             )
+            if self._on_archived is not None:
+                self._on_archived(db, record.id, now)
 
     def unarchive(self, user: User, workspace_id: uuid.UUID) -> None:
         """Make an archived Workspace editable again. Raises ``ApiError`` 409

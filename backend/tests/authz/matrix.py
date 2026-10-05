@@ -35,6 +35,7 @@ from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
 
 from dawam.modules.auth import AuthService, Invitations
+from dawam.modules.jobs import JobService, QueuedJobRunner
 from dawam.modules.mail import MailService
 from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
@@ -219,6 +220,22 @@ def file_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(response.json()["id"])
 
 
+def job_id(roles: RoleClients) -> uuid.UUID:
+    """A queued job the Workspace's owner started, made through the jobs module (a fresh
+    one per request, so cancelling it in one request does not affect the next)."""
+    state = roles.app.state
+    runner = QueuedJobRunner()
+    runner.register("noop", lambda params, ctx: None)
+    jobs = JobService(state.engine, runner=runner, clock=state.services.clock)
+    return jobs.submit(
+        roles.workspace_id,
+        "noop",
+        {},
+        title="Permission matrix job",
+        created_by=roles.user("owner").id,
+    ).id
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
@@ -226,6 +243,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "invitation_id": invitation_id,
     "member_id": colleague_id,
     "system_id": system_id,
+    "job_id": job_id,
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
     "file_id": file_id,

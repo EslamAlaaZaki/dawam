@@ -16,10 +16,11 @@ from fastapi import APIRouter, Depends, FastAPI
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
+from dawam import job_handlers
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
-from dawam.modules.jobs import InlineJobRunner, JobRunner
+from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.mail import MailService
 from dawam.modules.workspaces import InvitedWorkspaceMembership
 from dawam.platform import health, meta
@@ -55,13 +56,15 @@ class Services:
 
 
 def default_services() -> Services:
-    # Jobs run inline until the Postgres queue arrives (#41).
-    return Services(email=SmtpEmailSender(), jobs=InlineJobRunner())
+    # Jobs are queued in Postgres for the worker process; tests run them inline.
+    return Services(email=SmtpEmailSender(), jobs=QueuedJobRunner())
 
 
 def create_app(settings: Settings | None = None, *, services: Services | None = None) -> FastAPI:
     settings = settings or load_settings()
     services = services or default_services()
+    # The worker registers the same handlers: a job is submitted here and run there.
+    job_handlers.register_job_handlers(services.jobs)
     install_request_id_on_records()
     engine = create_engine(settings.database_url)
 
@@ -98,6 +101,11 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.mailer = MailService(engine, settings, sender=services.email, clock=services.clock)
     # Accepting an invitation into a Workspace (auth) joins it through the workspaces module.
     app.state.invited_membership = InvitedWorkspaceMembership(clock=services.clock)
+
+    # Archiving a Workspace (workspaces) cancels its jobs: workspaces cannot import jobs.
+    app.state.on_workspace_archived = JobService(
+        engine, runner=services.jobs, clock=services.clock
+    ).cancel_for_workspace
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)

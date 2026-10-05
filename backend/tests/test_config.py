@@ -238,3 +238,14 @@ def test_empty_admin_settings_count_as_unset(monkeypatch, empty):
 
     assert settings.admin_email is None
     assert settings.admin_password is None
+
+
+def test_the_worker_must_report_more_often_than_a_job_counts_as_lost(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_WORKER_HEARTBEAT_SECONDS", "60")
+    monkeypatch.setenv("DAWAM_JOB_STALE_SECONDS", "60")
+
+    with pytest.raises(ConfigError) as raised:
+        load_settings()
+
+    assert "worker_heartbeat_seconds" in str(raised.value).lower()

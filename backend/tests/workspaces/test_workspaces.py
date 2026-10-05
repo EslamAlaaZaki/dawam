@@ -40,6 +40,8 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
             "data_warehouse.change_platform",
             "data_warehouse.set_up",
             "file.upload",
+            "job.cancel_any",
+            "job.cancel_own",
             "kpi.edit",
             "source_system.change_code",
             "source_system.create",
@@ -230,13 +232,14 @@ def test_editors_and_viewers_open_a_workspace_but_cannot_edit_it(roles: RoleClie
         "editor": [
             "data_warehouse.set_up",
             "file.upload",
+            "job.cancel_own",
             "kpi.edit",
             "source_system.create",
             "source_system.edit",
             "workspace.leave",
             "workspace.view",
         ],
-        "viewer": ["workspace.leave", "workspace.view"],
+        "viewer": ["job.cancel_own", "workspace.leave", "workspace.view"],
     }
     for role in ("editor", "viewer"):
         client = roles.client(role)
