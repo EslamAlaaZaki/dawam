@@ -72,7 +72,9 @@ nothing else.
    only `auth`, so every module (`sources` among them) records events with
    `dawam.modules.activity.record_activity(db, ...)` in its own transaction, and the
    `workspaces` router serves the feed (`GET /workspaces/{id}/activity`), authorizing
-   through its policy before calling `ActivityService.list`.
+   through its policy before calling `ActivityService.list`. `audit` (the audit trail of
+   critical entities, `record_audit(db, ...)`) imports nothing from other modules and is
+   used the same way.
 
 `tools/check_boundaries.py`, which CI runs, enforces:
 

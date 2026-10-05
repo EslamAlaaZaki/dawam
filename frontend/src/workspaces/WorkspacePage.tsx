@@ -19,6 +19,7 @@ import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
 import { LifecyclePanel } from "./LifecyclePanel";
+import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
@@ -66,6 +67,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const inDataWarehouse = wanted === "dw" || wanted.startsWith("dw/");
   // `systems/<id>`: the folder of one Source System.
   const openSystem = systemList.find((system) => folder.id === `systems/${system.id}`);
+  // `systems/<id>/kpis` and `dw/kpis`: a KPI folder, of that system or of the Data Warehouse.
+  const kpiSystem = systemList.find((system) => folder.id === `systems/${system.id}/kpis`);
 
   function select(id: string) {
     router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
@@ -105,6 +108,14 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               workspace={workspace.data}
               systems={systemList}
               onOpen={(system) => select(`systems/${system.id}`)}
+            />
+          ) : kpiSystem || folder.id === "dw/kpis" ? (
+            <KpiCatalog
+              // A different folder starts with no KPI open.
+              key={folder.id}
+              workspace={workspace.data}
+              scope={{ systemId: kpiSystem?.id ?? null }}
+              title={kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"}
             />
           ) : openSystem ? (
             <SystemDetails

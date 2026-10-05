@@ -10,8 +10,10 @@ from types import ModuleType
 from dawam.modules import (
     activity,
     admin,
+    audit,
     auth,
     jobs,
+    kpis,
     mail,
     notifications,
     sources,
@@ -23,12 +25,14 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     auth,
     admin,
     activity,
+    audit,
     jobs,
     mail,
     warehouse,
     sources,
     notifications,
     workspaces,
+    kpis,
 )
 
 __all__ = ["ALL_MODULES"]
