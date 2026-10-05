@@ -55,6 +55,12 @@ class Action(StrEnum):
     dimension settings (spec §4.3, story 87)."""
     CHANGE_DW_PLATFORM = "data_warehouse.change_platform"
     """Change the Data Warehouse's target platform after setup (owners only; spec §4.3)."""
+    CREATE_SOURCE_SYSTEM = "source_system.create"
+    """Add a Source System to the Workspace (owners and editors; spec story 39)."""
+    EDIT_SOURCE_SYSTEM = "source_system.edit"
+    """Edit a Source System's name, description and owners (owners and editors)."""
+    CHANGE_SYSTEM_CODE = "source_system.change_code"
+    """Change a Source System's System Code after creation (owners only)."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -118,6 +124,9 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer"),
     Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
+    Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
+    Action.EDIT_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
+    Action.CHANGE_SYSTEM_CODE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 

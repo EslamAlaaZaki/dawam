@@ -175,12 +175,25 @@ def colleague_id(roles: RoleClients) -> uuid.UUID:
     return colleague.id
 
 
+def system_id(roles: RoleClients) -> uuid.UUID:
+    """A Source System of the Workspace (the owner adds it through the API once)."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/systems"
+    listed = owner.get(path).json()["items"]
+    if listed:
+        return uuid.UUID(listed[0]["id"])
+    response = owner.post(path, json={"name": "Core Banking", "code": "cbs"})
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
     "user_id": lambda roles: roles.user("non_member").id,
     "invitation_id": invitation_id,
     "member_id": colleague_id,
+    "system_id": system_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 

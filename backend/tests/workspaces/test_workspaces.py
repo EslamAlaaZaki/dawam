@@ -39,6 +39,9 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
         "permissions": [
             "data_warehouse.change_platform",
             "data_warehouse.set_up",
+            "source_system.change_code",
+            "source_system.create",
+            "source_system.edit",
             "workspace.edit",
             "workspace.leave",
             "workspace.manage_members",
@@ -217,16 +220,22 @@ def test_an_edit_with_a_stale_version_is_rejected_with_409(roles: RoleClients):
 
 def test_editors_and_viewers_open_a_workspace_but_cannot_edit_it(roles: RoleClients):
     url = f"/api/v1/workspaces/{roles.workspace['id']}"
+    permissions = {
+        "editor": [
+            "data_warehouse.set_up",
+            "source_system.create",
+            "source_system.edit",
+            "workspace.leave",
+            "workspace.view",
+        ],
+        "viewer": ["workspace.leave", "workspace.view"],
+    }
     for role in ("editor", "viewer"):
         client = roles.client(role)
 
         opened = client.get(url)
         assert opened.status_code == 200
-        assert (opened.json()["role"], opened.json()["permissions"]) == (
-            role,
-            (["data_warehouse.set_up"] if role == "editor" else [])
-            + ["workspace.leave", "workspace.view"],
-        )
+        assert (opened.json()["role"], opened.json()["permissions"]) == (role, permissions[role])
 
         response = client.patch(url, json={"version": 1, "name": f"Renamed by {role}"})
         assert response.status_code == 403

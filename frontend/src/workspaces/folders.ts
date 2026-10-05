@@ -9,6 +9,37 @@ export interface Folder {
   empty: string;
 }
 
+/** A Source System in the tree: what the folder needs of it. */
+export interface SystemFolderInfo {
+  id: string;
+  name: string;
+  code: string;
+}
+
+const SYSTEM_FOLDERS = [
+  ["connection", "Connection | Schema Import", "How this system's metadata gets in will appear here."],
+  ["source-schema", "Source Schema", "The Source Schema will appear here once metadata is loaded."],
+  ["profiling", "Profiling", "Profiles will appear here once the data has been profiled."],
+  ["pii", "PII", "PII findings will appear here once the system has been scanned."],
+  ["documents", "Documents", "Uploaded documents and links will appear here."],
+  ["kpis", "KPIs", "KPIs based on this system will appear here."],
+  ["outputs", "Outputs", "Generated files will appear here."],
+] as const;
+
+function systemFolder(system: SystemFolderInfo): Folder {
+  return {
+    id: `systems/${system.id}`,
+    label: system.name,
+    empty: "",
+    children: SYSTEM_FOLDERS.map(([slug, label, empty]) => ({
+      id: `systems/${system.id}/${slug}`,
+      label,
+      children: [],
+      empty,
+    })),
+  };
+}
+
 const LAYER_FOLDERS = ["Model", "Mappings", "Evaluation"] as const;
 
 function layer(id: string, label: string): Folder {
@@ -27,9 +58,13 @@ function layer(id: string, label: string): Folder {
 
 /**
  * `dwSetUp`: whether the Data Warehouse has been set up (spec story 87). Until then its
- * folder holds only the setup step and KPIs.
+ * folder holds only the setup step and KPIs. `systems` are the Workspace's Source Systems.
  */
-export function workspaceFolders(workspaceName: string, dwSetUp: boolean): Folder {
+export function workspaceFolders(
+  workspaceName: string,
+  dwSetUp: boolean,
+  systems: readonly SystemFolderInfo[] = [],
+): Folder {
   return {
     id: "",
     label: workspaceName,
@@ -38,7 +73,7 @@ export function workspaceFolders(workspaceName: string, dwSetUp: boolean): Folde
       {
         id: "systems",
         label: "Systems",
-        children: [],
+        children: systems.map(systemFolder),
         empty: "No Source Systems yet. Each Source System you add will get its own folder here.",
       },
       {

@@ -68,7 +68,7 @@ nothing else.
    module's `MailService`); every other module imports `dawam.modules.mail` through
    its package (rule 1). Either way every email goes through that one service.
    `activity` (the Workspace activity feed) is the same kind of module: it imports
-   only `auth`, so every module records events with
+   only `auth`, so every module (`sources` among them) records events with
    `dawam.modules.activity.record_activity(db, ...)` in its own transaction, and the
    `workspaces` router serves the feed (`GET /workspaces/{id}/activity`), authorizing
    through its policy before calling `ActivityService.list`.

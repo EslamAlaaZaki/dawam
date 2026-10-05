@@ -66,6 +66,9 @@ function open(role: WorkspaceRole, query = "") {
     if (path === `/api/v1/workspaces/${ID}/data-warehouse`) {
       return json({ set_up: true, version: 1 });
     }
+    if (path === `/api/v1/workspaces/${ID}/systems`) {
+      return json({ items: [], next_cursor: null });
+    }
     if (path === `/api/v1/workspaces/${ID}/members`) {
       return json({ items: [] });
     }

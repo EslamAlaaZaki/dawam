@@ -763,6 +763,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Systems
+         * @description The Workspace's Source Systems (any member), ordered by System Code.
+         */
+        get: operations["listSourceSystems"];
+        put?: never;
+        /**
+         * Create Source System
+         * @description Add a Source System (owners and editors). 422 `invalid_system_code` if the System
+         *     Code is not identifier-safe; 409 `system_code_taken` if the Workspace has it already.
+         */
+        post: operations["createSourceSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source System
+         * @description Open a Source System (any member).
+         */
+        get: operations["getSourceSystem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Source System
+         * @description Edit a Source System (owners and editors); fields left out stay as they are.
+         *     Changing the System Code is for owners only (403 for editors). Until staging
+         *     exists, a code change applies directly.
+         */
+        patch: operations["updateSourceSystem"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -781,7 +832,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -924,6 +975,28 @@ export interface components {
              * @enum {string}
              */
             role: "viewer" | "editor" | "owner";
+        };
+        /** CreateSourceSystemRequest */
+        CreateSourceSystemRequest: {
+            /** Name */
+            name: string;
+            /** Code */
+            code: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Business Owner
+             * @default
+             */
+            business_owner: string;
+            /**
+             * Technical Owner
+             * @default
+             */
+            technical_owner: string;
         };
         /** CreateUserRequest */
         CreateUserRequest: {
@@ -1507,6 +1580,57 @@ export interface components {
              */
             updated_at: string;
         };
+        /** SourceSystem */
+        SourceSystem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Code
+             * @description The System Code: identifier-safe, unique in the Workspace (e.g. `cbs`).
+             */
+            code: string;
+            /** Description */
+            description: string;
+            /** Business Owner */
+            business_owner: string;
+            /** Technical Owner */
+            technical_owner: string;
+            /**
+             * Version
+             * @description Send it back when editing; a stale one gets 409.
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SourceSystemPage */
+        SourceSystemPage: {
+            /** Items */
+            items: components["schemas"]["SourceSystem"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
+        };
         /** StageProgress */
         StageProgress: {
             /**
@@ -1617,6 +1741,27 @@ export interface components {
             layer_schemas?: components["schemas"]["LayerSchemas"] | null;
             naming_rules?: components["schemas"]["NamingRules"] | null;
             date_dimension?: components["schemas"]["DateDimension"] | null;
+        };
+        /** UpdateSourceSystemRequest */
+        UpdateSourceSystemRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /**
+             * Code
+             * @description A different System Code (owners only; 403 for editors).
+             */
+            code?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Business Owner */
+            business_owner?: string | null;
+            /** Technical Owner */
+            technical_owner?: string | null;
         };
         /**
          * UpdateUserRequest
@@ -3544,6 +3689,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSourceSystems: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSystemPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createSourceSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSourceSystemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSystem"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSystem"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateSourceSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSourceSystemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSystem"];
                 };
             };
             /** @description Validation error */

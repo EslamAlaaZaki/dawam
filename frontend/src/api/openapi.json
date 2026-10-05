@@ -2574,6 +2574,291 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "List Source Systems",
+        "description": "The Workspace's Source Systems (any member), ordered by System Code.",
+        "operationId": "listSourceSystems",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystemPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Create Source System",
+        "description": "Add a Source System (owners and editors). 422 `invalid_system_code` if the System\nCode is not identifier-safe; 409 `system_code_taken` if the Workspace has it already.",
+        "operationId": "createSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSourceSystemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Get Source System",
+        "description": "Open a Source System (any member).",
+        "operationId": "getSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Update Source System",
+        "description": "Edit a Source System (owners and editors); fields left out stay as they are.\nChanging the System Code is for owners only (403 for editors). Until staging\nexists, a code change applies directly.",
+        "operationId": "updateSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSourceSystemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2615,6 +2900,9 @@
           "workspace.leave",
           "data_warehouse.set_up",
           "data_warehouse.change_platform",
+          "source_system.create",
+          "source_system.edit",
+          "source_system.change_code",
           "installation.manage_settings",
           "installation.manage_users",
           "installation.view_security_events",
@@ -2931,6 +3219,45 @@
           "role"
         ],
         "title": "ChangeRoleRequest"
+      },
+      "CreateSourceSystemRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 96,
+            "title": "Code"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Description",
+            "default": ""
+          },
+          "business_owner": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Business Owner",
+            "default": ""
+          },
+          "technical_owner": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Technical Owner",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "code"
+        ],
+        "title": "CreateSourceSystemRequest"
       },
       "CreateUserRequest": {
         "properties": {
@@ -4177,6 +4504,99 @@
         ],
         "title": "SmtpSettingsOut"
       },
+      "SourceSystem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "The System Code: identifier-safe, unique in the Workspace (e.g. `cbs`)."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "business_owner": {
+            "type": "string",
+            "title": "Business Owner"
+          },
+          "technical_owner": {
+            "type": "string",
+            "title": "Technical Owner"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back when editing; a stale one gets 409."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "name",
+          "code",
+          "description",
+          "business_owner",
+          "technical_owner",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SourceSystem"
+      },
+      "SourceSystemPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSystem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SourceSystemPage"
+      },
       "StageProgress": {
         "properties": {
           "source_analysis": {
@@ -4431,6 +4851,82 @@
           "version"
         ],
         "title": "UpdateRequest"
+      },
+      "UpdateSourceSystemRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 96
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code",
+            "description": "A different System Code (owners only; 403 for editors)."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "business_owner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Owner"
+          },
+          "technical_owner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Owner"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateSourceSystemRequest"
       },
       "UpdateUserRequest": {
         "properties": {
