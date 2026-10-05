@@ -1,6 +1,6 @@
 # DAWAM
 
-Product spec: `docs/spec.md`.
+Product spec: `docs/spec.md`. It is large (~130 KB): grep for the relevant heading and read only that section, never the whole file.
 
 ## Agent skills
 
