@@ -585,6 +585,28 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: CONNECTION_BODY,
     ),
+    # Extraction (stories 45, 46): owners and editors run it (the job runs and fails
+    # against a source that does not answer; starting it is what is checked). Every
+    # member reads the Snapshots.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/extractions",
+        "Run extraction / Schema Import / profiling",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=save_a_connection,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots",
+        "Open Workspace content (list Snapshots)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}",
+        "Open Workspace content (a Snapshot's catalog)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
 ]
 
 

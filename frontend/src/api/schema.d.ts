@@ -780,6 +780,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/extractions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Extraction
+         * @description Extract metadata from the Source System's Connection into a new Snapshot, as a
+         *     background job (owners and editors). A source with no differences from the latest
+         *     Snapshot creates none. 409 `connection_missing` without a Connection.
+         */
+        post: operations["startExtraction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Snapshots
+         * @description The Source System's Snapshots, newest first (any member).
+         */
+        get: operations["listSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Snapshot
+         * @description Everything one Snapshot captured: Database Schemas, tables and views (with
+         *     columns, constraints, indexes and view definitions) and routines with their code
+         *     (any member).
+         */
+        get: operations["getSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1200,7 +1264,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -1718,6 +1782,20 @@ export interface components {
         /** ErrorResponse */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** ExtractionStarted */
+        ExtractionStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `extract` job: follow its status, progress and log at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** ForcedReset */
         ForcedReset: {
@@ -2359,6 +2437,226 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** SnapshotColumn */
+        SnapshotColumn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Data Type */
+            data_type: string;
+            /** Is Nullable */
+            is_nullable: boolean;
+            /** Is Pk */
+            is_pk: boolean;
+            /** Default */
+            default: string | null;
+            /** Comment */
+            comment: string | null;
+        };
+        /** SnapshotConstraint */
+        SnapshotConstraint: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "pk" | "fk" | "unique";
+            /** Columns */
+            columns: string[];
+            /**
+             * Ref Table Id
+             * @description A foreign key's referenced table, when it is in this Snapshot.
+             */
+            ref_table_id: string | null;
+            /** Ref Db Schema */
+            ref_db_schema: string | null;
+            /** Ref Table */
+            ref_table: string | null;
+            /** Ref Columns */
+            ref_columns: string[];
+        };
+        /** SnapshotContent */
+        SnapshotContent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "connection" | "import";
+            /**
+             * Job Id
+             * @description The job that produced it.
+             */
+            job_id: string | null;
+            /**
+             * Taken At
+             * Format: date-time
+             */
+            taken_at: string;
+            /** Is Latest */
+            is_latest: boolean;
+            /** Schema Count */
+            schema_count: number;
+            /**
+             * Table Count
+             * @description Tables and views.
+             */
+            table_count: number;
+            /** Column Count */
+            column_count: number;
+            /** Routine Count */
+            routine_count: number;
+            /** Db Schemas */
+            db_schemas: components["schemas"]["SnapshotDbSchema"][];
+            /** Tables */
+            tables: components["schemas"]["SnapshotTable"][];
+            /** Routines */
+            routines: components["schemas"]["SnapshotRoutine"][];
+        };
+        /** SnapshotDbSchema */
+        SnapshotDbSchema: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** SnapshotIndex */
+        SnapshotIndex: {
+            /** Name */
+            name: string;
+            /**
+             * Columns
+             * @description Column names; an expression key is its SQL.
+             */
+            columns: string[];
+            /** Is Unique */
+            is_unique: boolean;
+        };
+        /** SnapshotPage */
+        SnapshotPage: {
+            /**
+             * Items
+             * @description Newest first.
+             */
+            items: components["schemas"]["SnapshotSummary"][];
+        };
+        /** SnapshotRoutine */
+        SnapshotRoutine: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "procedure" | "function";
+            /**
+             * Signature
+             * @description The argument list, which tells overloads apart.
+             */
+            signature: string;
+            /** Definition */
+            definition: string | null;
+        };
+        /** SnapshotSummary */
+        SnapshotSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "connection" | "import";
+            /**
+             * Job Id
+             * @description The job that produced it.
+             */
+            job_id: string | null;
+            /**
+             * Taken At
+             * Format: date-time
+             */
+            taken_at: string;
+            /** Is Latest */
+            is_latest: boolean;
+            /** Schema Count */
+            schema_count: number;
+            /**
+             * Table Count
+             * @description Tables and views.
+             */
+            table_count: number;
+            /** Column Count */
+            column_count: number;
+            /** Routine Count */
+            routine_count: number;
+        };
+        /** SnapshotTable */
+        SnapshotTable: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "table" | "view";
+            /** View Definition */
+            view_definition: string | null;
+            /** Row Estimate */
+            row_estimate: number | null;
+            /** Comment */
+            comment: string | null;
+            /** Columns */
+            columns: components["schemas"]["SnapshotColumn"][];
+            /** Constraints */
+            constraints: components["schemas"]["SnapshotConstraint"][];
+            /** Indexes */
+            indexes: components["schemas"]["SnapshotIndex"][];
         };
         /** SourceSystem */
         SourceSystem: {
@@ -4627,6 +4925,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionTestResult"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startExtraction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtractionStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotContent"];
                 };
             };
             /** @description Validation error */

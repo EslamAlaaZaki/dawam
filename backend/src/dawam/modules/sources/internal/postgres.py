@@ -38,7 +38,7 @@ SSL_MODES = ("disable", "allow", "prefer", "require", "verify-ca", "verify-full"
 
 _SYSTEM_SCHEMA_CLAUSE = "nspname <> 'information_schema' AND nspname !~ '^pg_'"
 _CONSTRAINT_TYPES = {"p": "pk", "f": "fk", "u": "unique"}
-_CATALOG_REFERENCE =re.compile(r"(?i)(?<![\w$])(pg_\w*|information_schema)(?![\w$])")
+_CATALOG_REFERENCE = re.compile(r"(?i)(?<![\w$])(pg_\w*|information_schema)(?![\w$])")
 
 
 def _error_for(exc: psycopg.Error) -> ConnectorError:
@@ -189,6 +189,11 @@ class PostgresConnector:
         allowed = list(self._params.allowed_schemas)
         with self._session() as conn, conn.cursor() as cur:
             cur.execute(
+                "SELECT nspname FROM pg_namespace WHERE nspname = ANY(%s) ORDER BY nspname",
+                (allowed,),
+            )
+            schemas = tuple(row[0] for row in cur.fetchall())
+            cur.execute(
                 """
                 SELECT n.nspname, c.relname, c.oid, c.relkind, c.reltuples::bigint,
                        obj_description(c.oid, 'pg_class'),
@@ -314,7 +319,7 @@ class PostgresConnector:
             )
             for schema, name, oid, relkind, estimate, comment, definition in table_rows
         )
-        return SourceCatalog(tables=tables, routines=routines)
+        return SourceCatalog(tables=tables, routines=routines, schemas=schemas)
 
     def profile(self, schema: str, table: str, column: str) -> ColumnProfile:
         self._require_allowed(schema)

@@ -75,6 +75,9 @@ class Action(StrEnum):
     """Edit a Source System's name, description and owners (owners and editors)."""
     CHANGE_SYSTEM_CODE = "source_system.change_code"
     """Change a Source System's System Code after creation (owners only)."""
+    RUN_EXTRACTION = "source_system.extract"
+    """Extract a Source System's metadata from its Connection into a Snapshot (owners and
+    editors; spec §4.3 "Run extraction / Schema Import / profiling", story 45)."""
     CANCEL_OWN_JOB = "job.cancel_own"
     """Cancel a background job the user started (any member who started one)."""
     CANCEL_ANY_JOB = "job.cancel_any"
@@ -173,6 +176,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     ),
     Action.REASSIGN_OWNERSHIP: _WorkspaceRule(min_role=None, admin=True, state="any"),
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
+    Action.RUN_EXTRACTION: _WorkspaceRule(min_role="editor"),
     Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),

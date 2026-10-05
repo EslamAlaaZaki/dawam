@@ -127,6 +127,8 @@ class RoutineInfo:
 class SourceCatalog:
     tables: tuple[TableInfo, ...]
     routines: tuple[RoutineInfo, ...]
+    schemas: tuple[str, ...] = ()
+    """The allowed Database Schemas that exist, empty ones included."""
 
 
 @dataclass(frozen=True)

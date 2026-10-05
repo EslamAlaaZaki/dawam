@@ -56,6 +56,7 @@ def test_extract_reads_tables_views_columns_keys_and_routines_of_allowed_schemas
 
     tables = {(t.schema, t.name): t for t in catalog.tables}
     assert ("restricted", "salaries") not in tables
+    assert catalog.schemas == ("core", "crm")
     assert {schema for schema, _ in tables} == {"core", "crm"}
     assert ("core", "عملاء_محليون") in tables
     assert [c.name for c in tables[("core", "عملاء_محليون")].columns] == ["رقم", "الاسم", "المدينة"]

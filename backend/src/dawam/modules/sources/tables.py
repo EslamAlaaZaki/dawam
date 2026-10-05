@@ -80,3 +80,223 @@ class ConnectionRecord(Base):
     )
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+# -- Source Objects and Snapshots (spec §7 "Source identity vs Snapshots") ------------
+
+SOURCE_OBJECT_STATUSES = ("present", "source_removed", "out_of_scope", "deleted")
+_STATUS_CHECK = "status IN ('present', 'source_removed', 'out_of_scope', 'deleted')"
+HASH_LENGTH = 64
+"""A SHA-256 hex digest."""
+
+
+class SrcDbSchemaRecord(Base):
+    """A Database Schema's stable identity in a Source System."""
+
+    __tablename__ = "src_db_schemas"
+    __table_args__ = (
+        sa.UniqueConstraint("source_system_id", "name"),
+        sa.CheckConstraint(_STATUS_CHECK, name="status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_system_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source_systems.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(sa.Text)
+    status: Mapped[str] = mapped_column(sa.String(16))
+    """``present``, ``source_removed``, ``out_of_scope`` or ``deleted`` (spec §7)."""
+
+
+class SrcTableRecord(Base):
+    """A table's or view's stable identity: descriptions, PII, relationships and mappings
+    attach here, never to a Snapshot."""
+
+    __tablename__ = "src_tables"
+    __table_args__ = (
+        sa.UniqueConstraint("db_schema_id", "name"),
+        sa.CheckConstraint(_STATUS_CHECK, name="status"),
+        sa.CheckConstraint("kind IN ('table', 'view')", name="kind"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    db_schema_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_db_schemas.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(sa.Text)
+    kind: Mapped[str] = mapped_column(sa.String(16))
+    current_definition: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    """As of the latest Snapshot that had it (kind, comment, view definition hash)."""
+    status: Mapped[str] = mapped_column(sa.String(16))
+    version: Mapped[int] = mapped_column()
+    """Goes up by one whenever the current definition (or the name's case) changes."""
+
+
+class SrcColumnRecord(Base):
+    __tablename__ = "src_columns"
+    __table_args__ = (
+        sa.UniqueConstraint("table_id", "name"),
+        sa.CheckConstraint(_STATUS_CHECK, name="status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    table_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("src_tables.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(sa.Text)
+    current_definition: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    """As of the latest Snapshot that had it: data type, nullability, key, default."""
+    status: Mapped[str] = mapped_column(sa.String(16))
+    version: Mapped[int] = mapped_column()
+
+
+class SrcRoutineRecord(Base):
+    """A stored procedure's or function's stable identity. ``signature`` (the argument
+    list) tells PostgreSQL overloads apart; it is ``""`` for engines without them."""
+
+    __tablename__ = "src_routines"
+    __table_args__ = (
+        sa.UniqueConstraint("db_schema_id", "name", "kind", "signature"),
+        sa.CheckConstraint(_STATUS_CHECK, name="status"),
+        sa.CheckConstraint("kind IN ('procedure', 'function')", name="kind"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    db_schema_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_db_schemas.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(sa.Text)
+    kind: Mapped[str] = mapped_column(sa.String(16))
+    signature: Mapped[str] = mapped_column(sa.Text)
+    status: Mapped[str] = mapped_column(sa.String(16))
+
+
+class DefinitionTextRecord(Base):
+    """View and routine text, stored once per content hash."""
+
+    __tablename__ = "definition_texts"
+
+    hash: Mapped[str] = mapped_column(sa.String(HASH_LENGTH), primary_key=True)
+    text: Mapped[str] = mapped_column(sa.Text)
+
+
+class SnapshotRecord(Base):
+    """An immutable, point-in-time capture of a Source System's metadata."""
+
+    __tablename__ = "snapshots"
+    __table_args__ = (
+        sa.CheckConstraint("origin IN ('connection', 'import')", name="origin"),
+        sa.Index(
+            "uq_snapshots_latest",
+            "source_system_id",
+            unique=True,
+            postgresql_where=sa.text("is_latest"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_system_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source_systems.id", ondelete="CASCADE"), index=True
+    )
+    origin: Mapped[str] = mapped_column(sa.String(16))
+    job_id: Mapped[uuid.UUID | None] = mapped_column(sa.ForeignKey("jobs.id", ondelete="SET NULL"))
+    taken_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    is_latest: Mapped[bool] = mapped_column()
+    content_hash: Mapped[str] = mapped_column(sa.String(HASH_LENGTH))
+    """Of everything captured: an extraction with the latest Snapshot's hash creates no
+    new Snapshot."""
+    schema_count: Mapped[int] = mapped_column()
+    table_count: Mapped[int] = mapped_column()
+    column_count: Mapped[int] = mapped_column()
+    routine_count: Mapped[int] = mapped_column()
+
+
+def _snapshot_id_column() -> Mapped[uuid.UUID]:
+    return mapped_column(sa.ForeignKey("snapshots.id", ondelete="CASCADE"), primary_key=True)
+
+
+def _src_table_key_column() -> Mapped[uuid.UUID]:
+    return mapped_column(sa.ForeignKey("src_tables.id", ondelete="CASCADE"), primary_key=True)
+
+
+class SnapshotDbSchemaRecord(Base):
+    __tablename__ = "snapshot_db_schemas"
+
+    snapshot_id: Mapped[uuid.UUID] = _snapshot_id_column()
+    src_db_schema_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_db_schemas.id", ondelete="CASCADE"), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(sa.Text)
+
+
+class SnapshotTableRecord(Base):
+    __tablename__ = "snapshot_tables"
+
+    snapshot_id: Mapped[uuid.UUID] = _snapshot_id_column()
+    src_table_id: Mapped[uuid.UUID] = _src_table_key_column()
+    db_schema: Mapped[str] = mapped_column(sa.Text)
+    """The Database Schema's name as it was in this Snapshot."""
+    name: Mapped[str] = mapped_column(sa.Text)
+    kind: Mapped[str] = mapped_column(sa.String(16))
+    view_definition_hash: Mapped[str | None] = mapped_column(sa.ForeignKey("definition_texts.hash"))
+    row_estimate: Mapped[int | None] = mapped_column(sa.BigInteger)
+    comment: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class SnapshotColumnRecord(Base):
+    __tablename__ = "snapshot_columns"
+
+    snapshot_id: Mapped[uuid.UUID] = _snapshot_id_column()
+    src_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), primary_key=True
+    )
+    src_table_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_tables.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(sa.Text)
+    ordinal: Mapped[int] = mapped_column()
+    data_type: Mapped[str] = mapped_column(sa.Text)
+    is_nullable: Mapped[bool] = mapped_column()
+    is_pk: Mapped[bool] = mapped_column()
+    default: Mapped[str | None] = mapped_column(sa.Text)
+    comment: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class SnapshotConstraintRecord(Base):
+    __tablename__ = "snapshot_constraints"
+    __table_args__ = (sa.CheckConstraint("type IN ('pk', 'fk', 'unique')", name="type"),)
+
+    snapshot_id: Mapped[uuid.UUID] = _snapshot_id_column()
+    src_table_id: Mapped[uuid.UUID] = _src_table_key_column()
+    name: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    type: Mapped[str] = mapped_column(sa.String(16))
+    columns: Mapped[list[str]] = mapped_column(sa.ARRAY(sa.Text))
+    ref_table_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("src_tables.id", ondelete="CASCADE")
+    )
+    """A foreign key's referenced table, when that table is in this Snapshot."""
+    ref_db_schema: Mapped[str | None] = mapped_column(sa.Text)
+    ref_table: Mapped[str | None] = mapped_column(sa.Text)
+    ref_columns: Mapped[list[str]] = mapped_column(sa.ARRAY(sa.Text))
+
+
+class SnapshotIndexRecord(Base):
+    __tablename__ = "snapshot_indexes"
+
+    snapshot_id: Mapped[uuid.UUID] = _snapshot_id_column()
+    src_table_id: Mapped[uuid.UUID] = _src_table_key_column()
+    name: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    columns: Mapped[list[str]] = mapped_column(sa.ARRAY(sa.Text))
+    is_unique: Mapped[bool] = mapped_column()
+
+
+class SnapshotRoutineRecord(Base):
+    __tablename__ = "snapshot_routines"
+
+    snapshot_id: Mapped[uuid.UUID] = _snapshot_id_column()
+    src_routine_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_routines.id", ondelete="CASCADE"), primary_key=True
+    )
+    db_schema: Mapped[str] = mapped_column(sa.Text)
+    name: Mapped[str] = mapped_column(sa.Text)
+    kind: Mapped[str] = mapped_column(sa.String(16))
+    signature: Mapped[str] = mapped_column(sa.Text)
+    definition_hash: Mapped[str | None] = mapped_column(sa.ForeignKey("definition_texts.hash"))

@@ -73,7 +73,9 @@ def run_worker(settings: Settings, *, stop: threading.Event) -> None:
         if stop.is_set():
             return
         runner = QueuedJobRunner()
-        job_handlers.register_job_handlers(runner)
+        job_handlers.register_job_handlers(
+            runner, engine=engine, settings=settings, clock=system_clock
+        )
         jobs = JobService(
             engine,
             runner=runner,
