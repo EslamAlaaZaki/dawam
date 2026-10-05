@@ -689,6 +689,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Activity
+         * @description Who changed what in the Workspace and when, newest first (any member, viewers
+         *     included; 404 for anyone else).
+         */
+        get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -708,6 +729,68 @@ export interface components {
          * @enum {string}
          */
         Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.leave" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        /** ActivityActor */
+        ActivityActor: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** ActivityItem */
+        ActivityItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description Who did it; null if that user is gone. */
+            actor: components["schemas"]["ActivityActor"] | null;
+            /**
+             * Verb
+             * @description What was done, e.g. `workspace.updated`, `member.added`.
+             */
+            verb: string;
+            /**
+             * Object Type
+             * @description What it was done to: `workspace`, `user`, ...
+             */
+            object_type: string;
+            /** Object Id */
+            object_id: string | null;
+            /**
+             * Object Label
+             * @description The object's name (a user's current display name).
+             */
+            object_label: string;
+            /**
+             * Details
+             * @description Extra context, e.g. `{"role": "editor"}`; shape depends on the verb.
+             */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ActivityPage */
+        ActivityPage: {
+            /**
+             * Items
+             * @description Newest first.
+             */
+            items: components["schemas"]["ActivityItem"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
+        };
         /** AddMemberRequest */
         AddMemberRequest: {
             /** Email */
@@ -3009,6 +3092,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listActivity: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
                 };
             };
             /** @description Validation error */

@@ -17,7 +17,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``InvitedWorkspaceMembership``: the auth module's ``InvitedMembership`` port, which
   the composition root sets as ``app.state.invited_membership``.
 - ``router``: ``GET|POST /workspaces``, ``GET|PATCH /workspaces/{workspace_id}``,
-  ``GET /workspaces/{workspace_id}/progress``, ``GET|POST .../members``,
+  ``GET /workspaces/{workspace_id}/progress``, ``GET .../activity`` (the activity feed,
+  served from the ``activity`` module's service), ``GET|POST .../members``,
   ``PATCH|DELETE .../members/{member_id}``, ``POST .../leave``,
   ``POST .../transfer-ownership``.
 
