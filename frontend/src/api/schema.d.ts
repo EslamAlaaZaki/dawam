@@ -966,6 +966,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Kpis
+         * @description The Workspace's KPIs (any member), ordered by name. Without a filter, all of them.
+         *     404 for a Source System that is not in the Workspace; 422 `invalid_filter` if both
+         *     filters are given.
+         */
+        get: operations["listKpis"];
+        put?: never;
+        /**
+         * Create Kpi
+         * @description Document a KPI as a draft (owners and editors), under a Source System or, with
+         *     `source_system_id` null, under the Data Warehouse (which need not be set up). 404 for
+         *     a Source System that is not in the Workspace; 422 `invalid_kpi`.
+         */
+        post: operations["createKpi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kpi
+         * @description Open a KPI (any member).
+         */
+        get: operations["getKpi"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Kpi
+         * @description Delete a KPI (owners and editors).
+         */
+        delete: operations["deleteKpi"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Kpi
+         * @description Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and
+         *     editors); fields left out stay as they are. 409 `version_conflict` if `version` is
+         *     stale; 422 `invalid_kpi`.
+         */
+        patch: operations["updateKpi"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -984,7 +1042,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "installation.list_workspaces" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "installation.list_workspaces" | "kpi.edit" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -1174,6 +1232,53 @@ export interface components {
              * @enum {string}
              */
             role: "viewer" | "editor" | "owner";
+        };
+        /** CreateKpiRequest */
+        CreateKpiRequest: {
+            /** Name */
+            name: string;
+            /**
+             * Source System Id
+             * @description Document the KPI under this Source System; null: under the Data Warehouse (no setup needed).
+             */
+            source_system_id?: string | null;
+            /**
+             * Definition
+             * @default
+             */
+            definition: string;
+            /**
+             * Formula Text
+             * @default
+             */
+            formula_text: string;
+            /** Formula Sql */
+            formula_sql?: string | null;
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+            /**
+             * Aggregation
+             * @default
+             */
+            aggregation: string;
+            /**
+             * Owner
+             * @default
+             */
+            owner: string;
+            /**
+             * Refresh Frequency
+             * @default
+             */
+            refresh_frequency: string;
+            /**
+             * Targets
+             * @default []
+             */
+            targets: components["schemas"]["Target"][];
         };
         /** CreateSourceSystemRequest */
         CreateSourceSystemRequest: {
@@ -1378,6 +1483,86 @@ export interface components {
             id: string;
             /** Display Name */
             display_name: string;
+        };
+        /** Kpi */
+        Kpi: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Source System Id
+             * @description The Source System the KPI is documented under; null: the Data Warehouse.
+             */
+            source_system_id: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Definition
+             * @description The business definition.
+             */
+            definition: string;
+            /**
+             * Formula Text
+             * @description The formula in words.
+             */
+            formula_text: string;
+            /**
+             * Formula Sql
+             * @description The formula as SQL against the DW Schema; null until it is written.
+             */
+            formula_sql: string | null;
+            /** Unit */
+            unit: string;
+            /** Aggregation */
+            aggregation: string;
+            /** Owner */
+            owner: string;
+            /** Refresh Frequency */
+            refresh_frequency: string;
+            /** Targets */
+            targets: components["schemas"]["Target"][];
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "user" | "ai" | "rule";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "in_review" | "approved";
+            /**
+             * Version
+             * @description Send it back when editing; a stale one gets 409.
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** KpiPage */
+        KpiPage: {
+            /** Items */
+            items: components["schemas"]["Kpi"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
         };
         /** KpiProgress */
         KpiProgress: {
@@ -1902,6 +2087,19 @@ export interface components {
              */
             status: "not_started" | "in_progress" | "complete";
         };
+        /** Target */
+        Target: {
+            /**
+             * Label
+             * @description What the target is for, e.g. `FY2027`.
+             */
+            label: string;
+            /**
+             * Value
+             * @description The target value, e.g. `95%`.
+             */
+            value: string;
+        };
         /** TestEmailIn */
         TestEmailIn: {
             /**
@@ -1975,6 +2173,37 @@ export interface components {
              * @description All your unread notifications.
              */
             unread_count: number;
+        };
+        /** UpdateKpiRequest */
+        UpdateKpiRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Definition */
+            definition?: string | null;
+            /** Formula Text */
+            formula_text?: string | null;
+            /**
+             * Formula Sql
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            formula_sql?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Aggregation */
+            aggregation?: string | null;
+            /** Owner */
+            owner?: string | null;
+            /** Refresh Frequency */
+            refresh_frequency?: string | null;
+            /** Targets */
+            targets?: components["schemas"]["Target"][] | null;
+            /** Status */
+            status?: ("draft" | "in_review" | "approved") | null;
         };
         /** UpdateMeRequest */
         UpdateMeRequest: {
@@ -4461,6 +4690,224 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listKpis: {
+        parameters: {
+            query?: {
+                /** @description Only this Source System's KPIs. */
+                source_system_id?: string | null;
+                /** @description Only the Data Warehouse's KPIs (those under no Source System). */
+                data_warehouse?: boolean;
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createKpi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKpiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kpi"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getKpi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kpi"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteKpi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateKpi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateKpiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kpi"];
                 };
             };
             /** @description Validation error */

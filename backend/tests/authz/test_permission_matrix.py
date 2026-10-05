@@ -461,6 +461,39 @@ ROWS: list[Row] = [
             "business_owner": "Head of Retail",
         },
     ),
+    # KPIs (stories 73, 74; §4.3 "Edit KPIs, DW Schema, mappings").
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/kpis",
+        "Open Workspace content (list KPIs)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/kpis",
+        "Edit KPIs (document one)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"name": "Customer count"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}",
+        "Open Workspace content (a KPI)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}",
+        "Edit KPIs (edit one, move it between statuses)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "unit": "customers"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}",
+        "Edit KPIs (delete one)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
 ]
 
 

@@ -77,6 +77,9 @@ class Action(StrEnum):
     """Change a Source System's System Code after creation (owners only)."""
     LIST_ALL_WORKSPACES = "installation.list_workspaces"
     """See every Workspace's metadata, never its content (admins only; spec §4.3)."""
+    EDIT_KPI = "kpi.edit"
+    """Create, edit and delete KPIs, and move them between statuses (owners and editors;
+    spec §4.3, stories 73, 74, 80)."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -157,6 +160,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.REASSIGN_OWNERSHIP: _WorkspaceRule(min_role=None, admin=True, state="any"),
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
+    Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 

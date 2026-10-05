@@ -193,6 +193,18 @@ def system_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(response.json()["id"])
 
 
+def kpi_id(roles: RoleClients) -> uuid.UUID:
+    """A KPI of the Workspace (the owner adds it through the API once)."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/kpis"
+    listed = owner.get(path).json()["items"]
+    if listed:
+        return uuid.UUID(listed[0]["id"])
+    response = owner.post(path, json={"name": "Customer count"})
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
@@ -201,6 +213,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "member_id": colleague_id,
     "system_id": system_id,
     "notification_id": lambda roles: uuid.uuid4(),
+    "kpi_id": kpi_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 
