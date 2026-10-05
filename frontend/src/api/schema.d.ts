@@ -1477,9 +1477,9 @@ export interface components {
             source_system_id: string;
             /**
              * Engine
-             * @constant
+             * @enum {string}
              */
-            engine: "postgresql";
+            engine: "postgresql" | "oracle";
             /** Host */
             host: string;
             /** Port */
@@ -1525,9 +1525,9 @@ export interface components {
             /**
              * Engine
              * @default postgresql
-             * @constant
+             * @enum {string}
              */
-            engine: "postgresql";
+            engine: "postgresql" | "oracle";
             /** Host */
             host: string;
             /**
@@ -1535,7 +1535,10 @@ export interface components {
              * @default 5432
              */
             port: number;
-            /** Database */
+            /**
+             * Database
+             * @description The database name; for Oracle, the service name. Oracle Database Schemas are user names, given as Oracle stores them (usually upper case).
+             */
             database: string;
             /** Username */
             username: string;

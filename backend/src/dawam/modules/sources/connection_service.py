@@ -39,11 +39,11 @@ from .internal.connector import (
 from .internal.postgres import SSL_MODES
 from .tables import HOST_MAX_LENGTH, IDENTIFIER_MAX_LENGTH, ConnectionRecord, SourceSystemRecord
 
-ENGINES = ("postgresql",)
+ENGINES = ("postgresql", "oracle")
 PASSWORD_CONTEXT = "connection.password"
 PASSWORD_MAX_LENGTH = 1000
 MAX_ALLOWED_SCHEMAS = 100
-DEFAULT_PORTS = {"postgresql": 5432}
+DEFAULT_PORTS = {"postgresql": 5432, "oracle": 1521}
 
 
 @dataclass(frozen=True)

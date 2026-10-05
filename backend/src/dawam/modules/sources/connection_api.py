@@ -47,7 +47,7 @@ ConnectionServiceDep = Annotated[ConnectionService, Depends(connection_service)]
 class Connection(BaseModel):
     id: uuid.UUID
     source_system_id: uuid.UUID
-    engine: Literal["postgresql"]
+    engine: Literal["postgresql", "oracle"]
     host: str
     port: int
     database: str
@@ -67,10 +67,14 @@ class Connection(BaseModel):
 
 
 class ConnectionRequest(BaseModel):
-    engine: Literal["postgresql"] = "postgresql"
+    engine: Literal["postgresql", "oracle"] = "postgresql"
     host: str = Field(max_length=HOST_MAX_LENGTH * 2)
     port: int = Field(default=DEFAULT_PORTS["postgresql"], ge=1, le=65535)
-    database: str = Field(max_length=IDENTIFIER_MAX_LENGTH * 2)
+    database: str = Field(
+        max_length=IDENTIFIER_MAX_LENGTH * 2,
+        description="The database name; for Oracle, the service name. Oracle Database Schemas "
+        "are user names, given as Oracle stores them (usually upper case).",
+    )
     username: str = Field(max_length=IDENTIFIER_MAX_LENGTH * 2)
     password: str | None = Field(
         default=None,

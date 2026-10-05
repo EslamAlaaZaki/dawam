@@ -4992,7 +4992,10 @@
           },
           "engine": {
             "type": "string",
-            "const": "postgresql",
+            "enum": [
+              "postgresql",
+              "oracle"
+            ],
             "title": "Engine"
           },
           "host": {
@@ -5087,7 +5090,10 @@
         "properties": {
           "engine": {
             "type": "string",
-            "const": "postgresql",
+            "enum": [
+              "postgresql",
+              "oracle"
+            ],
             "title": "Engine",
             "default": "postgresql"
           },
@@ -5106,7 +5112,8 @@
           "database": {
             "type": "string",
             "maxLength": 256,
-            "title": "Database"
+            "title": "Database",
+            "description": "The database name; for Oracle, the service name. Oracle Database Schemas are user names, given as Oracle stores them (usually upper case)."
           },
           "username": {
             "type": "string",

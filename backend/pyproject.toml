@@ -14,6 +14,7 @@ dependencies = [
     "sqlalchemy>=2.0.30,<3",
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
+    "oracledb>=2.5",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "argon2-cffi>=23.1",
@@ -39,8 +40,11 @@ packages = ["src/dawam"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not oracle'"
 pythonpath = ["."]
+markers = [
+    "oracle: needs an Oracle container (slow and heavy); run with `pytest -m oracle`",
+]
 
 [tool.ruff]
 line-length = 100

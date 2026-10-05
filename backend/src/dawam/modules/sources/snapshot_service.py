@@ -47,7 +47,7 @@ from .tables import (
 )
 
 EXTRACT_JOB = "extract"
-FOLDS_CASE = {"postgresql": False}
+FOLDS_CASE = {"postgresql": False, "oracle": True}
 """Whether the engine folds identifier case, so names differing only in case may match
 the same Source Object (PostgreSQL keeps quoted ``"Customer"`` and ``customer`` apart)."""
 
