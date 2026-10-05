@@ -1,7 +1,7 @@
 """add connections: the sources module's connections table.
 
 Revision ID: e7b3a1c94d26
-Revises: e7b3a9c14d26
+Revises: e7b3a91c4d26
 Create Date: 2026-10-05 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e7b3a1c94d26"
-down_revision: str | Sequence[str] | None = "e7b3a9c14d26"
+down_revision: str | Sequence[str] | None = "e7b3a91c4d26"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

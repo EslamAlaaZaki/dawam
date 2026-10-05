@@ -2450,7 +2450,7 @@
           "sources"
         ],
         "summary": "Get Connection",
-        "description": "The Source System's Connection (owners only). 404 `connection_not_found` if none.",
+        "description": "The Source System's Connection (owners only, archived Workspaces too). 404\n`connection_not_found` if none.",
         "operationId": "getConnection",
         "parameters": [
           {
@@ -2513,7 +2513,7 @@
           "sources"
         ],
         "summary": "Save Connection",
-        "description": "Create or replace the Connection (owners only; 201 when created). The password is\nsealed before it is stored. 422 `invalid_connection` for bad settings.",
+        "description": "Create or replace the Connection (owners only; 201 when created). The password is\nsealed before it is stored. 422 `invalid_connection` for bad settings;\n`password_required` to reuse the stored password for another endpoint.",
         "operationId": "saveConnection",
         "parameters": [
           {
@@ -2588,7 +2588,7 @@
           "sources"
         ],
         "summary": "Test Connection",
-        "description": "Try these settings without saving them (owners only). Always 200: a failure is\n`ok: false` with a safe `error`. Without a password the stored one is used.",
+        "description": "Try these settings without saving them (owners only). Always 200: a failure is\n`ok: false` with a safe `error`. Without a password the stored one is used, for the\nendpoint it was saved for only (422 `password_required` otherwise).",
         "operationId": "testConnection",
         "parameters": [
           {
@@ -4336,6 +4336,7 @@
           "installation.list_workspaces",
           "kpi.edit",
           "file.upload",
+          "connection.view",
           "connection.manage",
           "installation.manage_settings",
           "installation.manage_users",
@@ -4917,7 +4918,7 @@
               }
             ],
             "title": "Password",
-            "description": "Leave out to keep the stored password (or, for a test, to use it). An empty string clears it."
+            "description": "Leave out to keep the stored password (or, for a test, to use it); allowed only with the host, port, database and username it was saved for, otherwise 422 `password_required`. An empty string clears it."
           },
           "options": {
             "additionalProperties": true,
