@@ -50,6 +50,11 @@ class Action(StrEnum):
     """Hand ownership to another member, stepping down to editor."""
     LEAVE_WORKSPACE = "workspace.leave"
     """Leave the Workspace (any member; spec story 34). The last owner still cannot."""
+    SET_UP_DATA_WAREHOUSE = "data_warehouse.set_up"
+    """Set up the Data Warehouse and edit its Layer schema names, naming rules and date
+    dimension settings (spec §4.3, story 87)."""
+    CHANGE_DW_PLATFORM = "data_warehouse.change_platform"
+    """Change the Data Warehouse's target platform after setup (owners only; spec §4.3)."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -111,6 +116,8 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),
     Action.TRANSFER_OWNERSHIP: _WorkspaceRule(min_role="owner"),
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer"),
+    Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
+    Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 

@@ -523,6 +523,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/data-warehouse/platforms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Platforms
+         * @description The target platforms and what each allows in an identifier, for the setup form
+         *     (any signed-in user).
+         */
+        get: operations["listDataWarehousePlatforms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Data Warehouse
+         * @description The Data Warehouse's setup (any member). `set_up: false` until the step is done.
+         */
+        get: operations["getDataWarehouse"];
+        put?: never;
+        /**
+         * Set Up Data Warehouse
+         * @description Set up the Data Warehouse (editors and owners): target platform, a schema or
+         *     dataset name per Layer, naming rules and date-dimension settings. 422
+         *     `invalid_data_warehouse` if a name breaks the platform's rules; 409 `already_set_up`
+         *     the second time.
+         */
+        post: operations["setUpDataWarehouse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Data Warehouse
+         * @description Change the setup (editors and owners). Fields left out stay as they are. Changing
+         *     the target platform is for owners (403 for an editor). 404 `not_set_up` before setup.
+         */
+        patch: operations["updateDataWarehouse"];
+        trace?: never;
+    };
     "/api/v1/workspaces": {
         parameters: {
             query?: never;
@@ -728,7 +781,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.leave" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -905,6 +958,66 @@ export interface components {
              */
             domain: string;
         };
+        /** DataWarehouse */
+        DataWarehouse: {
+            /**
+             * Set Up
+             * @description False until the step is done; then only this step (and Data Warehouse KPIs) is available, and the other fields are null.
+             */
+            set_up: boolean;
+            /** Id */
+            id: string | null;
+            /** Target Platform */
+            target_platform: ("postgresql" | "sqlserver" | "oracle" | "snowflake" | "bigquery") | null;
+            layer_schemas: components["schemas"]["LayerSchemas"] | null;
+            naming_rules: components["schemas"]["NamingRules"] | null;
+            date_dimension: components["schemas"]["DateDimension"] | null;
+            /** Set Up At */
+            set_up_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Version
+             * @description Send it back when editing; a stale one gets 409.
+             */
+            version: number | null;
+        };
+        /** DateDimension */
+        DateDimension: {
+            /**
+             * Start Year
+             * @default 2000
+             */
+            start_year: number;
+            /**
+             * End Year
+             * @default 2040
+             */
+            end_year: number;
+            /**
+             * Weekend Days
+             * @default [
+             *       "saturday",
+             *       "sunday"
+             *     ]
+             */
+            weekend_days: ("monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday")[];
+            /**
+             * Include Hijri
+             * @default false
+             */
+            include_hijri: boolean;
+            /**
+             * Fiscal Year Start Month
+             * @description First month of the fiscal year; null for no fiscal attributes.
+             */
+            fiscal_year_start_month?: number | null;
+            /**
+             * Include Time Dimension
+             * @default false
+             */
+            include_time_dimension: boolean;
+        };
         /** ErrorBody */
         ErrorBody: {
             /**
@@ -1007,6 +1120,24 @@ export interface components {
              */
             status: "not_started" | "in_progress" | "complete";
         };
+        /** LayerSchemas */
+        LayerSchemas: {
+            /**
+             * Staging
+             * @default staging
+             */
+            staging: string;
+            /**
+             * Core
+             * @default core
+             */
+            core: string;
+            /**
+             * Mart
+             * @default mart
+             */
+            mart: string;
+        };
         /** Me */
         Me: {
             /**
@@ -1088,6 +1219,31 @@ export interface components {
              */
             items: components["schemas"]["Member"][];
         };
+        /** NamingRules */
+        NamingRules: {
+            /**
+             * Case Style
+             * @description Case of generated identifiers.
+             * @default lower
+             * @enum {string}
+             */
+            case_style: "lower" | "upper";
+            /**
+             * Dimension Prefix
+             * @default dim_
+             */
+            dimension_prefix: string;
+            /**
+             * Fact Prefix
+             * @default fact_
+             */
+            fact_prefix: string;
+            /**
+             * Bridge Prefix
+             * @default bridge_
+             */
+            bridge_prefix: string;
+        };
         /** PendingInvitation */
         PendingInvitation: {
             /**
@@ -1128,6 +1284,37 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** Platform */
+        Platform: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "postgresql" | "sqlserver" | "oracle" | "snowflake" | "bigquery";
+            /** Label */
+            label: string;
+            /**
+             * Schema Term
+             * @description What the platform calls a Layer's physical home.
+             * @enum {string}
+             */
+            schema_term: "schema" | "dataset";
+            /**
+             * Max Identifier Length
+             * @description In bytes.
+             */
+            max_identifier_length: number;
+            /**
+             * Reserved Words
+             * @description Lower-cased, sorted.
+             */
+            reserved_words: string[];
+        };
+        /** PlatformList */
+        PlatformList: {
+            /** Items */
+            items: components["schemas"]["Platform"][];
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -1223,6 +1410,44 @@ export interface components {
              * @enum {string}
              */
             delivery: "sent" | "link_for_admin" | "not_sent";
+        };
+        /** SetUpRequest */
+        SetUpRequest: {
+            /**
+             * Target Platform
+             * @enum {string}
+             */
+            target_platform: "postgresql" | "sqlserver" | "oracle" | "snowflake" | "bigquery";
+            /**
+             * @default {
+             *       "staging": "staging",
+             *       "core": "core",
+             *       "mart": "mart"
+             *     }
+             */
+            layer_schemas: components["schemas"]["LayerSchemas"];
+            /**
+             * @default {
+             *       "case_style": "lower",
+             *       "dimension_prefix": "dim_",
+             *       "fact_prefix": "fact_",
+             *       "bridge_prefix": "bridge_"
+             *     }
+             */
+            naming_rules: components["schemas"]["NamingRules"];
+            /**
+             * @default {
+             *       "start_year": 2000,
+             *       "end_year": 2040,
+             *       "weekend_days": [
+             *         "saturday",
+             *         "sunday"
+             *       ],
+             *       "include_hijri": false,
+             *       "include_time_dimension": false
+             *     }
+             */
+            date_dimension: components["schemas"]["DateDimension"];
         };
         /** SignInRequest */
         SignInRequest: {
@@ -1376,6 +1601,22 @@ export interface components {
         UpdateMeRequest: {
             /** Display Name */
             display_name: string;
+        };
+        /** UpdateRequest */
+        UpdateRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /**
+             * Target Platform
+             * @description Changing it (not repeating the current one) is for owners only.
+             */
+            target_platform?: ("postgresql" | "sqlserver" | "oracle" | "snowflake" | "bigquery") | null;
+            layer_schemas?: components["schemas"]["LayerSchemas"] | null;
+            naming_rules?: components["schemas"]["NamingRules"] | null;
+            date_dimension?: components["schemas"]["DateDimension"] | null;
         };
         /**
          * UpdateUserRequest
@@ -2634,6 +2875,172 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDataWarehousePlatforms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDataWarehouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataWarehouse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setUpDataWarehouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataWarehouse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDataWarehouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataWarehouse"];
+                };
             };
             /** @description Validation error */
             422: {

@@ -37,6 +37,8 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
         "domain": "Retail banking",
         "role": "owner",
         "permissions": [
+            "data_warehouse.change_platform",
+            "data_warehouse.set_up",
             "workspace.edit",
             "workspace.leave",
             "workspace.manage_members",
@@ -222,7 +224,8 @@ def test_editors_and_viewers_open_a_workspace_but_cannot_edit_it(roles: RoleClie
         assert opened.status_code == 200
         assert (opened.json()["role"], opened.json()["permissions"]) == (
             role,
-            ["workspace.leave", "workspace.view"],
+            (["data_warehouse.set_up"] if role == "editor" else [])
+            + ["workspace.leave", "workspace.view"],
         )
 
         response = client.patch(url, json={"version": 1, "name": f"Renamed by {role}"})
