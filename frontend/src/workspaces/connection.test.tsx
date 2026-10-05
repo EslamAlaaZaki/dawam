@@ -35,6 +35,8 @@ function workspace(role: WorkspaceRole): Workspace {
     role,
     permissions: role === "owner" ? ["connection.manage", "workspace.view"] : ["workspace.view"],
     version: 1,
+    status: "active",
+    archived_at: null,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
   };
@@ -168,7 +170,7 @@ describe("a Source System's Connection", () => {
       ["Host", "db"],
       ["Database", "core"],
       ["Username", "u"],
-    ]) {
+    ] as const) {
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
     }
 
