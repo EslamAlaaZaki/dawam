@@ -54,6 +54,11 @@ class JobCancelledError(Exception):
 
 
 class JobContext(Protocol):
+    @property
+    def job_id(self) -> uuid.UUID:
+        """The running job (e.g. to record which job produced something)."""
+        ...
+
     def progress(self, percent: int) -> None:
         """Report how far along the job is (0-100); also tells the queue it is alive."""
         ...
@@ -168,6 +173,10 @@ class _Context:
     def __init__(self, service: JobService, job_id: uuid.UUID) -> None:
         self._service = service
         self._job_id = job_id
+
+    @property
+    def job_id(self) -> uuid.UUID:
+        return self._job_id
 
     def progress(self, percent: int) -> None:
         self._service._update(self._job_id, progress=max(0, min(100, int(percent))))

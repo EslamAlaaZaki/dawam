@@ -24,7 +24,7 @@ from tests.roles import RoleClients
 
 
 def handle_ok(params, ctx):
-    ctx.log(f"hello {params['name']}")
+    ctx.log(f"hello {params['name']} from job {ctx.job_id}")
     ctx.progress(50)
     ctx.log("halfway")
 
@@ -91,7 +91,7 @@ def test_inline_jobs_run_before_submit_returns(inline, roles):
     job = submit(inline, roles)
 
     assert (job.status, job.progress) == ("succeeded", 100)
-    assert "hello world" in job.log
+    assert f"hello world from job {job.id}" in job.log
     assert "halfway" in job.log
     assert job.started_at is not None and job.finished_at is not None
 
