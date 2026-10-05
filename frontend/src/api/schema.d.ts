@@ -844,6 +844,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source Schema
+         * @description The Source Schema to browse (any member): the latest Snapshot (Database Schemas,
+         *     tables and views with columns, keys, indexes and view definitions, routines with
+         *     their code), every object with its state, plus the tables and views it no longer has.
+         *     404 before the first Snapshot.
+         */
+        get: operations["getSourceSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Source Schema
+         * @description Search the latest Snapshot's Database Schemas, tables, views, columns and routines
+         *     by name (any member). An empty query finds nothing; 404 before the first Snapshot.
+         */
+        get: operations["searchSourceSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -2277,12 +2321,101 @@ export interface components {
              */
             open: boolean;
         };
+        /** RemovedColumn */
+        RemovedColumn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object.
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "source_removed" | "out_of_scope";
+            /**
+             * Data Type
+             * @description As of the latest Snapshot that had it.
+             */
+            data_type: string | null;
+        };
+        /** RemovedTable */
+        RemovedTable: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object.
+             */
+            id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "table" | "view";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "source_removed" | "out_of_scope";
+        };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
             /** Token */
             token: string;
             /** Password */
             password: string;
+        };
+        /** SearchHit */
+        SearchHit: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "db_schema" | "table" | "view" | "column" | "routine";
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Db Schema
+             * @description Null for a Database Schema itself.
+             */
+            db_schema: string | null;
+            /**
+             * Table
+             * @description A column's table.
+             */
+            table: string | null;
+            /**
+             * Status
+             * @description The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes.
+             * @enum {string}
+             */
+            status: "present" | "source_removed" | "out_of_scope" | "deleted";
+        };
+        /** SearchResults */
+        SearchResults: {
+            /**
+             * Items
+             * @description Exact name matches first, then names starting with the query.
+             */
+            items: components["schemas"]["SearchHit"][];
         };
         /** SecurityEventOut */
         SecurityEventOut: {
@@ -2448,6 +2581,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
             /** Ordinal */
             ordinal: number;
             /** Data Type */
@@ -2541,6 +2676,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
         };
         /** SnapshotIndex */
         SnapshotIndex: {
@@ -2579,6 +2716,8 @@ export interface components {
              * @enum {string}
              */
             kind: "procedure" | "function";
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
             /**
              * Signature
              * @description The argument list, which tells overloads apart.
@@ -2645,6 +2784,8 @@ export interface components {
              * @enum {string}
              */
             kind: "table" | "view";
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
             /** View Definition */
             view_definition: string | null;
             /** Row Estimate */
@@ -2657,6 +2798,63 @@ export interface components {
             constraints: components["schemas"]["SnapshotConstraint"][];
             /** Indexes */
             indexes: components["schemas"]["SnapshotIndex"][];
+        };
+        /** SourceSchema */
+        SourceSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "connection" | "import";
+            /**
+             * Job Id
+             * @description The job that produced it.
+             */
+            job_id: string | null;
+            /**
+             * Taken At
+             * Format: date-time
+             */
+            taken_at: string;
+            /** Is Latest */
+            is_latest: boolean;
+            /** Schema Count */
+            schema_count: number;
+            /**
+             * Table Count
+             * @description Tables and views.
+             */
+            table_count: number;
+            /** Column Count */
+            column_count: number;
+            /** Routine Count */
+            routine_count: number;
+            /** Db Schemas */
+            db_schemas: components["schemas"]["SnapshotDbSchema"][];
+            /** Tables */
+            tables: components["schemas"]["SnapshotTable"][];
+            /** Routines */
+            routines: components["schemas"]["SnapshotRoutine"][];
+            /**
+             * Removed Tables
+             * @description Tables and views the latest Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`.
+             */
+            removed_tables: components["schemas"]["RemovedTable"][];
+            /**
+             * Removed Columns
+             * @description Columns of the tables above the Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`.
+             */
+            removed_columns: components["schemas"]["RemovedColumn"][];
         };
         /** SourceSystem */
         SourceSystem: {
@@ -5049,6 +5247,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnapshotContent"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceSchema: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchema"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchSourceSchema: {
+        parameters: {
+            query?: {
+                /** @description Part of a name; case-insensitive. */
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
                 };
             };
             /** @description Validation error */

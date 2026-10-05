@@ -10,10 +10,12 @@ Public interface. Other modules import only what is re-exported here:
 - ``SnapshotService``: owners and editors extract metadata from the Connection into a
   Snapshot (``start_extraction`` queues an ``extract`` job; ``run_extraction`` is its
   handler, which ``dawam.job_handlers`` registers); members read Snapshots (``list``,
-  ``get``: ``SnapshotSummary``, ``SnapshotContent``).
+  ``get``: ``SnapshotSummary``, ``SnapshotContent``) and browse and search the Source
+  Schema (``source_schema``, ``search``: ``SourceSchema``, ``SearchHit``).
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
+  ``GET .../systems/{system_id}/schema[/search]``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
 
@@ -28,15 +30,24 @@ reaches only through the service API. Imports ``activity``, ``auth``, ``jobs`` a
 from .api import router
 from .connection_service import Connection, ConnectionService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
-from .snapshot_service import EXTRACT_JOB, SnapshotContent, SnapshotService, SnapshotSummary
+from .snapshot_service import (
+    EXTRACT_JOB,
+    SearchHit,
+    SnapshotContent,
+    SnapshotService,
+    SnapshotSummary,
+    SourceSchema,
+)
 
 __all__ = [
     "EXTRACT_JOB",
     "Connection",
     "ConnectionService",
+    "SearchHit",
     "SnapshotContent",
     "SnapshotService",
     "SnapshotSummary",
+    "SourceSchema",
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",

@@ -2861,6 +2861,161 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Source Schema",
+        "description": "The Source Schema to browse (any member): the latest Snapshot (Database Schemas,\ntables and views with columns, keys, indexes and view definitions, routines with\ntheir code), every object with its state, plus the tables and views it no longer has.\n404 before the first Snapshot.",
+        "operationId": "getSourceSchema",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema/search": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Search Source Schema",
+        "description": "Search the latest Snapshot's Database Schemas, tables, views, columns and routines\nby name (any member). An empty query finds nothing; 404 before the first Snapshot.",
+        "operationId": "searchSourceSchema",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Part of a name; case-insensitive.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Part of a name; case-insensitive."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -6675,6 +6830,97 @@
         ],
         "title": "RegistrationStatus"
       },
+      "RemovedColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object."
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "source_removed",
+              "out_of_scope"
+            ],
+            "title": "Status"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Type",
+            "description": "As of the latest Snapshot that had it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "table_id",
+          "name",
+          "status",
+          "data_type"
+        ],
+        "title": "RemovedColumn"
+      },
+      "RemovedTable": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object."
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "view"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "source_removed",
+              "out_of_scope"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "db_schema",
+          "name",
+          "kind",
+          "status"
+        ],
+        "title": "RemovedTable"
+      },
       "ResetPasswordRequest": {
         "properties": {
           "token": {
@@ -6694,6 +6940,93 @@
           "password"
         ],
         "title": "ResetPasswordRequest"
+      },
+      "SearchHit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "view",
+              "column",
+              "routine"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "db_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Schema",
+            "description": "Null for a Database Schema itself."
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table",
+            "description": "A column's table."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed",
+              "out_of_scope",
+              "deleted"
+            ],
+            "title": "Status",
+            "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "db_schema",
+          "table",
+          "status"
+        ],
+        "title": "SearchHit"
+      },
+      "SearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Exact name matches first, then names starting with the query."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SearchResults"
       },
       "SecurityEventOut": {
         "properties": {
@@ -7046,6 +7379,24 @@
             "type": "string",
             "title": "Name"
           },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
           "ordinal": {
             "type": "integer",
             "title": "Ordinal"
@@ -7285,6 +7636,24 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           }
         },
         "type": "object",
@@ -7361,6 +7730,24 @@
               "function"
             ],
             "title": "Kind"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "signature": {
             "type": "string",
@@ -7489,6 +7876,24 @@
             ],
             "title": "Kind"
           },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
           "view_definition": {
             "anyOf": [
               {
@@ -7558,6 +7963,123 @@
           "indexes"
         ],
         "title": "SnapshotTable"
+      },
+      "SourceSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "connection",
+              "import"
+            ],
+            "title": "Origin"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "The job that produced it."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At"
+          },
+          "is_latest": {
+            "type": "boolean",
+            "title": "Is Latest"
+          },
+          "schema_count": {
+            "type": "integer",
+            "title": "Schema Count"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count",
+            "description": "Tables and views."
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "routine_count": {
+            "type": "integer",
+            "title": "Routine Count"
+          },
+          "db_schemas": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDbSchema"
+            },
+            "type": "array",
+            "title": "Db Schemas"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotTable"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "routines": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotRoutine"
+            },
+            "type": "array",
+            "title": "Routines"
+          },
+          "removed_tables": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedTable"
+            },
+            "type": "array",
+            "title": "Removed Tables",
+            "description": "Tables and views the latest Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`."
+          },
+          "removed_columns": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedColumn"
+            },
+            "type": "array",
+            "title": "Removed Columns",
+            "description": "Columns of the tables above the Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_system_id",
+          "origin",
+          "job_id",
+          "taken_at",
+          "is_latest",
+          "schema_count",
+          "table_count",
+          "column_count",
+          "routine_count",
+          "db_schemas",
+          "tables",
+          "routines",
+          "removed_tables",
+          "removed_columns"
+        ],
+        "title": "SourceSchema"
       },
       "SourceSystem": {
         "properties": {

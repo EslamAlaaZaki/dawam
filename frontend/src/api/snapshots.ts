@@ -47,3 +47,55 @@ export function useStartExtraction(workspaceId: string, systemId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
   });
 }
+
+export type SourceSchema = components["schemas"]["SourceSchema"];
+export type SchemaSearchHit = components["schemas"]["SearchHit"];
+
+export const sourceSchemaKey = (workspaceId: string, systemId: string) =>
+  ["workspace", workspaceId, "systems", systemId, "source-schema"] as const;
+
+/** The Source Schema to browse: the latest Snapshot plus the objects it no longer has
+ * (spec story 54). Only asked for once the system has a Snapshot. */
+export function useSourceSchema(workspaceId: string, systemId: string, enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: sourceSchemaKey(workspaceId, systemId),
+    enabled,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema",
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+  });
+}
+
+/** Names containing `query`, in the latest Snapshot; nothing is asked for an empty query. */
+export function useSchemaSearch(workspaceId: string, systemId: string, query: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...sourceSchemaKey(workspaceId, systemId), "search", query] as const,
+    enabled: query !== "",
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema/search",
+        {
+          params: {
+            path: { workspace_id: workspaceId, system_id: systemId },
+            query: { q: query },
+          },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data.items;
+    },
+  });
+}
