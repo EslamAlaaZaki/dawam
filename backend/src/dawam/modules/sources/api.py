@@ -17,6 +17,7 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
+from .connection_api import router as connection_router
 from .service import SourceSystem as SourceSystemView
 from .service import SourceSystemService
 from .tables import CODE_MAX_LENGTH, DESCRIPTION_MAX_LENGTH, NAME_MAX_LENGTH, OWNER_MAX_LENGTH
@@ -160,3 +161,7 @@ def update_source_system(
             technical_owner=body.technical_owner,
         )
     )
+
+
+# Mounted last: the OpenAPI document lists the Connection routes after the system routes.
+router.include_router(connection_router, prefix="/{system_id}/connection")

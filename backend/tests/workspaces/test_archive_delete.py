@@ -125,6 +125,7 @@ def test_reads_still_work_while_archived_and_the_permissions_say_read_only(roles
         assert client.get(path(roles, "/members")).status_code == 200
     permissions = set(roles.client("owner").get(path(roles)).json()["permissions"])
     assert permissions == {
+        "connection.view",
         "workspace.view",
         "workspace.unarchive",
         "workspace.delete",
@@ -146,6 +147,7 @@ def test_the_policy_refuses_every_action_that_changes_anything_once_archived(
     archiving, so a new action is read-only when archived unless someone opts it in."""
     survive = {
         Action.VIEW_WORKSPACE,
+        Action.VIEW_CONNECTION,
         Action.LEAVE_WORKSPACE,
         Action.UNARCHIVE_WORKSPACE,
         Action.DELETE_WORKSPACE,
