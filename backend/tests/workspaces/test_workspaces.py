@@ -39,8 +39,8 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
         "permissions": [
             "data_warehouse.change_platform",
             "data_warehouse.set_up",
-            "kpi.edit",
             "file.upload",
+            "kpi.edit",
             "source_system.change_code",
             "source_system.create",
             "source_system.edit",
@@ -229,8 +229,8 @@ def test_editors_and_viewers_open_a_workspace_but_cannot_edit_it(roles: RoleClie
     permissions = {
         "editor": [
             "data_warehouse.set_up",
-            "kpi.edit",
             "file.upload",
+            "kpi.edit",
             "source_system.create",
             "source_system.edit",
             "workspace.leave",

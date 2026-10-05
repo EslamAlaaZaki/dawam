@@ -40,6 +40,8 @@ function workspace(role: WorkspaceRole): Workspace {
     domain: "",
     role,
     permissions: PERMISSIONS[role],
+    status: "active",
+    archived_at: null,
     version: 1,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
@@ -142,7 +144,10 @@ describe("a Source System's Documents folder", () => {
     expect(await screen.findByRole("link", { name: "sad.pdf" })).toBeInTheDocument();
     const post = requests.find((r) => r.method === "POST" && r.path === FILES);
     expect(post?.csrf).toBeTruthy();
-    expect(String(post?.body)).toContain("sad.pdf");
+    // The file goes as multipart form data. (jsdom's File reaches Node's fetch as a plain
+    // Blob, so its name is not on the wire here; a browser sends it.)
+    expect(String(post?.body)).toMatch(/name="file"/);
+    expect(String(post?.body)).toContain("%PDF-1.4");
   });
 
   it("shows why an upload is refused", async () => {
