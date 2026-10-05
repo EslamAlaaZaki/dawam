@@ -24,6 +24,8 @@ const EVENT_TYPES = [
   "registration_settings_changed",
   "smtp_settings_changed",
   "smtp_settings_removed",
+  "workspace_deleted",
+  "workspace_ownership_reassigned",
 ];
 
 /** Midnight at the start of a `YYYY-MM-DD` day in the admin's time zone, `days` later. */

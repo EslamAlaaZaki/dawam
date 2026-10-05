@@ -1,6 +1,7 @@
 """``GET|PUT /api/v1/admin/settings``: the installation-wide settings, for admins only;
 ``user_api`` adds user management, ``invitation_api`` invitations and
-``security_events_api`` the security-event log."""
+``security_events_api`` the security-event log and ``workspace_api`` every Workspace's
+metadata and ownership reassignment."""
 
 from __future__ import annotations
 
@@ -18,11 +19,13 @@ from .invitation_api import router as invitation_router
 from .security_events_api import router as security_events_router
 from .service import RegistrationSettings, SystemSettingsService
 from .user_api import router as user_router
+from .workspace_api import router as workspace_router
 
 router = APIRouter(tags=["admin"])
 router.include_router(user_router)
 router.include_router(invitation_router)
 router.include_router(security_events_router)
+router.include_router(workspace_router)
 
 
 SettingsManager = Annotated[User, Depends(allowed_to(Action.MANAGE_SYSTEM_SETTINGS))]

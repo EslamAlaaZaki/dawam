@@ -34,7 +34,10 @@ def test_authorize_returns_the_scope_with_the_users_role(
     scope = workspaces.authorize(roles.user("editor"), Action.VIEW_WORKSPACE, roles.workspace_id)
 
     assert scope == WorkspaceScope(
-        workspace_id=roles.workspace_id, user_id=roles.user("editor").id, role="editor"
+        workspace_id=roles.workspace_id,
+        user_id=roles.user("editor").id,
+        role="editor",
+        archived=False,
     )
 
 
@@ -69,7 +72,9 @@ def test_authorize_says_404_for_a_workspace_that_does_not_exist(
 
 def test_can_rejects_a_resource_of_the_wrong_kind_or_for_another_user(roles: RoleClients):
     owner = roles.user("owner")
-    scope = WorkspaceScope(workspace_id=uuid.uuid4(), user_id=owner.id, role="owner")
+    scope = WorkspaceScope(
+        workspace_id=uuid.uuid4(), user_id=owner.id, role="owner", archived=False
+    )
 
     assert can(owner, Action.CREATE_WORKSPACE, INSTALLATION)
     with pytest.raises(TypeError):

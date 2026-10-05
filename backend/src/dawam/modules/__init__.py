@@ -7,7 +7,17 @@ on ``dawam.platform.db.Base.metadata`` for Alembic.
 
 from types import ModuleType
 
-from dawam.modules import activity, admin, auth, jobs, mail, sources, warehouse, workspaces
+from dawam.modules import (
+    activity,
+    admin,
+    auth,
+    jobs,
+    mail,
+    notifications,
+    sources,
+    warehouse,
+    workspaces,
+)
 
 ALL_MODULES: tuple[ModuleType, ...] = (
     auth,
@@ -16,8 +26,9 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     jobs,
     mail,
     warehouse,
-    workspaces,
     sources,
+    notifications,
+    workspaces,
 )
 
 __all__ = ["ALL_MODULES"]

@@ -34,6 +34,10 @@ MEMBER_PRIMARY_KEY = "pk_workspace_members"
 
 class WorkspaceRecord(Base):
     __tablename__ = "workspaces"
+    __table_args__ = (
+        sa.CheckConstraint("status IN ('active', 'archived')", name="status"),
+        sa.CheckConstraint("(status = 'archived') = (archived_at IS NOT NULL)", name="archived_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(sa.String(NAME_MAX_LENGTH))
@@ -43,6 +47,9 @@ class WorkspaceRecord(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(sa.String(16), default="active", server_default="active")
+    """``active``, or ``archived``: read-only until an owner or admin unarchives it."""
+    archived_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
     """Starts at 1 and goes up by one on every edit (optimistic concurrency, spec §8.3)."""
 

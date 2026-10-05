@@ -6,6 +6,7 @@ import EmailSettingsPage from "../app/(signed-in)/admin/email/page";
 import LinksToSharePage from "../app/(signed-in)/admin/email/links/page";
 import SignedInLayout from "../app/(signed-in)/layout";
 import InvitationsPage from "../app/(signed-in)/admin/invitations/page";
+import AdminWorkspacesPage from "../app/(signed-in)/admin/workspaces/page";
 import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
 import SecurityEventsPage from "../app/(signed-in)/admin/security-events/page";
 import CreateUserPage from "../app/(signed-in)/admin/users/new/page";
@@ -53,6 +54,12 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <CreateUserPage />
+        </SignedInLayout>
+      );
+    case "/admin/workspaces":
+      return (
+        <SignedInLayout>
+          <AdminWorkspacesPage />
         </SignedInLayout>
       );
     case "/admin/invitations":

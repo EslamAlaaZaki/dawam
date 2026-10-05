@@ -11,6 +11,7 @@ export function AdminNav() {
   return (
     <nav className="shell-nav" aria-label="Administration">
       <a href="/admin/users">Users</a>
+      <a href="/admin/workspaces">Workspaces</a>
       <a href="/admin/invitations">Invitations</a>
       <a href="/admin/security-events">Security events</a>
       <a href="/admin/email">Email settings</a>

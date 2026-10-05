@@ -14,7 +14,13 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from dawam.modules.activity import ActivityService
-from dawam.modules.auth import MAX_EMAIL_LENGTH, AuthService, CurrentUser, Invitations
+from dawam.modules.auth import (
+    MAX_EMAIL_LENGTH,
+    AuthService,
+    CurrentUser,
+    Invitations,
+    SecurityEventRecorder,
+)
 from dawam.platform.email import Delivery
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 from dawam.platform.request_context import client_ip
@@ -22,7 +28,7 @@ from dawam.platform.request_context import client_ip
 from .internal.members import Member as MemberView
 from .internal.members import MemberAdded, MembershipService
 from .internal.policy import Action, WorkspaceRole
-from .service import Layer, StageStatus, WorkspaceService
+from .service import Layer, StageStatus, WorkspaceService, WorkspaceStatus
 from .service import Workspace as WorkspaceView
 from .tables import DESCRIPTION_MAX_LENGTH, DOMAIN_MAX_LENGTH, NAME_MAX_LENGTH
 
@@ -31,7 +37,10 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
 def workspace_service(request: Request) -> WorkspaceService:
     state = request.app.state
-    return WorkspaceService(state.engine, clock=state.services.clock)
+    clock = state.services.clock
+    return WorkspaceService(
+        state.engine, clock=clock, events=SecurityEventRecorder(state.engine, clock=clock)
+    )
 
 
 WorkspaceServiceDep = Annotated[WorkspaceService, Depends(workspace_service)]
@@ -81,6 +90,10 @@ class Workspace(BaseModel):
         description="The Workspace actions you may perform. The UI uses it to show or hide "
         "controls; the server checks every request regardless."
     )
+    status: WorkspaceStatus = Field(
+        description="`archived`: read-only until an owner or admin unarchives it."
+    )
+    archived_at: datetime | None
     version: int = Field(description="Send it back when editing; a stale one gets 409.")
     created_at: datetime
     updated_at: datetime
@@ -102,6 +115,10 @@ class UpdateWorkspaceRequest(BaseModel):
     name: Name | None = None
     description: Description | None = None
     domain: Domain | None = None
+
+
+class DeleteWorkspaceRequest(BaseModel):
+    name: str = Field(description="The Workspace's name, typed exactly, to confirm.")
 
 
 class SystemProgress(BaseModel):
@@ -143,6 +160,8 @@ def _out(workspace: WorkspaceView) -> Workspace:
         domain=workspace.domain,
         role=workspace.role,
         permissions=sorted(workspace.permissions),
+        status=workspace.status,
+        archived_at=workspace.archived_at,
         version=workspace.version,
         created_at=workspace.created_at,
         updated_at=workspace.updated_at,
@@ -197,6 +216,53 @@ def update_workspace(
             domain=body.domain,
         )
     )
+
+
+@router.post(
+    "/{workspace_id}/archive",
+    operation_id="archiveWorkspace",
+    status_code=204,
+    response_class=Response,
+)
+def archive_workspace(
+    workspace_id: uuid.UUID, user: CurrentUser, workspaces: WorkspaceServiceDep
+) -> Response:
+    """Make the Workspace read-only (owners, and admins even if not members). Reads and
+    exports keep working. 409 `workspace_archived` if it already is."""
+    workspaces.archive(user, workspace_id)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{workspace_id}/unarchive",
+    operation_id="unarchiveWorkspace",
+    status_code=204,
+    response_class=Response,
+)
+def unarchive_workspace(
+    workspace_id: uuid.UUID, user: CurrentUser, workspaces: WorkspaceServiceDep
+) -> Response:
+    """Make an archived Workspace editable again (owners and admins). 409
+    `workspace_not_archived` if it is not archived."""
+    workspaces.unarchive(user, workspace_id)
+    return Response(status_code=204)
+
+
+@router.delete(
+    "/{workspace_id}", operation_id="deleteWorkspace", status_code=204, response_class=Response
+)
+def delete_workspace(
+    workspace_id: uuid.UUID,
+    body: DeleteWorkspaceRequest,
+    user: CurrentUser,
+    workspaces: WorkspaceServiceDep,
+    request: Request,
+) -> Response:
+    """Delete the Workspace for good (owners; admins who are not members only once it is
+    archived: 409 `workspace_not_archived`). The body's `name` must be its name, else 422
+    `name_mismatch`. Recorded as a security event."""
+    workspaces.delete(user, workspace_id, name=body.name, ip=client_ip(request))
+    return Response(status_code=204)
 
 
 @router.get("/{workspace_id}/progress", operation_id="getStageProgress")

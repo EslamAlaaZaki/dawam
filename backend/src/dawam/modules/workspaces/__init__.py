@@ -16,7 +16,15 @@ Public interface. Other modules import only what is re-exported here:
   members, leave and transfer ownership; a Workspace always keeps an owner.
 - ``InvitedWorkspaceMembership``: the auth module's ``InvitedMembership`` port, which
   the composition root sets as ``app.state.invited_membership``.
-- ``router``: ``GET|POST /workspaces``, ``GET|PATCH /workspaces/{workspace_id}``,
+- ``WorkspaceAdministration``: what admins do across Workspaces, seeing metadata only
+  (``AdminWorkspace`` / ``AdminWorkspacePage``): list them all, and reassign ownership
+  of one whose owners are all deactivated.
+- Archived Workspaces are read-only: ``WorkspaceScope.archived`` makes ``can`` refuse
+  every action that changes anything; only viewing, leaving, unarchiving, deleting and
+  reassigning ownership still pass. ``WorkspaceService.authorize`` then says 409
+  ``workspace_archived``.
+- ``router``: ``GET|POST /workspaces``, ``GET|PATCH|DELETE /workspaces/{workspace_id}``,
+  ``POST .../archive``, ``POST .../unarchive``,
   ``GET /workspaces/{workspace_id}/progress``, ``GET .../activity`` (the activity feed,
   served from the ``activity`` module's service), ``GET|POST .../members``,
   ``PATCH|DELETE .../members/{member_id}``, ``POST .../leave``,
@@ -26,6 +34,12 @@ Owns the ``workspaces`` and ``workspace_members`` tables.
 """
 
 from .api import router
+from .internal.administration import (
+    AdminWorkspace,
+    AdminWorkspacePage,
+    WorkspaceAdministration,
+    WorkspaceOwner,
+)
 from .internal.members import (
     InvitedWorkspaceMembership,
     Member,
@@ -33,12 +47,23 @@ from .internal.members import (
     MemberInvited,
     MembershipService,
 )
-from .internal.policy import INSTALLATION, Action, Installation, WorkspaceRole, WorkspaceScope, can
+from .internal.policy import (
+    INSTALLATION,
+    WORKSPACE_ACTIONS,
+    Action,
+    Installation,
+    WorkspaceRole,
+    WorkspaceScope,
+    can,
+)
 from .service import Workspace, WorkspacePage, WorkspaceService
 
 __all__ = [
     "INSTALLATION",
+    "WORKSPACE_ACTIONS",
     "Action",
+    "AdminWorkspace",
+    "AdminWorkspacePage",
     "Installation",
     "InvitedWorkspaceMembership",
     "Member",
@@ -46,6 +71,8 @@ __all__ = [
     "MemberInvited",
     "MembershipService",
     "Workspace",
+    "WorkspaceAdministration",
+    "WorkspaceOwner",
     "WorkspacePage",
     "WorkspaceRole",
     "WorkspaceScope",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Literal
 
@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from dawam.modules.activity import record_activity
-from dawam.modules.auth import User
+from dawam.modules.auth import SecurityEventRecorder, User
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
@@ -33,6 +33,8 @@ from .tables import (
     WorkspaceRecord,
 )
 
+WorkspaceStatus = Literal["active", "archived"]
+
 
 @dataclass(frozen=True)
 class Workspace:
@@ -46,6 +48,8 @@ class Workspace:
     """The viewing member's role."""
     permissions: frozenset[Action]
     """The Workspace actions the viewing member may perform (from ``can``)."""
+    status: WorkspaceStatus
+    archived_at: datetime | None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -102,6 +106,27 @@ def _not_found() -> ApiError:
 
 def _forbidden() -> ApiError:
     return ApiError(403, "forbidden", "Your role in this Workspace does not allow this.")
+
+
+def _archived() -> ApiError:
+    return ApiError(
+        409,
+        "workspace_archived",
+        "This Workspace is archived and read-only. Unarchive it to change it.",
+    )
+
+
+def _not_archived() -> ApiError:
+    return ApiError(409, "workspace_not_archived", "This Workspace must be archived first.")
+
+
+def _denied(user: User, action: Action, scope: WorkspaceScope) -> ApiError:
+    """Why ``user`` may not ``action`` in ``scope``. If the Workspace's state alone is in
+    the way (they could, were it archived or not), say so; otherwise 403 for members and
+    404 for everyone else."""
+    if can(user, action, replace(scope, archived=not scope.archived)):
+        return _archived() if scope.archived else _not_archived()
+    return _forbidden() if scope.role is not None else _not_found()
 
 
 def _version_conflict(current: int) -> ApiError:
@@ -165,10 +190,11 @@ def authorized(
         workspace_id=record.id,
         user_id=user.id,
         role=as_role(role) if role is not None else None,
+        archived=record.status == "archived",
     )
     if can(user, action, scope):
         return record, scope
-    raise _forbidden() if scope.role is not None else _not_found()
+    raise _denied(user, action, scope)
 
 
 def workspace_view(user: User, record: WorkspaceRecord, role: WorkspaceRole | None) -> Workspace:
@@ -176,7 +202,12 @@ def workspace_view(user: User, record: WorkspaceRecord, role: WorkspaceRole | No
     if role is None:
         # Only members get a Workspace; an admin-only action never returns one.
         raise ValueError("a Workspace is only shown to its members")
-    scope = WorkspaceScope(workspace_id=record.id, user_id=user.id, role=role)
+    scope = WorkspaceScope(
+        workspace_id=record.id,
+        user_id=user.id,
+        role=role,
+        archived=record.status == "archived",
+    )
     return Workspace(
         id=record.id,
         name=record.name,
@@ -184,19 +215,31 @@ def workspace_view(user: User, record: WorkspaceRecord, role: WorkspaceRole | No
         domain=record.domain,
         role=role,
         permissions=frozenset(a for a in WORKSPACE_ACTIONS if can(user, a, scope)),
+        status=as_status(record.status),
+        archived_at=record.archived_at,
         version=record.version,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
 
 
+def as_status(value: str) -> WorkspaceStatus:
+    if value not in ("active", "archived"):
+        raise ValueError(f"unknown Workspace status {value!r}")
+    return value  # type: ignore[return-value]  # checked above
+
+
 class WorkspaceService:
     """Workspaces and their members. Every method that acts for a user authorizes
     through the policy (``can``) first; callers add no checks of their own."""
 
-    def __init__(self, engine: sa.Engine, *, clock: Clock) -> None:
+    def __init__(
+        self, engine: sa.Engine, *, clock: Clock, events: SecurityEventRecorder | None = None
+    ) -> None:
+        """``events`` records Workspace deletions; ``delete`` needs it."""
         self._engine = engine
         self._clock = clock
+        self._events = events
 
     def authorize(self, user: User, action: Action, workspace_id: uuid.UUID) -> WorkspaceScope:
         """Check that ``user`` may perform ``action`` in the Workspace ``workspace_id``
@@ -350,6 +393,83 @@ class WorkspaceService:
                 )
             db.flush()
             return workspace_view(user, record, scope.role)
+
+    def archive(self, user: User, workspace_id: uuid.UUID) -> None:
+        """Make the Workspace read-only: reads and exports keep working, every other
+        action is refused by the policy until it is unarchived. For its owners and for
+        admins, members or not. Raises ``ApiError`` 409 ``workspace_archived`` if it
+        already is."""
+        with Session(self._engine) as db, db.begin():
+            record, _ = authorized(db, user, Action.ARCHIVE_WORKSPACE, workspace_id, lock=True)
+            now = self._clock()
+            record.status = "archived"
+            record.archived_at = now
+            record.updated_at = now
+            record.version += 1
+            record_activity(
+                db,
+                workspace_id=record.id,
+                actor_id=user.id,
+                verb="workspace.archived",
+                object_type="workspace",
+                object_id=record.id,
+                object_label=record.name,
+                at=now,
+            )
+
+    def unarchive(self, user: User, workspace_id: uuid.UUID) -> None:
+        """Make an archived Workspace editable again. Raises ``ApiError`` 409
+        ``workspace_not_archived`` if it is not archived."""
+        with Session(self._engine) as db, db.begin():
+            record, _ = authorized(db, user, Action.UNARCHIVE_WORKSPACE, workspace_id, lock=True)
+            now = self._clock()
+            record.status = "active"
+            record.archived_at = None
+            record.updated_at = now
+            record.version += 1
+            record_activity(
+                db,
+                workspace_id=record.id,
+                actor_id=user.id,
+                verb="workspace.unarchived",
+                object_type="workspace",
+                object_id=record.id,
+                object_label=record.name,
+                at=now,
+            )
+
+    def delete(
+        self, user: User, workspace_id: uuid.UUID, *, name: str, ip: str | None = None
+    ) -> None:
+        """Delete the Workspace and everything in it, for good, if ``name`` is its name
+        exactly. Owners may at any time; an admin who is not a member only once it is
+        archived (409 ``workspace_not_archived`` before). Raises ``ApiError`` 422
+        ``name_mismatch``. Writes a ``workspace_deleted`` security event."""
+        if self._events is None:
+            raise RuntimeError("deleting a Workspace must be recorded: pass events")
+        with Session(self._engine) as db, db.begin():
+            record, scope = authorized(db, user, Action.DELETE_WORKSPACE, workspace_id, lock=True)
+            if name != record.name:
+                raise ApiError(
+                    422,
+                    "name_mismatch",
+                    "Type the Workspace's name exactly to delete it.",
+                    {"field": "name"},
+                )
+            self._events.record(
+                "workspace_deleted",
+                actor_id=user.id,
+                target_type="workspace",
+                target_id=record.id,
+                metadata={
+                    "name": record.name,
+                    "was_archived": record.status == "archived",
+                    "as_member": scope.role is not None,
+                },
+                ip=ip,
+                db=db,
+            )
+            db.delete(record)
 
     def add_member(
         self,

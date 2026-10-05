@@ -13,8 +13,9 @@ from collections import Counter
 import pytest
 from fastapi import FastAPI
 
-from dawam.modules.auth import Invitations, PasswordResets
+from dawam.modules.auth import AuthService, Invitations, PasswordResets, UserAdministration
 from dawam.modules.mail import MailService
+from dawam.modules.workspaces import WorkspaceService
 from tests.authz.matrix import (
     Row,
     admin_only,
@@ -38,6 +39,31 @@ def _second_owner(roles: RoleClients) -> None:
         json={"role": "owner"},
     )
     assert response.status_code == 200, response.text
+
+
+def _archive(roles: RoleClients) -> None:
+    """Archives the Workspace (as the owner), for rows that act on an archived one."""
+    state = roles.app.state
+    WorkspaceService(state.engine, clock=state.services.clock).archive(
+        roles.user("owner"), roles.workspace_id
+    )
+
+
+def _orphaned_workspace_id(roles: RoleClients):
+    """A Workspace whose only owner has been deactivated, made through the services."""
+    state = roles.app.state
+    clock = state.services.clock
+    owner = AuthService(state.engine, state.settings, clock=clock).create_user(
+        email="departed@example.com",
+        password=PASSWORD,
+        display_name="Departed",
+        system_role="user",
+    )
+    workspace = WorkspaceService(state.engine, clock=clock).create(owner, name="Orphaned")
+    UserAdministration(state.engine, clock=clock).update_user(
+        owner.id, is_active=False, actor_id=roles.user("admin").id
+    )
+    return workspace.id
 
 
 def _open_registration_and_sign_up(roles: RoleClients) -> dict[str, str]:
@@ -185,6 +211,30 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row("GET", "/api/v1/admin/security-events", "review security events", admin_only()),
+    # Every Workspace's metadata, and the orphan rescue (§4.3, stories 21, 22).
+    Row(
+        "GET",
+        "/api/v1/admin/workspaces",
+        "See Workspace in list (metadata only)",
+        admin_only(),
+    ),
+    Row(
+        "POST",
+        "/api/v1/admin/workspaces/{workspace_id}/reassign-owner",
+        "Reassign ownership of an orphaned Workspace (no active owner)",
+        admin_only(),
+        json=lambda roles: {"user_id": str(roles.user("non_member").id)},
+        path_params={"workspace_id": _orphaned_workspace_id},
+    ),
+    # The signed-in user's own notifications.
+    Row("GET", "/api/v1/notifications", "my unread notifications", signed_in()),
+    Row("POST", "/api/v1/notifications/read-all", "mark my notifications read", signed_in()),
+    Row(
+        "POST",
+        "/api/v1/notifications/{notification_id}/read",
+        "mark one of my notifications read (an id that is not mine changes nothing)",
+        signed_in(),
+    ),
     # Invitations (stories 10, 15).
     Row(
         "POST",
@@ -289,6 +339,27 @@ ROWS: list[Row] = [
         "Rename / edit Workspace details",
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"version": roles.workspace["version"], "name": "Renamed"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/archive",
+        "Archive / unarchive Workspace",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/unarchive",
+        "Archive / unarchive Workspace",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
+        setup=_archive,
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}",
+        "Delete Workspace (typed name; admin only if archived)",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"name": roles.workspace["name"]},
+        setup=_archive,
     ),
     Row(
         "GET",
