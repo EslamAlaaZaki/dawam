@@ -2443,6 +2443,219 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Connection",
+        "description": "The Source System's Connection (owners only). 404 `connection_not_found` if none.",
+        "operationId": "getConnection",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Save Connection",
+        "description": "Create or replace the Connection (owners only; 201 when created). The password is\nsealed before it is stored. 422 `invalid_connection` for bad settings.",
+        "operationId": "saveConnection",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection/test": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Test Connection",
+        "description": "Try these settings without saving them (owners only). Always 200: a failure is\n`ok: false` with a safe `error`. Without a password the stored one is used.",
+        "operationId": "testConnection",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -4123,6 +4336,7 @@
           "installation.list_workspaces",
           "kpi.edit",
           "file.upload",
+          "connection.manage",
           "installation.manage_settings",
           "installation.manage_users",
           "installation.view_security_events",
@@ -4556,6 +4770,260 @@
           "role"
         ],
         "title": "ChangeRoleRequest"
+      },
+      "Connection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          },
+          "engine": {
+            "type": "string",
+            "const": "postgresql",
+            "title": "Engine"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "database": {
+            "type": "string",
+            "title": "Database"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "has_password": {
+            "type": "boolean",
+            "title": "Has Password",
+            "description": "Whether a password is stored. It is never returned."
+          },
+          "options": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Options"
+          },
+          "allowed_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Schemas",
+            "description": "The Database Schemas DAWAM may read; nothing outside them is ever queried."
+          },
+          "can_write": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Write",
+            "description": "From the last test of these settings: the user can change data or objects (show a warning). Null: not tested since the last change."
+          },
+          "last_tested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tested At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_system_id",
+          "engine",
+          "host",
+          "port",
+          "database",
+          "username",
+          "has_password",
+          "options",
+          "allowed_schemas",
+          "can_write",
+          "last_tested_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Connection"
+      },
+      "ConnectionRequest": {
+        "properties": {
+          "engine": {
+            "type": "string",
+            "const": "postgresql",
+            "title": "Engine",
+            "default": "postgresql"
+          },
+          "host": {
+            "type": "string",
+            "maxLength": 506,
+            "title": "Host"
+          },
+          "port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "default": 5432
+          },
+          "database": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Database"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Username"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password",
+            "description": "Leave out to keep the stored password (or, for a test, to use it). An empty string clears it."
+          },
+          "options": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Options",
+            "description": "`sslmode`, `connect_timeout` (1-60) and `statement_timeout_seconds` (1-600, default 30)."
+          },
+          "allowed_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Allowed Schemas",
+            "description": "The Database Schemas DAWAM may read (at least one)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "host",
+          "database",
+          "username"
+        ],
+        "title": "ConnectionRequest"
+      },
+      "ConnectionTestResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "A stable code when `ok` is false."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "A safe message: no host, user or password in it."
+          },
+          "server_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Version"
+          },
+          "can_write": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Write",
+            "description": "True if the user can change data or objects: DAWAM only reads, so give it a read-only user."
+          },
+          "available_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Schemas",
+            "description": "Database Schemas to pick from."
+          },
+          "missing_schemas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Schemas",
+            "description": "Allowed schemas that were not found."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "error_code",
+          "error",
+          "server_version",
+          "can_write",
+          "available_schemas",
+          "missing_schemas"
+        ],
+        "title": "ConnectionTestResult"
       },
       "CreateKpiRequest": {
         "properties": {

@@ -17,6 +17,7 @@ import { useSourceSystems } from "../api/systems";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
+import { ConnectionPanel } from "./ConnectionPanel";
 import { FolderTree } from "./FolderTree";
 import { JobsPanel } from "./JobsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
@@ -71,6 +72,9 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const openSystem = systemList.find((system) => folder.id === `systems/${system.id}`);
   // `systems/<id>/kpis` and `dw/kpis`: a KPI folder, of that system or of the Data Warehouse.
   const kpiSystem = systemList.find((system) => folder.id === `systems/${system.id}/kpis`);
+  const connectionSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/connection`,
+  );
 
   // `systems/<id>/documents`: a Source System's uploaded documents.
   const documentsSystem = systemList.find(
@@ -132,6 +136,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               system={openSystem}
               reload={() => systems.refetch()}
             />
+          ) : connectionSystem ? (
+            <ConnectionPanel workspace={workspace.data} system={connectionSystem} />
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>
