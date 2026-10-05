@@ -4992,7 +4992,10 @@
           },
           "engine": {
             "type": "string",
-            "const": "postgresql",
+            "enum": [
+              "postgresql",
+              "sqlserver"
+            ],
             "title": "Engine"
           },
           "host": {
@@ -5087,7 +5090,10 @@
         "properties": {
           "engine": {
             "type": "string",
-            "const": "postgresql",
+            "enum": [
+              "postgresql",
+              "sqlserver"
+            ],
             "title": "Engine",
             "default": "postgresql"
           },

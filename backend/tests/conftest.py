@@ -49,6 +49,10 @@ from dawam.platform.email import InMemoryOutbox
 from tests.helpers import csrf_token, sign_in
 from tests.roles import RoleClients
 from tests.sample_source import sample_source  # noqa: F401  (fixture for every test)
+from tests.sample_source.sqlserver import (  # noqa: F401  (fixtures; the container starts on use)
+    sample_source_sqlserver,
+    sqlserver,
+)
 
 POSTGRES_IMAGE = "postgres:16"
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)

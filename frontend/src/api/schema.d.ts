@@ -1477,9 +1477,9 @@ export interface components {
             source_system_id: string;
             /**
              * Engine
-             * @constant
+             * @enum {string}
              */
-            engine: "postgresql";
+            engine: "postgresql" | "sqlserver";
             /** Host */
             host: string;
             /** Port */
@@ -1525,9 +1525,9 @@ export interface components {
             /**
              * Engine
              * @default postgresql
-             * @constant
+             * @enum {string}
              */
-            engine: "postgresql";
+            engine: "postgresql" | "sqlserver";
             /** Host */
             host: string;
             /**
