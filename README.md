@@ -199,6 +199,27 @@ paged with `limit` and an opaque `cursor` (the previous page's `next_cursor`).
   always keeps an owner: the last one cannot leave, be removed or be demoted (`409
   last_owner`), backed by a database trigger.
 
+### Files and documents
+
+Owners and editors upload documents (PDF, DOCX, XLSX, Markdown, text, and PNG, JPEG, GIF
+or WebP images) to a Source System's file area, shown as its Documents folder; any member
+lists and downloads them. A *document* is simply an uploaded file with extracted text
+(pypdf, python-docx, openpyxl, or the raw text); a PDF with no text layer, such as a scan,
+is marked "no text found". Uploads are limited to `DAWAM_UPLOAD_MAX_MB` (default 25; the
+`edge` proxy allows up to 100). The type is sniffed from the content and must match the
+extension (`415 unsupported_file_type` otherwise; SVG and HTML are never accepted), files
+are stored under random keys (the uploaded name is only a label), and downloads are always
+`Content-Disposition: attachment`. A file with the same name in an area is replaced.
+
+- Endpoints: `GET|POST /api/v1/workspaces/{workspace_id}/systems/{system_id}/files` (the
+  upload is `multipart/form-data` with a `file` part), `GET
+  /api/v1/workspaces/{workspace_id}/files/{file_id}/download`.
+- Storage: by default a directory, `DAWAM_STORAGE_PATH` (Compose mounts the `file-data`
+  volume there; back it up with the database). For an S3-compatible bucket set
+  `DAWAM_STORAGE_BACKEND=s3`, `DAWAM_S3_BUCKET` and optionally `DAWAM_S3_ENDPOINT_URL`,
+  `DAWAM_S3_REGION`, `DAWAM_S3_ACCESS_KEY_ID` and `DAWAM_S3_SECRET_ACCESS_KEY`, and install
+  DAWAM with the `s3` extra (`pip install "dawam[s3]"`).
+
 ## Develop
 
 Repository layout:
