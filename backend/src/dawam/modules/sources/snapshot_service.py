@@ -221,7 +221,7 @@ class SnapshotService:
             records = db.scalars(
                 sa.select(SnapshotRecord)
                 .where(SnapshotRecord.source_system_id == system_id)
-                .order_by(SnapshotRecord.taken_at.desc(), SnapshotRecord.id.desc())
+                .order_by(SnapshotRecord.taken_at.desc(), SnapshotRecord.is_latest.desc())
             )
             return [_summary(r) for r in records]
 
