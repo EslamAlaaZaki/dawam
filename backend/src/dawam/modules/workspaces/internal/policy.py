@@ -14,6 +14,10 @@ Endpoints, services and (later) assistant tools ask it; nothing else compares ro
   ``viewer < editor < owner``, so a rule names the lowest role that may act; it may
   also let admins act whether or not they are members (the matrix's "Admin
   (non-member)" column).
+- An archived Workspace is read-only (spec story 35): a rule says whether it applies
+  to ``active`` Workspaces (the default, so every content-changing action, including
+  those of later modules, is refused once archived), to ``archived`` ones, or to
+  ``any``. ``WorkspaceScope.archived`` carries the state, resolved on the server.
 
 The same rules are meant to drive a Change Set item's required role and the
 assistant's tool checks later; they must not grow a second copy of this table.
@@ -48,6 +52,16 @@ class Action(StrEnum):
     """Add / remove members, change roles."""
     TRANSFER_OWNERSHIP = "workspace.transfer_ownership"
     """Hand ownership to another member, stepping down to editor."""
+    ARCHIVE_WORKSPACE = "workspace.archive"
+    """Make an active Workspace read-only (owners, and admins whether members or not)."""
+    UNARCHIVE_WORKSPACE = "workspace.unarchive"
+    """Make an archived Workspace editable again (owners and admins)."""
+    DELETE_WORKSPACE = "workspace.delete"
+    """Delete a Workspace for good, after typing its name (owners; admins who are not
+    members only once it is archived)."""
+    REASSIGN_OWNERSHIP = "workspace.reassign_ownership"
+    """Give an orphaned Workspace a new owner (admins only). The policy only says who
+    may ask: the service refuses unless the server confirms no active owner is left."""
     LEAVE_WORKSPACE = "workspace.leave"
     """Leave the Workspace (any member; spec story 34). The last owner still cannot."""
     SET_UP_DATA_WAREHOUSE = "data_warehouse.set_up"
@@ -61,6 +75,8 @@ class Action(StrEnum):
     """Edit a Source System's name, description and owners (owners and editors)."""
     CHANGE_SYSTEM_CODE = "source_system.change_code"
     """Change a Source System's System Code after creation (owners only)."""
+    LIST_ALL_WORKSPACES = "installation.list_workspaces"
+    """See every Workspace's metadata, never its content (admins only; spec §4.3)."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -93,6 +109,8 @@ class WorkspaceScope:
     workspace_id: uuid.UUID
     user_id: uuid.UUID
     role: WorkspaceRole | None
+    archived: bool
+    """The Workspace is archived, hence read-only."""
 
 
 Resource = Installation | WorkspaceScope
@@ -110,6 +128,11 @@ class _WorkspaceRule:
     """The lowest Workspace role that may; ``None``: no Workspace role may."""
     admin: bool = False
     """Admins may too, member or not."""
+    state: Literal["active", "archived", "any"] = "active"
+    """The Workspace states it applies to. Anything that changes content keeps the
+    default: an archived Workspace is read-only."""
+    admin_needs_archived: bool = False
+    """Admins who are not members may act only on an archived Workspace."""
 
 
 _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
@@ -117,16 +140,23 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.MANAGE_EMAIL: _SystemRule(admin_only=True),
     Action.MANAGE_USERS: _SystemRule(admin_only=True),
     Action.VIEW_SECURITY_EVENTS: _SystemRule(admin_only=True),
-    Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer"),
+    Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
     Action.EDIT_WORKSPACE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),
     Action.TRANSFER_OWNERSHIP: _WorkspaceRule(min_role="owner"),
-    Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer"),
     Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
     Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_SYSTEM_CODE: _WorkspaceRule(min_role="owner"),
+    Action.ARCHIVE_WORKSPACE: _WorkspaceRule(min_role="owner", admin=True),
+    Action.UNARCHIVE_WORKSPACE: _WorkspaceRule(min_role="owner", admin=True, state="archived"),
+    Action.DELETE_WORKSPACE: _WorkspaceRule(
+        min_role="owner", admin=True, state="any", admin_needs_archived=True
+    ),
+    Action.REASSIGN_OWNERSHIP: _WorkspaceRule(min_role=None, admin=True, state="any"),
+    Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
+    Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 
@@ -156,7 +186,11 @@ def can(user: User, action: Action, resource: Resource) -> bool:
         raise TypeError(f"{action} applies to a Workspace, not {resource!r}")
     if resource.user_id != user.id:
         raise ValueError("the Workspace scope was resolved for a different user")
-    if rule.admin and is_admin:
+    if (rule.state == "active" and resource.archived) or (
+        rule.state == "archived" and not resource.archived
+    ):
+        return False
+    if rule.admin and is_admin and (resource.archived or not rule.admin_needs_archived):
         return True
     return (
         resource.role is not None

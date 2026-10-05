@@ -325,11 +325,13 @@ class InvitedWorkspaceMembership:
     ) -> bool:
         # Members change only with the Workspace row locked; the invitation's foreign
         # key (ON DELETE CASCADE) means the Workspace still exists.
-        db.execute(
-            sa.select(WorkspaceRecord.id)
+        status = db.scalar(
+            sa.select(WorkspaceRecord.status)
             .where(WorkspaceRecord.id == workspace_id)
             .with_for_update()
         )
+        if status == "archived":
+            return False  # read-only: nobody joins until it is unarchived
         # Only owners invite into a Workspace, so one removed or demoted since cannot.
         sender = db.get(MemberRecord, (workspace_id, invited_by))
         if sender is None or sender.role != "owner":

@@ -115,6 +115,12 @@ class Row:
     """Run before the request, for state an allowed role needs to succeed (e.g. a
     second owner, so the owner may leave)."""
 
+    path_params: Mapping[str, Callable[[RoleClients], object]] = field(
+        default_factory=dict, kw_only=True
+    )
+    """Providers for this row's path parameters that replace the shared ``PATH_PARAMS``
+    (e.g. a Workspace the row needs in a particular state)."""
+
     @property
     def key(self) -> tuple[str, str]:
         return (self.method, self.path)
@@ -194,19 +200,21 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "invitation_id": invitation_id,
     "member_id": colleague_id,
     "system_id": system_id,
+    "notification_id": lambda roles: uuid.uuid4(),
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 
 
 def request_path(row: Row, roles: RoleClients) -> str:
     names = [name for _, name, _, _ in string.Formatter().parse(row.path) if name]
-    unknown = [name for name in names if name not in PATH_PARAMS]
+    providers = {**PATH_PARAMS, **row.path_params}
+    unknown = [name for name in names if name not in providers]
     if unknown:
         raise AssertionError(
             f"{row}: no provider for path parameter(s) {unknown}; add them to "
             "PATH_PARAMS in tests/authz/matrix.py"
         )
-    return row.path.format(**{name: PATH_PARAMS[name](roles) for name in names})
+    return row.path.format(**{name: providers[name](roles) for name in names})
 
 
 def send(row: Row, role: Role, roles: RoleClients) -> Any:

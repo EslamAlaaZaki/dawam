@@ -18,6 +18,7 @@ import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
+import { LifecyclePanel } from "./LifecyclePanel";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
@@ -77,6 +78,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
       <h2>{workspace.data.name}</h2>
       <p>Your role: {ROLE_LABELS[workspace.data.role]}</p>
+      {workspace.data.status === "archived" && (
+        <p className="archived-banner" role="status">
+          This Workspace is archived and read-only. Exports and reading still work.
+        </p>
+      )}
       <div className="workspace-layout">
         <nav aria-label="Folders">
           <FolderTree root={root} selected={folder.id} onSelect={select} />
@@ -90,6 +96,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             <>
               <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
               <MembersPanel workspace={workspace.data} />
+              <LifecyclePanel workspace={workspace.data} />
             </>
           ) : folder.id === "dw" || folder.id === "dw/setup" ? (
             <DataWarehouseSetup workspace={workspace.data} />
@@ -131,7 +138,11 @@ function WorkspaceDetails({ workspace, reload }: { workspace: Workspace; reload:
           <dt>Business domain</dt>
           <dd>{workspace.domain || "—"}</dd>
         </dl>
-        <p>Only owners can edit these details.</p>
+        <p>
+          {workspace.status === "archived"
+            ? "This Workspace is archived, so its details cannot be edited."
+            : "Only owners can edit these details."}
+        </p>
       </section>
     );
   }

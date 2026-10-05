@@ -1,4 +1,10 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 
 import { ApiError } from "./client";
 import { useApiClient } from "./context";
@@ -101,6 +107,68 @@ export function useUpdateWorkspace(id: string) {
     },
     onSuccess: (workspace) => {
       queryClient.setQueryData(workspaceKey(id), workspace);
+      return queryClient.invalidateQueries({ queryKey: listKey });
+    },
+  });
+}
+
+/** Make the Workspace read-only (owners). */
+export function useArchiveWorkspace(id: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error, response } = await client.POST("/api/v1/workspaces/{workspace_id}/archive", {
+        params: { path: { workspace_id: id } },
+      });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () => refreshAfterLifecycle(queryClient, id),
+  });
+}
+
+/** Make an archived Workspace editable again (owners). */
+export function useUnarchiveWorkspace(id: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error, response } = await client.POST("/api/v1/workspaces/{workspace_id}/unarchive", {
+        params: { path: { workspace_id: id } },
+      });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () => refreshAfterLifecycle(queryClient, id),
+  });
+}
+
+function refreshAfterLifecycle(queryClient: QueryClient, id: string) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: workspaceKey(id) }),
+    queryClient.invalidateQueries({ queryKey: listKey }),
+  ]);
+}
+
+/** Delete the Workspace for good; `name` must be its name, typed to confirm. */
+export function useDeleteWorkspace(id: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const { error, response } = await client.DELETE("/api/v1/workspaces/{workspace_id}", {
+        params: { path: { workspace_id: id } },
+        body: { name },
+      });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: workspaceKey(id) });
       return queryClient.invalidateQueries({ queryKey: listKey });
     },
   });

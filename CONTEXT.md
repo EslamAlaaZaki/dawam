@@ -10,6 +10,14 @@ DAWAM (Data Analysis & Warehouse Architecture Modeler) helps teams analyse sourc
 The top-level container a team works in. Holds one or more Source Systems and one Data Warehouse, plus the members and everything produced along the way.
 _Avoid_: Project
 
+**Archived**:
+A Workspace state in which it is read-only: reads and exports still work, every change is refused until an owner or admin unarchives it. Distinct from deleted, which is permanent.
+_Avoid_: Closed, frozen
+
+**Notification**:
+A message addressed to one user (one row per recipient), shown as unread in the header until read, e.g. that a Workspace's ownership was reassigned. Distinct from the activity feed and the security-event log.
+_Avoid_: Alert, toast
+
 **Source System**:
 A logical system being analysed (e.g. "Core Banking", "CRM"). Backed by exactly one database for now.
 _Avoid_: Source, application

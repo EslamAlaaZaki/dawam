@@ -1234,6 +1234,149 @@
         }
       }
     },
+    "/api/v1/admin/workspaces": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List Admin Workspaces",
+        "description": "Every Workspace by name: owners, member count and dates, never its content\n(admins only).",
+        "operationId": "listAdminWorkspaces",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWorkspacePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/workspaces/{workspace_id}/reassign-owner": {
+      "post": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Reassign Owner",
+        "description": "Make an active user an owner of a Workspace whose owners are all deactivated\n(admins only). 409 `has_active_owner` otherwise; 422 `user_inactive`. Recorded as a\nsecurity event, and every member is notified.",
+        "operationId": "reassignOwner",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReassignOwnerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWorkspace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/settings": {
       "get": {
         "tags": [
@@ -1820,6 +1963,415 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "List Source Systems",
+        "description": "The Workspace's Source Systems (any member), ordered by System Code.",
+        "operationId": "listSourceSystems",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystemPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Create Source System",
+        "description": "Add a Source System (owners and editors). 422 `invalid_system_code` if the System\nCode is not identifier-safe; 409 `system_code_taken` if the Workspace has it already.",
+        "operationId": "createSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSourceSystemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Get Source System",
+        "description": "Open a Source System (any member).",
+        "operationId": "getSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Update Source System",
+        "description": "Edit a Source System (owners and editors); fields left out stay as they are.\nChanging the System Code is for owners only (403 for editors). Until staging\nexists, a code change applies directly.",
+        "operationId": "updateSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSourceSystemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List Notifications",
+        "description": "Your unread notifications, newest first.",
+        "operationId": "listNotifications",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadNotifications"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Read All Notifications",
+        "description": "Mark all your notifications read.",
+        "operationId": "readAllNotifications",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Read Notification",
+        "description": "Mark one of your notifications read. Always 204: an id that is not yours changes\nnothing.",
+        "operationId": "readNotification",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Notification Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces": {
       "get": {
         "tags": [
@@ -2039,6 +2591,155 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Delete Workspace",
+        "description": "Delete the Workspace for good (owners; admins who are not members only once it is\narchived: 409 `workspace_not_archived`). The body's `name` must be its name, else 422\n`name_mismatch`. Recorded as a security event.",
+        "operationId": "deleteWorkspace",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteWorkspaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/archive": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Archive Workspace",
+        "description": "Make the Workspace read-only (owners, and admins even if not members). Reads and\nexports keep working. 409 `workspace_archived` if it already is.",
+        "operationId": "archiveWorkspace",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/unarchive": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Unarchive Workspace",
+        "description": "Make an archived Workspace editable again (owners and admins). 409\n`workspace_not_archived` if it is not archived.",
+        "operationId": "unarchiveWorkspace",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation error",
@@ -2574,291 +3275,6 @@
           }
         }
       }
-    },
-    "/api/v1/workspaces/{workspace_id}/systems": {
-      "get": {
-        "tags": [
-          "sources"
-        ],
-        "summary": "List Source Systems",
-        "description": "The Workspace's Source Systems (any member), ordered by System Code.",
-        "operationId": "listSourceSystems",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "description": "How many items to return at most.",
-              "default": 50,
-              "title": "Limit"
-            },
-            "description": "How many items to return at most."
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 1024
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "`next_cursor` of the previous page; omit for the first.",
-              "title": "Cursor"
-            },
-            "description": "`next_cursor` of the previous page; omit for the first."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceSystemPage"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "sources"
-        ],
-        "summary": "Create Source System",
-        "description": "Add a Source System (owners and editors). 422 `invalid_system_code` if the System\nCode is not identifier-safe; 409 `system_code_taken` if the Workspace has it already.",
-        "operationId": "createSourceSystem",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSourceSystemRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceSystem"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/workspaces/{workspace_id}/systems/{system_id}": {
-      "get": {
-        "tags": [
-          "sources"
-        ],
-        "summary": "Get Source System",
-        "description": "Open a Source System (any member).",
-        "operationId": "getSourceSystem",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          },
-          {
-            "name": "system_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "System Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceSystem"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "sources"
-        ],
-        "summary": "Update Source System",
-        "description": "Edit a Source System (owners and editors); fields left out stay as they are.\nChanging the System Code is for owners only (403 for editors). Until staging\nexists, a code change applies directly.",
-        "operationId": "updateSourceSystem",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          },
-          {
-            "name": "system_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "System Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSourceSystemRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceSystem"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -2897,12 +3313,17 @@
           "workspace.edit",
           "workspace.manage_members",
           "workspace.transfer_ownership",
+          "workspace.archive",
+          "workspace.unarchive",
+          "workspace.delete",
+          "workspace.reassign_ownership",
           "workspace.leave",
           "data_warehouse.set_up",
           "data_warehouse.change_platform",
           "source_system.create",
           "source_system.edit",
           "source_system.change_code",
+          "installation.list_workspaces",
           "installation.manage_settings",
           "installation.manage_users",
           "installation.view_security_events",
@@ -3181,6 +3602,108 @@
           "next_cursor"
         ],
         "title": "AdminUserPage"
+      },
+      "AdminWorkspace": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "description": "`active` or `archived`."
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceOwner"
+            },
+            "type": "array",
+            "title": "Owners"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count"
+          },
+          "has_active_owner": {
+            "type": "boolean",
+            "title": "Has Active Owner",
+            "description": "False when every owner is deactivated: ownership can be reassigned."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "owners",
+          "member_count",
+          "has_active_owner",
+          "created_at",
+          "updated_at",
+          "archived_at"
+        ],
+        "title": "AdminWorkspace"
+      },
+      "AdminWorkspacePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminWorkspace"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AdminWorkspacePage"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -3504,6 +4027,20 @@
         },
         "type": "object",
         "title": "DateDimension"
+      },
+      "DeleteWorkspaceRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The Workspace's name, typed exactly, to confirm."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DeleteWorkspaceRequest"
       },
       "ErrorBody": {
         "properties": {
@@ -3919,6 +4456,82 @@
         "type": "object",
         "title": "NamingRules"
       },
+      "Notification": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mention",
+              "impact_alert",
+              "sync_alert",
+              "ownership",
+              "job",
+              "needs_owner"
+            ],
+            "title": "Kind"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "ref_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Type"
+          },
+          "ref_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "message",
+          "workspace_id",
+          "ref_type",
+          "ref_id",
+          "created_at"
+        ],
+        "title": "Notification"
+      },
       "PendingInvitation": {
         "properties": {
           "id": {
@@ -4080,6 +4693,21 @@
           "items"
         ],
         "title": "PlatformList"
+      },
+      "ReassignOwnerRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id",
+            "description": "The active user who becomes an owner."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "ReassignOwnerRequest"
       },
       "RegisterRequest": {
         "properties": {
@@ -4775,6 +5403,29 @@
         ],
         "title": "UndeliveredLinksOut"
       },
+      "UnreadNotifications": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The newest unread ones, newest first."
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count",
+            "description": "All your unread notifications."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "unread_count"
+        ],
+        "title": "UnreadNotifications"
+      },
       "UpdateMeRequest": {
         "properties": {
           "display_name": {
@@ -5070,6 +5721,27 @@
             "title": "Permissions",
             "description": "The Workspace actions you may perform. The UI uses it to show or hide controls; the server checks every request regardless."
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "description": "`archived`: read-only until an owner or admin unarchives it."
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -5094,11 +5766,43 @@
           "domain",
           "role",
           "permissions",
+          "status",
+          "archived_at",
           "version",
           "created_at",
           "updated_at"
         ],
         "title": "Workspace"
+      },
+      "WorkspaceOwner": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "False for a deactivated owner."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "is_active"
+        ],
+        "title": "WorkspaceOwner"
       },
       "WorkspacePage": {
         "properties": {
