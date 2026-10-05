@@ -670,64 +670,6 @@ export interface paths {
         patch: operations["updateSourceSystem"];
         trace?: never;
     };
-    "/api/v1/workspaces/{workspace_id}/kpis": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Kpis
-         * @description The Workspace's KPIs (any member), ordered by name. Without a filter, all of them.
-         *     404 for a Source System that is not in the Workspace; 422 `invalid_filter` if both
-         *     filters are given.
-         */
-        get: operations["listKpis"];
-        put?: never;
-        /**
-         * Create Kpi
-         * @description Document a KPI as a draft (owners and editors), under a Source System or, with
-         *     `source_system_id` null, under the Data Warehouse (which need not be set up). 404 for
-         *     a Source System that is not in the Workspace; 422 `invalid_kpi`.
-         */
-        post: operations["createKpi"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Kpi
-         * @description Open a KPI (any member).
-         */
-        get: operations["getKpi"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Kpi
-         * @description Delete a KPI (owners and editors).
-         */
-        delete: operations["deleteKpi"];
-        options?: never;
-        head?: never;
-        /**
-         * Update Kpi
-         * @description Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and
-         *     editors); fields left out stay as they are. 409 `version_conflict` if `version` is
-         *     stale; 422 `invalid_kpi`.
-         */
-        patch: operations["updateKpi"];
-        trace?: never;
-    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1024,6 +966,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Kpis
+         * @description The Workspace's KPIs (any member), ordered by name. Without a filter, all of them.
+         *     404 for a Source System that is not in the Workspace; 422 `invalid_filter` if both
+         *     filters are given.
+         */
+        get: operations["listKpis"];
+        put?: never;
+        /**
+         * Create Kpi
+         * @description Document a KPI as a draft (owners and editors), under a Source System or, with
+         *     `source_system_id` null, under the Data Warehouse (which need not be set up). 404 for
+         *     a Source System that is not in the Workspace; 422 `invalid_kpi`.
+         */
+        post: operations["createKpi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kpi
+         * @description Open a KPI (any member).
+         */
+        get: operations["getKpi"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Kpi
+         * @description Delete a KPI (owners and editors).
+         */
+        delete: operations["deleteKpi"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Kpi
+         * @description Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and
+         *     editors); fields left out stay as they are. 409 `version_conflict` if `version` is
+         *     stale; 422 `invalid_kpi`.
+         */
+        patch: operations["updateKpi"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1042,7 +1042,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "kpi.edit" | "installation.list_workspaces" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "installation.list_workspaces" | "kpi.edit" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2087,14 +2087,6 @@ export interface components {
              */
             status: "not_started" | "in_progress" | "complete";
         };
-        /** TestEmailIn */
-        TestEmailIn: {
-            /**
-             * To
-             * @description Defaults to the signed-in admin.
-             */
-            to?: string | null;
-        };
         /** Target */
         Target: {
             /**
@@ -2107,6 +2099,14 @@ export interface components {
              * @description The target value, e.g. `95%`.
              */
             value: string;
+        };
+        /** TestEmailIn */
+        TestEmailIn: {
+            /**
+             * To
+             * @description Defaults to the signed-in admin.
+             */
+            to?: string | null;
         };
         /** TestEmailOut */
         TestEmailOut: {
@@ -4846,6 +4846,45 @@ export interface operations {
             };
         };
     };
+    deleteKpi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     updateKpi: {
         parameters: {
             query?: never;
@@ -4870,45 +4909,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Kpi"];
                 };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    deleteKpi: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-                kpi_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation error */
             422: {
