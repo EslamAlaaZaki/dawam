@@ -186,6 +186,35 @@ describe("a Source System's Connection", () => {
     });
   });
 
+  it("connects a MySQL / MariaDB database with its own default port", async () => {
+    const requests = renderApp(
+      backend("owner", (r) =>
+        r.method === "POST" && r.path === `${CONNECTION_PATH}/test`
+          ? json({ ...WORKS, server_version: "8.4.0" })
+          : NO_CONNECTION(r),
+      ),
+      FOLDER,
+    );
+
+    const form = await screen.findByRole("form", { name: "Connection" });
+    fireEvent.change(within(form).getByLabelText("Engine"), { target: { value: "mysql" } });
+    expect(within(form).getByLabelText("Port")).toHaveValue(3306);
+    fireEvent.change(within(form).getByLabelText("Host"), { target: { value: "db.internal" } });
+    fireEvent.change(within(form).getByLabelText("Database"), { target: { value: "core" } });
+    fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
+    fireEvent.change(within(form).getByLabelText("Allowed Database Schemas"), {
+      target: { value: "core, crm" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
+
+    expect(await within(form).findByText(/Connection works \(MySQL \/ MariaDB 8.4.0\)/)).toBeVisible();
+    expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
+      engine: "mysql",
+      port: 3306,
+      allowed_schemas: ["core", "crm"],
+    });
+  });
+
   it("explains a failed test and warns when the user can write", async () => {
     let result: ConnectionTestResult = {
       ...WORKS,

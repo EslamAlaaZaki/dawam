@@ -318,7 +318,8 @@ CI fails if they are out of date (`scripts/check-api-client.sh`); the backend te
 Backend tests (`backend/tests/`) drive the HTTP API through a test client against a
 real PostgreSQL 16 that Testcontainers starts once per test run, so **Docker must be
 running**. The SQL Server connector tests also start a SQL Server 2022 container
-(`mcr.microsoft.com/mssql/server`, about 1.5 GB to pull, x86-64 only) on first use. The harness in `backend/tests/conftest.py` provides:
+(`mcr.microsoft.com/mssql/server`, about 1.5 GB to pull, x86-64 only) on first use, and the MySQL / MariaDB
+connector tests start MySQL 8.4 and MariaDB 11.4 containers. The harness in `backend/tests/conftest.py` provides:
 
 - `anonymous_client`: a test client with no session (entering it runs app startup,
   including migrations);

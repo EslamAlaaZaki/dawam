@@ -5670,7 +5670,8 @@
             "type": "string",
             "enum": [
               "postgresql",
-              "sqlserver"
+              "sqlserver",
+              "mysql"
             ],
             "title": "Engine"
           },
@@ -5768,7 +5769,8 @@
             "type": "string",
             "enum": [
               "postgresql",
-              "sqlserver"
+              "sqlserver",
+              "mysql"
             ],
             "title": "Engine",
             "default": "postgresql"
@@ -5783,6 +5785,7 @@
             "maximum": 65535.0,
             "minimum": 1.0,
             "title": "Port",
+            "description": "Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306.",
             "default": 5432
           },
           "database": {

@@ -1663,7 +1663,7 @@ export interface components {
              * Engine
              * @enum {string}
              */
-            engine: "postgresql" | "sqlserver";
+            engine: "postgresql" | "sqlserver" | "mysql";
             /** Host */
             host: string;
             /** Port */
@@ -1711,11 +1711,12 @@ export interface components {
              * @default postgresql
              * @enum {string}
              */
-            engine: "postgresql" | "sqlserver";
+            engine: "postgresql" | "sqlserver" | "mysql";
             /** Host */
             host: string;
             /**
              * Port
+             * @description Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306.
              * @default 5432
              */
             port: number;

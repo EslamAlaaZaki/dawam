@@ -68,6 +68,8 @@ type Engine = Connection["engine"];
 const ENGINES: Record<Engine, { label: string; port: number; schema: string }> = {
   postgresql: { label: "PostgreSQL", port: 5432, schema: "public" },
   sqlserver: { label: "SQL Server", port: 1433, schema: "dbo" },
+  // A MySQL schema is a database: the owner names it.
+  mysql: { label: "MySQL / MariaDB", port: 3306, schema: "" },
 };
 
 function ConnectionForm({
