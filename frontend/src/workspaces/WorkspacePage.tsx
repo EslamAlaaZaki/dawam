@@ -23,6 +23,7 @@ import { JobsPanel } from "./JobsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
+import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { MembersPanel } from "./MembersPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
@@ -74,6 +75,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const kpiSystem = systemList.find((system) => folder.id === `systems/${system.id}/kpis`);
   const connectionSystem = systemList.find(
     (system) => folder.id === `systems/${system.id}/connection`,
+  );
+
+  // `systems/<id>/source-schema`: a Source System's extracted Snapshots.
+  const schemaSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/source-schema`,
   );
 
   // `systems/<id>/documents`: a Source System's uploaded documents.
@@ -138,6 +144,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             />
           ) : connectionSystem ? (
             <ConnectionPanel workspace={workspace.data} system={connectionSystem} />
+          ) : schemaSystem ? (
+            <SourceSchemaPanel workspace={workspace.data} system={schemaSystem} />
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>
