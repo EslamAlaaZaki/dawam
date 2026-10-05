@@ -19,6 +19,12 @@ const ADA: Me = {
 };
 const GRACE_ID = "22222222-2222-4222-8222-222222222222";
 
+const PERMISSIONS: Record<Workspace["role"], Workspace["permissions"]> = {
+  owner: ["job.cancel_any", "job.cancel_own", "workspace.view"],
+  editor: ["job.cancel_own", "workspace.view"],
+  viewer: ["job.cancel_own", "workspace.view"],
+};
+
 function workspace(role: Workspace["role"]): Workspace {
   return {
     id: WORKSPACE_ID,
@@ -26,7 +32,7 @@ function workspace(role: Workspace["role"]): Workspace {
     description: "",
     domain: "",
     role,
-    permissions: ["workspace.view"],
+    permissions: PERMISSIONS[role],
     status: "active",
     archived_at: null,
     version: 1,
@@ -39,7 +45,7 @@ function job(overrides: Partial<Job>): Job {
   return {
     id: "33333333-3333-4333-8333-333333333333",
     workspace_id: WORKSPACE_ID,
-    kind: "profile",
+    type: "profile",
     title: "Profile ERP",
     status: "running",
     progress: 40,

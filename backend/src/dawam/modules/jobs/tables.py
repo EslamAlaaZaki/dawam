@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from dawam.platform.db import Base
 
-KIND_MAX_LENGTH = 64
+TYPE_MAX_LENGTH = 64
 TITLE_MAX_LENGTH = 200
 ERROR_MAX_LENGTH = 1000
 LOG_MAX_LENGTH = 200_000
@@ -34,9 +34,11 @@ class JobRecord(Base):
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("workspaces.id", ondelete="CASCADE")
     )
-    kind: Mapped[str] = mapped_column(sa.String(KIND_MAX_LENGTH))
+    type: Mapped[str] = mapped_column(sa.String(TYPE_MAX_LENGTH))
+    """What the job does (spec §7: ``extract``, ``profile``, ``export``, ...)."""
     title: Mapped[str] = mapped_column(sa.String(TITLE_MAX_LENGTH))
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    """The JSON its handler gets back."""
     status: Mapped[str] = mapped_column(sa.String(16))
     progress: Mapped[int] = mapped_column()
     log: Mapped[str] = mapped_column(sa.Text)

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, FastAPI
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
+from dawam import job_handlers
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
@@ -62,6 +63,8 @@ def default_services() -> Services:
 def create_app(settings: Settings | None = None, *, services: Services | None = None) -> FastAPI:
     settings = settings or load_settings()
     services = services or default_services()
+    # The worker registers the same handlers: a job is submitted here and run there.
+    job_handlers.register_job_handlers(services.jobs)
     install_request_id_on_records()
     engine = create_engine(settings.database_url)
 

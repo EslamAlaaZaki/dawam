@@ -1613,8 +1613,11 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
-            /** Kind */
-            kind: string;
+            /**
+             * Type
+             * @description What the job does, e.g. `profile` or `export`.
+             */
+            type: string;
             /** Title */
             title: string;
             /**

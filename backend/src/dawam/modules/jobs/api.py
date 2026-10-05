@@ -37,7 +37,7 @@ class Job(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
-    kind: str
+    type: str = Field(description="What the job does, e.g. `profile` or `export`.")
     title: str
     status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     progress: int = Field(description="Percent done, 0 to 100.")

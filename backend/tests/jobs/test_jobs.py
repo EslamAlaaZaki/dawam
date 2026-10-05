@@ -3,28 +3,33 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from datetime import timedelta
 
 import pytest
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
+from dawam import job_handlers
+from dawam.app import Services, create_app
 from dawam.modules.jobs import (
     InlineJobRunner,
     JobService,
     QueuedJobRunner,
-    UnknownJobKindError,
+    UnknownJobTypeError,
 )
 from dawam.worker import run_pending_jobs
 from tests.roles import RoleClients
 
 
-def handle_ok(payload, ctx):
-    ctx.log(f"hello {payload['name']}")
+def handle_ok(params, ctx):
+    ctx.log(f"hello {params['name']}")
     ctx.progress(50)
     ctx.log("halfway")
 
 
-def handle_boom(payload, ctx):
+def handle_boom(params, ctx):
     ctx.log("about to fail")
     raise RuntimeError("the source refused the connection")
 
@@ -45,13 +50,13 @@ def inline(app, clock) -> JobService:
     return JobService(app.state.engine, runner=runner, clock=clock)
 
 
-def submit(service: JobService, roles: RoleClients, kind="ok", *, as_role="owner"):
+def submit(service: JobService, roles: RoleClients, job_type="ok", *, as_role="owner"):
     roles.client(as_role)
     return service.submit(
         roles.workspace_id,
-        kind,
+        job_type,
         {"name": "world"},
-        title=f"{kind} job",
+        title=f"{job_type} job",
         created_by=roles.user(as_role).id,
     )
 
@@ -74,12 +79,12 @@ def test_a_submitted_job_waits_in_the_queue(queued, roles):
     assert (job.status, job.progress, job.log) == ("queued", 0, "")
     body = get(roles, job.id).json()
     assert body["status"] == "queued"
-    assert body["kind"] == "ok"
+    assert body["type"] == "ok"
 
 
-def test_an_unknown_kind_is_refused(queued, roles):
-    with pytest.raises(UnknownJobKindError):
-        submit(queued, roles, kind="nope")
+def test_an_unknown_type_is_refused(queued, roles):
+    with pytest.raises(UnknownJobTypeError):
+        submit(queued, roles, job_type="nope")
 
 
 def test_inline_jobs_run_before_submit_returns(inline, roles):
@@ -100,7 +105,7 @@ def test_a_succeeded_job_notifies_its_creator(inline, roles):
 
 
 def test_a_failed_job_keeps_its_log_and_says_why(inline, roles):
-    job = submit(inline, roles, kind="boom")
+    job = submit(inline, roles, job_type="boom")
 
     assert job.status == "failed"
     assert job.error == "the source refused the connection"
@@ -113,7 +118,7 @@ def test_a_failed_job_keeps_its_log_and_says_why(inline, roles):
 def test_the_worker_claims_and_runs_queued_jobs_oldest_first(queued, roles, clock, settings):
     first = submit(queued, roles)
     clock.advance(timedelta(seconds=1))
-    second = submit(queued, roles, kind="boom")
+    second = submit(queued, roles, job_type="boom")
 
     ran = run_pending_jobs(queued, settings, stop=threading.Event())
 
@@ -155,6 +160,64 @@ def test_a_heartbeat_keeps_a_running_job_alive(queued, roles, clock):
     clock.advance(timedelta(seconds=50))
 
     assert queued.fail_lost() == 0
+
+
+def test_a_job_submitted_in_a_callers_transaction_is_queued_only_if_it_commits(queued, app, roles):
+    with Session(app.state.engine) as db, db.begin():
+        kept = submit_in(queued, db, roles)
+    with pytest.raises(RuntimeError), Session(app.state.engine) as db, db.begin():
+        dropped = submit_in(queued, db, roles)
+        raise RuntimeError("the caller's change failed")
+
+    assert get(roles, kept.id).json()["status"] == "queued"
+    assert get(roles, dropped.id).status_code == 404
+
+
+def test_an_inline_job_in_a_callers_transaction_runs_once_it_commits(inline, app, roles):
+    with Session(app.state.engine) as db, db.begin():
+        job = submit_in(inline, db, roles)
+        assert job.status == "queued"
+
+    assert get(roles, job.id).json()["status"] == "succeeded"
+
+
+def submit_in(service: JobService, db: Session, roles: RoleClients):
+    return service.submit(
+        roles.workspace_id, "ok", {"name": "db"}, title="ok job", created_by=None, db=db
+    )
+
+
+def test_a_worker_whose_heartbeat_fails_still_waits_for_its_job(app, roles, clock, settings):
+    finished = threading.Event()
+
+    def slow(params, ctx):
+        time.sleep(0.3)
+        finished.set()
+
+    class HeartbeatFails(JobService):
+        def heartbeat(self, job_id):
+            raise OperationalError("UPDATE jobs", {}, Exception("connection lost"))
+
+    runner = QueuedJobRunner()
+    runner.register("slow", slow)
+    service = HeartbeatFails(app.state.engine, runner=runner, clock=clock)
+    job = submit(service, roles, job_type="slow")
+    fast = settings.model_copy(update={"worker_heartbeat_seconds": 0.05})
+
+    assert run_pending_jobs(service, fast, stop=threading.Event()) == 1
+    assert finished.is_set()
+    assert get(roles, job.id).json()["status"] == "succeeded"
+
+
+def test_the_app_and_the_worker_share_one_registry_of_handlers(
+    monkeypatch, settings, outbox, clock
+):
+    monkeypatch.setattr(job_handlers, "JOB_HANDLERS", {"ping": lambda params, ctx: None})
+    runner = QueuedJobRunner()
+
+    create_app(settings, services=Services(email=outbox, jobs=runner, clock=clock))
+
+    assert runner.handler("ping") is job_handlers.JOB_HANDLERS["ping"]
 
 
 # Reading
@@ -219,7 +282,7 @@ def test_a_finished_job_cannot_be_cancelled(inline, roles):
 def test_cancelling_a_running_job_stops_it_and_keeps_it_cancelled(app, roles, clock):
     started, release = threading.Event(), threading.Event()
 
-    def handler(payload, ctx):
+    def handler(params, ctx):
         ctx.log("started")
         started.set()
         release.wait(10)
@@ -229,7 +292,7 @@ def test_cancelling_a_running_job_stops_it_and_keeps_it_cancelled(app, roles, cl
     runner = QueuedJobRunner()
     runner.register("wait", handler)
     service = JobService(app.state.engine, runner=runner, clock=clock)
-    job = submit(service, roles, kind="wait")
+    job = submit(service, roles, job_type="wait")
     claimed = service.claim_next()
     worker = threading.Thread(target=service.execute, args=(claimed,))
     worker.start()
@@ -252,7 +315,7 @@ def test_archiving_a_workspace_cancels_its_queued_and_running_jobs(queued, inlin
     finished = submit(inline, roles)
     running = submit(queued, roles)
     assert queued.claim_next().id == running.id
-    waiting = submit(queued, roles, kind="boom")
+    waiting = submit(queued, roles, job_type="boom")
 
     response = roles.client("owner").post(f"/api/v1/workspaces/{roles.workspace_id}/archive")
 

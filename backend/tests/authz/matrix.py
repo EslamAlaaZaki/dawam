@@ -225,7 +225,7 @@ def job_id(roles: RoleClients) -> uuid.UUID:
     one per request, so cancelling it in one request does not affect the next)."""
     state = roles.app.state
     runner = QueuedJobRunner()
-    runner.register("noop", lambda payload, ctx: None)
+    runner.register("noop", lambda params, ctx: None)
     jobs = JobService(state.engine, runner=runner, clock=state.services.clock)
     return jobs.submit(
         roles.workspace_id,

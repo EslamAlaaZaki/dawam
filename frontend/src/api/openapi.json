@@ -5111,9 +5111,10 @@
             "format": "uuid",
             "title": "Workspace Id"
           },
-          "kind": {
+          "type": {
             "type": "string",
-            "title": "Kind"
+            "title": "Type",
+            "description": "What the job does, e.g. `profile` or `export`."
           },
           "title": {
             "type": "string",
@@ -5198,7 +5199,7 @@
         "required": [
           "id",
           "workspace_id",
-          "kind",
+          "type",
           "title",
           "status",
           "progress",

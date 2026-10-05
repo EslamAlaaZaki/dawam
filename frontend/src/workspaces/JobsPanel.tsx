@@ -2,7 +2,7 @@
 
 import { isActive, useCancelJob, useJobs, type Job, type JobStatus } from "../api/jobs";
 import { useMe } from "../api/queries";
-import type { Workspace } from "../api/workspaces";
+import { allows, type Workspace } from "../api/workspaces";
 
 const STATUS_LABELS: Record<JobStatus, string> = {
   queued: "Queued",
@@ -24,7 +24,8 @@ export function JobsPanel({ workspace }: { workspace: Workspace }) {
   function canCancel(job: Job): boolean {
     return (
       isActive(job) &&
-      (workspace.role === "owner" || (me.data != null && job.created_by === me.data.id))
+      (allows(workspace, "job.cancel_any") ||
+        (allows(workspace, "job.cancel_own") && me.data != null && job.created_by === me.data.id))
     );
   }
 

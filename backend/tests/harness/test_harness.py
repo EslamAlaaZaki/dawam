@@ -23,8 +23,8 @@ def test_background_jobs_run_inline_before_submit_returns(
     services: Services = app.state.services
     assert services.jobs is jobs
 
-    def send_reminder(payload, ctx):
-        services.email.send(EmailMessage(to=payload["to"], subject="Reminder", body=""))
+    def send_reminder(params, ctx):
+        services.email.send(EmailMessage(to=params["to"], subject="Reminder", body=""))
 
     jobs.register("send_reminder", send_reminder)
     job = JobService(app.state.engine, runner=jobs, clock=services.clock).submit(

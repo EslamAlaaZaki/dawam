@@ -5,7 +5,7 @@ database, then loops until stopped: each pass fails the running jobs whose worke
 then claims queued jobs one at a time (``SELECT ... FOR UPDATE SKIP LOCKED``) and runs
 them, telling the queue it is alive while a job runs. In tests, background work never
 goes through this process: it runs inline (see ``dawam.modules.jobs.InlineJobRunner``).
-Modules register their job handlers on ``register_job_handlers`` (shared with the app).
+Job handlers come from ``dawam.job_handlers``, the registry it shares with the app.
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ from datetime import timedelta
 import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
 
-from dawam.modules.jobs import Job, JobRunner, JobService, QueuedJobRunner
+from dawam import job_handlers
+from dawam.modules.jobs import Job, JobService, QueuedJobRunner
 from dawam.platform.clock import system_clock
 from dawam.platform.config import Settings
 from dawam.platform.db import create_engine
@@ -33,11 +34,6 @@ def _database_ready(engine: sa.Engine) -> bool:
         return False
 
 
-def register_job_handlers(runner: JobRunner) -> None:
-    """Register every module's job handlers; each ticket that adds a job kind adds a
-    line here."""
-
-
 def _run_job(jobs: JobService, job: Job, settings: Settings) -> None:
     """Run ``job`` in a thread, reporting that this worker is alive while it runs."""
     thread = threading.Thread(target=jobs.execute, args=(job,), name=f"job-{job.id}")
@@ -45,7 +41,12 @@ def _run_job(jobs: JobService, job: Job, settings: Settings) -> None:
     while thread.is_alive():
         thread.join(settings.worker_heartbeat_seconds)
         if thread.is_alive():
-            jobs.heartbeat(job.id)
+            # A failed heartbeat must not leave the job running unattended while this
+            # worker claims more: keep waiting for it, and report again next time.
+            try:
+                jobs.heartbeat(job.id)
+            except SQLAlchemyError:
+                logger.exception("job heartbeat failed", extra={"job_id": str(job.id)})
 
 
 def run_pending_jobs(jobs: JobService, settings: Settings, *, stop: threading.Event) -> int:
@@ -72,7 +73,7 @@ def run_worker(settings: Settings, *, stop: threading.Event) -> None:
         if stop.is_set():
             return
         runner = QueuedJobRunner()
-        register_job_handlers(runner)
+        job_handlers.register_job_handlers(runner)
         jobs = JobService(
             engine,
             runner=runner,

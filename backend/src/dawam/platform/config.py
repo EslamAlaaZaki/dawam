@@ -17,6 +17,7 @@ from pydantic import (
     SecretStr,
     ValidationError,
     field_validator,
+    model_validator,
 )
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -81,7 +82,7 @@ class Settings(DatabaseSettings):
     run_migrations_on_startup: bool = True
 
     worker_poll_seconds: float = 5.0
-    worker_heartbeat_seconds: float = 10.0
+    worker_heartbeat_seconds: float = Field(default=10.0, gt=0)
     """How often a worker tells the queue it is still running its job."""
     job_stale_seconds: float = Field(default=60.0, gt=0)
     """A running job whose worker has been silent this long is failed."""
@@ -177,6 +178,16 @@ class Settings(DatabaseSettings):
     every link DAWAM emails. Configured, never taken from a request's ``Host``, so a
     forged request cannot point a reset link elsewhere."""
 
+    @model_validator(mode="after")
+    def _worker_reports_before_a_job_counts_as_lost(self) -> Settings:
+        if self.worker_heartbeat_seconds >= self.job_stale_seconds:
+            raise PydanticCustomError(
+                "heartbeat_not_below_stale",
+                "DAWAM_WORKER_HEARTBEAT_SECONDS must be less than DAWAM_JOB_STALE_SECONDS, "
+                "or every running job would be failed as lost",
+            )
+        return self
+
     @field_validator("public_url")
     @classmethod
     def _public_url_is_an_http_url(cls, value: str) -> str:
@@ -213,7 +224,10 @@ def _load[T: DatabaseSettings](settings_class: type[T]) -> T:
 def _describe(exc: ValidationError) -> str:
     lines = ["DAWAM is not configured: fix these environment variables (or your .env file):"]
     for error in exc.errors(include_input=False):
-        field = str(error["loc"][0]) if error["loc"] else ""
+        if not error["loc"]:  # a rule across several settings names them itself
+            lines.append(f"  - {error['msg']}.")
+            continue
+        field = str(error["loc"][0])
         name = f"DAWAM_{field.upper()}"
         problem = "is not set" if error["type"] == "missing" else f"is invalid: {error['msg']}"
         hint = _HINTS.get(field)

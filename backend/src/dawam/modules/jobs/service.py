@@ -4,7 +4,7 @@
 ``claim_next`` and runs them with ``execute``. In tests the runner is inline, so
 ``submit`` runs the job before it returns.
 
-A handler is ``handler(payload, ctx)``: it reports ``ctx.progress(percent)`` and
+A handler is ``handler(params, ctx)``: it reports ``ctx.progress(percent)`` and
 ``ctx.log(line)`` and should call ``ctx.raise_if_cancelled()`` between steps. Returning
 means the job succeeded; raising fails it with the exception's text as the reason.
 """
@@ -30,9 +30,9 @@ from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_c
 
 from .tables import (
     ERROR_MAX_LENGTH,
-    KIND_MAX_LENGTH,
     LOG_MAX_LENGTH,
     TITLE_MAX_LENGTH,
+    TYPE_MAX_LENGTH,
     JobRecord,
 )
 
@@ -45,7 +45,7 @@ WORKER_LOST = "The worker running this job stopped before it finished."
 ACTIVE = ("queued", "running")
 
 
-class UnknownJobKindError(LookupError):
+class UnknownJobTypeError(LookupError):
     pass
 
 
@@ -74,16 +74,16 @@ JobHandler = Callable[[Mapping[str, Any], JobContext], None]
 
 
 class JobRunner(Protocol):
-    """The handlers by job kind, and whether ``submit`` runs a job right away."""
+    """The handlers by job type, and whether ``submit`` runs a job right away."""
 
     inline: bool
 
-    def register(self, kind: str, handler: JobHandler) -> None:
-        """Make ``handler`` run jobs of ``kind``. Called once per kind at startup."""
+    def register(self, job_type: str, handler: JobHandler) -> None:
+        """Make ``handler`` run jobs of ``job_type``. Called once per type at startup."""
         ...
 
-    def handler(self, kind: str) -> JobHandler:
-        """The handler of ``kind``; ``UnknownJobKindError`` if none is registered."""
+    def handler(self, job_type: str) -> JobHandler:
+        """The handler of ``job_type``; ``UnknownJobTypeError`` if none is registered."""
         ...
 
 
@@ -93,18 +93,18 @@ class _Handlers:
     def __init__(self) -> None:
         self._handlers: dict[str, JobHandler] = {}
 
-    def register(self, kind: str, handler: JobHandler) -> None:
-        if kind in self._handlers:
-            raise ValueError(f"a handler for job kind {kind!r} is already registered")
-        if len(kind) > KIND_MAX_LENGTH:
-            raise ValueError(f"job kind {kind!r} is longer than {KIND_MAX_LENGTH} characters")
-        self._handlers[kind] = handler
+    def register(self, job_type: str, handler: JobHandler) -> None:
+        if job_type in self._handlers:
+            raise ValueError(f"a handler for job type {job_type!r} is already registered")
+        if len(job_type) > TYPE_MAX_LENGTH:
+            raise ValueError(f"job type {job_type!r} is longer than {TYPE_MAX_LENGTH} characters")
+        self._handlers[job_type] = handler
 
-    def handler(self, kind: str) -> JobHandler:
+    def handler(self, job_type: str) -> JobHandler:
         try:
-            return self._handlers[kind]
+            return self._handlers[job_type]
         except KeyError:
-            raise UnknownJobKindError(kind) from None
+            raise UnknownJobTypeError(job_type) from None
 
 
 class InlineJobRunner(_Handlers):
@@ -123,7 +123,8 @@ class QueuedJobRunner(_Handlers):
 class Job:
     id: uuid.UUID
     workspace_id: uuid.UUID
-    kind: str
+    type: str
+    """What the job does (spec §7), e.g. ``profile`` or ``export``."""
     title: str
     status: str
     """``queued``, ``running``, ``succeeded``, ``failed`` or ``cancelled``."""
@@ -146,7 +147,7 @@ def _view(record: JobRecord) -> Job:
     return Job(
         id=record.id,
         workspace_id=record.workspace_id,
-        kind=record.kind,
+        type=record.type,
         title=record.title,
         status=record.status,
         progress=record.progress,
@@ -205,36 +206,45 @@ class JobService:
     def submit(
         self,
         workspace_id: uuid.UUID,
-        kind: str,
-        payload: Mapping[str, Any],
+        job_type: str,
+        params: Mapping[str, Any],
         *,
         title: str,
         created_by: uuid.UUID | None,
+        db: Session | None = None,
     ) -> Job:
-        """Queue a job of ``kind`` in the Workspace and return it. The caller has
-        authorized ``created_by`` already. ``payload`` is JSON the handler gets back.
-        ``UnknownJobKindError`` if no handler is registered for ``kind``. With the inline
-        runner the job has run (and is finished) when this returns."""
-        self._runner.handler(kind)
+        """Queue a job of ``job_type`` in the Workspace and return it. The caller has
+        authorized ``created_by`` already. ``params`` is JSON the handler gets back.
+        ``UnknownJobTypeError`` if no handler is registered for ``job_type``.
+
+        Given ``db``, the job is queued in the caller's transaction: it exists (and the
+        worker can see it) only if that transaction commits. Without ``db`` it is queued
+        in its own. With the inline runner (tests) the job runs once it is committed, so
+        without ``db`` it has finished when this returns; the returned ``Job`` is as it
+        stood then."""
+        self._runner.handler(job_type)
         record = JobRecord(
             id=uuid.uuid4(),
             workspace_id=workspace_id,
-            kind=kind,
-            title=title.strip()[:TITLE_MAX_LENGTH] or kind,
-            payload=dict(payload),
+            type=job_type,
+            title=title.strip()[:TITLE_MAX_LENGTH] or job_type,
+            params=dict(params),
             status="queued",
             progress=0,
             log="",
             created_by=created_by,
             created_at=self._clock(),
         )
-        with Session(self._engine) as db, db.begin():
+        job_id = record.id
+        if db is not None:
             db.add(record)
-            job_id = record.id
-        if self._runner.inline:
-            claimed = self._claim(job_id)
-            if claimed is not None:
-                self.execute(claimed)
+            db.flush()
+            if self._runner.inline:
+                sa.event.listen(db, "after_commit", lambda _: self._run_inline(job_id), once=True)
+            return _view(record)
+        with Session(self._engine) as own, own.begin():
+            own.add(record)
+        self._run_inline(job_id)
         return self._load_view(job_id)
 
     def cancel_for_workspace(self, db: Session, workspace_id: uuid.UUID, at: datetime) -> None:
@@ -287,12 +297,15 @@ class JobService:
     def cancel(self, user: User, job_id: uuid.UUID) -> Job:
         """Cancel a queued or running job: its creator may, and so may an owner of its
         Workspace. 409 ``job_finished`` if it has ended already."""
+        # Authorize first (who started a job and where never change), then lock the row,
+        # so nobody without the right to cancel ever holds the lock.
+        with Session(self._engine) as db:
+            record = self._record(db, job_id)
+            workspace_id, created_by = record.workspace_id, record.created_by
+        action = Action.CANCEL_OWN_JOB if created_by == user.id else Action.CANCEL_ANY_JOB
+        self._workspaces().authorize(user, action, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = self._record(db, job_id, lock=True)
-            action = (
-                Action.CANCEL_OWN_JOB if record.created_by == user.id else Action.CANCEL_ANY_JOB
-            )
-            self._workspaces().authorize(user, action, record.workspace_id)
             if record.status not in ACTIVE:
                 raise ApiError(409, "job_finished", f"This job has already {record.status}.", {})
             record.status = "cancelled"
@@ -312,15 +325,15 @@ class JobService:
         keeps its ``cancelled`` status."""
         ctx = _Context(self, job.id)
         with Session(self._engine) as db:
-            payload = db.scalar(sa.select(JobRecord.payload).where(JobRecord.id == job.id)) or {}
+            params = db.scalar(sa.select(JobRecord.params).where(JobRecord.id == job.id)) or {}
         try:
-            self._runner.handler(job.kind)(payload, ctx)
+            self._runner.handler(job.type)(params, ctx)
         except JobCancelledError:
             return
-        except UnknownJobKindError:
-            self._finish(job.id, "failed", f"No handler is registered for {job.kind!r} jobs.")
+        except UnknownJobTypeError:
+            self._finish(job.id, "failed", f"No handler is registered for {job.type!r} jobs.")
         except Exception as exc:  # a handler may fail in any way; the job records it
-            logger.exception("job failed", extra={"job_id": str(job.id), "kind": job.kind})
+            logger.exception("job failed", extra={"job_id": str(job.id), "job_type": job.type})
             self._finish(job.id, "failed", str(exc) or type(exc).__name__)
         else:
             self._finish(job.id, "succeeded", None)
@@ -361,6 +374,11 @@ class JobService:
         if record is None:
             raise _not_found()
         return record
+
+    def _run_inline(self, job_id: uuid.UUID) -> None:
+        """With the inline runner, run a just-committed job now."""
+        if self._runner.inline and (claimed := self._claim(job_id)) is not None:
+            self.execute(claimed)
 
     def _load_view(self, job_id: uuid.UUID) -> Job:
         with Session(self._engine) as db:
