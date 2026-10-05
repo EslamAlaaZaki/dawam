@@ -16,9 +16,7 @@ dawam/modules/<name>/
 ```
 
 Every module has `__init__.py` and `service.py`; the rest exist only when needed.
-`dawam/modules/jobs/` is the smallest real example: its `service.py` holds the job
-runner port and its inline implementation, which `__init__.py` re-exports; it has
-nothing else.
+`dawam/modules/activity/` is a small real example: a service, tables and nothing else.
 
 ## The rules
 
@@ -75,6 +73,10 @@ nothing else.
    through its policy before calling `ActivityService.list`. `audit` (the audit trail of
    critical entities, `record_audit(db, ...)`) imports nothing from other modules and is
    used the same way.
+   `jobs` imports `auth`, `notifications` and `workspaces`, so `workspaces` cannot call
+   it when a Workspace is archived (archiving cancels its jobs): it calls the kernel port
+   `dawam.platform.hooks.WorkspaceArchivedHook` (`app.state.on_workspace_archived`, which
+   `dawam.app` sets to `JobService.cancel_for_workspace`).
 
 `tools/check_boundaries.py`, which CI runs, enforces:
 

@@ -75,6 +75,10 @@ class Action(StrEnum):
     """Edit a Source System's name, description and owners (owners and editors)."""
     CHANGE_SYSTEM_CODE = "source_system.change_code"
     """Change a Source System's System Code after creation (owners only)."""
+    CANCEL_OWN_JOB = "job.cancel_own"
+    """Cancel a background job the user started (any member who started one)."""
+    CANCEL_ANY_JOB = "job.cancel_any"
+    """Cancel a background job somebody else started (owners only)."""
     LIST_ALL_WORKSPACES = "installation.list_workspaces"
     """See every Workspace's metadata, never its content (admins only; spec §4.3)."""
     EDIT_KPI = "kpi.edit"
@@ -163,6 +167,8 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     ),
     Action.REASSIGN_OWNERSHIP: _WorkspaceRule(min_role=None, admin=True, state="any"),
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
+    Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),
+    Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
     Action.UPLOAD_FILE: _WorkspaceRule(min_role="editor"),

@@ -39,7 +39,10 @@ def workspace_service(request: Request) -> WorkspaceService:
     state = request.app.state
     clock = state.services.clock
     return WorkspaceService(
-        state.engine, clock=clock, events=SecurityEventRecorder(state.engine, clock=clock)
+        state.engine,
+        clock=clock,
+        events=SecurityEventRecorder(state.engine, clock=clock),
+        on_archived=getattr(state, "on_workspace_archived", None),
     )
 
 

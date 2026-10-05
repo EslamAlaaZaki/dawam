@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 
 from dawam.app import Services
-from dawam.modules.jobs import InlineJobRunner
+from dawam.modules.jobs import InlineJobRunner, JobService
 from dawam.platform.email import EmailMessage, InMemoryOutbox
 
 
@@ -18,16 +18,20 @@ def test_app_sends_email_through_the_test_outbox(app: FastAPI, outbox: InMemoryO
 
 
 def test_background_jobs_run_inline_before_submit_returns(
-    app: FastAPI, jobs: InlineJobRunner, outbox: InMemoryOutbox
+    app: FastAPI, jobs: InlineJobRunner, outbox: InMemoryOutbox, roles
 ):
     services: Services = app.state.services
     assert services.jobs is jobs
 
-    def send_reminder(payload):
+    def send_reminder(payload, ctx):
         services.email.send(EmailMessage(to=payload["to"], subject="Reminder", body=""))
 
     jobs.register("send_reminder", send_reminder)
-    jobs.submit("send_reminder", {"to": "ada@example.com"})
+    job = JobService(app.state.engine, runner=jobs, clock=services.clock).submit(
+        roles.workspace_id, "send_reminder", {"to": "ada@example.com"}, title="Remind", created_by=None
+    )
+
+    assert job.status == "succeeded"
 
     assert [m.subject for m in outbox.sent_to("ada@example.com")] == ["Reminder"]
 

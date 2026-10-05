@@ -81,6 +81,10 @@ class Settings(DatabaseSettings):
     run_migrations_on_startup: bool = True
 
     worker_poll_seconds: float = 5.0
+    worker_heartbeat_seconds: float = 10.0
+    """How often a worker tells the queue it is still running its job."""
+    job_stale_seconds: float = Field(default=60.0, gt=0)
+    """A running job whose worker has been silent this long is failed."""
 
     hsts_max_age_seconds: int = Field(default=31_536_000, ge=0)
     """``Strict-Transport-Security`` max-age, sent only on HTTPS requests; 0 turns HSTS off."""
