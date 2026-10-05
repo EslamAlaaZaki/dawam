@@ -358,6 +358,38 @@ ROWS: list[Row] = [
         setup=_set_up_data_warehouse,
         json=lambda roles: {"version": 1, "naming_rules": {"case_style": "upper"}},
     ),
+    # Source Systems (story 39). Changing a System Code is owner-only: the PATCH row
+    # sends no code; tests/sources/test_source_systems.py covers the code change.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems",
+        "Open Workspace content (list Source Systems)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems",
+        "Create Source Systems",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"name": "CRM", "code": "crm"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}",
+        "Open Workspace content (a Source System)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}",
+        "Edit Source Schema enhancements & documents (a Source System's details)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {
+            "version": 1,
+            "description": "The core banking system",
+            "business_owner": "Head of Retail",
+        },
+    ),
 ]
 
 

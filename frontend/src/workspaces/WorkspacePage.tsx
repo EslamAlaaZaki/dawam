@@ -13,12 +13,14 @@ import {
   useWorkspace,
   type Workspace,
 } from "../api/workspaces";
+import { useSourceSystems } from "../api/systems";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
+import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
@@ -34,6 +36,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const warehouse = useDataWarehouse(workspaceId);
+  const systems = useSourceSystems(workspaceId);
 
   if (workspace.isPending) {
     return <Loading />;
@@ -50,7 +53,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
     );
   }
-  const root = workspaceFolders(workspace.data.name, warehouse.data?.set_up ?? false);
+  const systemList = systems.data ?? [];
+  const root = workspaceFolders(workspace.data.name, warehouse.data?.set_up ?? false, systemList);
   const requested = searchParams.get("folder") ?? "";
   // The setup step becomes the Data Warehouse folder itself once it is done, so a
   // link (or the page right after saving) to it still lands in the Data Warehouse.
@@ -59,6 +63,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // Whether the Data Warehouse is set up decides which of its folders exist, so do not
   // resolve one (and fall back to the root) before that is known.
   const inDataWarehouse = wanted === "dw" || wanted.startsWith("dw/");
+  // `systems/<id>`: the folder of one Source System.
+  const openSystem = systemList.find((system) => folder.id === `systems/${system.id}`);
 
   function select(id: string) {
     router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
@@ -87,6 +93,18 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             </>
           ) : folder.id === "dw" || folder.id === "dw/setup" ? (
             <DataWarehouseSetup workspace={workspace.data} />
+          ) : folder.id === "systems" ? (
+            <SystemsPanel
+              workspace={workspace.data}
+              systems={systemList}
+              onOpen={(system) => select(`systems/${system.id}`)}
+            />
+          ) : openSystem ? (
+            <SystemDetails
+              workspace={workspace.data}
+              system={openSystem}
+              reload={() => systems.refetch()}
+            />
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>
