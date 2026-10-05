@@ -14,7 +14,7 @@ from collections.abc import Mapping
 
 import sqlalchemy as sa
 
-from dawam.modules.jobs import JobHandler, JobRunner
+from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
 from dawam.modules.sources import EXTRACT_JOB, SnapshotService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
@@ -39,7 +39,11 @@ def _service_handlers(
 def register_job_handlers(
     runner: JobRunner, *, engine: sa.Engine, settings: Settings, clock: Clock
 ) -> None:
-    """Register every handler on ``runner``."""
+    """Register every handler on ``runner``. A type the runner already has is left alone:
+    tests build several apps on one shared runner, and the first app's handlers serve all."""
     handlers = {**_service_handlers(runner, engine, settings, clock), **JOB_HANDLERS}
     for job_type, handler in handlers.items():
-        runner.register(job_type, handler)
+        try:
+            runner.handler(job_type)
+        except UnknownJobTypeError:
+            runner.register(job_type, handler)
