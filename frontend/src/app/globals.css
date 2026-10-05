@@ -556,3 +556,41 @@ body {
 .members .form-actions {
   margin-top: 1rem;
 }
+
+.jobs {
+  margin-top: 1.5rem;
+}
+
+.job-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 40rem;
+}
+
+.job-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #bcccdc;
+}
+
+.job-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.job-status {
+  color: #323f4b;
+  font-size: 0.875rem;
+}
+
+.job-list progress {
+  width: 100%;
+}
+
+.job-log {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.8125rem;
+}

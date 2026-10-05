@@ -28,7 +28,11 @@ def test_background_jobs_run_inline_before_submit_returns(
 
     jobs.register("send_reminder", send_reminder)
     job = JobService(app.state.engine, runner=jobs, clock=services.clock).submit(
-        roles.workspace_id, "send_reminder", {"to": "ada@example.com"}, title="Remind", created_by=None
+        roles.workspace_id,
+        "send_reminder",
+        {"to": "ada@example.com"},
+        title="Remind",
+        created_by=None,
     )
 
     assert job.status == "succeeded"

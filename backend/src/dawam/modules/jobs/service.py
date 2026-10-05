@@ -277,9 +277,7 @@ class JobService:
                 key = (datetime.fromisoformat(after_at), uuid.UUID(after_id))
             except ValueError:
                 raise ApiError(422, "invalid_cursor", "The cursor is not valid.") from None
-            query = query.where(
-                sa.tuple_(JobRecord.created_at, JobRecord.id) < sa.tuple_(*key)
-            )
+            query = query.where(sa.tuple_(JobRecord.created_at, JobRecord.id) < sa.tuple_(*key))
         with Session(self._engine) as db:
             records = list(db.scalars(query))
         last = records[limit - 1] if len(records) > limit else None
@@ -291,12 +289,12 @@ class JobService:
         Workspace. 409 ``job_finished`` if it has ended already."""
         with Session(self._engine) as db, db.begin():
             record = self._record(db, job_id, lock=True)
-            action = Action.CANCEL_OWN_JOB if record.created_by == user.id else Action.CANCEL_ANY_JOB
+            action = (
+                Action.CANCEL_OWN_JOB if record.created_by == user.id else Action.CANCEL_ANY_JOB
+            )
             self._workspaces().authorize(user, action, record.workspace_id)
             if record.status not in ACTIVE:
-                raise ApiError(
-                    409, "job_finished", f"This job has already {record.status}.", {}
-                )
+                raise ApiError(409, "job_finished", f"This job has already {record.status}.", {})
             record.status = "cancelled"
             record.finished_at = self._clock()
             db.flush()
