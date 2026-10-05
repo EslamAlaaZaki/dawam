@@ -78,6 +78,26 @@ class ColumnInfo:
 
 
 @dataclass(frozen=True)
+class ConstraintInfo:
+    name: str
+    type: str
+    """``pk``, ``fk`` or ``unique``."""
+    columns: tuple[str, ...]
+    ref_schema: str | None = None
+    """A foreign key's referenced Database Schema, table and columns."""
+    ref_table: str | None = None
+    ref_columns: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class IndexInfo:
+    name: str
+    columns: tuple[str, ...]
+    """Column names; an expression key is its SQL text (e.g. ``lower(email)``)."""
+    is_unique: bool
+
+
+@dataclass(frozen=True)
 class TableInfo:
     schema: str
     name: str
@@ -88,6 +108,8 @@ class TableInfo:
     definition: str | None
     """A view's SQL."""
     columns: tuple[ColumnInfo, ...]
+    constraints: tuple[ConstraintInfo, ...] = ()
+    indexes: tuple[IndexInfo, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -97,6 +119,8 @@ class RoutineInfo:
     kind: str
     """``procedure`` or ``function``."""
     definition: str | None
+    signature: str = ""
+    """The argument list that tells overloads apart (``""`` where the engine has none)."""
 
 
 @dataclass(frozen=True)
@@ -129,7 +153,8 @@ class Connector(Protocol):
         ...
 
     def extract(self) -> SourceCatalog:
-        """Tables, views, columns, primary keys and routines of the allowed schemas."""
+        """Tables, views, columns, constraints, indexes and routines of the allowed
+        schemas."""
         ...
 
     def profile(self, schema: str, table: str, column: str) -> ColumnProfile:
