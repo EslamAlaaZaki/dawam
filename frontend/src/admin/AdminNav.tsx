@@ -1,6 +1,7 @@
 "use client";
 
 import { useMe } from "../api/queries";
+import { LlmSetupBanner } from "./LlmSetupBanner";
 
 /** Links to the admin pages, shown to admins only. */
 export function AdminNav() {
@@ -9,13 +10,17 @@ export function AdminNav() {
     return null;
   }
   return (
-    <nav className="shell-nav" aria-label="Administration">
-      <a href="/admin/users">Users</a>
-      <a href="/admin/workspaces">Workspaces</a>
-      <a href="/admin/invitations">Invitations</a>
-      <a href="/admin/security-events">Security events</a>
-      <a href="/admin/email">Email settings</a>
-      <a href="/admin/email/links">Links to share</a>
-    </nav>
+    <>
+      <nav className="shell-nav" aria-label="Administration">
+        <a href="/admin/users">Users</a>
+        <a href="/admin/workspaces">Workspaces</a>
+        <a href="/admin/invitations">Invitations</a>
+        <a href="/admin/security-events">Security events</a>
+        <a href="/admin/email">Email settings</a>
+        <a href="/admin/email/links">Links to share</a>
+        <a href="/admin/llm">Language models</a>
+      </nav>
+      <LlmSetupBanner />
+    </>
   );
 }

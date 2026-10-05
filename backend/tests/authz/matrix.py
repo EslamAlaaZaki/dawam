@@ -36,6 +36,7 @@ from starlette.routing import BaseRoute, Route
 
 from dawam.modules.auth import AuthService, Invitations
 from dawam.modules.jobs import InlineJobRunner, JobService, QueuedJobRunner
+from dawam.modules.llm import FakeAdapter
 from dawam.modules.mail import MailService
 from dawam.modules.sources import EXTRACT_JOB, SnapshotService
 from dawam.modules.sources.internal.connector import ColumnInfo, SourceCatalog, TableInfo
@@ -239,6 +240,37 @@ def job_id(roles: RoleClients) -> uuid.UUID:
     ).id
 
 
+def provider_id(roles: RoleClients) -> uuid.UUID:
+    """An LLM provider the admin registers through the API (a fresh one per request, so
+    deleting it in one request does not affect the next)."""
+    response = roles.client("admin").post(
+        "/api/v1/admin/llm/providers",
+        json={
+            "name": f"Provider {uuid.uuid4()}",
+            "base_url": "http://llm.test/v1",
+            "internal": True,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
+def model_id(roles: RoleClients) -> uuid.UUID:
+    """A model of a fresh LLM provider, registered through the API."""
+    response = roles.client("admin").post(
+        f"/api/v1/admin/llm/providers/{provider_id(roles)}/models",
+        json={"name": "qwen3", "roles": ["agent"]},
+    )
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
+def use_fake_llm(roles: RoleClients) -> None:
+    """Answer every LLM request with the scripted fake, so "Test connection" needs no server."""
+    fake = FakeAdapter()
+    roles.app.state.services.llm_adapters = lambda kind, config: fake
+
+
 class _OneTableSource:
     """A stand-in source database with one table, for ``snapshot_id``."""
 
@@ -296,6 +328,8 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "kpi_id": kpi_id,
     "file_id": file_id,
     "snapshot_id": snapshot_id,
+    "provider_id": provider_id,
+    "model_id": model_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 

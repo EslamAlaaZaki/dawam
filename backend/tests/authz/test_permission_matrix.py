@@ -28,6 +28,7 @@ from tests.authz.matrix import (
     send,
     signed_in,
     system_id,
+    use_fake_llm,
     workspace,
 )
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
@@ -120,6 +121,9 @@ SMTP_SETTINGS = {
 }
 
 
+LLM_PROVIDER_BODY = {"name": "Local vLLM", "base_url": "http://llm.test/v1", "internal": True}
+
+
 def _mail(roles: RoleClients) -> MailService:
     state = roles.app.state
     return MailService(
@@ -209,6 +213,52 @@ ROWS: list[Row] = [
         admin_only(),
         json=lambda roles: {"registration": {"enabled": True, "allowed_email_domains": []}},
     ),
+    # LLM gateway: providers, models, setup (stories 155, 156, 158).
+    Row("GET", "/api/v1/admin/llm/providers", "list LLM providers", admin_only()),
+    Row(
+        "POST",
+        "/api/v1/admin/llm/providers",
+        "register an LLM provider (story 155)",
+        admin_only(),
+        json=lambda roles: LLM_PROVIDER_BODY,
+    ),
+    Row("GET", "/api/v1/admin/llm/providers/{provider_id}", "open an LLM provider", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/providers/{provider_id}",
+        "edit an LLM provider (story 155)",
+        admin_only(),
+        json=lambda roles: LLM_PROVIDER_BODY,
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/providers/{provider_id}",
+        "remove an LLM provider",
+        admin_only(),
+    ),
+    Row(
+        "POST",
+        "/api/v1/admin/llm/providers/{provider_id}/models",
+        "register a model (story 155)",
+        admin_only(),
+        json=lambda roles: {"name": "qwen3", "roles": ["agent"]},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/models/{model_id}",
+        "edit a model (story 155)",
+        admin_only(),
+        json=lambda roles: {"name": "qwen3-14b", "roles": ["agent"]},
+    ),
+    Row("DELETE", "/api/v1/admin/llm/models/{model_id}", "remove a model", admin_only()),
+    Row(
+        "POST",
+        "/api/v1/admin/llm/models/{model_id}/test",
+        "test connection (story 156)",
+        admin_only(),
+        setup=use_fake_llm,
+    ),
+    Row("GET", "/api/v1/admin/llm/setup", "AI setup status (story 158)", admin_only()),
     # User management (stories 14-19, 15a) and the security-event log (story 23).
     Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
     Row(
