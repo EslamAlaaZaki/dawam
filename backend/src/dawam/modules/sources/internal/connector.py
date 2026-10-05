@@ -141,7 +141,12 @@ class Connector(Protocol):
         ...
 
     def query(self, sql: str, *, limit: int = DEFAULT_ROW_LIMIT) -> QueryResult:
-        """A read-only query over the allowed schemas, capped at ``limit`` rows."""
+        """A read-only query over the allowed schemas, capped at ``limit`` rows.
+
+        NOT SAFE TO EXPOSE: no route may reach this (directly or through a service) until
+        the sqlglot statement guard and the function allow-list of spec §6.5 exist. The
+        current scoping is a best-effort text check, which e.g. ``dblink_exec`` or
+        ``COPY ... TO PROGRAM`` get around."""
         ...
 
 

@@ -105,6 +105,12 @@ def save_a_connection(roles: RoleClients) -> None:
     assert response.status_code in (200, 201), response.text
 
 
+def save_a_connection_then_archive(roles: RoleClients) -> None:
+    """A Connection in an archived Workspace: seeing it is still allowed (owners only)."""
+    save_a_connection(roles)
+    _archive(roles)
+
+
 SMTP_SETTINGS = {
     "host": "smtp.example.com",
     "port": 25,
@@ -556,13 +562,14 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=False, viewer=False),
     ),
     # Connections (stories 40-43): owners only, including seeing them (host and user are
-    # owner-only information). Nothing here connects anywhere that answers.
+    # owner-only information). Nothing here connects anywhere that answers. Seeing one
+    # (connection.view) works in an archived Workspace too; changing one does not.
     Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection",
-        "Create Connection, edit credentials (see a Connection)",
+        "Create Connection, edit credentials (see a Connection, even archived)",
         workspace(admin=False, owner=True, editor=False, viewer=False),
-        setup=save_a_connection,
+        setup=save_a_connection_then_archive,
     ),
     Row(
         "PUT",

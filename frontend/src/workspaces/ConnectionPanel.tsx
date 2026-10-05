@@ -22,7 +22,8 @@ function parseSchemas(text: string): string[] {
 /**
  * A Source System's live database Connection (spec stories 40-43): owners enter the
  * settings, test them before saving, choose the Database Schemas DAWAM may read, and are
- * warned when the database user can write. The saved password is never shown.
+ * warned when the database user can write. The saved password is never shown. In an
+ * archived Workspace owners can still see the Connection, read-only.
  */
 export function ConnectionPanel({
   workspace,
@@ -31,10 +32,11 @@ export function ConnectionPanel({
   workspace: Workspace;
   system: SourceSystem;
 }) {
+  const canView = allows(workspace, "connection.view");
   const canManage = allows(workspace, "connection.manage");
-  const connection = useConnection(workspace.id, system.id, canManage);
+  const connection = useConnection(workspace.id, system.id, canView);
 
-  if (!canManage) {
+  if (!canView) {
     return (
       <section aria-labelledby="folder-title">
         <h3 id="folder-title">Connection | Schema Import</h3>
@@ -56,6 +58,7 @@ export function ConnectionPanel({
       workspaceId={workspace.id}
       systemId={system.id}
       saved={connection.data}
+      readOnly={!canManage}
     />
   );
 }
@@ -64,10 +67,12 @@ function ConnectionForm({
   workspaceId,
   systemId,
   saved,
+  readOnly,
 }: {
   workspaceId: string;
   systemId: string;
   saved: Connection | null;
+  readOnly: boolean;
 }) {
   const save = useSaveConnection(workspaceId, systemId);
   const test = useTestConnection(workspaceId, systemId);
@@ -113,56 +118,68 @@ function ConnectionForm({
       <p className="form-hint">
         A PostgreSQL database DAWAM reads from. Give it a read-only user: DAWAM never writes.
       </p>
-      <label>
-        Host
-        <input name="host" required maxLength={253} defaultValue={saved?.host} />
-      </label>
-      <label>
-        Port
-        <input
-          name="port"
-          type="number"
-          min={1}
-          max={65535}
-          required
-          defaultValue={saved?.port ?? 5432}
-        />
-      </label>
-      <label>
-        Database
-        <input name="database" required maxLength={128} defaultValue={saved?.database} />
-      </label>
-      <label>
-        Username
-        <input
-          name="username"
-          required
-          maxLength={128}
-          autoComplete="off"
-          defaultValue={saved?.username}
-        />
-      </label>
-      <label>
-        Password
-        <input
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          placeholder={saved?.has_password ? "Saved. Leave blank to keep it." : ""}
-        />
-      </label>
-      <label>
-        Allowed Database Schemas
-        <input
-          name="allowed_schemas"
-          value={schemas}
-          onChange={(event) => setSchemas(event.target.value)}
-          aria-describedby="allowed-schemas-hint"
-        />
-      </label>
-      <p id="allowed-schemas-hint" className="form-hint">
-        Comma separated. Nothing outside this list is ever read.
-      </p>
+      {readOnly && (
+        <p role="status">This Workspace is archived: its Connection is read-only.</p>
+      )}
+      <fieldset disabled={readOnly} className="form">
+        <label>
+          Host
+          <input name="host" required maxLength={253} defaultValue={saved?.host} />
+        </label>
+        <label>
+          Port
+          <input
+            name="port"
+            type="number"
+            min={1}
+            max={65535}
+            required
+            defaultValue={saved?.port ?? 5432}
+          />
+        </label>
+        <label>
+          Database
+          <input name="database" required maxLength={128} defaultValue={saved?.database} />
+        </label>
+        <label>
+          Username
+          <input
+            name="username"
+            required
+            maxLength={128}
+            autoComplete="off"
+            defaultValue={saved?.username}
+          />
+        </label>
+        <label>
+          Password
+          <input
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            placeholder={saved?.has_password ? "Saved. Leave blank to keep it." : ""}
+            aria-describedby="password-hint"
+          />
+        </label>
+        {saved?.has_password && (
+          <p id="password-hint" className="form-hint">
+            The saved password is only used with the saved host, port, database and username.
+            Change any of them and enter the password again.
+          </p>
+        )}
+        <label>
+          Allowed Database Schemas
+          <input
+            name="allowed_schemas"
+            value={schemas}
+            onChange={(event) => setSchemas(event.target.value)}
+            aria-describedby="allowed-schemas-hint"
+          />
+        </label>
+        <p id="allowed-schemas-hint" className="form-hint">
+          Comma separated. Nothing outside this list is ever read.
+        </p>
+      </fieldset>
       {result?.ok && result.available_schemas.length > 0 && (
         <p className="form-hint">
           Found on the server:{" "}
@@ -214,24 +231,26 @@ function ConnectionForm({
         </p>
       )}
       {save.isSuccess && <p role="status">Connection saved.</p>}
-      <div className="form-actions">
-        <button
-          type="button"
-          className="secondary"
-          disabled={test.isPending}
-          onClick={(event) => {
-            const form = event.currentTarget.form;
-            if (form?.reportValidity()) {
-              test.mutate(read(form));
-            }
-          }}
-        >
-          Test connection
-        </button>
-        <button type="submit" disabled={save.isPending}>
-          Save Connection
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="form-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={test.isPending}
+            onClick={(event) => {
+              const form = event.currentTarget.form;
+              if (form?.reportValidity()) {
+                test.mutate(read(form));
+              }
+            }}
+          >
+            Test connection
+          </button>
+          <button type="submit" disabled={save.isPending}>
+            Save Connection
+          </button>
+        </div>
+      )}
     </form>
   );
 }

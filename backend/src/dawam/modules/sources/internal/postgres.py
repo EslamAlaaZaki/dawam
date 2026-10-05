@@ -270,7 +270,11 @@ class PostgresConnector:
         """Run one statement. Defence in depth, not a SQL parser: the session is read-only
         with a search path of the allowed schemas, one statement only, and text naming a
         schema outside the allowed list (or a ``pg_*`` / ``information_schema`` catalog)
-        is refused. Give the Connection's database user no more than read access."""
+        is refused. Give the Connection's database user no more than read access.
+
+        NOT SAFE TO EXPOSE: no route may reach this until the sqlglot statement guard and
+        the function allow-list of spec §6.5 exist; ``dblink_exec`` or ``COPY ... TO
+        PROGRAM`` get around these text checks."""
         text = sql_text.strip().rstrip(";").strip()
         if not text or ";" in text:
             raise ConnectorError("invalid_query", "Send exactly one SQL statement.")

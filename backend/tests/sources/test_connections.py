@@ -15,6 +15,7 @@ from datetime import timedelta
 import pytest
 import sqlalchemy as sa
 
+from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.crypto import SecretBox
 from tests.roles import RoleClients
 from tests.sample_source import SampleSource
@@ -178,7 +179,7 @@ def test_testing_the_saved_settings_records_the_result_on_the_connection(
     assert saved["can_write"] is True
     assert saved["last_tested_at"] == clock().isoformat().replace("+00:00", "Z")
 
-    owner.put(path, json={**body, "host": "127.0.0.1"})
+    owner.put(path, json={**body, "allowed_schemas": ["core"]})
     again = owner.get(path).json()
     assert again["can_write"] is None and again["last_tested_at"] is None
 
@@ -257,3 +258,114 @@ def test_an_editor_cannot_see_or_change_a_connection(
         assert client.get(path).status_code == 403
         assert client.put(path, json=sample_source.connection_body()).status_code == 403
         assert client.post(f"{path}/test", json=sample_source.connection_body()).status_code == 403
+
+
+# Each of these points the stored password at a different server or account.
+ENDPOINT_CHANGES = [
+    {"host": "127.0.0.2"},
+    {"port": 1},
+    {"database": "other"},
+    {"username": "someone_else"},
+]
+
+
+@pytest.mark.parametrize("change", ENDPOINT_CHANGES)
+def test_a_test_against_another_endpoint_needs_the_password_again(
+    roles: RoleClients, sample_source: SampleSource, change
+):
+    path = system(roles)
+    owner = roles.client("owner")
+    owner.put(path, json=sample_source.connection_body())
+    body = sample_source.connection_body(**change)
+    del body["password"]
+
+    response = owner.post(f"{path}/test", json=body)
+
+    assert response.status_code == 422, response.text
+    assert error_code(response) == "password_required"
+
+
+@pytest.mark.parametrize("change", ENDPOINT_CHANGES)
+def test_saving_another_endpoint_needs_the_password_again(
+    roles: RoleClients, sample_source: SampleSource, app, change
+):
+    path = system(roles)
+    owner = roles.client("owner")
+    saved = owner.put(path, json=sample_source.connection_body()).json()
+    body = sample_source.connection_body(**change)
+    del body["password"]
+
+    response = owner.put(path, json=body)
+
+    assert response.status_code == 422, response.text
+    assert error_code(response) == "password_required"
+    assert owner.get(path).json() == saved, "nothing changed"
+    with_password = owner.put(path, json=sample_source.connection_body(**change))
+    assert with_password.status_code == 200, with_password.text
+
+
+def test_without_a_stored_password_another_endpoint_needs_none(
+    roles: RoleClients, sample_source: SampleSource
+):
+    path = system(roles)
+    owner = roles.client("owner")
+    owner.put(path, json={**sample_source.connection_body(), "password": ""})
+    body = sample_source.connection_body(host="127.0.0.2")
+    del body["password"]
+
+    assert owner.put(path, json=body).status_code == 200
+
+
+def test_an_owner_still_sees_the_connection_of_an_archived_workspace(
+    roles: RoleClients, sample_source: SampleSource
+):
+    path = system(roles)
+    owner = roles.client("owner")
+    saved = owner.put(path, json=sample_source.connection_body()).json()
+    members = {role: roles.client(role) for role in ("editor", "viewer")}
+    state = roles.app.state
+    WorkspaceService(state.engine, clock=state.services.clock).archive(
+        roles.user("owner"), roles.workspace_id
+    )
+
+    assert owner.get(path).json() == saved
+    assert owner.put(path, json=sample_source.connection_body()).status_code == 409
+    assert owner.post(f"{path}/test", json=sample_source.connection_body()).status_code == 409
+    for client in members.values():
+        assert client.get(path).status_code == 403
+
+
+def test_the_connection_probe_runs_outside_the_database_transaction(
+    roles: RoleClients, sample_source: SampleSource, app
+):
+    """While the source is being probed, no app-database transaction is open (and so
+    no row lock is held on the Connection)."""
+    from dawam.modules.sources import connection_service as module
+
+    path = system(roles)
+    owner = roles.client("owner")
+    owner.put(path, json=sample_source.connection_body())
+    open_transactions: list[int] = []
+    original = module.ConnectionService._run_test
+
+    def probe(self, data, password):
+        with app.state.engine.connect() as conn:
+            open_transactions.append(
+                conn.scalar(
+                    sa.text(
+                        "SELECT count(*) FROM pg_locks l JOIN pg_class c ON c.oid = l.relation "
+                        "WHERE c.relname = 'connections' AND l.mode = 'RowShareLock' "
+                        "AND l.pid <> pg_backend_pid()"
+                    )
+                )
+            )
+        return original(self, data, password)
+
+    body = sample_source.connection_body()
+    del body["password"]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(module.ConnectionService, "_run_test", probe)
+        assert owner.post(f"{path}/test", json=body).json()["ok"] is True
+
+    assert open_transactions == [0]
+    assert owner.get(path).json()["last_tested_at"] is not None

@@ -26,17 +26,20 @@ const ADA: Me = {
   must_change_password: false,
 };
 
-function workspace(role: WorkspaceRole): Workspace {
+function workspace(role: WorkspaceRole, archived = false): Workspace {
+  const owner: Workspace["permissions"] = archived
+    ? ["connection.view", "workspace.view"]
+    : ["connection.manage", "connection.view", "workspace.view"];
   return {
     id: WORKSPACE_ID,
     name: "Retail DW",
     description: "",
     domain: "",
     role,
-    permissions: role === "owner" ? ["connection.manage", "workspace.view"] : ["workspace.view"],
+    permissions: role === "owner" ? owner : ["workspace.view"],
     version: 1,
-    status: "active",
-    archived_at: null,
+    status: archived ? "archived" : "active",
+    archived_at: archived ? "2026-01-06T09:00:00Z" : null,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
   };
@@ -82,13 +85,17 @@ const WORKS: ConnectionTestResult = {
   missing_schemas: [],
 };
 
-function backend(role: WorkspaceRole, handle: (r: ApiRequest) => Response | undefined) {
+function backend(
+  role: WorkspaceRole,
+  handle: (r: ApiRequest) => Response | undefined,
+  archived = false,
+) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
       case "GET /api/v1/me":
         return json(ADA);
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
-        return json(workspace(role));
+        return json(workspace(role, archived));
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
         return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
@@ -212,5 +219,24 @@ describe("a Source System's Connection", () => {
     expect(body).toMatchObject({ host: "db.internal", allowed_schemas: ["core"] });
     expect(body).not.toHaveProperty("password");
     expect(await within(form).findByText("Connection saved.")).toBeVisible();
+  });
+
+  it("is shown read-only to owners of an archived Workspace", async () => {
+    const requests = renderApp(
+      backend(
+        "owner",
+        (r) => (r.method === "GET" && r.path === CONNECTION_PATH ? json(SAVED) : undefined),
+        true,
+      ),
+      FOLDER,
+    );
+
+    const form = await screen.findByRole("form", { name: "Connection" });
+    expect(within(form).getByLabelText("Host")).toHaveValue("db.internal");
+    expect(within(form).getByLabelText("Host")).toBeDisabled();
+    expect(within(form).getByText(/archived: its Connection is read-only/)).toBeVisible();
+    expect(within(form).queryByRole("button", { name: "Save Connection" })).toBeNull();
+    expect(within(form).queryByRole("button", { name: "Test connection" })).toBeNull();
+    expect(requests.some((r) => r.method !== "GET")).toBe(false);
   });
 });

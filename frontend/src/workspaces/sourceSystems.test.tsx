@@ -28,6 +28,7 @@ const ADA: Me = {
 const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
   owner: [
     "connection.manage",
+    "connection.view",
     "source_system.change_code",
     "source_system.create",
     "source_system.edit",

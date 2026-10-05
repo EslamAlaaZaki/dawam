@@ -75,8 +75,9 @@ class ConnectionRequest(BaseModel):
     password: str | None = Field(
         default=None,
         max_length=PASSWORD_MAX_LENGTH * 2,
-        description="Leave out to keep the stored password (or, for a test, to use it). "
-        "An empty string clears it.",
+        description="Leave out to keep the stored password (or, for a test, to use it); "
+        "allowed only with the host, port, database and username it was saved for, "
+        "otherwise 422 `password_required`. An empty string clears it.",
     )
     options: dict[str, Any] = Field(
         default_factory=dict,
@@ -127,7 +128,8 @@ def get_connection(
     user: CurrentUser,
     connections: ConnectionServiceDep,
 ) -> Connection:
-    """The Source System's Connection (owners only). 404 `connection_not_found` if none."""
+    """The Source System's Connection (owners only, archived Workspaces too). 404
+    `connection_not_found` if none."""
     return _out(connections.get(user, workspace_id, system_id))
 
 
@@ -141,7 +143,8 @@ def save_connection(
     connections: ConnectionServiceDep,
 ) -> Connection:
     """Create or replace the Connection (owners only; 201 when created). The password is
-    sealed before it is stored. 422 `invalid_connection` for bad settings."""
+    sealed before it is stored. 422 `invalid_connection` for bad settings;
+    `password_required` to reuse the stored password for another endpoint."""
     view, created = connections.save(user, workspace_id, system_id, _input(body))
     if created:
         response.status_code = 201
@@ -157,7 +160,8 @@ def test_connection(
     connections: ConnectionServiceDep,
 ) -> ConnectionTestResult:
     """Try these settings without saving them (owners only). Always 200: a failure is
-    `ok: false` with a safe `error`. Without a password the stored one is used."""
+    `ok: false` with a safe `error`. Without a password the stored one is used, for the
+    endpoint it was saved for only (422 `password_required` otherwise)."""
     result: ConnectionTest = connections.test(user, workspace_id, system_id, _input(body))
     return ConnectionTestResult(
         ok=result.ok,

@@ -3,6 +3,11 @@
 Only owners see or change a Connection (spec §4.3). The password is sealed with
 ``SecretBox`` before it is stored and is never read back out through this API: callers
 get ``has_password``. Activity events and error messages carry no host, user or secret.
+
+The stored password is reused (for a test or a save without one) only against the
+endpoint it was saved for: the same engine, host, port, database and username. Pointing
+it anywhere else needs the password typed again, so a hijacked owner session cannot send
+it to a server of its choosing.
 """
 
 from __future__ import annotations
@@ -61,7 +66,8 @@ class Connection:
 
 @dataclass(frozen=True)
 class ConnectionInput:
-    """What an owner types. ``password``: ``None`` keeps the stored one, ``""`` clears it."""
+    """What an owner types. ``password``: ``None`` keeps the stored one (allowed only for
+    the endpoint it was saved for), ``""`` clears it."""
 
     engine: str
     host: str
@@ -169,6 +175,16 @@ def _clean(data: ConnectionInput) -> ConnectionInput:
     )
 
 
+def _password_required() -> ApiError:
+    return ApiError(
+        422,
+        "password_required",
+        "Enter the password again: the stored one is only used for the host, port, "
+        "database and username it was saved for.",
+        {"field": "password"},
+    )
+
+
 def _not_found() -> ApiError:
     return ApiError(404, "not_found", "Source System not found.")
 
@@ -193,7 +209,7 @@ class ConnectionService:
 
     def get(self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID) -> Connection:
         """The Connection of a Source System. 404 ``connection_not_found`` if it has none."""
-        self._workspaces.authorize(user, Action.MANAGE_CONNECTION, workspace_id)
+        self._workspaces.authorize(user, Action.VIEW_CONNECTION, workspace_id)
         with Session(self._engine) as db:
             self._load_system(db, workspace_id, system_id)
             record = self._load_connection(db, system_id)
@@ -212,18 +228,36 @@ class ConnectionService:
     ) -> ConnectionTest:
         """Try ``data`` without saving it. A failure is a result (``ok = False`` with a
         safe message), not an HTTP error. With no password in ``data``, the stored one is
-        used. A successful test of exactly the stored settings refreshes
-        ``last_tested_at`` and ``can_write``."""
+        used, but only for the endpoint it was saved for (422 ``password_required``
+        otherwise). A successful test of exactly the stored settings refreshes
+        ``last_tested_at`` and ``can_write``.
+
+        The probe of the source runs outside any app-database transaction, so a slow or
+        unreachable source never holds a row lock here."""
         self._workspaces.authorize(user, Action.MANAGE_CONNECTION, workspace_id)
         data = _clean(data)
-        with Session(self._engine) as db, db.begin():
+        with Session(self._engine) as db:
             self._load_system(db, workspace_id, system_id)
-            record = self._load_connection(db, system_id, lock=True)
-            password = data.password if data.password is not None else self._stored_password(record)
-            result = self._run_test(data, password)
-            if result.ok and record is not None and data.password is None and _same(record, data):
-                record.last_tested_at = self._clock()
-                record.can_write = result.can_write
+            record = self._load_connection(db, system_id)
+            password = data.password
+            if password is None and record is not None and record.secret_encrypted is not None:
+                if not _same_endpoint(record, data):
+                    raise _password_required()
+                password = self._stored_password(record)
+            tested_unchanged = record is not None and _same(record, data)
+            tested_secret = record.secret_encrypted if record is not None else None
+        result = self._run_test(data, password)
+        if result.ok and tested_unchanged:
+            with Session(self._engine) as db, db.begin():
+                # Record the result only if nobody changed the Connection meanwhile.
+                record = self._load_connection(db, system_id, lock=True)
+                if (
+                    record is not None
+                    and _same(record, data)
+                    and record.secret_encrypted == tested_secret
+                ):
+                    record.last_tested_at = self._clock()
+                    record.can_write = result.can_write
         return result
 
     def save(
@@ -235,7 +269,9 @@ class ConnectionService:
     ) -> tuple[Connection, bool]:
         """Create the Connection or replace its settings; returns it and whether it was
         created. Saving does not require a successful test (the database may be down for
-        now); the UI tests first. Any change resets the last test result."""
+        now); the UI tests first. Any change resets the last test result. Without a
+        password the stored one is kept, but only for the endpoint it was saved for (422
+        ``password_required`` otherwise)."""
         self._workspaces.authorize(user, Action.MANAGE_CONNECTION, workspace_id)
         data = _clean(data)
         now = self._clock()
@@ -243,6 +279,13 @@ class ConnectionService:
             system = self._load_system(db, workspace_id, system_id, lock=True)
             record = self._load_connection(db, system_id)
             created = record is None
+            if (
+                data.password is None
+                and record is not None
+                and record.secret_encrypted is not None
+                and not _same_endpoint(record, data)
+            ):
+                raise _password_required()
             if record is None:
                 record = ConnectionRecord(
                     id=uuid.uuid4(),
@@ -339,13 +382,20 @@ class ConnectionService:
         return db.scalars(query).first()
 
 
-def _same(record: ConnectionRecord, data: ConnectionInput) -> bool:
+def _same_endpoint(record: ConnectionRecord, data: ConnectionInput) -> bool:
+    """Whether ``data`` points at the server and account the stored password is for."""
     return (
         record.engine == data.engine
         and record.host == data.host
         and record.port == data.port
         and record.database == data.database
         and record.username == data.username
+    )
+
+
+def _same(record: ConnectionRecord, data: ConnectionInput) -> bool:
+    return (
+        _same_endpoint(record, data)
         and record.options == data.options
         and list(record.allowed_schemas) == data.allowed_schemas
         and data.password is None
