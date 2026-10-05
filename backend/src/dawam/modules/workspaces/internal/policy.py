@@ -84,6 +84,9 @@ class Action(StrEnum):
     """Upload a file or document to a Source System's file area (owners and editors;
     spec §4.3 "Upload, edit, delete Workspace files", story 64). Listing and downloading
     files need only ``VIEW_WORKSPACE``."""
+    MANAGE_CONNECTION = "connection.manage"
+    """See, test, create and edit a Source System's Connection, including its host, user
+    and credentials (owners only; spec §4.3)."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -166,6 +169,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
     Action.UPLOAD_FILE: _WorkspaceRule(min_role="editor"),
+    Action.MANAGE_CONNECTION: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 

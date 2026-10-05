@@ -670,6 +670,52 @@ export interface paths {
         patch: operations["updateSourceSystem"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Connection
+         * @description The Source System's Connection (owners only). 404 `connection_not_found` if none.
+         */
+        get: operations["getConnection"];
+        /**
+         * Save Connection
+         * @description Create or replace the Connection (owners only; 201 when created). The password is
+         *     sealed before it is stored. 422 `invalid_connection` for bad settings.
+         */
+        put: operations["saveConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection
+         * @description Try these settings without saving them (owners only). Always 200: a failure is
+         *     `ok: false` with a safe `error`. Without a password the stored one is used.
+         */
+        post: operations["testConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1090,7 +1136,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -1288,6 +1334,132 @@ export interface components {
              * @enum {string}
              */
             role: "viewer" | "editor" | "owner";
+        };
+        /** Connection */
+        Connection: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+            /**
+             * Engine
+             * @constant
+             */
+            engine: "postgresql";
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /** Database */
+            database: string;
+            /** Username */
+            username: string;
+            /**
+             * Has Password
+             * @description Whether a password is stored. It is never returned.
+             */
+            has_password: boolean;
+            /** Options */
+            options: {
+                [key: string]: unknown;
+            };
+            /**
+             * Allowed Schemas
+             * @description The Database Schemas DAWAM may read; nothing outside them is ever queried.
+             */
+            allowed_schemas: string[];
+            /**
+             * Can Write
+             * @description From the last test of these settings: the user can change data or objects (show a warning). Null: not tested since the last change.
+             */
+            can_write: boolean | null;
+            /** Last Tested At */
+            last_tested_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ConnectionRequest */
+        ConnectionRequest: {
+            /**
+             * Engine
+             * @default postgresql
+             * @constant
+             */
+            engine: "postgresql";
+            /** Host */
+            host: string;
+            /**
+             * Port
+             * @default 5432
+             */
+            port: number;
+            /** Database */
+            database: string;
+            /** Username */
+            username: string;
+            /**
+             * Password
+             * @description Leave out to keep the stored password (or, for a test, to use it). An empty string clears it.
+             */
+            password?: string | null;
+            /**
+             * Options
+             * @description `sslmode`, `connect_timeout` (1-60) and `statement_timeout_seconds` (1-600, default 30).
+             */
+            options?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Allowed Schemas
+             * @description The Database Schemas DAWAM may read (at least one).
+             */
+            allowed_schemas?: string[];
+        };
+        /** ConnectionTestResult */
+        ConnectionTestResult: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Error Code
+             * @description A stable code when `ok` is false.
+             */
+            error_code: string | null;
+            /**
+             * Error
+             * @description A safe message: no host, user or password in it.
+             */
+            error: string | null;
+            /** Server Version */
+            server_version: string | null;
+            /**
+             * Can Write
+             * @description True if the user can change data or objects: DAWAM only reads, so give it a read-only user.
+             */
+            can_write: boolean | null;
+            /**
+             * Available Schemas
+             * @description Database Schemas to pick from.
+             */
+            available_schemas: string[];
+            /**
+             * Missing Schemas
+             * @description Allowed schemas that were not found.
+             */
+            missing_schemas: string[];
         };
         /** CreateKpiRequest */
         CreateKpiRequest: {
@@ -4074,6 +4246,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceSystem"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connection"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connection"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionTestResult"];
                 };
             };
             /** @description Validation error */

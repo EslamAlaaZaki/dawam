@@ -27,6 +27,7 @@ from tests.authz.matrix import (
     registered_routes,
     send,
     signed_in,
+    system_id,
     workspace,
 )
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
@@ -83,6 +84,25 @@ def _set_up_data_warehouse(roles: RoleClients) -> None:
         json={"target_platform": "postgresql"},
     )
     assert response.status_code == 201, response.text
+
+
+CONNECTION_BODY = {
+    "host": "127.0.0.1",
+    "port": 1,
+    "database": "source",
+    "username": "reader",
+    "password": "reader-secret",
+    "allowed_schemas": ["public"],
+}
+
+
+def save_a_connection(roles: RoleClients) -> None:
+    """Gives the Source System a Connection, so there is one to see."""
+    response = roles.client("owner").put(
+        f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}/connection",
+        json=CONNECTION_BODY,
+    )
+    assert response.status_code in (200, 201), response.text
 
 
 SMTP_SETTINGS = {
@@ -513,6 +533,29 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
         "Open Workspace content (download a file)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    # Connections (stories 40-43): owners only, including seeing them (host and user are
+    # owner-only information). Nothing here connects anywhere that answers.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection",
+        "Create Connection, edit credentials (see a Connection)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        setup=save_a_connection,
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection",
+        "Create Connection, edit credentials",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: CONNECTION_BODY,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/connection/test",
+        "Create Connection, edit credentials (test a Connection)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: CONNECTION_BODY,
     ),
 ]
 

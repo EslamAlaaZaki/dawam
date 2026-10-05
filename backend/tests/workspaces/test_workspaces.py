@@ -37,6 +37,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
         "domain": "Retail banking",
         "role": "owner",
         "permissions": [
+            "connection.manage",
             "data_warehouse.change_platform",
             "data_warehouse.set_up",
             "file.upload",
