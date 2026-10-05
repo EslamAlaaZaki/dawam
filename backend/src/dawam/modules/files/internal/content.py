@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import io
 import zipfile
-from collections.abc import Iterable
 from dataclasses import dataclass
 
 EXTRACTED_TEXT_MAX_CHARS = 2_000_000
+PDF_MAX_PAGES = 1_000
+DOCX_MAX_PARAGRAPHS = 50_000
+XLSX_MAX_ROWS = 200_000
+XLSX_MAX_CELLS = 2_000_000
+"""Work caps: a huge (or blank) document must not keep a request busy for long."""
 ZIP_MAX_ENTRIES = 5_000
 ZIP_MAX_UNCOMPRESSED_BYTES = 300 * 1024 * 1024
 """A DOCX/XLSX that unpacks to more than this is refused (a zip bomb)."""
@@ -131,43 +135,77 @@ def extract_text(file_type: FileType, data: bytes) -> tuple[str | None, str]:
     return text, "extracted"
 
 
+class _Text:
+    """Collects text pieces, refusing more once the character cap is reached."""
+
+    def __init__(self) -> None:
+        self._parts: list[str] = []
+        self._size = 0
+
+    @property
+    def full(self) -> bool:
+        return self._size >= EXTRACTED_TEXT_MAX_CHARS
+
+    def add(self, piece: str) -> None:
+        room = EXTRACTED_TEXT_MAX_CHARS - self._size
+        if room <= 0:
+            return
+        piece = piece[:room]
+        self._parts.append(piece)
+        self._size += len(piece) + 1
+
+    def text(self) -> str:
+        return "\n".join(self._parts)
+
+
 def _extract(file_type: FileType, data: bytes) -> str:
     if file_type in (MARKDOWN, TEXT):
-        return data.decode("utf-8-sig")
+        return data[: EXTRACTED_TEXT_MAX_CHARS * 4].decode("utf-8-sig", errors="ignore")
+    out = _Text()
     if file_type is PDF:
         from pypdf import PdfReader
 
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted and not reader.decrypt(""):
             return ""
-        return _joined(page.extract_text() or "" for page in reader.pages)
-    if file_type is DOCX:
+        for number, page in enumerate(reader.pages):
+            if number >= PDF_MAX_PAGES or out.full:
+                break
+            out.add(page.extract_text() or "")
+    elif file_type is DOCX:
         from docx import Document
 
         document = Document(io.BytesIO(data))
-        parts = [paragraph.text for paragraph in document.paragraphs]
+        for count, paragraph in enumerate(document.paragraphs):
+            if count >= DOCX_MAX_PARAGRAPHS or out.full:
+                break
+            out.add(paragraph.text)
+        rows = 0
         for table in document.tables:
-            parts.extend("\t".join(cell.text for cell in row.cells) for row in table.rows)
-        return _joined(parts)
-    if file_type is XLSX:
+            for row in table.rows:
+                rows += 1
+                if rows > DOCX_MAX_PARAGRAPHS or out.full:
+                    break
+                out.add("\t".join(cell.text for cell in row.cells))
+    elif file_type is XLSX:
         from openpyxl import load_workbook
 
         workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        lines: list[str] = []
-        size = 0
-        for sheet in workbook.worksheets:
-            lines.append(f"## {sheet.title}")
-            for row in sheet.iter_rows(values_only=True):
-                line = "\t".join("" if cell is None else str(cell) for cell in row).rstrip("\t")
-                if line:
-                    lines.append(line)
-                    size += len(line)
-                if size > EXTRACTED_TEXT_MAX_CHARS:
-                    return _joined(lines)
-        workbook.close()
-        return _joined(lines)
-    return ""
-
-
-def _joined(parts: Iterable[str]) -> str:
-    return "\n".join(parts)
+        rows = cells = 0
+        try:
+            for sheet in workbook.worksheets:
+                out.add(f"## {sheet.title}")
+                for row in sheet.iter_rows(values_only=True):
+                    # Every row counts, blank or not: a huge empty sheet must end quickly.
+                    rows += 1
+                    cells += len(row)
+                    if rows > XLSX_MAX_ROWS or cells > XLSX_MAX_CELLS or out.full:
+                        break
+                    line = "\t".join("" if cell is None else str(cell) for cell in row)
+                    if line.strip("\t"):
+                        out.add(line.rstrip("\t"))
+                if rows > XLSX_MAX_ROWS or cells > XLSX_MAX_CELLS or out.full:
+                    break
+        finally:
+            workbook.close()
+    return out.text()

@@ -332,3 +332,60 @@ def test_uploads_are_recorded_in_the_activity_feed(roles: RoleClients, clock):
 
     events = [(i["verb"], i["object_label"]) for i in feed["items"] if i["object_type"] == "file"]
     assert events == [("file.replaced", "a.md"), ("file.uploaded", "a.md")]
+
+
+def stored_files(tmp_path: Path) -> list[Path]:
+    return [p for p in tmp_path.rglob("*") if p.is_file()]
+
+
+def test_an_oversized_body_is_refused_before_it_is_read(roles: RoleClients, tmp_path: Path):
+    system_id = system(roles)
+    roles.app.state.settings.upload_max_mb = 0.1  # about 100 KB
+
+    response = upload(roles, system_id, "big.md", b"x" * 400_000)
+
+    assert response.status_code == 413
+    assert error_code(response) == "file_too_large"
+    assert stored_files(tmp_path) == []
+
+
+def test_a_streamed_body_without_a_content_length_is_cut_off(roles: RoleClients, tmp_path: Path):
+    system_id = system(roles)
+    roles.app.state.settings.upload_max_mb = 0.1
+    boundary = "xyz"
+
+    def body():
+        yield (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.md"\r\n'
+            "Content-Type: text/markdown\r\n\r\n"
+        ).encode()
+        for _ in range(100):  # 6 MB, far over the limit; no Content-Length is sent
+            yield b"x" * 60_000
+        yield f"\r\n--{boundary}--\r\n".encode()
+
+    response = roles.client("editor").post(
+        files_path(roles, system_id),
+        content=body(),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+
+    assert response.status_code == 413
+    assert error_code(response) == "file_too_large"
+    assert stored_files(tmp_path) == []
+
+
+def test_an_archived_workspace_refuses_uploads_but_still_serves_downloads(roles: RoleClients):
+    system_id = system(roles)
+    file = upload(roles, system_id, "a.md", b"kept").json()
+    roles.client("viewer")  # members are added lazily, which an archived Workspace refuses
+    archived = roles.client("owner").post(f"/api/v1/workspaces/{roles.workspace_id}/archive")
+    assert archived.status_code == 204, archived.text
+
+    refused = upload(roles, system_id, "b.md", b"new")
+
+    assert refused.status_code == 409
+    assert error_code(refused) == "workspace_archived"
+    listed = roles.client("viewer").get(files_path(roles, system_id)).json()["items"]
+    assert [f["name"] for f in listed] == ["a.md"]
+    url = f"/api/v1/workspaces/{roles.workspace_id}/files/{file['id']}/download"
+    assert roles.client("viewer").get(url).content == b"kept"
