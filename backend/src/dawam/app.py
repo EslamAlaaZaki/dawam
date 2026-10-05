@@ -33,6 +33,7 @@ from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
+from dawam.platform.storage import create_storage
 
 API_PREFIX = "/api/v1"
 
@@ -82,6 +83,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
+    # Where uploaded files live (local volume or S3-compatible bucket).
+    app.state.storage = create_storage(settings)
     # Sign-up (auth) asks the admin module's system settings who may register.
     app.state.registration_policy = SystemSettingsService(engine)
     # The one email-delivery service; auth reaches it here, as its Mailer port.

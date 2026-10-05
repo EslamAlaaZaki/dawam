@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from typing import Literal
 
 from pydantic import (
     Field,
@@ -147,6 +148,25 @@ class Settings(DatabaseSettings):
     """Password reset emails one client address may cause within
     ``password_reset_ip_window_minutes``; further requests send nothing."""
     password_reset_ip_window_minutes: float = Field(default=60, gt=0)
+
+    storage_backend: Literal["local", "s3"] = "local"
+    """Where uploaded files live: a directory (``local``, the default) or an
+    S3-compatible bucket (``s3``; needs the ``s3`` extra, ``pip install dawam[s3]``)."""
+    storage_path: str = "data/files"
+    """The directory of the ``local`` backend: mount a persistent volume here."""
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    """For S3-compatible stores other than AWS (MinIO, Ceph, ...)."""
+    s3_region: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: SecretStr | None = None
+    """Left unset, the S3 client falls back to its usual credential chain."""
+    upload_max_mb: float = Field(default=25, gt=0)
+    """Largest file an upload may carry, in megabytes (MiB)."""
+
+    @property
+    def upload_max_bytes(self) -> int:
+        return int(self.upload_max_mb * 1024 * 1024)
 
     public_url: str = "http://localhost:8000"
     """Where users reach DAWAM (scheme, host, port and any path prefix): the start of

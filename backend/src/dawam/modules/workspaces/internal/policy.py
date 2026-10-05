@@ -61,6 +61,10 @@ class Action(StrEnum):
     """Edit a Source System's name, description and owners (owners and editors)."""
     CHANGE_SYSTEM_CODE = "source_system.change_code"
     """Change a Source System's System Code after creation (owners only)."""
+    UPLOAD_FILE = "file.upload"
+    """Upload a file or document to a Source System's file area (owners and editors;
+    spec §4.3 "Upload, edit, delete Workspace files", story 64). Listing and downloading
+    files need only ``VIEW_WORKSPACE``."""
     MANAGE_SYSTEM_SETTINGS = "installation.manage_settings"
     """Read and change the installation-wide settings, e.g. self-registration (admins
     only; spec §4.1, story 20)."""
@@ -127,6 +131,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_SYSTEM_CODE: _WorkspaceRule(min_role="owner"),
+    Action.UPLOAD_FILE: _WorkspaceRule(min_role="editor"),
     Action.MANAGE_SYSTEM_SETTINGS: _SystemRule(admin_only=True),
 }
 

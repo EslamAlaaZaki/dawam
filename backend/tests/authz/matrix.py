@@ -111,6 +111,8 @@ class Row:
     expect: Expectations
     json: Body | None = field(default=None, kw_only=True)
     """A request body that would succeed for an allowed role."""
+    files: Body | None = field(default=None, kw_only=True)
+    """Multipart form files (``{"file": (name, bytes, type)}``) for an upload route."""
     setup: Callable[[RoleClients], object] | None = field(default=None, kw_only=True)
     """Run before the request, for state an allowed role needs to succeed (e.g. a
     second owner, so the owner may leave)."""
@@ -187,6 +189,18 @@ def system_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(response.json()["id"])
 
 
+def file_id(roles: RoleClients) -> uuid.UUID:
+    """A document in the Source System's file area (the owner uploads it once)."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}/files"
+    listed = owner.get(path).json()["items"]
+    if listed:
+        return uuid.UUID(listed[0]["id"])
+    response = owner.post(path, files={"file": ("sad.md", b"# SAD", "text/markdown")})
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
@@ -194,6 +208,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "invitation_id": invitation_id,
     "member_id": colleague_id,
     "system_id": system_id,
+    "file_id": file_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 
@@ -215,7 +230,8 @@ def send(row: Row, role: Role, roles: RoleClients) -> Any:
         row.setup(roles)
     path = request_path(row, roles)
     json = row.json(roles) if row.json is not None else None
-    return client.request(row.method, path, json=json)
+    files = row.files(roles) if row.files is not None else None
+    return client.request(row.method, path, json=json, files=files)
 
 
 _IGNORED_METHODS = frozenset({"HEAD", "OPTIONS"})

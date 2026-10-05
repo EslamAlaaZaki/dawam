@@ -390,6 +390,26 @@ ROWS: list[Row] = [
             "business_owner": "Head of Retail",
         },
     ),
+    # Files and documents (stories 64, 67): viewers download, editors upload.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files",
+        "Open Workspace content (a Source System's file area)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files",
+        "Upload, edit, delete Workspace files (upload)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        files=lambda roles: {"file": ("notes.md", b"# Notes", "text/markdown")},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
+        "Open Workspace content (download a file)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
 ]
 
 

@@ -20,6 +20,7 @@ import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { FolderTree } from "./FolderTree";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
+import { DocumentsPanel } from "./DocumentsPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
@@ -66,6 +67,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // `systems/<id>`: the folder of one Source System.
   const openSystem = systemList.find((system) => folder.id === `systems/${system.id}`);
 
+  // `systems/<id>/documents`: a Source System's uploaded documents.
+  const documentsSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/documents`,
+  );
+
   function select(id: string) {
     router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
   }
@@ -99,6 +105,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               systems={systemList}
               onOpen={(system) => select(`systems/${system.id}`)}
             />
+          ) : documentsSystem ? (
+            <DocumentsPanel workspace={workspace.data} system={documentsSystem} />
           ) : openSystem ? (
             <SystemDetails
               workspace={workspace.data}
