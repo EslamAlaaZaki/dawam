@@ -3,19 +3,47 @@
 A composition root (README rule 4), shared by the two that run jobs: ``dawam.app``
 (which needs the handlers to accept a submitted job, and runs them inline in tests) and
 ``dawam.worker`` (which runs queued jobs). Each ticket that adds a job type (spec §7:
-``extract``, ``profile``, ``export``, ...) adds its handler here.
+``extract``, ``profile``, ``export``, ...) adds its handler here: to ``JOB_HANDLERS`` if
+it needs nothing, or to ``_service_handlers`` if it is a method of a module's service
+built on the app's database, settings and clock.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
-from dawam.modules.jobs import JobHandler, JobRunner
+import sqlalchemy as sa
+
+from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
+from dawam.modules.sources import EXTRACT_JOB, SnapshotService
+from dawam.modules.workspaces import WorkspaceService
+from dawam.platform.clock import Clock
+from dawam.platform.config import Settings
 
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
 
 
-def register_job_handlers(runner: JobRunner) -> None:
-    """Register every handler in ``JOB_HANDLERS`` on ``runner``."""
-    for job_type, handler in JOB_HANDLERS.items():
-        runner.register(job_type, handler)
+def _service_handlers(
+    runner: JobRunner, engine: sa.Engine, settings: Settings, clock: Clock
+) -> dict[str, JobHandler]:
+    snapshots = SnapshotService(
+        engine,
+        workspaces=WorkspaceService(engine, clock=clock),
+        jobs=runner,
+        encryption_key=settings.encryption_key.get_secret_value(),
+        clock=clock,
+    )
+    return {EXTRACT_JOB: snapshots.run_extraction}
+
+
+def register_job_handlers(
+    runner: JobRunner, *, engine: sa.Engine, settings: Settings, clock: Clock
+) -> None:
+    """Register every handler on ``runner``. A type the runner already has is left alone:
+    tests build several apps on one shared runner, and the first app's handlers serve all."""
+    handlers = {**_service_handlers(runner, engine, settings, clock), **JOB_HANDLERS}
+    for job_type, handler in handlers.items():
+        try:
+            runner.handler(job_type)
+        except UnknownJobTypeError:
+            runner.register(job_type, handler)

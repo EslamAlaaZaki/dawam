@@ -2656,6 +2656,211 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/extractions": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Start Extraction",
+        "description": "Extract metadata from the Source System's Connection into a new Snapshot, as a\nbackground job (owners and editors). A source with no differences from the latest\nSnapshot creates none. 409 `connection_missing` without a Connection.",
+        "operationId": "startExtraction",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "List Snapshots",
+        "description": "The Source System's Snapshots, newest first (any member).",
+        "operationId": "listSnapshots",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Snapshot",
+        "description": "Everything one Snapshot captured: Database Schemas, tables and views (with\ncolumns, constraints, indexes and view definitions) and routines with their code\n(any member).",
+        "operationId": "getSnapshot",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "snapshot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Snapshot Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotContent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -4331,6 +4536,7 @@
           "source_system.create",
           "source_system.edit",
           "source_system.change_code",
+          "source_system.extract",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -5448,6 +5654,33 @@
           "error"
         ],
         "title": "ErrorResponse"
+      },
+      "ExtractionStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `extract` job: follow its status, progress and log at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "ExtractionStarted"
       },
       "ForcedReset": {
         "properties": {
@@ -6800,6 +7033,531 @@
           "updated_at"
         ],
         "title": "SmtpSettingsOut"
+      },
+      "SnapshotColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "data_type": {
+            "type": "string",
+            "title": "Data Type"
+          },
+          "is_nullable": {
+            "type": "boolean",
+            "title": "Is Nullable"
+          },
+          "is_pk": {
+            "type": "boolean",
+            "title": "Is Pk"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "ordinal",
+          "data_type",
+          "is_nullable",
+          "is_pk",
+          "default",
+          "comment"
+        ],
+        "title": "SnapshotColumn"
+      },
+      "SnapshotConstraint": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "pk",
+              "fk",
+              "unique"
+            ],
+            "title": "Type"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "ref_table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Table Id",
+            "description": "A foreign key's referenced table, when it is in this Snapshot."
+          },
+          "ref_db_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Db Schema"
+          },
+          "ref_table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Table"
+          },
+          "ref_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ref Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "columns",
+          "ref_table_id",
+          "ref_db_schema",
+          "ref_table",
+          "ref_columns"
+        ],
+        "title": "SnapshotConstraint"
+      },
+      "SnapshotContent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "connection",
+              "import"
+            ],
+            "title": "Origin"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "The job that produced it."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At"
+          },
+          "is_latest": {
+            "type": "boolean",
+            "title": "Is Latest"
+          },
+          "schema_count": {
+            "type": "integer",
+            "title": "Schema Count"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count",
+            "description": "Tables and views."
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "routine_count": {
+            "type": "integer",
+            "title": "Routine Count"
+          },
+          "db_schemas": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDbSchema"
+            },
+            "type": "array",
+            "title": "Db Schemas"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotTable"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "routines": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotRoutine"
+            },
+            "type": "array",
+            "title": "Routines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_system_id",
+          "origin",
+          "job_id",
+          "taken_at",
+          "is_latest",
+          "schema_count",
+          "table_count",
+          "column_count",
+          "routine_count",
+          "db_schemas",
+          "tables",
+          "routines"
+        ],
+        "title": "SnapshotContent"
+      },
+      "SnapshotDbSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SnapshotDbSchema"
+      },
+      "SnapshotIndex": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns",
+            "description": "Column names; an expression key is its SQL."
+          },
+          "is_unique": {
+            "type": "boolean",
+            "title": "Is Unique"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "columns",
+          "is_unique"
+        ],
+        "title": "SnapshotIndex"
+      },
+      "SnapshotPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotSummary"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Newest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SnapshotPage"
+      },
+      "SnapshotRoutine": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "procedure",
+              "function"
+            ],
+            "title": "Kind"
+          },
+          "signature": {
+            "type": "string",
+            "title": "Signature",
+            "description": "The argument list, which tells overloads apart."
+          },
+          "definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "db_schema",
+          "name",
+          "kind",
+          "signature",
+          "definition"
+        ],
+        "title": "SnapshotRoutine"
+      },
+      "SnapshotSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "connection",
+              "import"
+            ],
+            "title": "Origin"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "The job that produced it."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At"
+          },
+          "is_latest": {
+            "type": "boolean",
+            "title": "Is Latest"
+          },
+          "schema_count": {
+            "type": "integer",
+            "title": "Schema Count"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count",
+            "description": "Tables and views."
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "routine_count": {
+            "type": "integer",
+            "title": "Routine Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_system_id",
+          "origin",
+          "job_id",
+          "taken_at",
+          "is_latest",
+          "schema_count",
+          "table_count",
+          "column_count",
+          "routine_count"
+        ],
+        "title": "SnapshotSummary"
+      },
+      "SnapshotTable": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "view"
+            ],
+            "title": "Kind"
+          },
+          "view_definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Definition"
+          },
+          "row_estimate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Estimate"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "constraints": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotConstraint"
+            },
+            "type": "array",
+            "title": "Constraints"
+          },
+          "indexes": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotIndex"
+            },
+            "type": "array",
+            "title": "Indexes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "db_schema",
+          "name",
+          "kind",
+          "view_definition",
+          "row_estimate",
+          "comment",
+          "columns",
+          "constraints",
+          "indexes"
+        ],
+        "title": "SnapshotTable"
       },
       "SourceSystem": {
         "properties": {

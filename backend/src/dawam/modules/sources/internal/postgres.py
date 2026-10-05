@@ -24,6 +24,8 @@ from .connector import (
     ConnectionParams,
     ConnectionTest,
     ConnectorError,
+    ConstraintInfo,
+    IndexInfo,
     QueryResult,
     RoutineInfo,
     ScopeError,
@@ -35,6 +37,7 @@ DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
 SSL_MODES = ("disable", "allow", "prefer", "require", "verify-ca", "verify-full")
 
 _SYSTEM_SCHEMA_CLAUSE = "nspname <> 'information_schema' AND nspname !~ '^pg_'"
+_CONSTRAINT_TYPES = {"p": "pk", "f": "fk", "u": "unique"}
 _CATALOG_REFERENCE = re.compile(r"(?i)(?<![\w$])(pg_\w*|information_schema)(?![\w$])")
 
 
@@ -186,6 +189,11 @@ class PostgresConnector:
         allowed = list(self._params.allowed_schemas)
         with self._session() as conn, conn.cursor() as cur:
             cur.execute(
+                "SELECT nspname FROM pg_namespace WHERE nspname = ANY(%s) ORDER BY nspname",
+                (allowed,),
+            )
+            schemas = tuple(row[0] for row in cur.fetchall())
+            cur.execute(
                 """
                 SELECT n.nspname, c.relname, c.oid, c.relkind, c.reltuples::bigint,
                        obj_description(c.oid, 'pg_class'),
@@ -222,7 +230,65 @@ class PostgresConnector:
                 )
             cur.execute(
                 """
-                SELECT n.nspname, p.proname, p.prokind, pg_get_functiondef(p.oid)
+                SELECT con.conrelid, con.conname, con.contype,
+                       ARRAY(SELECT a.attname::text
+                             FROM unnest(con.conkey) WITH ORDINALITY k(num, pos)
+                             JOIN pg_attribute a
+                               ON a.attrelid = con.conrelid AND a.attnum = k.num
+                             ORDER BY k.pos),
+                       rn.nspname, rc.relname,
+                       ARRAY(SELECT a.attname::text
+                             FROM unnest(con.confkey) WITH ORDINALITY k(num, pos)
+                             JOIN pg_attribute a
+                               ON a.attrelid = con.confrelid AND a.attnum = k.num
+                             ORDER BY k.pos)
+                FROM pg_constraint con
+                JOIN pg_class c ON c.oid = con.conrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_class rc ON rc.oid = con.confrelid
+                LEFT JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+                WHERE n.nspname = ANY(%s) AND con.contype IN ('p', 'f', 'u')
+                ORDER BY con.conrelid, con.conname
+                """,
+                (allowed,),
+            )
+            constraints: dict[int, list[ConstraintInfo]] = {}
+            for oid, name, kind, cols, ref_schema, ref_table, ref_cols in cur.fetchall():
+                constraints.setdefault(oid, []).append(
+                    ConstraintInfo(
+                        name=name,
+                        type=_CONSTRAINT_TYPES[kind],
+                        columns=tuple(cols),
+                        ref_schema=ref_schema,
+                        ref_table=ref_table,
+                        ref_columns=tuple(ref_cols),
+                    )
+                )
+            cur.execute(
+                """
+                SELECT i.indrelid, ic.relname, i.indisunique,
+                       ARRAY(SELECT CASE WHEN i.indkey[k - 1] = 0
+                                    THEN pg_get_indexdef(i.indexrelid, k, true)
+                                    ELSE (SELECT a.attname::text FROM pg_attribute a
+                                          WHERE a.attrelid = i.indrelid
+                                            AND a.attnum = i.indkey[k - 1]) END
+                             FROM generate_series(1, i.indnkeyatts) k ORDER BY k)
+                FROM pg_index i
+                JOIN pg_class ic ON ic.oid = i.indexrelid
+                JOIN pg_class c ON c.oid = i.indrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ANY(%s)
+                ORDER BY i.indrelid, ic.relname
+                """,
+                (allowed,),
+            )
+            indexes: dict[int, list[IndexInfo]] = {}
+            for oid, name, is_unique, cols in cur.fetchall():
+                indexes.setdefault(oid, []).append(IndexInfo(name, tuple(cols), bool(is_unique)))
+            cur.execute(
+                """
+                SELECT n.nspname, p.proname, p.prokind, pg_get_functiondef(p.oid),
+                       pg_get_function_identity_arguments(p.oid)
                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                 WHERE n.nspname = ANY(%s) AND p.prokind IN ('f', 'p')
                 ORDER BY n.nspname, p.proname, p.oid
@@ -230,8 +296,14 @@ class PostgresConnector:
                 (allowed,),
             )
             routines = tuple(
-                RoutineInfo(schema, name, "procedure" if kind == "p" else "function", definition)
-                for schema, name, kind, definition in cur.fetchall()
+                RoutineInfo(
+                    schema,
+                    name,
+                    "procedure" if kind == "p" else "function",
+                    definition,
+                    signature or "",
+                )
+                for schema, name, kind, definition, signature in cur.fetchall()
             )
         tables = tuple(
             TableInfo(
@@ -242,10 +314,12 @@ class PostgresConnector:
                 comment=comment,
                 definition=definition,
                 columns=tuple(columns.get(oid, [])),
+                constraints=tuple(constraints.get(oid, [])),
+                indexes=tuple(indexes.get(oid, [])),
             )
             for schema, name, oid, relkind, estimate, comment, definition in table_rows
         )
-        return SourceCatalog(tables=tables, routines=routines)
+        return SourceCatalog(tables=tables, routines=routines, schemas=schemas)
 
     def profile(self, schema: str, table: str, column: str) -> ColumnProfile:
         self._require_allowed(schema)

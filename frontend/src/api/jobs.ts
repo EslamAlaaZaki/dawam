@@ -16,7 +16,7 @@ export function isActive(job: Job): boolean {
   return ACTIVE.has(job.status);
 }
 
-const jobsKey = (workspaceId: string) => ["workspace", workspaceId, "jobs"] as const;
+export const jobsKey = (workspaceId: string) => ["workspace", workspaceId, "jobs"] as const;
 
 /** The Workspace's latest jobs, newest first; refreshed while any of them is active. */
 export function useJobs(workspaceId: string) {

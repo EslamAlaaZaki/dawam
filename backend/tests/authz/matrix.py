@@ -35,8 +35,11 @@ from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
 
 from dawam.modules.auth import AuthService, Invitations
-from dawam.modules.jobs import JobService, QueuedJobRunner
+from dawam.modules.jobs import InlineJobRunner, JobService, QueuedJobRunner
 from dawam.modules.mail import MailService
+from dawam.modules.sources import EXTRACT_JOB, SnapshotService
+from dawam.modules.sources.internal.connector import ColumnInfo, SourceCatalog, TableInfo
+from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
 
@@ -236,6 +239,51 @@ def job_id(roles: RoleClients) -> uuid.UUID:
     ).id
 
 
+class _OneTableSource:
+    """A stand-in source database with one table, for ``snapshot_id``."""
+
+    def extract(self) -> SourceCatalog:
+        column = ColumnInfo("id", 1, "integer", False, True, None, None)
+        table = TableInfo("public", "accounts", "table", 1, None, None, (column,))
+        return SourceCatalog(tables=(table,), routines=(), schemas=("public",))
+
+
+def snapshot_id(roles: RoleClients) -> uuid.UUID:
+    """A Snapshot of the Source System: the owner gives it a Connection through the API,
+    then an extraction runs (through the sources module) against a stand-in source."""
+    owner = roles.client("owner")
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    listed = owner.get(f"{system}/snapshots").json()["items"]
+    if listed:
+        return uuid.UUID(listed[0]["id"])
+    response = owner.put(
+        f"{system}/connection",
+        json={
+            "host": "127.0.0.1",
+            "port": 1,
+            "database": "source",
+            "username": "reader",
+            "allowed_schemas": ["public"],
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+    state = roles.app.state
+    clock = state.services.clock
+    runner = InlineJobRunner()
+    snapshots = SnapshotService(
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        jobs=runner,
+        encryption_key=state.settings.encryption_key.get_secret_value(),
+        clock=clock,
+        connectors=lambda engine, params: _OneTableSource(),  # type: ignore[arg-type,return-value]
+    )
+    runner.register(EXTRACT_JOB, snapshots.run_extraction)
+    snapshots.start_extraction(roles.user("owner"), roles.workspace_id, system_id(roles))
+    [snapshot] = snapshots.list(roles.user("owner"), roles.workspace_id, system_id(roles))
+    return snapshot.id
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
@@ -247,6 +295,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
     "file_id": file_id,
+    "snapshot_id": snapshot_id,
 }
 """How to fill each path parameter. Add one when a route introduces a new name."""
 

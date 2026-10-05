@@ -56,6 +56,7 @@ def test_extract_reads_tables_views_columns_keys_and_routines_of_allowed_schemas
 
     tables = {(t.schema, t.name): t for t in catalog.tables}
     assert ("restricted", "salaries") not in tables
+    assert catalog.schemas == ("core", "crm")
     assert {schema for schema, _ in tables} == {"core", "crm"}
     assert ("core", "عملاء_محليون") in tables
     assert [c.name for c in tables[("core", "عملاء_محليون")].columns] == ["رقم", "الاسم", "المدينة"]
@@ -72,6 +73,40 @@ def test_extract_reads_tables_views_columns_keys_and_routines_of_allowed_schemas
     routines = {(r.kind, r.name): r for r in catalog.routines}
     assert set(routines) == {("function", "account_turnover"), ("procedure", "close_account")}
     assert "JOIN" in (routines[("function", "account_turnover")].definition or "")
+
+
+def test_extract_reads_constraints_indexes_estimates_and_routine_signatures(
+    sample_source: SampleSource,
+):
+    catalog = connector(sample_source).extract()
+
+    tables = {(t.schema, t.name): t for t in catalog.tables}
+    customers = tables[("core", "customers")]
+    constraints = {c.name: c for c in customers.constraints}
+    assert constraints["customers_pkey"].type == "pk"
+    assert constraints["customers_pkey"].columns == ("cust_no",)
+    fk = constraints["customers_branch_fk"]
+    assert (fk.type, fk.columns, fk.ref_schema, fk.ref_table, fk.ref_columns) == (
+        "fk",
+        ("branch_code",),
+        "core",
+        "branches",
+        ("branch_code",),
+    )
+    unique = {c.name: c for c in tables[("core", "branches")].constraints}["branches_name_uq"]
+    assert (unique.type, unique.columns) == ("unique", ("branch_name",))
+    indexes = {i.name: i for i in customers.indexes}
+    assert indexes["customers_pkey"].is_unique and indexes["customers_pkey"].columns == ("cust_no",)
+    assert indexes["customers_lower_email_idx"].columns == ("lower(email)",)
+    assert not indexes["customers_lower_email_idx"].is_unique
+    assert {i.name for i in tables[("core", "accounts")].indexes} == {
+        "accounts_pkey",
+        "accounts_cust_no_idx",
+    }
+    assert tables[("core", "customer_balances")].constraints == ()
+    assert all(t.row_estimate is None or t.row_estimate >= 0 for t in catalog.tables)
+    routines = {r.name: r for r in catalog.routines}
+    assert routines["account_turnover"].signature == "p_acct integer"
 
 
 def test_profile_and_sample_stay_inside_the_allowed_schemas(sample_source: SampleSource):

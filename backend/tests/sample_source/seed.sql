@@ -27,6 +27,9 @@ CREATE TABLE core.branches (
 ALTER TABLE core.customers
     ADD CONSTRAINT customers_branch_fk FOREIGN KEY (branch_code) REFERENCES core.branches (branch_code);
 
+ALTER TABLE core.branches ADD CONSTRAINT branches_name_uq UNIQUE (branch_name);
+CREATE INDEX customers_lower_email_idx ON core.customers (lower(email));
+
 -- accounts.cust_no -> customers.cust_no is NOT declared: inference must find it.
 CREATE TABLE core.accounts (
     acct_no   integer PRIMARY KEY,
@@ -35,6 +38,7 @@ CREATE TABLE core.accounts (
     balance   numeric(14, 2) NOT NULL DEFAULT 0,
     opened_on date
 );
+CREATE INDEX accounts_cust_no_idx ON core.accounts (cust_no);
 
 CREATE TABLE core.transactions (
     txn_id  bigint PRIMARY KEY,

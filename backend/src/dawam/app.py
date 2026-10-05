@@ -63,10 +63,12 @@ def default_services() -> Services:
 def create_app(settings: Settings | None = None, *, services: Services | None = None) -> FastAPI:
     settings = settings or load_settings()
     services = services or default_services()
-    # The worker registers the same handlers: a job is submitted here and run there.
-    job_handlers.register_job_handlers(services.jobs)
     install_request_id_on_records()
     engine = create_engine(settings.database_url)
+    # The worker registers the same handlers: a job is submitted here and run there.
+    job_handlers.register_job_handlers(
+        services.jobs, engine=engine, settings=settings, clock=services.clock
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
