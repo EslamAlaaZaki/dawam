@@ -10,7 +10,9 @@ WORKDIR /app
 COPY backend/pyproject.toml ./
 COPY backend/src ./src
 RUN pip install . && rm -rf src
-RUN useradd --system --uid 10001 --no-create-home dawam
+RUN useradd --system --uid 10001 --no-create-home dawam \
+    && mkdir -p /var/lib/dawam/files \
+    && chown dawam /var/lib/dawam/files
 USER dawam
 EXPOSE 8000
 CMD ["python", "-m", "dawam", "serve"]

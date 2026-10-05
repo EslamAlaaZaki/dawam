@@ -22,6 +22,7 @@ import { LifecyclePanel } from "./LifecyclePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
 import { MembersPanel } from "./MembersPanel";
+import { DocumentsPanel } from "./DocumentsPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
@@ -70,6 +71,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // `systems/<id>/kpis` and `dw/kpis`: a KPI folder, of that system or of the Data Warehouse.
   const kpiSystem = systemList.find((system) => folder.id === `systems/${system.id}/kpis`);
 
+  // `systems/<id>/documents`: a Source System's uploaded documents.
+  const documentsSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/documents`,
+  );
+
   function select(id: string) {
     router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
   }
@@ -117,6 +123,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               scope={{ systemId: kpiSystem?.id ?? null }}
               title={kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"}
             />
+          ) : documentsSystem ? (
+            <DocumentsPanel workspace={workspace.data} system={documentsSystem} />
           ) : openSystem ? (
             <SystemDetails
               workspace={workspace.data}

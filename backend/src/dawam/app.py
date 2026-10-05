@@ -7,6 +7,7 @@ runner, ...) the app uses; tests pass their own ``Services``.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from dawam.modules.mail import MailService
 from dawam.modules.workspaces import InvitedWorkspaceMembership
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
+from dawam.platform.body_limit import BodySizeLimitMiddleware
 from dawam.platform.clock import Clock, system_clock
 from dawam.platform.config import ConfigError, Settings, load_settings
 from dawam.platform.csrf import CsrfCookieMiddleware, require_csrf
@@ -33,8 +35,14 @@ from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
+from dawam.platform.storage import create_storage
 
 API_PREFIX = "/api/v1"
+
+UPLOAD_PATH = re.compile(rf"{API_PREFIX}/workspaces/[^/]+/systems/[^/]+/files")
+"""The file upload route (files module); its body is size-limited while it streams."""
+UPLOAD_OVERHEAD_BYTES = 64 * 1024
+"""Allowed on top of the file limit for the multipart framing around the file."""
 
 logger = logging.getLogger("dawam.app")
 
@@ -82,6 +90,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
+    # Where uploaded files live (local volume or S3-compatible bucket).
+    app.state.storage = create_storage(settings)
     # Sign-up (auth) asks the admin module's system settings who may register.
     app.state.registration_policy = SystemSettingsService(engine)
     # The one email-delivery service; auth reaches it here, as its Mailer port.
@@ -91,6 +101,12 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)
+    # Uploads are cut off while they stream, not after Starlette has spooled them all.
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        path=UPLOAD_PATH,
+        limit=lambda: settings.upload_max_bytes + UPLOAD_OVERHEAD_BYTES,
+    )
     app.add_middleware(RequestContextMiddleware)
     # Added after the others, so it is outside them and also covers the 500s
     # RequestContextMiddleware renders.

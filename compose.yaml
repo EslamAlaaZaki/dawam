@@ -17,6 +17,9 @@ x-dawam: &dawam
     DAWAM_ENCRYPTION_KEY: ${DAWAM_ENCRYPTION_KEY:?set DAWAM_ENCRYPTION_KEY in .env; .env.example says how to generate one}
     # Only `edge` may tell the app who the client is and whether it used HTTPS.
     DAWAM_FORWARDED_ALLOW_IPS: 172.30.126.10
+    DAWAM_STORAGE_PATH: ${DAWAM_STORAGE_PATH:-/var/lib/dawam/files}
+  volumes:
+    - file-data:/var/lib/dawam/files
   depends_on:
     db:
       condition: service_healthy
@@ -109,4 +112,5 @@ networks:
 
 volumes:
   db-data:
+  file-data:
   ollama-data:

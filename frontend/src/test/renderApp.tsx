@@ -58,7 +58,12 @@ export function renderApp(api: FakeApi, path: string): ApiRequest[] {
       path: url.pathname,
       query: Object.fromEntries(url.searchParams),
       csrf: request.headers.get("X-CSRF-Token"),
-      body: text ? JSON.parse(text) : undefined,
+      // JSON bodies are parsed; a multipart upload is left as its raw text.
+      body: text
+        ? request.headers.get("Content-Type")?.includes("multipart/form-data")
+          ? text
+          : JSON.parse(text)
+        : undefined,
     };
     requests.push(recorded);
     if (recorded.method !== "GET" && recorded.csrf !== CSRF_TOKEN) {

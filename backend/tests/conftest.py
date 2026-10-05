@@ -29,6 +29,7 @@ from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
@@ -80,9 +81,10 @@ def fresh_database_url(database_url: str) -> Iterator[str]:
 
 
 @pytest.fixture
-def settings(database_url: str) -> Settings:
+def settings(database_url: str, tmp_path: Path) -> Settings:
     return Settings(
         database_url=database_url,
+        storage_path=str(tmp_path / "files"),
         encryption_key=TEST_ENCRYPTION_KEY,  # type: ignore[arg-type]
     )
 
