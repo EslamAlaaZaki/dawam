@@ -1663,7 +1663,7 @@ export interface components {
              * Engine
              * @enum {string}
              */
-            engine: "postgresql" | "sqlserver" | "mysql";
+            engine: "postgresql" | "sqlserver" | "mysql" | "oracle";
             /** Host */
             host: string;
             /** Port */
@@ -1711,16 +1711,19 @@ export interface components {
              * @default postgresql
              * @enum {string}
              */
-            engine: "postgresql" | "sqlserver" | "mysql";
+            engine: "postgresql" | "sqlserver" | "mysql" | "oracle";
             /** Host */
             host: string;
             /**
              * Port
-             * @description Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306.
+             * @description Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, Oracle on 1521.
              * @default 5432
              */
             port: number;
-            /** Database */
+            /**
+             * Database
+             * @description The database name; for Oracle, the service name. Oracle Database Schemas are user names, given as Oracle stores them (usually upper case).
+             */
             database: string;
             /** Username */
             username: string;
