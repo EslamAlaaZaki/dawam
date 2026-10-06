@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "id": "msg_01",
+    "type": "message",
+    "role": "assistant",
+    "model": "test-model",
+    "content": [
+      {
+        "type": "text",
+        "text": "Hello there."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null
+  }
+}

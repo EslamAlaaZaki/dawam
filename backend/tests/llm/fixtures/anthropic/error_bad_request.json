@@ -1,0 +1,13 @@
+{
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "type": "error",
+    "error": {
+      "type": "invalid_request_error",
+      "message": "messages: roles must alternate between \"user\" and \"assistant\""
+    }
+  }
+}

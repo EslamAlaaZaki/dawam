@@ -71,6 +71,22 @@ def test_an_admin_registers_a_provider_and_the_key_is_never_returned(admin_clien
     assert box.decrypt(sealed, context="llm.provider.api_key") == "sk-secret-key"
 
 
+def test_an_admin_registers_claude_through_the_anthropic_adapter(admin_client, fake_llm):
+    created = add_provider(
+        admin_client,
+        name="Claude",
+        adapter="anthropic",
+        base_url="https://api.anthropic.com/v1",
+        internal=False,
+    )
+    model = add_model(admin_client, created, name="claude-sonnet-4-5")
+
+    assert created["adapter"] == "anthropic"
+    assert admin_client.get(f"{BASE}/providers/{created['id']}").json()["adapter"] == "anthropic"
+    tested = admin_client.post(f"{BASE}/models/{model['id']}/test")
+    assert tested.status_code == 200, tested.text
+
+
 def test_a_provider_without_a_key_reports_no_key(admin_client):
     created = add_provider(admin_client, api_key=None, name="Ollama")
 
@@ -121,7 +137,7 @@ def test_provider_names_are_unique(admin_client):
         {"base_url": "http://user:pw@llm/v1"},
         {"name": "  "},
         {"timeout_seconds": 0},
-        {"adapter": "anthropic"},
+        {"adapter": "cohere"},
     ],
 )
 def test_bad_provider_settings_are_rejected(admin_client, overrides):

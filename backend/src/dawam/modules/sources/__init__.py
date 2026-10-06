@@ -19,6 +19,9 @@ Public interface. Other modules import only what is re-exported here:
 - ``EnhancementService``: owners and editors add descriptions, tags, a sensitivity flag,
   and (tables) a classification and SCD hint to Source Objects; each change is audited
   (``source_table`` / ``source_column`` entities) and appears in the activity feed.
+- ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
+  owners and editors confirm or reject one, or merge a removed object into an added one, so a
+  rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
@@ -41,6 +44,7 @@ from .api import router
 from .connection_service import Connection, ConnectionService
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
+from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
     EXTRACT_JOB,
@@ -58,6 +62,9 @@ __all__ = [
     "EnhancementService",
     "ImportResult",
     "ImportStatus",
+    "RenameCandidate",
+    "RenameService",
+    "RenamedObject",
     "SchemaImportService",
     "SearchHit",
     "SnapshotContent",

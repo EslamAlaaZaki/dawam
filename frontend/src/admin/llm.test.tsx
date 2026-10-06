@@ -162,6 +162,30 @@ describe("language models page", () => {
     });
   });
 
+  it("adds an Anthropic provider when that type is chosen", async () => {
+    const requests = renderApp(
+      as(ROOT, (r) => {
+        if (r.path === "/api/v1/admin/llm/providers") {
+          return r.method === "POST" ? json(PROVIDER, 201) : json({ items: [] });
+        }
+        if (r.path === "/api/v1/admin/llm/setup") return json(INCOMPLETE);
+        return undefined;
+      }),
+      "/admin/llm",
+    );
+
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Claude" } });
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "anthropic" } });
+    fireEvent.change(screen.getByLabelText(/^Base URL/), {
+      target: { value: "https://api.anthropic.com/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    const body = requests.find((r) => r.method === "POST")?.body as { adapter: string };
+    expect(body.adapter).toBe("anthropic");
+  });
+
   it("tests a model and shows what it found", async () => {
     const tested: LlmModel = {
       ...MODEL,

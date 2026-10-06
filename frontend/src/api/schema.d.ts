@@ -1062,6 +1062,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rename Candidates
+         * @description Removed columns, tables and Database Schemas that look like added ones (any
+         *     member): the open candidates of the latest Snapshot.
+         */
+        get: operations["listRenameCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Rename
+         * @description Confirm a rename (owners and editors): the removed object keeps its identity,
+         *     descriptions and mappings under the new name. Audited. 409 `rename_conflict` if it was
+         *     already decided or an object changed.
+         */
+        post: operations["confirmRename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Rename
+         * @description Reject a rename (owners and editors): the removal and the addition stand.
+         */
+        post: operations["rejectRename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/renames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Removed Object
+         * @description Merge a removed object into an added one of the same kind, for a rename noticed
+         *     late (owners and editors); audited. 409 `rename_conflict` if they are not a removed
+         *     and an added object of the same kind (and, for columns, table).
+         */
+        post: operations["mergeRemovedObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1350,6 +1435,29 @@ export interface paths {
          *     included; 404 for anyone else).
          */
         get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description The audit trail of the Workspace's critical entities, newest first, with old and
+         *     new values (any member, viewers included; 404 for anyone else). Entries are
+         *     read-only: old values are re-entered by hand as a new change, never restored.
+         *     Connection entries never hold secrets, and show host and username to owners only.
+         */
+        get: operations["listAudit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2065,6 +2173,61 @@ export interface components {
         AdminWorkspacePage: {
             /** Items */
             items: components["schemas"]["AdminWorkspace"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
+        };
+        /** AuditEntry */
+        AuditEntry: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description Who did it; null if that user is gone. */
+            actor: components["schemas"]["ActivityActor"] | null;
+            /**
+             * Via
+             * @description How: by hand, the AI, a sync, an import, ...
+             * @enum {string}
+             */
+            via: "user" | "ai" | "regeneration" | "sync" | "propagation" | "import" | "platform_change" | "system_code_change";
+            /**
+             * Entity Type
+             * @description What kind of entity changed: `kpi`, `member`, ...
+             */
+            entity_type: string;
+            /** Entity Id */
+            entity_id: string;
+            /**
+             * Old
+             * @description The changed fields before the change, so they can be re-entered by hand; null for a create.
+             */
+            old: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * New
+             * @description The fields after the change; null for a delete.
+             */
+            new: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AuditPage */
+        AuditPage: {
+            /**
+             * Items
+             * @description Newest first.
+             */
+            items: components["schemas"]["AuditEntry"][];
             /**
              * Next Cursor
              * @description The `cursor` of the next page; null on the last.
@@ -3035,9 +3198,9 @@ export interface components {
             name: string;
             /**
              * Adapter
-             * @constant
+             * @enum {string}
              */
-            adapter: "openai_compatible";
+            adapter: "openai_compatible" | "anthropic";
             /** Base Url */
             base_url: string;
             /**
@@ -3077,12 +3240,12 @@ export interface components {
             /**
              * Adapter
              * @default openai_compatible
-             * @constant
+             * @enum {string}
              */
-            adapter: "openai_compatible";
+            adapter: "openai_compatible" | "anthropic";
             /**
              * Base Url
-             * @description Including the version prefix, e.g. `http://vllm:8000/v1`.
+             * @description Including the version prefix, e.g. `http://vllm:8000/v1` or `https://api.anthropic.com/v1`.
              */
             base_url: string;
             /**
@@ -3198,6 +3361,26 @@ export interface components {
              * @description Every member, by display name.
              */
             items: components["schemas"]["Member"][];
+        };
+        /** MergeRequest */
+        MergeRequest: {
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "db_schema" | "table" | "column";
+            /**
+             * Removed Id
+             * Format: uuid
+             * @description The Source Object that is gone from the source.
+             */
+            removed_id: string;
+            /**
+             * Added Id
+             * Format: uuid
+             * @description The Source Object of the same kind that was added.
+             */
+            added_id: string;
         };
         /** NamingRules */
         NamingRules: {
@@ -3420,6 +3603,82 @@ export interface components {
              * @enum {string}
              */
             status: "source_removed" | "out_of_scope";
+        };
+        /** RenameCandidate */
+        RenameCandidate: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             * @description The Snapshot that proposed it.
+             */
+            snapshot_id: string;
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "db_schema" | "table" | "column";
+            /**
+             * Old Object Id
+             * Format: uuid
+             * @description The removed Source Object.
+             */
+            old_object_id: string;
+            /** Old Name */
+            old_name: string;
+            /**
+             * Location
+             * @description A table's Database Schema; a column's `schema.table`.
+             */
+            location: string | null;
+            /**
+             * New Object Id
+             * Format: uuid
+             * @description The added Source Object.
+             */
+            new_object_id: string;
+            /** New Name */
+            new_name: string;
+            /**
+             * Confidence
+             * @description 0 to 1: how alike the two objects are.
+             */
+            confidence: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "confirmed" | "rejected";
+        };
+        /** RenameCandidateList */
+        RenameCandidateList: {
+            /**
+             * Items
+             * @description The open candidates of the latest Snapshot, most confident first.
+             */
+            items: components["schemas"]["RenameCandidate"][];
+        };
+        /** RenamedObject */
+        RenamedObject: {
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "db_schema" | "table" | "column";
+            /**
+             * Id
+             * Format: uuid
+             * @description The surviving Source Object: the one that was removed.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Previous Name */
+            previous_name: string;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -7030,6 +7289,174 @@ export interface operations {
             };
         };
     };
+    listRenameCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameCandidateList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirmRename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenamedObject"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectRename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    mergeRemovedObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenamedObject"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listNotifications: {
         parameters: {
             query?: never;
@@ -7742,6 +8169,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAudit: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                /** @description One object. */
+                entity_id?: string | null;
+                actor_id?: string | null;
+                via?: ("user" | "ai" | "regeneration" | "sync" | "propagation" | "import" | "platform_change" | "system_code_change") | null;
+                /** @description From this moment, inclusive. */
+                since?: string | null;
+                /** @description Until this moment, inclusive. */
+                until?: string | null;
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
                 };
             };
             /** @description Validation error */

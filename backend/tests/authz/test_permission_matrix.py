@@ -26,6 +26,7 @@ from tests.authz.matrix import (
     outcome_of,
     public,
     registered_routes,
+    rename_pair,
     send,
     signed_in,
     snapshot_id,
@@ -410,6 +411,13 @@ ROWS: list[Row] = [
         "GET",
         "/api/v1/workspaces/{workspace_id}/activity",
         "Open Workspace content (activity feed, story 38)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/audit",
+        "Open Workspace content (audit trail, story 127; Connection host and user are "
+        "filtered out for non-owners)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
     Row(
@@ -849,6 +857,38 @@ ROWS: list[Row] = [
         "Edit Source Schema enhancements (a column)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"version": 1, "is_sensitive": True},
+    ),
+    # Rename candidates and manual merges (story 52a): owners and editors decide; every
+    # member sees the candidates.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates",
+        "Open Workspace content (rename candidates)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/confirm",
+        "Edit Source Schema enhancements (confirm a rename)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/reject",
+        "Edit Source Schema enhancements (reject a rename)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/renames",
+        "Edit Source Schema enhancements (merge a removed object into an added one)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {
+            "object_type": "column",
+            "removed_id": str((pair := rename_pair(roles))[1]),
+            "added_id": str(pair[2]),
+        },
     ),
 ]
 

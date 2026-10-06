@@ -88,7 +88,7 @@ class LlmModel(BaseModel):
 class LlmProvider(BaseModel):
     id: uuid.UUID
     name: str
-    adapter: Literal["openai_compatible"]
+    adapter: Literal["openai_compatible", "anthropic"]
     base_url: str
     has_api_key: bool = Field(description="Whether a key is stored. It is never returned.")
     internal: bool = Field(description="True for a provider inside your own infrastructure.")
@@ -100,10 +100,11 @@ class LlmProvider(BaseModel):
 
 class LlmProviderRequest(BaseModel):
     name: str = Field(max_length=NAME_MAX_LENGTH * 2)
-    adapter: Literal["openai_compatible"] = "openai_compatible"
+    adapter: Literal["openai_compatible", "anthropic"] = "openai_compatible"
     base_url: str = Field(
         max_length=URL_MAX_LENGTH * 2,
-        description="Including the version prefix, e.g. `http://vllm:8000/v1`.",
+        description="Including the version prefix, e.g. `http://vllm:8000/v1` or "
+        "`https://api.anthropic.com/v1`.",
     )
     api_key: str | None = Field(
         default=None,
@@ -148,7 +149,7 @@ def _provider_out(view: ProviderView) -> LlmProvider:
     return LlmProvider(
         id=view.id,
         name=view.name,
-        adapter="openai_compatible",
+        adapter=view.adapter,  # type: ignore[arg-type]
         base_url=view.base_url,
         has_api_key=view.has_api_key,
         internal=view.is_internal,

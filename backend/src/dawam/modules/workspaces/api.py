@@ -10,10 +10,11 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from dawam.modules.activity import ActivityService
+from dawam.modules.audit import AuditService
 from dawam.modules.auth import (
     MAX_EMAIL_LENGTH,
     AuthService,
@@ -27,7 +28,7 @@ from dawam.platform.request_context import client_ip
 
 from .internal.members import Member as MemberView
 from .internal.members import MemberAdded, MembershipService
-from .internal.policy import Action, WorkspaceRole
+from .internal.policy import Action, WorkspaceRole, can
 from .service import Layer, StageStatus, WorkspaceService, WorkspaceStatus
 from .service import Workspace as WorkspaceView
 from .tables import DESCRIPTION_MAX_LENGTH, DOMAIN_MAX_LENGTH, NAME_MAX_LENGTH
@@ -71,6 +72,21 @@ def activity_service(request: Request) -> ActivityService:
 
 
 ActivityServiceDep = Annotated[ActivityService, Depends(activity_service)]
+
+
+def audit_service(request: Request) -> AuditService:
+    return AuditService(request.app.state.engine)
+
+
+AuditServiceDep = Annotated[AuditService, Depends(audit_service)]
+
+
+def auth_service(request: Request) -> AuthService:
+    state = request.app.state
+    return AuthService(state.engine, state.settings, clock=state.services.clock)
+
+
+AuthServiceDep = Annotated[AuthService, Depends(auth_service)]
 
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX_LENGTH)
@@ -469,3 +485,90 @@ def list_activity(
         ],
         next_cursor=page.next_cursor,
     )
+
+
+AuditChannel = Literal[
+    "user",
+    "ai",
+    "regeneration",
+    "sync",
+    "propagation",
+    "import",
+    "platform_change",
+    "system_code_change",
+]
+
+
+class AuditEntry(BaseModel):
+    id: uuid.UUID
+    actor: ActivityActor | None = Field(description="Who did it; null if that user is gone.")
+    via: AuditChannel = Field(description="How: by hand, the AI, a sync, an import, ...")
+    entity_type: str = Field(description="What kind of entity changed: `kpi`, `member`, ...")
+    entity_id: str
+    old: dict[str, Any] | None = Field(
+        description="The changed fields before the change, so they can be re-entered by "
+        "hand; null for a create."
+    )
+    new: dict[str, Any] | None = Field(
+        description="The fields after the change; null for a delete."
+    )
+    created_at: datetime
+
+
+class AuditPage(BaseModel):
+    items: list[AuditEntry] = Field(description="Newest first.")
+    next_cursor: str | None = Field(description="The `cursor` of the next page; null on the last.")
+
+
+@router.get("/{workspace_id}/audit", operation_id="listAudit")
+def list_audit(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    workspaces: WorkspaceServiceDep,
+    audit: AuditServiceDep,
+    auth: AuthServiceDep,
+    entity_type: Annotated[str | None, Query(max_length=64)] = None,
+    entity_id: Annotated[str | None, Query(max_length=64, description="One object.")] = None,
+    actor_id: uuid.UUID | None = None,
+    via: AuditChannel | None = None,
+    since: Annotated[datetime | None, Query(description="From this moment, inclusive.")] = None,
+    until: Annotated[datetime | None, Query(description="Until this moment, inclusive.")] = None,
+    limit: PageLimit = DEFAULT_PAGE_SIZE,
+    cursor: PageCursor = None,
+) -> AuditPage:
+    """The audit trail of the Workspace's critical entities, newest first, with old and
+    new values (any member, viewers included; 404 for anyone else). Entries are
+    read-only: old values are re-entered by hand as a new change, never restored.
+    Connection entries never hold secrets, and show host and username to owners only."""
+    scope = workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+    page = audit.page(
+        workspace_id,
+        see_connection_details=can(user, Action.VIEW_CONNECTION, scope),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        actor_id=actor_id,
+        via=via,
+        since=since,
+        until=until,
+        limit=limit,
+        cursor=cursor,
+    )
+    actors = auth.users_by_id({e.actor_id for e in page.items if e.actor_id is not None})
+    items = []
+    for e in page.items:
+        actor = actors.get(e.actor_id) if e.actor_id is not None else None
+        items.append(
+            AuditEntry(
+                id=e.id,
+                actor=ActivityActor(user_id=actor.id, display_name=actor.display_name)
+                if actor
+                else None,
+                via=e.via,
+                entity_type=e.entity_type,
+                entity_id=e.entity_id,
+                old=e.old,
+                new=e.new,
+                created_at=e.created_at,
+            )
+        )
+    return AuditPage(items=items, next_cursor=page.next_cursor)
