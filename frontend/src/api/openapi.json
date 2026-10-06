@@ -5671,7 +5671,8 @@
             "enum": [
               "postgresql",
               "sqlserver",
-              "mysql"
+              "mysql",
+              "oracle"
             ],
             "title": "Engine"
           },
@@ -5770,7 +5771,8 @@
             "enum": [
               "postgresql",
               "sqlserver",
-              "mysql"
+              "mysql",
+              "oracle"
             ],
             "title": "Engine",
             "default": "postgresql"
@@ -5785,13 +5787,14 @@
             "maximum": 65535.0,
             "minimum": 1.0,
             "title": "Port",
-            "description": "Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306.",
+            "description": "Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, Oracle on 1521.",
             "default": 5432
           },
           "database": {
             "type": "string",
             "maxLength": 256,
-            "title": "Database"
+            "title": "Database",
+            "description": "The database name; for Oracle, the service name. Oracle Database Schemas are user names, given as Oracle stores them (usually upper case)."
           },
           "username": {
             "type": "string",

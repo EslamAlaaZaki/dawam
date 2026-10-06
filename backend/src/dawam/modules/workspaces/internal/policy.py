@@ -78,6 +78,9 @@ class Action(StrEnum):
     RUN_EXTRACTION = "source_system.extract"
     """Extract a Source System's metadata from its Connection into a Snapshot (owners and
     editors; spec §4.3 "Run extraction / Schema Import / profiling", story 45)."""
+    EDIT_SOURCE_ENHANCEMENTS = "source_schema.enhance"
+    """Add descriptions, tags, a sensitivity flag, a classification and an SCD hint to a
+    Source System's tables and columns (owners and editors; spec stories 61, 62)."""
     CANCEL_OWN_JOB = "job.cancel_own"
     """Cancel a background job the user started (any member who started one)."""
     CANCEL_ANY_JOB = "job.cancel_any"
@@ -177,6 +180,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.REASSIGN_OWNERSHIP: _WorkspaceRule(min_role=None, admin=True, state="any"),
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
     Action.RUN_EXTRACTION: _WorkspaceRule(min_role="editor"),
+    Action.EDIT_SOURCE_ENHANCEMENTS: _WorkspaceRule(min_role="editor"),
     Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),

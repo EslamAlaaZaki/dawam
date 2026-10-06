@@ -65,6 +65,8 @@ class SnapshotPage(BaseModel):
     items: list[SnapshotSummary] = Field(description="Newest first.")
 
 
+Classification = Literal["master", "transactional", "reference", "log", "landing"]
+
 ObjectStatus = Annotated[
     Literal["present", "source_removed", "out_of_scope", "deleted"],
     Field(
@@ -95,6 +97,15 @@ class SnapshotColumn(BaseModel):
     is_pk: bool
     default: str | None
     comment: str | None
+    description: str | None = Field(
+        default=None, description="Business description; set only in the Source Schema."
+    )
+    tags: list[str] | None = Field(default=None, description="Set only in the Source Schema.")
+    is_sensitive: bool | None = Field(default=None, description="Set only in the Source Schema.")
+    version: int | None = Field(
+        default=None,
+        description="Send it back when editing the enhancements; set only in the Source Schema.",
+    )
 
 
 class SnapshotConstraint(BaseModel):
@@ -133,6 +144,19 @@ class SnapshotTable(BaseModel):
     columns: list[SnapshotColumn]
     constraints: list[SnapshotConstraint]
     indexes: list[SnapshotIndex]
+    description: str | None = Field(
+        default=None, description="Business description; set only in the Source Schema."
+    )
+    tags: list[str] | None = Field(default=None, description="Set only in the Source Schema.")
+    is_sensitive: bool | None = Field(default=None, description="Set only in the Source Schema.")
+    classification: Classification | None = Field(
+        default=None, description="Set only in the Source Schema."
+    )
+    scd_hint: str | None = Field(default=None, description="Set only in the Source Schema.")
+    version: int | None = Field(
+        default=None,
+        description="Send it back when editing the enhancements; set only in the Source Schema.",
+    )
 
 
 class SnapshotRoutine(BaseModel):
