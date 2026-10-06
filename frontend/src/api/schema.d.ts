@@ -955,6 +955,113 @@ export interface paths {
         patch: operations["updateColumnEnhancements"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Template
+         * @description The Schema Import Excel template (owners and editors): a sheet per kind of
+         *     metadata with header rows, and a README that explains every column.
+         */
+        get: operations["downloadSchemaImportTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Import
+         * @description Check an upload and report; nothing is saved (owners and editors), as multipart
+         *     form data.
+         */
+        post: operations["validateSchemaImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Import
+         * @description Validate an upload and, when the report has no errors (and no warnings, or they
+         *     are accepted), save it as a Snapshot with `origin = import` (owners and editors), as
+         *     multipart form data. With errors, or unaccepted warnings, nothing is saved:
+         *     `imported` is false and the report says why. 422 `unsupported_engine`.
+         */
+        post: operations["uploadSchemaImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Status
+         * @description Whether the Source System works from a Schema Import and which features that
+         *     disables (any member).
+         */
+        get: operations["getSchemaImportStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/connection-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Connection
+         * @description Ask the Workspace's owners to supply a live Connection (owners and editors); they
+         *     are notified. 409 `connection_exists` if the Source System already has one.
+         */
+        post: operations["requestConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates": {
         parameters: {
             query?: never;
@@ -2143,6 +2250,25 @@ export interface components {
              */
             file: string;
         };
+        /** Body_uploadSchemaImport */
+        Body_uploadSchemaImport: {
+            /**
+             * Files
+             * @description The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...).
+             */
+            files: string[];
+            /**
+             * Accept Warnings
+             * @description Save even though the report has warnings.
+             * @default false
+             */
+            accept_warnings: boolean;
+            /**
+             * Engine
+             * @description `postgresql`, `sqlserver`, `mysql` or `oracle`: how the database treats name case, for matching names to existing Source Objects. A Connection's engine wins; without either, names match exactly.
+             */
+            engine?: string | null;
+        };
         /** Body_uploadSourceSystemFile */
         Body_uploadSourceSystemFile: {
             /**
@@ -2150,6 +2276,14 @@ export interface components {
              * @description The document to upload.
              */
             file: string;
+        };
+        /** Body_validateSchemaImport */
+        Body_validateSchemaImport: {
+            /**
+             * Files
+             * @description The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...).
+             */
+            files: string[];
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
@@ -2297,6 +2431,11 @@ export interface components {
              * @description The Database Schemas DAWAM may read (at least one).
              */
             allowed_schemas?: string[];
+        };
+        /** ConnectionRequested */
+        ConnectionRequested: {
+            /** Owners Notified */
+            owners_notified: number;
         };
         /** ConnectionTestResult */
         ConnectionTestResult: {
@@ -2659,6 +2798,74 @@ export interface components {
         ForgotPasswordRequest: {
             /** Email */
             email: string;
+        };
+        /** ImportIssue */
+        ImportIssue: {
+            /**
+             * Sheet
+             * @description The sheet it is about; empty for the whole file.
+             */
+            sheet: string | null;
+            /**
+             * Row
+             * @description The row in the sheet (the header is row 1).
+             */
+            row: number | null;
+            /** Message */
+            message: string;
+        };
+        /** ImportOutcome */
+        ImportOutcome: {
+            report: components["schemas"]["ImportReport"];
+            /**
+             * Imported
+             * @description The import was accepted: a Snapshot was saved, or it matched the latest one (see `unchanged`). False means nothing was saved.
+             */
+            imported: boolean;
+            /**
+             * Unchanged
+             * @description No differences from the previous Snapshot, so no new one was created.
+             */
+            unchanged: boolean;
+            snapshot: components["schemas"]["SnapshotSummary"] | null;
+        };
+        /** ImportReport */
+        ImportReport: {
+            /**
+             * Errors
+             * @description Any error means nothing can be saved.
+             */
+            errors: components["schemas"]["ImportIssue"][];
+            /**
+             * Warnings
+             * @description Saved only if the user accepts them.
+             */
+            warnings: components["schemas"]["ImportIssue"][];
+            /** Schema Count */
+            schema_count: number;
+            /**
+             * Table Count
+             * @description Tables and views.
+             */
+            table_count: number;
+            /** Column Count */
+            column_count: number;
+            /** Routine Count */
+            routine_count: number;
+        };
+        /** ImportStatus */
+        ImportStatus: {
+            /** Has Connection */
+            has_connection: boolean;
+            /** Latest Origin */
+            latest_origin: ("connection" | "import") | null;
+            /**
+             * Imported
+             * @description The Source System works from a Schema Import, so `disabled_features` do not work until it has a live Connection.
+             */
+            imported: boolean;
+            /** Disabled Features */
+            disabled_features: string[];
         };
         /** InvitationLinkOut */
         InvitationLinkOut: {
@@ -6847,6 +7054,219 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ColumnEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    downloadSchemaImportTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Excel template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    validateSchemaImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_validateSchemaImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadSchemaImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_uploadSchemaImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportOutcome"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSchemaImportStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportStatus"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    requestConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionRequested"];
                 };
             };
             /** @description Validation error */

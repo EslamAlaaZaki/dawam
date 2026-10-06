@@ -342,6 +342,18 @@ class WorkspaceService:
             record, scope = authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
             return workspace_view(user, record, scope.role)
 
+    def owner_ids(self, workspace_id: uuid.UUID) -> list[uuid.UUID]:
+        """The owners of the Workspace, for a system action that tells them something
+        (e.g. a request that needs an owner). Authorizes nothing: callers have."""
+        with Session(self._engine) as db:
+            return list(
+                db.scalars(
+                    sa.select(MemberRecord.user_id).where(
+                        MemberRecord.workspace_id == workspace_id, MemberRecord.role == "owner"
+                    )
+                )
+            )
+
     def stage_progress(self, user: User, workspace_id: uuid.UUID) -> StageProgress:
         """Stage progress of a Workspace, for any member (viewers included)."""
         with Session(self._engine) as db:

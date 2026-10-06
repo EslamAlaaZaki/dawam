@@ -12,6 +12,10 @@ Public interface. Other modules import only what is re-exported here:
   handler, which ``dawam.job_handlers`` registers); members read Snapshots (``list``,
   ``get``: ``SnapshotSummary``, ``SnapshotContent``) and browse and search the Source
   Schema (``source_schema``, ``search``: ``SourceSchema``, ``SearchHit``).
+- ``SchemaImportService``: owners and editors download the Schema Import template, validate
+  and upload a filled one (a Snapshot with ``origin = import``) and ask for a live
+  Connection; members see which features an imported system lacks (``ImportResult``,
+  ``ImportStatus``).
 - ``EnhancementService``: owners and editors add descriptions, tags, a sensitivity flag,
   and (tables) a classification and SCD hint to Source Objects; each change is audited
   (``source_table`` / ``source_column`` entities) and appears in the activity feed.
@@ -22,6 +26,8 @@ Public interface. Other modules import only what is re-exported here:
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
   ``GET .../systems/{system_id}/schema[/search]``,
+  ``GET .../systems/{system_id}/import[/template]``, ``POST .../import/validate``,
+  ``POST .../import/upload``, ``POST .../import/connection-requests``,
   ``PATCH .../systems/{system_id}/tables/{table_id}[/columns/{column_id}]``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
@@ -37,6 +43,7 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 from .api import router
 from .connection_service import Connection, ConnectionService
 from .enhancement_service import EnhancementService
+from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
@@ -53,9 +60,12 @@ __all__ = [
     "Connection",
     "ConnectionService",
     "EnhancementService",
+    "ImportResult",
+    "ImportStatus",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
+    "SchemaImportService",
     "SearchHit",
     "SnapshotContent",
     "SnapshotService",
