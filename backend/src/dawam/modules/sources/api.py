@@ -18,6 +18,7 @@ from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
 from .connection_api import router as connection_router
+from .dictionary_api import router as dictionary_router
 from .enhancement_api import router as enhancement_router
 from .import_api import router as import_router
 from .pii_api import router as pii_router
@@ -171,6 +172,7 @@ def update_source_system(
 # Mounted last: the OpenAPI document lists the Connection routes after the system routes.
 router.include_router(connection_router, prefix="/{system_id}/connection")
 router.include_router(snapshot_router, prefix="/{system_id}")
+router.include_router(dictionary_router, prefix="/{system_id}")
 router.include_router(enhancement_router, prefix="/{system_id}")
 router.include_router(pii_router, prefix="/{system_id}")
 router.include_router(import_router, prefix="/{system_id}/import")

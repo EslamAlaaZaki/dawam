@@ -159,6 +159,13 @@ class FileService:
         area = self._system_area(user, workspace_id, system_id)
         return self._put(user, workspace_id, area, filename=filename, content=content)
 
+    def save_generated(
+        self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID, *, name: str, data: bytes
+    ) -> WorkspaceFile:
+        """Save a file an exporter produced into a Source System's file area (owners and
+        editors), overwriting one of the same name (spec §6.15: every export can be saved)."""
+        return self.upload(user, workspace_id, system_id, filename=name, content=io.BytesIO(data))
+
     def upload_to_warehouse(
         self, user: User, workspace_id: uuid.UUID, *, filename: str, content: BinaryIO
     ) -> WorkspaceFile:

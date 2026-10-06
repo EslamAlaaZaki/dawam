@@ -137,6 +137,40 @@ export function useUploadFile(workspaceId: string, area: FileArea) {
   });
 }
 
+/** Where a member downloads a Source System's data dictionary (XLSX). */
+export function dataDictionaryUrl(
+  workspaceId: string,
+  systemId: string,
+): string {
+  return `/api/v1/workspaces/${workspaceId}/systems/${systemId}/data-dictionary`;
+}
+
+/**
+ * Save a Source System's data dictionary into its file area (owners and editors). Fails
+ * with 404 before the first Snapshot; a dictionary saved earlier is replaced.
+ */
+export function useSaveDataDictionary(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const area: FileArea = { systemId };
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary",
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: filesKey(workspaceId, area) }),
+  });
+}
+
 /** The text of a file, for the editor. */
 export function useFileText(workspaceId: string, fileId: string) {
   const client = useApiClient();

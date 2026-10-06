@@ -23,6 +23,9 @@ Public interface. Other modules import only what is re-exported here:
   ``confirm`` (sets ``is_sensitive`` and the PII category) or ``dismiss``; decisions are
   audited. Name rules run on every new Snapshot. ``is_protected`` is the one Protected
   Column policy: ``is_sensitive`` or a ``suggested``/``confirmed`` finding.
+- ``DataDictionaryService``: any member exports the latest Snapshot with its enhancements as
+  an XLSX data dictionary (``DataDictionary``, never values); ``files`` saves it to the file
+  area. ``GET .../systems/{system_id}/data-dictionary`` downloads it.
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -48,6 +51,8 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 
 from .api import router
 from .connection_service import Connection, ConnectionService
+from .dictionary_api import DataDictionaryServiceDep
+from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
@@ -67,6 +72,9 @@ __all__ = [
     "EXTRACT_JOB",
     "Connection",
     "ConnectionService",
+    "DataDictionary",
+    "DataDictionaryService",
+    "DataDictionaryServiceDep",
     "EnhancementService",
     "ImportResult",
     "ImportStatus",
