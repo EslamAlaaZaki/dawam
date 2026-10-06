@@ -224,6 +224,39 @@ def file_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(response.json()["id"])
 
 
+def source_link_id(roles: RoleClients) -> uuid.UUID:
+    """A link of the Source System (a fresh one per request, so deleting it in one
+    request does not affect the next)."""
+    response = roles.client("owner").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}/links",
+        json={"kind": "jira", "title": "CBS-1", "url": "https://jira.example.com/browse/CBS-1"},
+    )
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
+def source_table_id(roles: RoleClients) -> uuid.UUID:
+    """A table of the Source System's Snapshot (the stand-in source's one table)."""
+    snapshot = snapshot_id(roles)
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    content = roles.client("owner").get(f"{system}/snapshots/{snapshot}").json()
+    return uuid.UUID(content["tables"][0]["id"])
+
+
+def linked_file_id(roles: RoleClients) -> uuid.UUID:
+    """A document already linked to the Source System's table (set up through the API
+    once), so unlinking it succeeds for an allowed role."""
+    owner = roles.client("owner")
+    file = file_id(roles)
+    table = source_table_id(roles)
+    response = owner.post(
+        f"/api/v1/workspaces/{roles.workspace_id}/files/{file}/object-links",
+        json={"object_type": "table", "object_id": str(table)},
+    )
+    assert response.status_code in (200, 201), response.text
+    return file
+
+
 def job_id(roles: RoleClients) -> uuid.UUID:
     """A queued job the Workspace's owner started, made through the jobs module (a fresh
     one per request, so cancelling it in one request does not affect the next)."""
@@ -340,6 +373,9 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "kpi_id": kpi_id,
     "file_id": file_id,
     "snapshot_id": snapshot_id,
+    "source_link_id": source_link_id,
+    "object_type": lambda roles: "table",
+    "object_id": source_table_id,
     "table_id": table_id,
     "column_id": column_id,
     "provider_id": provider_id,
