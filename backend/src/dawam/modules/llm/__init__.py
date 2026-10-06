@@ -13,7 +13,8 @@ Public interface. Other modules import only what is re-exported here:
   ``Capabilities``); rate limits and unavailability are retried with backoff.
 - ``Adapter``: the protocol a provider family implements; ``adapter_for`` builds the
   ``openai_compatible`` one (vLLM, SGLang, Ollama, OpenAI and any server exposing
-  ``/chat/completions`` and ``/embeddings``). Nothing else imports a vendor SDK.
+  ``/chat/completions`` and ``/embeddings``) or the ``anthropic`` one (Claude through
+  the Messages API; chat only, no embeddings). Nothing else imports a vendor SDK.
 - ``FakeAdapter`` (with ``Reply``): the scripted fake provider every test can use.
 - ``router``: ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.

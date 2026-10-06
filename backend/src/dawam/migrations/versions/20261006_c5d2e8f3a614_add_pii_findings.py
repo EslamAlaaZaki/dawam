@@ -1,7 +1,7 @@
 """add PII findings and the confirmed PII category on Source Columns.
 
 Revision ID: c5d2e8f3a614
-Revises: b2c8d4f61a97
+Revises: c4d9e6f2a815
 Create Date: 2026-10-06 16:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c5d2e8f3a614"
-down_revision: str | Sequence[str] | None = "b2c8d4f61a97"
+down_revision: str | Sequence[str] | None = "c4d9e6f2a815"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

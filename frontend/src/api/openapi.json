@@ -3519,6 +3519,289 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "List Rename Candidates",
+        "description": "Removed columns, tables and Database Schemas that look like added ones (any\nmember): the open candidates of the latest Snapshot.",
+        "operationId": "listRenameCandidates",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameCandidateList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/confirm": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Confirm Rename",
+        "description": "Confirm a rename (owners and editors): the removed object keeps its identity,\ndescriptions and mappings under the new name. Audited. 409 `rename_conflict` if it was\nalready decided or an object changed.",
+        "operationId": "confirmRename",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/reject": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Reject Rename",
+        "description": "Reject a rename (owners and editors): the removal and the addition stand.",
+        "operationId": "rejectRename",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/renames": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Merge Removed Object",
+        "description": "Merge a removed object into an added one of the same kind, for a rename noticed\nlate (owners and editors); audited. 409 `rename_conflict` if they are not a removed\nand an added object of the same kind (and, for columns, table).",
+        "operationId": "mergeRemovedObject",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -4520,6 +4803,210 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/audit": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "List Audit",
+        "description": "The audit trail of the Workspace's critical entities, newest first, with old and\nnew values (any member, viewers included; 404 for anyone else). Entries are\nread-only: old values are re-entered by hand as a new change, never restored.\nConnection entries never hold secrets, and show host and username to owners only.",
+        "operationId": "listAudit",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One object.",
+              "title": "Entity Id"
+            },
+            "description": "One object."
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "name": "via",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "user",
+                    "ai",
+                    "regeneration",
+                    "sync",
+                    "propagation",
+                    "import",
+                    "platform_change",
+                    "system_code_change"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Via"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From this moment, inclusive.",
+              "title": "Since"
+            },
+            "description": "From this moment, inclusive."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Until this moment, inclusive.",
+              "title": "Until"
+            },
+            "description": "Until this moment, inclusive."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
                 }
               }
             }
@@ -7374,6 +7861,123 @@
         ],
         "title": "AdminWorkspacePage"
       },
+      "AuditEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityActor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who did it; null if that user is gone."
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "user",
+              "ai",
+              "regeneration",
+              "sync",
+              "propagation",
+              "import",
+              "platform_change",
+              "system_code_change"
+            ],
+            "title": "Via",
+            "description": "How: by hand, the AI, a sync, an import, ..."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "What kind of entity changed: `kpi`, `member`, ..."
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old",
+            "description": "The changed fields before the change, so they can be re-entered by hand; null for a create."
+          },
+          "new": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New",
+            "description": "The fields after the change; null for a delete."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "actor",
+          "via",
+          "entity_type",
+          "entity_id",
+          "old",
+          "new",
+          "created_at"
+        ],
+        "title": "AuditEntry"
+      },
+      "AuditPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditPage"
+      },
       "Body_replaceFile": {
         "properties": {
           "file": {
@@ -9222,7 +9826,10 @@
           },
           "adapter": {
             "type": "string",
-            "const": "openai_compatible",
+            "enum": [
+              "openai_compatible",
+              "anthropic"
+            ],
             "title": "Adapter"
           },
           "base_url": {
@@ -9301,7 +9908,10 @@
           },
           "adapter": {
             "type": "string",
-            "const": "openai_compatible",
+            "enum": [
+              "openai_compatible",
+              "anthropic"
+            ],
             "title": "Adapter",
             "default": "openai_compatible"
           },
@@ -9309,7 +9919,7 @@
             "type": "string",
             "maxLength": 1000,
             "title": "Base Url",
-            "description": "Including the version prefix, e.g. `http://vllm:8000/v1`."
+            "description": "Including the version prefix, e.g. `http://vllm:8000/v1` or `https://api.anthropic.com/v1`."
           },
           "api_key": {
             "anyOf": [
@@ -9523,6 +10133,38 @@
           "items"
         ],
         "title": "MemberList"
+      },
+      "MergeRequest": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "removed_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Removed Id",
+            "description": "The Source Object that is gone from the source."
+          },
+          "added_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Added Id",
+            "description": "The Source Object of the same kind that was added."
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_type",
+          "removed_id",
+          "added_id"
+        ],
+        "title": "MergeRequest"
       },
       "NamingRules": {
         "properties": {
@@ -10127,6 +10769,142 @@
           "status"
         ],
         "title": "RemovedTable"
+      },
+      "RenameCandidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "description": "The Snapshot that proposed it."
+          },
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "old_object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Old Object Id",
+            "description": "The removed Source Object."
+          },
+          "old_name": {
+            "type": "string",
+            "title": "Old Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location",
+            "description": "A table's Database Schema; a column's `schema.table`."
+          },
+          "new_object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "New Object Id",
+            "description": "The added Source Object."
+          },
+          "new_name": {
+            "type": "string",
+            "title": "New Name"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0 to 1: how alike the two objects are."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "confirmed",
+              "rejected"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "snapshot_id",
+          "object_type",
+          "old_object_id",
+          "old_name",
+          "location",
+          "new_object_id",
+          "new_name",
+          "confidence",
+          "status"
+        ],
+        "title": "RenameCandidate"
+      },
+      "RenameCandidateList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RenameCandidate"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The open candidates of the latest Snapshot, most confident first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RenameCandidateList"
+      },
+      "RenamedObject": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The surviving Source Object: the one that was removed."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "previous_name": {
+            "type": "string",
+            "title": "Previous Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_type",
+          "id",
+          "name",
+          "previous_name"
+        ],
+        "title": "RenamedObject"
       },
       "ResetPasswordRequest": {
         "properties": {

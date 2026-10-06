@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -26,6 +27,7 @@ from dawam.modules.llm import (
     ToolSpec,
     Usage,
 )
+from dawam.modules.llm.internal.anthropic import AnthropicAdapter
 from dawam.modules.llm.internal.openai_compatible import OpenAICompatibleAdapter
 from dawam.modules.llm.internal.transport import Transport, TransportError
 from tests.llm.replay import ReplayTransport, load
@@ -37,12 +39,46 @@ FIXTURES = Path(__file__).parent / "fixtures"
 class AdapterCase:
     name: str
     make: Callable[[Transport], Adapter]
+    chat_url: str
+    auth_header: tuple[str, str]
+    tool_names: Callable[[Any], list[str]]
+    """The names of the tools a recorded chat request offered."""
+    round_trip: Callable[[Any], None]
+    """Asserts the wire shape of the tool-call round trip request."""
+    context_window: int = 32768
+    """What the recorded ``models`` fixture reports for ``test-model``."""
+    embeds: bool = True
 
     def replay(self, *names: str | TransportError) -> tuple[Adapter, ReplayTransport]:
         transport = ReplayTransport(
             *(n if isinstance(n, TransportError) else load(FIXTURES / self.name, n) for n in names)
         )
         return self.make(transport), transport
+
+
+def _openai_round_trip(body: Any) -> None:
+    sent = body["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "assistant", "tool"]
+    assert sent[2]["tool_calls"] == [
+        {
+            "id": "call_abc",
+            "type": "function",
+            "function": {"name": "echo", "arguments": '{"text": "ping"}'},
+        }
+    ]
+    assert sent[3]["tool_call_id"] == "call_abc" and sent[3]["content"] == "ping"
+
+
+def _anthropic_round_trip(body: Any) -> None:
+    assert body["system"] == "Be brief."
+    sent = body["messages"]
+    assert [m["role"] for m in sent] == ["user", "assistant", "user"]
+    assert sent[1]["content"] == [
+        {"type": "tool_use", "id": "call_abc", "name": "echo", "input": {"text": "ping"}}
+    ]
+    assert sent[2]["content"] == [
+        {"type": "tool_result", "tool_use_id": "call_abc", "content": "ping"}
+    ]
 
 
 ADAPTERS = [
@@ -54,6 +90,25 @@ ADAPTERS = [
             timeout_seconds=9,
             transport=transport,
         ),
+        chat_url="http://llm.test/v1/chat/completions",
+        auth_header=("Authorization", "Bearer sk-secret"),
+        tool_names=lambda body: [t["function"]["name"] for t in body["tools"]],
+        round_trip=_openai_round_trip,
+    ),
+    AdapterCase(
+        "anthropic",
+        lambda transport: AnthropicAdapter(
+            base_url="http://llm.test/v1",
+            api_key="sk-secret",
+            timeout_seconds=9,
+            transport=transport,
+        ),
+        chat_url="http://llm.test/v1/messages",
+        auth_header=("x-api-key", "sk-secret"),
+        tool_names=lambda body: [t["name"] for t in body["tools"]],
+        round_trip=_anthropic_round_trip,
+        context_window=200000,
+        embeds=False,
     ),
 ]
 
@@ -110,7 +165,7 @@ def test_a_tool_call_arrives_complete_with_parsed_arguments(case):
 
     assert events[0] == ToolCallEvent(ToolCall("call_abc", "echo", {"text": "ping"}))
     assert events[-1] == Done(Usage(40, 9), "tool_calls")
-    assert transport.requests[0].json["tools"][0]["function"]["name"] == "echo"
+    assert case.tool_names(transport.requests[0].json) == ["echo"]
 
 
 def test_a_streamed_tool_call_is_assembled_from_its_fragments(case):
@@ -137,16 +192,7 @@ def test_a_tool_call_round_trip_sends_the_call_and_its_result_back(case):
     events = run(adapter, tools=[ECHO], messages=conversation)
 
     assert events[0] == TextDelta("Hello there.")
-    sent = transport.requests[0].json["messages"]
-    assert [m["role"] for m in sent] == ["system", "user", "assistant", "tool"]
-    assert sent[2]["tool_calls"] == [
-        {
-            "id": "call_abc",
-            "type": "function",
-            "function": {"name": "echo", "arguments": '{"text": "ping"}'},
-        }
-    ]
-    assert sent[3]["tool_call_id"] == "call_abc" and sent[3]["content"] == "ping"
+    case.round_trip(transport.requests[0].json)
 
 
 @pytest.mark.parametrize(
@@ -197,6 +243,8 @@ def test_an_error_message_never_contains_the_api_key(case):
 
 
 def test_embeddings_come_back_one_per_text_in_order(case):
+    if not case.embeds:
+        pytest.skip("this adapter has no embeddings")
     adapter, transport = case.replay("embed")
 
     vectors = adapter.embed("embed-model", ["a", "b"])
@@ -211,17 +259,29 @@ def test_requests_carry_the_key_and_the_provider_timeout(case):
     run(adapter)
 
     request = transport.requests[0]
-    assert request.url == "http://llm.test/v1/chat/completions"
-    assert request.headers["Authorization"] == "Bearer sk-secret"
+    assert request.url == case.chat_url
+    name, value = case.auth_header
+    assert request.headers[name] == value
     assert request.timeout == 9
 
 
 def test_the_context_window_comes_from_the_servers_metadata_when_it_has_one(case):
     adapter, _ = case.replay("models")
-    assert adapter.context_window("test-model") == 32768
+    assert adapter.context_window("test-model") == case.context_window
 
     adapter, _ = case.replay("models_without_metadata")
     assert adapter.context_window("test-model") is None
 
     adapter, _ = case.replay("error_unavailable")
     assert adapter.context_window("test-model") is None
+
+
+def test_an_adapter_without_embeddings_refuses_them_as_a_bad_request(case):
+    if case.embeds:
+        pytest.skip("this adapter has embeddings")
+    adapter, transport = case.replay()
+
+    with pytest.raises(LlmError) as raised:
+        adapter.embed("embed-model", ["a"])
+
+    assert raised.value.code == "bad_request" and transport.requests == []

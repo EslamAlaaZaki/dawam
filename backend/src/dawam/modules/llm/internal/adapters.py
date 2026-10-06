@@ -6,10 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..gateway import Adapter
+from .anthropic import AnthropicAdapter
 from .openai_compatible import OpenAICompatibleAdapter
 from .transport import Transport, UrllibTransport
 
-ADAPTER_KINDS = ("openai_compatible",)
+ADAPTER_KINDS = ("openai_compatible", "anthropic")
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,13 @@ AdapterFactory = Callable[[str, AdapterConfig], Adapter]
 def adapter_for(kind: str, config: AdapterConfig, transport: Transport | None = None) -> Adapter:
     if kind == "openai_compatible":
         return OpenAICompatibleAdapter(
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+            transport=transport or UrllibTransport(),
+        )
+    if kind == "anthropic":
+        return AnthropicAdapter(
             base_url=config.base_url,
             api_key=config.api_key,
             timeout_seconds=config.timeout_seconds,

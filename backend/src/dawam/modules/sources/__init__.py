@@ -19,6 +19,9 @@ Public interface. Other modules import only what is re-exported here:
   ``confirm`` (sets ``is_sensitive`` and the PII category) or ``dismiss``; decisions are
   audited. Name rules run on every new Snapshot. ``is_protected`` is the one Protected
   Column policy: ``is_sensitive`` or a ``suggested``/``confirmed`` finding.
+- ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
+  owners and editors confirm or reject one, or merge a removed object into an added one, so a
+  rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
@@ -42,6 +45,7 @@ from .connection_service import Connection, ConnectionService
 from .enhancement_service import EnhancementService
 from .internal.pii import is_protected
 from .pii_service import PiiFinding, PiiService
+from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
     EXTRACT_JOB,
@@ -59,6 +63,9 @@ __all__ = [
     "EnhancementService",
     "PiiFinding",
     "PiiService",
+    "RenameCandidate",
+    "RenameService",
+    "RenamedObject",
     "SearchHit",
     "SnapshotContent",
     "SnapshotService",

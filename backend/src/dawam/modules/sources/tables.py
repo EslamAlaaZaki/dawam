@@ -366,3 +366,32 @@ class SnapshotRoutineRecord(Base):
     kind: Mapped[str] = mapped_column(sa.String(16))
     signature: Mapped[str] = mapped_column(sa.Text)
     definition_hash: Mapped[str | None] = mapped_column(sa.ForeignKey("definition_texts.hash"))
+
+
+RENAME_OBJECT_TYPES = ("db_schema", "table", "column")
+
+
+class RenameCandidateRecord(Base):
+    """A proposed rename found while storing a Snapshot: ``old_object_id`` (now
+    ``source_removed``) looks like ``new_object_id`` (added in that Snapshot). Both are
+    Source Objects of ``object_type``, so they carry no foreign key."""
+
+    __tablename__ = "rename_candidates"
+    __table_args__ = (
+        sa.UniqueConstraint("snapshot_id", "object_type", "old_object_id", "new_object_id"),
+        sa.CheckConstraint("object_type IN ('db_schema', 'table', 'column')", name="object_type"),
+        sa.CheckConstraint("status IN ('suggested', 'confirmed', 'rejected')", name="status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("snapshots.id", ondelete="CASCADE"), index=True
+    )
+    object_type: Mapped[str] = mapped_column(sa.String(16))
+    old_object_id: Mapped[uuid.UUID] = mapped_column()
+    new_object_id: Mapped[uuid.UUID] = mapped_column()
+    new_name: Mapped[str] = mapped_column(sa.Text)
+    confidence: Mapped[float] = mapped_column()
+    """0 to 1: how alike the two objects are."""
+    status: Mapped[str] = mapped_column(sa.String(16))
+    """``suggested``, ``confirmed`` or ``rejected``."""
