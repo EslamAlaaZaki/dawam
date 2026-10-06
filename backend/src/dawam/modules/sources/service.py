@@ -23,6 +23,9 @@ from .tables import (
     NAME_MAX_LENGTH,
     OWNER_MAX_LENGTH,
     SourceSystemRecord,
+    SrcColumnRecord,
+    SrcDbSchemaRecord,
+    SrcTableRecord,
 )
 
 SYSTEM_CODE_PATTERN = re.compile(rf"[a-z][a-z0-9_]{{0,{CODE_MAX_LENGTH - 1}}}")
@@ -186,6 +189,30 @@ class SourceSystemService:
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
             return _view(self._load(db, workspace_id, system_id))
+
+    def source_object_system(
+        self, user: User, workspace_id: uuid.UUID, object_type: str, object_id: uuid.UUID
+    ) -> uuid.UUID:
+        """The Source System a table (``object_type="table"``) or column (``"column"``)
+        belongs to, any member. 404 ``not_found`` if it is not in ``workspace_id``, as
+        for one that does not exist."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        query = sa.select(SrcDbSchemaRecord.source_system_id).join(
+            SrcTableRecord, SrcTableRecord.db_schema_id == SrcDbSchemaRecord.id
+        )
+        if object_type == "table":
+            query = query.where(SrcTableRecord.id == object_id)
+        elif object_type == "column":
+            query = query.join(SrcColumnRecord, SrcColumnRecord.table_id == SrcTableRecord.id)
+            query = query.where(SrcColumnRecord.id == object_id)
+        else:
+            raise ValueError(f"unknown source object type {object_type!r}")
+        with Session(self._engine) as db:
+            system_id = db.scalar(query)
+            if system_id is None:
+                raise ApiError(404, "not_found", "Table or column not found.")
+            self._load(db, workspace_id, system_id)
+            return system_id
 
     def update(
         self,

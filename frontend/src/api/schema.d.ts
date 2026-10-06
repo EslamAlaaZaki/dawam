@@ -1515,6 +1515,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Links
+         * @description A Source System's links to repositories, Jira issues and Confluence pages (any
+         *     member), by title.
+         */
+        get: operations["listSourceLinks"];
+        put?: never;
+        /**
+         * Create Source Link
+         * @description Link a page to a Source System (owners and editors). Only `http` and `https`
+         *     URLs; 422 `invalid_source_link` names the field that is wrong.
+         */
+        post: operations["createSourceLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links/{source_link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Source Link
+         * @description Remove a link (owners and editors).
+         */
+        delete: operations["deleteSourceLink"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Source Link
+         * @description Edit a link (owners and editors); fields left out stay as they are.
+         */
+        patch: operations["updateSourceLink"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/files/{file_id}/object-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List File Object Links
+         * @description The tables and columns a document is linked to (any member).
+         */
+        get: operations["listFileObjectLinks"];
+        put?: never;
+        /**
+         * Link File To Object
+         * @description Link a document to a table or column (owners and editors), so it shows on that
+         *     page. Linking again changes nothing (200).
+         */
+        post: operations["linkFileToObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/files/{file_id}/object-links/{object_type}/{object_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink File From Object
+         * @description Remove a document's link to a table or column (owners and editors).
+         */
+        delete: operations["unlinkFileFromObject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/objects/{object_type}/{object_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents Of Object
+         * @description The documents linked to a table or column (any member), by name.
+         */
+        get: operations["listDocumentsOfObject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/llm/providers": {
         parameters: {
             query?: never;
@@ -2099,6 +2214,23 @@ export interface components {
              */
             targets: components["schemas"]["Target"][];
         };
+        /** CreateSourceLinkRequest */
+        CreateSourceLinkRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "repo" | "jira" | "confluence" | "other";
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
         /** CreateSourceSystemRequest */
         CreateSourceSystemRequest: {
             /** Name */
@@ -2321,6 +2453,35 @@ export interface components {
             before: string | null;
             /** After */
             after: string | null;
+        };
+        /** FileObjectLink */
+        FileObjectLink: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "table" | "column";
+            /**
+             * Object Id
+             * Format: uuid
+             * @description The Source Table or Column.
+             */
+            object_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** FileObjectLinkList */
+        FileObjectLinkList: {
+            /** Items */
+            items: components["schemas"]["FileObjectLink"][];
         };
         /** ForcedReset */
         ForcedReset: {
@@ -2558,6 +2719,20 @@ export interface components {
              * @default mart
              */
             mart: string;
+        };
+        /** LinkDocumentRequest */
+        LinkDocumentRequest: {
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "table" | "column";
+            /**
+             * Object Id
+             * Format: uuid
+             * @description The Source Table or Column to link to.
+             */
+            object_id: string;
         };
         /** LlmModel */
         LlmModel: {
@@ -3565,6 +3740,55 @@ export interface components {
              */
             version?: number | null;
         };
+        /** SourceLink */
+        SourceLink: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "repo" | "jira" | "confluence" | "other";
+            /** Title */
+            title: string;
+            /**
+             * Url
+             * @description An absolute `http` or `https` URL.
+             */
+            url: string;
+            /** Note */
+            note: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SourceLinkPage */
+        SourceLinkPage: {
+            /** Items */
+            items: components["schemas"]["SourceLink"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
+        };
         /** SourceSchema */
         SourceSchema: {
             /**
@@ -3928,6 +4152,17 @@ export interface components {
             layer_schemas?: components["schemas"]["LayerSchemas"] | null;
             naming_rules?: components["schemas"]["NamingRules"] | null;
             date_dimension?: components["schemas"]["DateDimension"] | null;
+        };
+        /** UpdateSourceLinkRequest */
+        UpdateSourceLinkRequest: {
+            /** Kind */
+            kind?: ("repo" | "jira" | "confluence" | "other") | null;
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /** UpdateSourceSystemRequest */
         UpdateSourceSystemRequest: {
@@ -7824,6 +8059,364 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReindexStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSourceLinks: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLinkPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createSourceLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSourceLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLink"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteSourceLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                source_link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateSourceLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                source_link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSourceLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLink"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listFileObjectLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileObjectLinkList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    linkFileToObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description The file was already linked to that object. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileObjectLink"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unlinkFileFromObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                file_id: string;
+                object_type: "table" | "column";
+                object_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDocumentsOfObject: {
+        parameters: {
+            query?: {
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                object_type: "table" | "column";
+                object_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFilePage"];
                 };
             };
             /** @description Validation error */
