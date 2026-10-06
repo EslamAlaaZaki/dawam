@@ -25,6 +25,7 @@ from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 
 from .gateway import Capabilities, Gateway, ProbeResult, probe
+from .internal import reindex
 from .internal.adapters import ADAPTER_KINDS, AdapterConfig, AdapterFactory, adapter_for
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
@@ -32,6 +33,7 @@ from .tables import (
     URL_MAX_LENGTH,
     ModelRecord,
     ProviderRecord,
+    SettingsRecord,
 )
 
 API_KEY_CONTEXT = "llm.provider.api_key"
@@ -362,6 +364,10 @@ class ProviderService:
             record.embedding_dimension = caps.embedding_dimension
             if record.context_window is None:
                 record.context_window = caps.context_window
+            if result.ok:
+                settings = db.get(SettingsRecord, 1)
+                if settings is not None:
+                    reindex.note_tested(settings, model_id, caps.embedding_dimension, self._clock())
             return _model_view(record)
 
     # -- the gateway -----------------------------------------------------------------
