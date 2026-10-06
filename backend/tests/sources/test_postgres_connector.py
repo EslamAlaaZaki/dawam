@@ -38,7 +38,7 @@ def connector(source: SampleSource, *, schemas=("core", "crm"), user="reader", *
 
 def test_an_unsupported_engine_is_refused(sample_source: SampleSource):
     with pytest.raises(ConnectorError) as raised:
-        connector_for("oracle", connector(sample_source)._params)  # type: ignore[attr-defined]
+        connector_for("db2", connector(sample_source)._params)  # type: ignore[attr-defined]
     assert raised.value.code == "unsupported_engine"
 
 

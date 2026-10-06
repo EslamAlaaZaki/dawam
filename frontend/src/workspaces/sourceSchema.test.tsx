@@ -27,7 +27,12 @@ const ADA: Me = {
 };
 
 const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
-  owner: ["source_system.extract", "job.cancel_any", "job.cancel_own", "workspace.view"],
+  owner: [
+    "source_system.extract",
+    "job.cancel_any",
+    "job.cancel_own",
+    "workspace.view",
+  ],
   editor: ["source_system.extract", "job.cancel_own", "workspace.view"],
   viewer: ["job.cancel_own", "workspace.view"],
 };
@@ -116,7 +121,11 @@ function backend(
       case `GET ${API}/systems`:
         return json({ items: [CBS], next_cursor: null });
       case `GET ${API}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET ${API}/jobs`:
         return json({ items: state.jobs, next_cursor: null });
       case `GET ${API}/data-warehouse`:
@@ -142,7 +151,10 @@ describe("a Source System's Source Schema", () => {
       table_count: 6,
       taken_at: "2026-01-04T10:00:00Z",
     });
-    renderApp(backend("viewer", { snapshots: [snapshot({}), older], jobs: [] }), FOLDER);
+    renderApp(
+      backend("viewer", { snapshots: [snapshot({}), older], jobs: [] }),
+      FOLDER,
+    );
 
     const list = await screen.findByRole("list", { name: "Snapshots" });
     const items = within(list).getAllByRole("listitem");
@@ -150,9 +162,72 @@ describe("a Source System's Source Schema", () => {
     expect(items[0]).toHaveTextContent("Latest");
     expect(items[0]).toHaveTextContent("7 tables and views");
     expect(items[1]).toHaveTextContent("6 tables and views");
-    expect(screen.queryByRole("button", { name: "Extract metadata" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Extract metadata" }),
+    ).not.toBeInTheDocument();
   });
 
+  it("compares two Snapshots and lists what was added, removed and changed", async () => {
+    const older = snapshot({
+      id: "66666666-6666-4666-8666-666666666666",
+      is_latest: false,
+    });
+    const latest = snapshot({});
+    const col = (name: string, change: "added" | "removed" | "changed") => ({
+      id: `c-${name}`,
+      name,
+      change,
+      fields:
+        change === "changed"
+          ? [{ field: "data_type", before: "text", after: "varchar(20)" }]
+          : [],
+    });
+    renderApp(
+      backend("viewer", { snapshots: [latest, older], jobs: [] }, (r) =>
+        r.path === `${SYSTEM}/snapshots/${latest.id}/diff/${older.id}`
+          ? json({
+              from_snapshot_id: older.id,
+              to_snapshot_id: latest.id,
+              db_schemas: [],
+              routines: [],
+              tables: [
+                {
+                  id: "t-orders",
+                  db_schema: "public",
+                  name: "orders",
+                  kind: "table",
+                  change: "changed",
+                  fields: [],
+                  columns: [col("note", "changed"), col("legacy", "removed")],
+                },
+                {
+                  id: "t-gone",
+                  db_schema: "public",
+                  name: "gone",
+                  kind: "table",
+                  change: "removed",
+                  fields: [],
+                  columns: [],
+                },
+              ],
+            })
+          : undefined,
+      ),
+      FOLDER,
+    );
+
+    const diff = await screen.findByRole("list", { name: "Differences" });
+
+    expect(diff).toHaveTextContent("Table public.orders: changed");
+    expect(diff).toHaveTextContent("Table public.gone: removed");
+    const columns = within(diff).getByRole("list", {
+      name: "Columns of orders",
+    });
+    expect(columns).toHaveTextContent(
+      "Column note: changed data_type: text to varchar(20)",
+    );
+    expect(columns).toHaveTextContent("Column legacy: removed");
+  });
   it("says when there is no Snapshot yet", async () => {
     renderApp(backend("viewer", { snapshots: [], jobs: [] }), FOLDER);
 
@@ -174,11 +249,17 @@ describe("a Source System's Source Schema", () => {
       FOLDER,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Extract metadata" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Extract metadata" }),
+    );
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Extraction started");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Extraction started",
+    );
     await waitFor(() =>
-      expect(screen.getByRole("list", { name: "Snapshots" })).toHaveTextContent("Latest"),
+      expect(screen.getByRole("list", { name: "Snapshots" })).toHaveTextContent(
+        "Latest",
+      ),
     );
     expect(requests.find((r) => r.method === "POST")).toMatchObject({
       path: `${SYSTEM}/extractions`,
@@ -190,13 +271,19 @@ describe("a Source System's Source Schema", () => {
     renderApp(
       backend("editor", { snapshots: [], jobs: [] }, (r) =>
         r.method === "POST"
-          ? apiError(409, "connection_missing", "This Source System has no Connection.")
+          ? apiError(
+              409,
+              "connection_missing",
+              "This Source System has no Connection.",
+            )
           : undefined,
       ),
       FOLDER,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Extract metadata" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Extract metadata" }),
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This Source System has no Connection.",
