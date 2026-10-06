@@ -157,7 +157,7 @@ def test_changes_are_audited_and_leave_activity(
     assert column_entry.old == {"is_sensitive": False}
     assert column_entry.new == {"is_sensitive": True}
     feed = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/activity").json()
-    verbs = [i["verb"] for i in feed["items"] if i["object_type"].startswith("source_")]
+    verbs = [i["verb"] for i in feed["items"] if i["verb"].endswith(".enhanced")]
     assert verbs == ["source_column.enhanced", "source_table.enhanced"]
 
 
