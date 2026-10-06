@@ -206,7 +206,7 @@ def validate(rule: str, value: Any, *, today: date | None = None) -> bool:
     """Whether ``value`` passes the validator ``rule``. Never raises on a odd value."""
     try:
         return VALIDATORS[rule].check(value, today or date.today())
-    except (ValueError, OverflowError):
+    except Exception:  # a validator bug must never fail a scan or echo a value
         return False
 
 

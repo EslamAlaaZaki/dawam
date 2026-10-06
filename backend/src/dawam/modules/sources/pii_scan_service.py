@@ -31,7 +31,7 @@ from dawam.platform.errors import ApiError
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
-from .internal.pii_scan import DEFAULT_SAMPLE_SIZE, MAX_SAMPLE_SIZE, score_column
+from .internal.pii_scan import DEFAULT_SAMPLE_SIZE, MAX_SAMPLE_SIZE, ValueFinding, score_column
 from .tables import (
     ConnectionRecord,
     PiiFindingRecord,
@@ -187,16 +187,18 @@ class PiiScanService:
 
     # -- internals ----------------------------------------------------------------------
 
-    def _score(self, names: tuple[str, ...], rows: tuple[tuple[Any, ...], ...]) -> dict[str, Any]:
+    def _score(
+        self, names: tuple[str, ...], rows: tuple[tuple[Any, ...], ...]
+    ) -> dict[str, ValueFinding]:
         """The finding per column name; the sampled values stay inside this call."""
-        found = {}
+        found: dict[str, ValueFinding] = {}
         for position, name in enumerate(names):
             finding = score_column(name, (row[position] for row in rows))
             if finding is not None:
                 found[name] = finding
         return found
 
-    def _record(self, table_id: uuid.UUID, found: Mapping[str, Any]) -> int:
+    def _record(self, table_id: uuid.UUID, found: Mapping[str, ValueFinding]) -> int:
         if not found:
             return 0
         now = self._clock()
@@ -216,7 +218,9 @@ class PiiScanService:
                     written += self._upsert(db, column_id, finding, now)
         return written
 
-    def _upsert(self, db: Session, column_id: uuid.UUID, finding: Any, now: datetime) -> int:
+    def _upsert(
+        self, db: Session, column_id: uuid.UUID, finding: ValueFinding, now: datetime
+    ) -> int:
         existing = db.scalars(
             sa.select(PiiFindingRecord)
             .where(
