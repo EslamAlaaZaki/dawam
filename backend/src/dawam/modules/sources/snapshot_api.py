@@ -201,6 +201,73 @@ class SearchResults(BaseModel):
     )
 
 
+Change = Literal["added", "removed", "changed"]
+
+
+class FieldChange(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    field: str
+    before: str | None
+    after: str | None
+
+
+class ColumnChange(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="The Source Object: the same in every Snapshot.")
+    name: str
+    change: Change
+    fields: list[FieldChange]
+
+
+class TableChange(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="The Source Object: the same in every Snapshot.")
+    db_schema: str
+    name: str
+    kind: Literal["table", "view"]
+    change: Change = Field(
+        description="`changed` also when only its columns changed (see `columns`)."
+    )
+    fields: list[FieldChange]
+    columns: list[ColumnChange] = Field(
+        description="Added, removed and changed columns; empty for an added or removed table."
+    )
+
+
+class RoutineChange(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="The Source Object: the same in every Snapshot.")
+    db_schema: str
+    name: str
+    kind: Literal["procedure", "function"]
+    signature: str
+    change: Change
+    fields: list[FieldChange]
+
+
+class DbSchemaChange(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="The Source Object: the same in every Snapshot.")
+    name: str
+    change: Change
+    fields: list[FieldChange]
+
+
+class SnapshotDiff(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    from_snapshot_id: uuid.UUID = Field(description="The base (`against_id`).")
+    to_snapshot_id: uuid.UUID
+    db_schemas: list[DbSchemaChange]
+    tables: list[TableChange]
+    routines: list[RoutineChange]
+
+
 def _content_body(content: SnapshotContentRecord) -> dict:
     return {
         **SnapshotSummary.model_validate(content.snapshot).model_dump(),
@@ -249,6 +316,23 @@ def get_snapshot(
     (any member)."""
     content = snapshots.get(user, workspace_id, system_id, snapshot_id)
     return SnapshotContent.model_validate(_content_body(content))
+
+
+@router.get("/snapshots/{snapshot_id}/diff/{against_id}", operation_id="diffSnapshots")
+def diff_snapshots(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    snapshot_id: uuid.UUID,
+    against_id: uuid.UUID,
+    user: CurrentUser,
+    snapshots: SnapshotServiceDep,
+) -> SnapshotDiff:
+    """What changed from the `against_id` Snapshot to this one (any member): added, removed
+    and changed Database Schemas, tables, views (with their columns) and routines, matched
+    by identity so a rename or type change is a change. Any two Snapshots of the Source
+    System can be compared. 404 for a Snapshot of another Source System."""
+    diff = snapshots.diff(user, workspace_id, system_id, snapshot_id, against_id)
+    return SnapshotDiff.model_validate(diff)
 
 
 @router.get("/schema", operation_id="getSourceSchema")
