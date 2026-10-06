@@ -21,6 +21,7 @@ from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
+from dawam.modules.llm import AdapterFactory
 from dawam.modules.mail import MailService
 from dawam.modules.workspaces import InvitedWorkspaceMembership
 from dawam.platform import health, meta
@@ -53,6 +54,8 @@ class Services:
     email: EmailSender
     jobs: JobRunner
     clock: Clock = system_clock
+    llm_adapters: AdapterFactory | None = None
+    """Builds the LLM adapter for a provider; ``None`` uses the real ones (tests pass a fake)."""
 
 
 def default_services() -> Services:
