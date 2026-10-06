@@ -33,6 +33,7 @@ from dawam.platform.errors import ApiError
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
+from .internal.diff import SnapshotDiff, diff_snapshots
 from .internal.snapshots import store_catalog
 from .tables import (
     ConnectionRecord,
@@ -52,7 +53,7 @@ from .tables import (
 )
 
 EXTRACT_JOB = "extract"
-FOLDS_CASE = {"postgresql": False, "sqlserver": True, "mysql": True}
+FOLDS_CASE = {"postgresql": False, "sqlserver": True, "mysql": True, "oracle": True}
 """Whether the engine folds identifier case, so names differing only in case may match
 the same Source Object (PostgreSQL keeps quoted ``"Customer"`` and ``customer`` apart)."""
 
@@ -306,6 +307,28 @@ class SnapshotService:
             if record is None or record.source_system_id != system_id:
                 raise _not_found("Snapshot")
             return self._content(db, record)
+
+    def diff(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        system_id: uuid.UUID,
+        snapshot_id: uuid.UUID,
+        against_id: uuid.UUID,
+    ) -> SnapshotDiff:
+        """What changed from Snapshot ``against_id`` to ``snapshot_id`` (any member); the
+        two can be any Snapshots of the Source System, in either order."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            self._load_system(db, workspace_id, system_id)
+            records = []
+            for wanted in (against_id, snapshot_id):
+                record = db.get(SnapshotRecord, wanted)
+                if record is None or record.source_system_id != system_id:
+                    raise _not_found("Snapshot")
+                records.append(record)
+            old, new = (self._content(db, record) for record in records)
+            return diff_snapshots(old, new)
 
     def source_schema(
         self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID

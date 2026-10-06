@@ -844,6 +844,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}/diff/{against_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Snapshots
+         * @description What changed from the `against_id` Snapshot to this one (any member): added, removed
+         *     and changed Database Schemas, tables, views (with their columns) and routines, matched
+         *     by identity so a rename or type change is a change. Any two Snapshots of the Source
+         *     System can be compared. 404 for a Snapshot of another Source System.
+         */
+        get: operations["diffSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema": {
         parameters: {
             query?: never;
@@ -1691,6 +1714,24 @@ export interface components {
              */
             role: "viewer" | "editor" | "owner";
         };
+        /** ColumnChange */
+        ColumnChange: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed";
+            /** Fields */
+            fields: components["schemas"]["FieldChange"][];
+        };
         /** ColumnEnhancements */
         ColumnEnhancements: {
             /**
@@ -1723,7 +1764,7 @@ export interface components {
              * Engine
              * @enum {string}
              */
-            engine: "postgresql" | "sqlserver" | "mysql";
+            engine: "postgresql" | "sqlserver" | "mysql" | "oracle";
             /** Host */
             host: string;
             /** Port */
@@ -1771,16 +1812,19 @@ export interface components {
              * @default postgresql
              * @enum {string}
              */
-            engine: "postgresql" | "sqlserver" | "mysql";
+            engine: "postgresql" | "sqlserver" | "mysql" | "oracle";
             /** Host */
             host: string;
             /**
              * Port
-             * @description Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306.
+             * @description Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, Oracle on 1521.
              * @default 5432
              */
             port: number;
-            /** Database */
+            /**
+             * Database
+             * @description The database name; for Oracle, the service name. Oracle Database Schemas are user names, given as Oracle stores them (usually upper case).
+             */
             database: string;
             /** Username */
             username: string;
@@ -1996,6 +2040,24 @@ export interface components {
              */
             include_time_dimension: boolean;
         };
+        /** DbSchemaChange */
+        DbSchemaChange: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed";
+            /** Fields */
+            fields: components["schemas"]["FieldChange"][];
+        };
         /** DeleteWorkspaceRequest */
         DeleteWorkspaceRequest: {
             /**
@@ -2041,6 +2103,15 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
+        /** FieldChange */
+        FieldChange: {
+            /** Field */
+            field: string;
+            /** Before */
+            before: string | null;
+            /** After */
+            after: string | null;
         };
         /** ForcedReset */
         ForcedReset: {
@@ -2755,6 +2826,33 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** RoutineChange */
+        RoutineChange: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "procedure" | "function";
+            /** Signature */
+            signature: string;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed";
+            /** Fields */
+            fields: components["schemas"]["FieldChange"][];
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -3077,6 +3175,26 @@ export interface components {
             /** Status */
             status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
         };
+        /** SnapshotDiff */
+        SnapshotDiff: {
+            /**
+             * From Snapshot Id
+             * Format: uuid
+             * @description The base (`against_id`).
+             */
+            from_snapshot_id: string;
+            /**
+             * To Snapshot Id
+             * Format: uuid
+             */
+            to_snapshot_id: string;
+            /** Db Schemas */
+            db_schemas: components["schemas"]["DbSchemaChange"][];
+            /** Tables */
+            tables: components["schemas"]["TableChange"][];
+            /** Routines */
+            routines: components["schemas"]["RoutineChange"][];
+        };
         /** SnapshotIndex */
         SnapshotIndex: {
             /** Name */
@@ -3363,6 +3481,37 @@ export interface components {
              * @enum {string}
              */
             status: "not_started" | "in_progress" | "complete";
+        };
+        /** TableChange */
+        TableChange: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object: the same in every Snapshot.
+             */
+            id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "table" | "view";
+            /**
+             * Change
+             * @description `changed` also when only its columns changed (see `columns`).
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed";
+            /** Fields */
+            fields: components["schemas"]["FieldChange"][];
+            /**
+             * Columns
+             * @description Added, removed and changed columns; empty for an added or removed table.
+             */
+            columns: components["schemas"]["ColumnChange"][];
         };
         /** TableEnhancements */
         TableEnhancements: {
@@ -5745,6 +5894,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnapshotContent"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    diffSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                snapshot_id: string;
+                against_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotDiff"];
                 };
             };
             /** @description Validation error */

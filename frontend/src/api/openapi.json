@@ -2861,6 +2861,91 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}/diff/{against_id}": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Diff Snapshots",
+        "description": "What changed from the `against_id` Snapshot to this one (any member): added, removed\nand changed Database Schemas, tables, views (with their columns) and routines, matched\nby identity so a rename or type change is a change. Any two Snapshots of the Source\nSystem can be compared. 404 for a Snapshot of another Source System.",
+        "operationId": "diffSnapshots",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "snapshot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Snapshot Id"
+            }
+          },
+          {
+            "name": "against_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Against Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDiff"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema": {
       "get": {
         "tags": [
@@ -5835,6 +5920,44 @@
         ],
         "title": "ChangeRoleRequest"
       },
+      "ColumnChange": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ],
+            "title": "Change"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "change",
+          "fields"
+        ],
+        "title": "ColumnChange"
+      },
       "ColumnEnhancements": {
         "properties": {
           "id": {
@@ -5896,7 +6019,8 @@
             "enum": [
               "postgresql",
               "sqlserver",
-              "mysql"
+              "mysql",
+              "oracle"
             ],
             "title": "Engine"
           },
@@ -5995,7 +6119,8 @@
             "enum": [
               "postgresql",
               "sqlserver",
-              "mysql"
+              "mysql",
+              "oracle"
             ],
             "title": "Engine",
             "default": "postgresql"
@@ -6010,13 +6135,14 @@
             "maximum": 65535.0,
             "minimum": 1.0,
             "title": "Port",
-            "description": "Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306.",
+            "description": "Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, Oracle on 1521.",
             "default": 5432
           },
           "database": {
             "type": "string",
             "maxLength": 256,
-            "title": "Database"
+            "title": "Database",
+            "description": "The database name; for Oracle, the service name. Oracle Database Schemas are user names, given as Oracle stores them (usually upper case)."
           },
           "username": {
             "type": "string",
@@ -6512,6 +6638,44 @@
         "type": "object",
         "title": "DateDimension"
       },
+      "DbSchemaChange": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ],
+            "title": "Change"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "change",
+          "fields"
+        ],
+        "title": "DbSchemaChange"
+      },
       "DeleteWorkspaceRequest": {
         "properties": {
           "name": {
@@ -6591,6 +6755,43 @@
           "status"
         ],
         "title": "ExtractionStarted"
+      },
+      "FieldChange": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "FieldChange"
       },
       "ForcedReset": {
         "properties": {
@@ -8076,6 +8277,63 @@
         ],
         "title": "ResetPasswordRequest"
       },
+      "RoutineChange": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "procedure",
+              "function"
+            ],
+            "title": "Kind"
+          },
+          "signature": {
+            "type": "string",
+            "title": "Signature"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ],
+            "title": "Change"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "db_schema",
+          "name",
+          "kind",
+          "signature",
+          "change",
+          "fields"
+        ],
+        "title": "RoutineChange"
+      },
       "SearchHit": {
         "properties": {
           "kind": {
@@ -8849,6 +9107,51 @@
         ],
         "title": "SnapshotDbSchema"
       },
+      "SnapshotDiff": {
+        "properties": {
+          "from_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Snapshot Id",
+            "description": "The base (`against_id`)."
+          },
+          "to_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Snapshot Id"
+          },
+          "db_schemas": {
+            "items": {
+              "$ref": "#/components/schemas/DbSchemaChange"
+            },
+            "type": "array",
+            "title": "Db Schemas"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableChange"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "routines": {
+            "items": {
+              "$ref": "#/components/schemas/RoutineChange"
+            },
+            "type": "array",
+            "title": "Routines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_snapshot_id",
+          "to_snapshot_id",
+          "db_schemas",
+          "tables",
+          "routines"
+        ],
+        "title": "SnapshotDiff"
+      },
       "SnapshotIndex": {
         "properties": {
           "name": {
@@ -9500,6 +9803,68 @@
           "status"
         ],
         "title": "SystemProgress"
+      },
+      "TableChange": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object: the same in every Snapshot."
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "view"
+            ],
+            "title": "Kind"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ],
+            "title": "Change",
+            "description": "`changed` also when only its columns changed (see `columns`)."
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnChange"
+            },
+            "type": "array",
+            "title": "Columns",
+            "description": "Added, removed and changed columns; empty for an added or removed table."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "db_schema",
+          "name",
+          "kind",
+          "change",
+          "fields",
+          "columns"
+        ],
+        "title": "TableChange"
       },
       "TableEnhancements": {
         "properties": {
