@@ -94,6 +94,12 @@ class SnapshotColumn:
     is_pk: bool
     default: str | None
     comment: str | None
+    description: str | None = None
+    """The Source Object's enhancements and version now; set only in the Source Schema
+    (``description``, ``tags``, ``is_sensitive``, ``version``): a Snapshot never changes."""
+    tags: list[str] | None = None
+    is_sensitive: bool | None = None
+    version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +136,13 @@ class SnapshotTable:
     columns: list[SnapshotColumn]
     constraints: list[SnapshotConstraint]
     indexes: list[SnapshotIndex]
+    description: str | None = None
+    """The Source Object's enhancements and version now; set only in the Source Schema."""
+    tags: list[str] | None = None
+    is_sensitive: bool | None = None
+    classification: str | None = None
+    scd_hint: str | None = None
+    version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -613,6 +626,33 @@ class SnapshotService:
     ) -> SnapshotContent:
         sid = record.id
         statuses = self._statuses(db, sid) if with_status else {}
+        enhanced_columns: dict[uuid.UUID, SrcColumnRecord] = {}
+        enhanced_tables: dict[uuid.UUID, SrcTableRecord] = {}
+        if with_status:
+            enhanced_columns = {
+                c.id: c
+                for c in db.scalars(
+                    sa.select(SrcColumnRecord).where(
+                        SrcColumnRecord.id.in_(
+                            sa.select(SnapshotColumnRecord.src_column_id).where(
+                                SnapshotColumnRecord.snapshot_id == sid
+                            )
+                        )
+                    )
+                )
+            }
+            enhanced_tables = {
+                t.id: t
+                for t in db.scalars(
+                    sa.select(SrcTableRecord).where(
+                        SrcTableRecord.id.in_(
+                            sa.select(SnapshotTableRecord.src_table_id).where(
+                                SnapshotTableRecord.snapshot_id == sid
+                            )
+                        )
+                    )
+                )
+            }
         texts = {
             row.hash: row.text
             for row in db.execute(
@@ -636,8 +676,19 @@ class SnapshotService:
             .where(SnapshotColumnRecord.snapshot_id == sid)
             .order_by(SnapshotColumnRecord.src_table_id, SnapshotColumnRecord.ordinal)
         ):
+            current = enhanced_columns.get(c.src_column_id)
             columns.setdefault(c.src_table_id, []).append(
                 SnapshotColumn(
+                    **(
+                        {}
+                        if current is None
+                        else {
+                            "description": current.description,
+                            "tags": list(current.tags),
+                            "is_sensitive": current.is_sensitive,
+                            "version": current.version,
+                        }
+                    ),
                     id=c.src_column_id,
                     name=c.name,
                     status=statuses.get(c.src_column_id),
@@ -677,6 +728,18 @@ class SnapshotService:
             )
         tables = [
             SnapshotTable(
+                **(
+                    {}
+                    if (current := enhanced_tables.get(t.src_table_id)) is None
+                    else {
+                        "description": current.description,
+                        "tags": list(current.tags),
+                        "is_sensitive": current.is_sensitive,
+                        "classification": current.classification,
+                        "scd_hint": current.scd_hint,
+                        "version": current.version,
+                    }
+                ),
                 id=t.src_table_id,
                 db_schema=t.db_schema,
                 name=t.name,

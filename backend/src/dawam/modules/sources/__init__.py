@@ -12,10 +12,14 @@ Public interface. Other modules import only what is re-exported here:
   handler, which ``dawam.job_handlers`` registers); members read Snapshots (``list``,
   ``get``: ``SnapshotSummary``, ``SnapshotContent``) and browse and search the Source
   Schema (``source_schema``, ``search``: ``SourceSchema``, ``SearchHit``).
+- ``EnhancementService``: owners and editors add descriptions, tags, a sensitivity flag,
+  and (tables) a classification and SCD hint to Source Objects; each change is audited
+  (``source_table`` / ``source_column`` entities) and appears in the activity feed.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
   ``GET .../systems/{system_id}/schema[/search]``,
+  ``PATCH .../systems/{system_id}/tables/{table_id}[/columns/{column_id}]``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
 
@@ -23,12 +27,13 @@ Owns the ``source_systems`` and ``connections`` tables, the Source Objects
 (``src_db_schemas``, ``src_tables``, ``src_columns``, ``src_routines``) and the Snapshots
 (``snapshots``, ``snapshot_*``, ``definition_texts``). ``internal/`` holds the Connector
 interface, its PostgreSQL implementation and the Snapshot writer, which other code
-reaches only through the service API. Imports ``activity``, ``auth``, ``jobs`` and
+reaches only through the service API. Imports ``activity``, ``audit``, ``auth``, ``jobs`` and
 ``workspaces``.
 """
 
 from .api import router
 from .connection_service import Connection, ConnectionService
+from .enhancement_service import EnhancementService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
     EXTRACT_JOB,
@@ -43,6 +48,7 @@ __all__ = [
     "EXTRACT_JOB",
     "Connection",
     "ConnectionService",
+    "EnhancementService",
     "SearchHit",
     "SnapshotContent",
     "SnapshotService",

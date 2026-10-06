@@ -152,6 +152,10 @@ def test_an_editor_extracts_the_full_catalog_into_a_snapshot(
         "is_pk": True,
         "default": None,
         "comment": None,
+        "description": None,
+        "tags": None,
+        "is_sensitive": None,
+        "version": None,
     }
     assert columns["national_id"]["comment"] == "National ID number"
     assert columns["email"]["is_nullable"] and not columns["email"]["is_pk"]

@@ -911,6 +911,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Table Enhancements
+         * @description Describe, tag, flag as sensitive and classify a table or view, with an SCD hint
+         *     (owners and editors); fields left out stay as they are. 409 `version_conflict` if
+         *     `version` is stale; 422 `invalid_enhancement`.
+         */
+        patch: operations["updateTableEnhancements"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Column Enhancements
+         * @description Describe, tag and flag a column as sensitive (owners and editors); fields left
+         *     out stay as they are. 409 `version_conflict` if `version` is stale; 422
+         *     `invalid_enhancement`.
+         */
+        patch: operations["updateColumnEnhancements"];
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1471,7 +1515,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -1687,6 +1731,22 @@ export interface components {
             change: "added" | "removed" | "changed";
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
+        };
+        /** ColumnEnhancements */
+        ColumnEnhancements: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string | null;
+            /** Tags */
+            tags: string[];
+            /** Is Sensitive */
+            is_sensitive: boolean;
+            /** Version */
+            version: number;
         };
         /** Connection */
         Connection: {
@@ -3011,6 +3071,26 @@ export interface components {
             default: string | null;
             /** Comment */
             comment: string | null;
+            /**
+             * Description
+             * @description Business description; set only in the Source Schema.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Set only in the Source Schema.
+             */
+            tags?: string[] | null;
+            /**
+             * Is Sensitive
+             * @description Set only in the Source Schema.
+             */
+            is_sensitive?: boolean | null;
+            /**
+             * Version
+             * @description Send it back when editing the enhancements; set only in the Source Schema.
+             */
+            version?: number | null;
         };
         /** SnapshotConstraint */
         SnapshotConstraint: {
@@ -3234,6 +3314,36 @@ export interface components {
             constraints: components["schemas"]["SnapshotConstraint"][];
             /** Indexes */
             indexes: components["schemas"]["SnapshotIndex"][];
+            /**
+             * Description
+             * @description Business description; set only in the Source Schema.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Set only in the Source Schema.
+             */
+            tags?: string[] | null;
+            /**
+             * Is Sensitive
+             * @description Set only in the Source Schema.
+             */
+            is_sensitive?: boolean | null;
+            /**
+             * Classification
+             * @description Set only in the Source Schema.
+             */
+            classification?: ("master" | "transactional" | "reference" | "log" | "landing") | null;
+            /**
+             * Scd Hint
+             * @description Set only in the Source Schema.
+             */
+            scd_hint?: string | null;
+            /**
+             * Version
+             * @description Send it back when editing the enhancements; set only in the Source Schema.
+             */
+            version?: number | null;
         };
         /** SourceSchema */
         SourceSchema: {
@@ -3403,6 +3513,26 @@ export interface components {
              */
             columns: components["schemas"]["ColumnChange"][];
         };
+        /** TableEnhancements */
+        TableEnhancements: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string | null;
+            /** Tags */
+            tags: string[];
+            /** Is Sensitive */
+            is_sensitive: boolean;
+            /** Classification */
+            classification: ("master" | "transactional" | "reference" | "log" | "landing") | null;
+            /** Scd Hint */
+            scd_hint: string | null;
+            /** Version */
+            version: number;
+        };
         /** Target */
         Target: {
             /**
@@ -3490,6 +3620,26 @@ export interface components {
              */
             unread_count: number;
         };
+        /** UpdateColumnEnhancements */
+        UpdateColumnEnhancements: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /**
+             * Description
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Replaces the tags.
+             */
+            tags?: string[] | null;
+            /** Is Sensitive */
+            is_sensitive?: boolean | null;
+        };
         /** UpdateKpiRequest */
         UpdateKpiRequest: {
             /**
@@ -3562,6 +3712,36 @@ export interface components {
             business_owner?: string | null;
             /** Technical Owner */
             technical_owner?: string | null;
+        };
+        /** UpdateTableEnhancements */
+        UpdateTableEnhancements: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /**
+             * Description
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Replaces the tags.
+             */
+            tags?: string[] | null;
+            /** Is Sensitive */
+            is_sensitive?: boolean | null;
+            /**
+             * Classification
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            classification?: ("master" | "transactional" | "reference" | "log" | "landing") | null;
+            /**
+             * Scd Hint
+             * @description E.g. "changes slowly, history matters". Send null to clear it.
+             */
+            scd_hint?: string | null;
         };
         /**
          * UpdateUserRequest
@@ -5843,6 +6023,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateTableEnhancements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTableEnhancements"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateColumnEnhancements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+                column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateColumnEnhancements"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnEnhancements"];
                 };
             };
             /** @description Validation error */
