@@ -14,6 +14,7 @@ dependencies = [
     "sqlalchemy>=2.0.30,<3",
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
+    "pymssql>=2.3",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "argon2-cffi>=23.1",
@@ -29,7 +30,7 @@ s3 = ["boto3>=1.34"]
 dev = [
     "pytest>=8.2",
     "httpx2>=2.13",
-    "testcontainers[postgres]>=4.15",
+    "testcontainers[postgres,mssql]>=4.15",
     "ruff>=0.6",
     "aiosmtpd>=1.4.6",
 ]
