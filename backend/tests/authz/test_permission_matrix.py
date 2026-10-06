@@ -591,6 +591,18 @@ ROWS: list[Row] = [
         "Open Workspace content (download a file)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/documents/search",
+        "Open Workspace content (search documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/documents/reindex",
+        "Upload, edit, delete Workspace files (re-index documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     # Background jobs (story 46). Members see every job of the Workspace; they cancel
     # their own, and only an owner cancels one somebody else started (the job here is
     # the owner's, so the owner is its creator and an editor is not).

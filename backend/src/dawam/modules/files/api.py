@@ -176,7 +176,7 @@ def search_documents(
     workspace_id: uuid.UUID,
     user: CurrentUser,
     search: DocumentSearchDep,
-    q: Annotated[str, Query(max_length=500, description="What to look for.")],
+    q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
     system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> DocumentSearchResults:

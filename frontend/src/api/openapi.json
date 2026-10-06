@@ -4751,11 +4751,12 @@
           {
             "name": "q",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "maxLength": 500,
               "description": "What to look for.",
+              "default": "",
               "title": "Q"
             },
             "description": "What to look for."

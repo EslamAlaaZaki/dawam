@@ -7041,9 +7041,9 @@ export interface operations {
     };
     searchDocuments: {
         parameters: {
-            query: {
+            query?: {
                 /** @description What to look for. */
-                q: string;
+                q?: string;
                 /** @description Only this Source System. */
                 system_id?: string | null;
                 limit?: number;
