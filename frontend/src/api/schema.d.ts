@@ -1251,6 +1251,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description The audit trail of the Workspace's critical entities, newest first, with old and
+         *     new values (any member, viewers included; 404 for anyone else). Entries are
+         *     read-only: old values are re-entered by hand as a new change, never restored.
+         *     Connection entries never hold secrets, and show host and username to owners only.
+         */
+        get: operations["listAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/kpis": {
         parameters: {
             query?: never;
@@ -1958,6 +1981,61 @@ export interface components {
         AdminWorkspacePage: {
             /** Items */
             items: components["schemas"]["AdminWorkspace"][];
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
+        };
+        /** AuditEntry */
+        AuditEntry: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description Who did it; null if that user is gone. */
+            actor: components["schemas"]["ActivityActor"] | null;
+            /**
+             * Via
+             * @description How: by hand, the AI, a sync, an import, ...
+             * @enum {string}
+             */
+            via: "user" | "ai" | "regeneration" | "sync" | "propagation" | "import" | "platform_change" | "system_code_change";
+            /**
+             * Entity Type
+             * @description What kind of entity changed: `kpi`, `member`, ...
+             */
+            entity_type: string;
+            /** Entity Id */
+            entity_id: string;
+            /**
+             * Old
+             * @description The changed fields before the change, so they can be re-entered by hand; null for a create.
+             */
+            old: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * New
+             * @description The fields after the change; null for a delete.
+             */
+            new: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AuditPage */
+        AuditPage: {
+            /**
+             * Items
+             * @description Newest first.
+             */
+            items: components["schemas"]["AuditEntry"][];
             /**
              * Next Cursor
              * @description The `cursor` of the next page; null on the last.
@@ -7322,6 +7400,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAudit: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                /** @description One object. */
+                entity_id?: string | null;
+                actor_id?: string | null;
+                via?: ("user" | "ai" | "regeneration" | "sync" | "propagation" | "import" | "platform_change" | "system_code_change") | null;
+                /** @description From this moment, inclusive. */
+                since?: string | null;
+                /** @description Until this moment, inclusive. */
+                until?: string | null;
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
                 };
             };
             /** @description Validation error */
