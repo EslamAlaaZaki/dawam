@@ -66,7 +66,9 @@ DIALECTS: dict[str, Dialect] = {
     ),
 }
 
-_TEXT = re.compile(r"char|text|string|uuid|citext|^name$", re.I)
+_TEXT = re.compile(r"char|text|string|citext|^name$", re.I)
+_KEY = re.compile(r"uuid|uniqueidentifier", re.I)
+_LEGACY_LOB = re.compile(r"^(text|ntext|image)$", re.I)
 _ORDERED = re.compile(
     r"int|serial|numeric|decimal|number|float|double|real|money|date|time|year", re.I
 )
@@ -77,9 +79,15 @@ _UNCOMPARABLE = re.compile(
 )
 
 
-def kind_of(data_type: str) -> str:
-    """``text``, ``ordered`` (numbers, dates) or ``other`` (no min/max, distinct or top-N:
-    the engine cannot compare it), from a column's data type."""
+def kind_of(data_type: str, engine: str = "postgresql") -> str:
+    """``text``, ``ordered`` (numbers, dates), ``key`` (UUIDs: distinct and top-N, but no
+    min/max, which PostgreSQL has no aggregate for) or ``other`` (the engine cannot
+    compare it), from a column's data type. SQL Server's legacy ``text``, ``ntext`` and
+    ``image`` cannot be DISTINCT-ed or MIN/MAX-ed."""
+    if engine == "sqlserver" and _LEGACY_LOB.match(data_type.strip()):
+        return "other"
+    if _KEY.search(data_type):
+        return "key"
     if _UNCOMPARABLE.search(data_type):
         return "other"
     if _TEXT.search(data_type):
@@ -114,13 +122,14 @@ def profile_column(
     """Profile one column over the table's first ``row_cap`` rows. ``with_min_max`` and
     ``top_n`` are the caller's decisions (a Protected Column gets neither)."""
     dialect = DIALECTS[engine]
-    kind = kind_of(data_type)
+    kind = kind_of(data_type, engine)
     col = dialect.quote(column)
     base = f"SELECT {col} AS v FROM {dialect.quote(schema)}.{dialect.quote(table)}"
     sample = dialect.limit(base, row_cap)
     distinct = "COUNT(DISTINCT v)" if kind != "other" else "NULL"
-    low = "MIN(v)" if with_min_max and kind != "other" else "NULL"
-    high = "MAX(v)" if with_min_max and kind != "other" else "NULL"
+    ranged = with_min_max and kind in ("text", "ordered")
+    low = "MIN(v)" if ranged else "NULL"
+    high = "MAX(v)" if ranged else "NULL"
     avg = f"AVG({dialect.length('v')})" if kind == "text" else "NULL"
     longest = f"MAX({dialect.length('v')})" if kind == "text" else "NULL"
     [row] = run(

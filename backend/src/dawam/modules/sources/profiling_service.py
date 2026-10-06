@@ -154,6 +154,7 @@ class ProfilingService:
             raise ApiError(422, "invalid_tables", f"Choose 1 to {MAX_TABLES} tables.")
         with Session(self._engine) as db, db.begin():
             system = self._system(db, workspace_id, system_id)
+            # Invariant: a Source System with no Connection was built from a Schema Import.
             has_connection = db.scalar(
                 sa.select(ConnectionRecord.id).where(ConnectionRecord.source_system_id == system_id)
             )

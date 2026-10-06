@@ -27,7 +27,8 @@ CREATE TABLE people (
     phone text,
     score integer,
     national_id text,
-    notes text
+    notes text,
+    ref uuid
 );
 INSERT INTO people
 SELECT i,
@@ -36,7 +37,8 @@ SELECT i,
        '+2010' || (10000000 + i),
        CASE WHEN i % 4 = 0 THEN NULL ELSE i END,
        '2990101' || (1000000 + i),
-       'free text ' || i
+       'free text ' || i,
+       gen_random_uuid()
 FROM generate_series(1, 20) i;
 """
 
@@ -271,7 +273,29 @@ def test_patterns_are_detected_by_share_and_never_return_values(values, expected
         ("jsonb", "other"),
         ("boolean", "other"),
         ("bytea", "other"),
+        ("uuid", "key"),
     ],
 )
 def test_a_data_type_decides_what_can_be_computed(data_type, kind):
     assert kind_of(data_type) == kind
+
+
+@pytest.mark.parametrize("data_type", ["text", "ntext", "image"])
+def test_sql_server_legacy_lob_types_are_not_comparable(data_type):
+    assert kind_of(data_type, "sqlserver") == "other"
+
+
+def test_postgresql_text_stays_comparable():
+    assert kind_of("text", "postgresql") == "text"
+
+
+def test_a_uuid_column_is_profiled_without_min_max(roles: RoleClients, profiled):
+    system, table_id = profiled
+    roles.client("owner").put(
+        f"{system}/tables/{table_id}/profiling-settings", json={"enabled": True}
+    )
+
+    run(roles, system, table_id)
+
+    ref = columns_of(profile_of(roles, system, table_id))["ref"]["profile"]
+    assert ref["distinct_count"] == 20 and ref["min"] is None and ref["max"] is None
