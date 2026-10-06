@@ -3101,6 +3101,186 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
+      "patch": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Update Table Enhancements",
+        "description": "Describe, tag, flag as sensitive and classify a table or view, with an SCD hint\n(owners and editors); fields left out stay as they are. 409 `version_conflict` if\n`version` is stale; 422 `invalid_enhancement`.",
+        "operationId": "updateTableEnhancements",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTableEnhancements"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableEnhancements"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}": {
+      "patch": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Update Column Enhancements",
+        "description": "Describe, tag and flag a column as sensitive (owners and editors); fields left\nout stay as they are. 409 `version_conflict` if `version` is stale; 422\n`invalid_enhancement`.",
+        "operationId": "updateColumnEnhancements",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateColumnEnhancements"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnEnhancements"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -5198,6 +5378,158 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/documents/search": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Search Documents",
+        "description": "Search the Workspace's uploaded documents (any member). Full-text search with Arabic\nnormalisation, combined with vector search when the Workspace's data-sharing level\nincludes documents and its internal-only setting allows the embedding provider. Each\nresult is a cited passage: the document and its section.",
+        "operationId": "searchDocuments",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "What to look for.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "What to look for."
+          },
+          {
+            "name": "system_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this Source System.",
+              "title": "System Id"
+            },
+            "description": "Only this Source System."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/documents/reindex": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Reindex Documents",
+        "description": "Index every document of the Workspace again (owners and editors), as a background\njob: run it after the embedding model or its dimension changes.",
+        "operationId": "reindexDocuments",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReindexStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/providers": {
       "get": {
         "tags": [
@@ -5767,6 +6099,7 @@
           "source_system.edit",
           "source_system.change_code",
           "source_system.extract",
+          "source_schema.enhance",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -6275,6 +6608,50 @@
           "fields"
         ],
         "title": "ColumnChange"
+      },
+      "ColumnEnhancements": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "tags",
+          "is_sensitive",
+          "version"
+        ],
+        "title": "ColumnEnhancements"
       },
       "Connection": {
         "properties": {
@@ -6963,6 +7340,65 @@
           "name"
         ],
         "title": "DeleteWorkspaceRequest"
+      },
+      "DocumentPassage": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "File Id"
+          },
+          "document": {
+            "type": "string",
+            "title": "Document",
+            "description": "The document's name: the citation's first half."
+          },
+          "section": {
+            "type": "string",
+            "title": "Section",
+            "description": "The heading (or `Part N`) the passage sits under."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Relative rank: higher is a better match."
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "document",
+          "section",
+          "text",
+          "score",
+          "source_system_id"
+        ],
+        "title": "DocumentPassage"
+      },
+      "DocumentSearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentPassage"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DocumentSearchResults"
       },
       "ErrorBody": {
         "properties": {
@@ -8440,6 +8876,26 @@
         ],
         "title": "RegistrationStatus"
       },
+      "ReindexStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `reindex_documents` job: follow it at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "ReindexStarted"
+      },
       "RemovedColumn": {
         "properties": {
           "id": {
@@ -9101,6 +9557,57 @@
               }
             ],
             "title": "Comment"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Business description; set only in the Source Schema."
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Set only in the Source Schema."
+          },
+          "is_sensitive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Sensitive",
+            "description": "Set only in the Source Schema."
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Send it back when editing the enhancements; set only in the Source Schema."
           }
         },
         "type": "object",
@@ -9659,6 +10166,88 @@
             },
             "type": "array",
             "title": "Indexes"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Business description; set only in the Source Schema."
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Set only in the Source Schema."
+          },
+          "is_sensitive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Sensitive",
+            "description": "Set only in the Source Schema."
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "transactional",
+                  "reference",
+                  "log",
+                  "landing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification",
+            "description": "Set only in the Source Schema."
+          },
+          "scd_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Hint",
+            "description": "Set only in the Source Schema."
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Send it back when editing the enhancements; set only in the Source Schema."
           }
         },
         "type": "object",
@@ -10007,6 +10596,81 @@
         ],
         "title": "TableChange"
       },
+      "TableEnhancements": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "transactional",
+                  "reference",
+                  "log",
+                  "landing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "scd_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Hint"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "tags",
+          "is_sensitive",
+          "classification",
+          "scd_hint",
+          "version"
+        ],
+        "title": "TableEnhancements"
+      },
       "Target": {
         "properties": {
           "label": {
@@ -10204,6 +10868,58 @@
           "unread_count"
         ],
         "title": "UnreadNotifications"
+      },
+      "UpdateColumnEnhancements": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Send null to clear it; leave it out to keep it."
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Replaces the tags."
+          },
+          "is_sensitive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Sensitive"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateColumnEnhancements"
       },
       "UpdateKpiRequest": {
         "properties": {
@@ -10500,6 +11216,89 @@
           "version"
         ],
         "title": "UpdateSourceSystemRequest"
+      },
+      "UpdateTableEnhancements": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Send null to clear it; leave it out to keep it."
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Replaces the tags."
+          },
+          "is_sensitive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Sensitive"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "transactional",
+                  "reference",
+                  "log",
+                  "landing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification",
+            "description": "Send null to clear it; leave it out to keep it."
+          },
+          "scd_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Hint",
+            "description": "E.g. \"changes slowly, history matters\". Send null to clear it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateTableEnhancements"
       },
       "UpdateUserRequest": {
         "properties": {

@@ -16,10 +16,44 @@ Public interface. Other modules import only what is re-exported here:
   (zips), ``GET /workspaces/{workspace_id}/files/{file_id}/download``,
   ``GET|PUT .../files/{file_id}/content`` (text edit), ``PUT .../files/{file_id}/replace``.
 
-Owns the ``workspace_files`` table.
+- ``DocumentSearchService``: indexes uploaded documents (Postgres full-text with Arabic
+  normalisation; pgvector embeddings only when the Workspace's ``DocumentAiPolicy`` lets
+  documents reach the embedding model), searches them hybrid with cited passages, and
+  re-indexes on demand (the ``reindex_documents`` job, ``REINDEX_JOB``).
+- ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
+  ``POST /workspaces/{workspace_id}/documents/reindex``.
+
+Owns the ``workspace_files`` and ``document_chunks`` tables.
 """
 
 from .api import router
+from .search import (
+    REINDEX_JOB,
+    DocumentAiPolicy,
+    DocumentAiSettings,
+    DocumentSearchService,
+    EmbeddingModel,
+    EmbeddingModels,
+    NoDocumentAi,
+    Passage,
+    RegisteredEmbeddingModels,
+)
 from .service import FileContent, FileService, TextFile, WorkspaceFile, WorkspaceFilePage
 
-__all__ = ["FileContent", "FileService", "TextFile", "WorkspaceFile", "WorkspaceFilePage", "router"]
+__all__ = [
+    "REINDEX_JOB",
+    "DocumentAiPolicy",
+    "DocumentAiSettings",
+    "DocumentSearchService",
+    "EmbeddingModel",
+    "EmbeddingModels",
+    "FileContent",
+    "FileService",
+    "NoDocumentAi",
+    "Passage",
+    "RegisteredEmbeddingModels",
+    "TextFile",
+    "WorkspaceFile",
+    "WorkspaceFilePage",
+    "router",
+]

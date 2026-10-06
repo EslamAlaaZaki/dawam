@@ -316,6 +316,18 @@ def snapshot_id(roles: RoleClients) -> uuid.UUID:
     return snapshot.id
 
 
+def table_id(roles: RoleClients) -> str:
+    """The extracted stand-in table's Source Object id."""
+    snapshot_id(roles)
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    return roles.client("owner").get(f"{system}/schema").json()["tables"][0]["id"]
+
+
+def column_id(roles: RoleClients) -> str:
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    return roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"][0]["id"]
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
@@ -328,6 +340,8 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "kpi_id": kpi_id,
     "file_id": file_id,
     "snapshot_id": snapshot_id,
+    "table_id": table_id,
+    "column_id": column_id,
     "provider_id": provider_id,
     "model_id": model_id,
 }

@@ -15,6 +15,10 @@ NAME_MAX_LENGTH = 200
 CODE_MAX_LENGTH = 24
 DESCRIPTION_MAX_LENGTH = 4000
 OWNER_MAX_LENGTH = 200
+TAG_MAX_LENGTH = 40
+MAX_TAGS = 20
+SCD_HINT_MAX_LENGTH = 200
+CLASSIFICATIONS = ("master", "transactional", "reference", "log", "landing")
 
 CODE_CONSTRAINT = "uq_source_systems_workspace_id"
 """Violated by a System Code another Source System of the Workspace already has."""
@@ -117,6 +121,11 @@ class SrcTableRecord(Base):
         sa.UniqueConstraint("db_schema_id", "name"),
         sa.CheckConstraint(_STATUS_CHECK, name="status"),
         sa.CheckConstraint("kind IN ('table', 'view')", name="kind"),
+        sa.CheckConstraint(
+            "classification IS NULL OR classification IN "
+            "('master', 'transactional', 'reference', 'log', 'landing')",
+            name="classification",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -127,9 +136,18 @@ class SrcTableRecord(Base):
     kind: Mapped[str] = mapped_column(sa.String(16))
     current_definition: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
     """As of the latest Snapshot that had it (kind, comment, view definition hash)."""
+    classification: Mapped[str | None] = mapped_column(sa.String(16))
+    """``master``, ``transactional``, ``reference``, ``log`` or ``landing`` (an Editor's label)."""
+    scd_hint: Mapped[str | None] = mapped_column(sa.String(SCD_HINT_MAX_LENGTH))
+    description: Mapped[str | None] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH))
+    tags: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.String(TAG_MAX_LENGTH)), default=list, server_default="{}"
+    )
+    is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
-    """Goes up by one whenever the current definition (or the name's case) changes."""
+    """Goes up by one whenever the current definition (or the name's case) changes, and
+    on every edit of the enhancements (optimistic concurrency, spec §8.3)."""
 
 
 class SrcColumnRecord(Base):
@@ -144,6 +162,11 @@ class SrcColumnRecord(Base):
     name: Mapped[str] = mapped_column(sa.Text)
     current_definition: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
     """As of the latest Snapshot that had it: data type, nullability, key, default."""
+    description: Mapped[str | None] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH))
+    tags: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.String(TAG_MAX_LENGTH)), default=list, server_default="{}"
+    )
+    is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
 

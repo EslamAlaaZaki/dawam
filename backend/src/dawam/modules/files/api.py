@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Annotated, Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
@@ -21,6 +21,7 @@ from dawam.modules.warehouse import DataWarehouseService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
+from .search import DocumentSearchService, Passage
 from .service import FileService
 from .service import WorkspaceFile as WorkspaceFileView
 
@@ -37,12 +38,20 @@ def file_service(request: Request) -> FileService:
         systems=SourceSystemService(state.engine, workspaces=workspaces, clock=clock),
         warehouses=DataWarehouseService(state.engine, workspaces=workspaces, clock=clock),
         storage=state.storage,
+        search=state.document_search,
         clock=clock,
         max_upload_bytes=state.settings.upload_max_bytes,
     )
 
 
 FileServiceDep = Annotated[FileService, Depends(file_service)]
+
+
+def document_search(request: Request) -> DocumentSearchService:
+    return request.app.state.document_search
+
+
+DocumentSearchDep = Annotated[DocumentSearchService, Depends(document_search)]
 
 
 class WorkspaceFile(BaseModel):
@@ -251,3 +260,61 @@ def replace_file(
     upload's own name is ignored but its content must be of the type the file's name says.
     413 `file_too_large`, 415 `unsupported_file_type`."""
     return _out(files.replace(user, workspace_id, file_id, content=file.file))
+
+
+class DocumentPassage(BaseModel):
+    file_id: uuid.UUID
+    document: str = Field(description="The document's name: the citation's first half.")
+    section: str = Field(description="The heading (or `Part N`) the passage sits under.")
+    text: str
+    score: float = Field(description="Relative rank: higher is a better match.")
+    source_system_id: uuid.UUID
+
+
+class DocumentSearchResults(BaseModel):
+    items: list[DocumentPassage]
+
+
+class ReindexStarted(BaseModel):
+    job_id: uuid.UUID = Field(
+        description="The `reindex_documents` job: follow it at `GET /jobs/{job_id}`."
+    )
+    status: str
+
+
+def _passage(passage: Passage) -> DocumentPassage:
+    return DocumentPassage(
+        file_id=passage.file_id,
+        document=passage.document,
+        section=passage.section,
+        text=passage.text,
+        score=passage.score,
+        source_system_id=passage.source_system_id,
+    )
+
+
+@router.get("/documents/search", operation_id="searchDocuments")
+def search_documents(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    search: DocumentSearchDep,
+    q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
+    system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> DocumentSearchResults:
+    """Search the Workspace's uploaded documents (any member). Full-text search with Arabic
+    normalisation, combined with vector search when the Workspace's data-sharing level
+    includes documents and its internal-only setting allows the embedding provider. Each
+    result is a cited passage: the document and its section."""
+    passages = search.search(user, workspace_id, q, system_id=system_id, limit=limit)
+    return DocumentSearchResults(items=[_passage(p) for p in passages])
+
+
+@router.post("/documents/reindex", operation_id="reindexDocuments", status_code=202)
+def reindex_documents(
+    workspace_id: uuid.UUID, user: CurrentUser, search: DocumentSearchDep
+) -> ReindexStarted:
+    """Index every document of the Workspace again (owners and editors), as a background
+    job: run it after the embedding model or its dimension changes."""
+    job = search.start_reindex(user, workspace_id)
+    return ReindexStarted(job_id=job.id, status=job.status)

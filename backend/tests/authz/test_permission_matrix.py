@@ -640,6 +640,18 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         files=lambda roles: {"file": ("sad.md", b"# Replaced", "text/markdown")},
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/documents/search",
+        "Open Workspace content (search documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/documents/reindex",
+        "Upload, edit, delete Workspace files (re-index documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     # Background jobs (story 46). Members see every job of the Workspace; they cancel
     # their own, and only an owner cancels one somebody else started (the job here is
     # the owner's, so the owner is its creator and an editor is not).
@@ -728,6 +740,21 @@ ROWS: list[Row] = [
         "Open Workspace content (search the Source Schema)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=snapshot_id,
+    ),
+    # Source enhancements (stories 61, 62): owners and editors.
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}",
+        "Edit Source Schema enhancements (a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "tags": ["PII"]},
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}",
+        "Edit Source Schema enhancements (a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "is_sensitive": True},
     ),
 ]
 
