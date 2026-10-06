@@ -167,8 +167,51 @@ class SrcColumnRecord(Base):
         sa.ARRAY(sa.String(TAG_MAX_LENGTH)), default=list, server_default="{}"
     )
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    pii_category: Mapped[str | None] = mapped_column(sa.String(32))
+    """Set when an Editor confirms a PII finding (spec story 135)."""
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
+
+
+PII_STATUSES = ("suggested", "confirmed", "dismissed")
+PII_CATEGORIES = ("direct_identifier", "quasi_identifier", "sensitive", "financial")
+_PII_STATUS_CHECK = "status IN ('suggested', 'confirmed', 'dismissed')"
+
+
+class PiiFindingRecord(Base):
+    """A suspected PII column (spec §6.12). One per column and rule; it attaches to the
+    stable Source Column, so a decision survives Snapshots. It never holds a value."""
+
+    __tablename__ = "pii_findings"
+    __table_args__ = (
+        sa.UniqueConstraint("src_column_id", "rule"),
+        sa.CheckConstraint(_PII_STATUS_CHECK, name="status"),
+        sa.CheckConstraint(
+            "category IN ('direct_identifier', 'quasi_identifier', 'sensitive', 'financial')",
+            name="category",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    src_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
+    )
+    rule: Mapped[str] = mapped_column(sa.String(48))
+    """The name rule that fired (``national_id``, ...; ``value-at-query`` later)."""
+    category: Mapped[str] = mapped_column(sa.String(32))
+    confidence: Mapped[float] = mapped_column()
+    evidence: Mapped[str] = mapped_column(sa.String(500))
+    status: Mapped[str] = mapped_column(sa.String(16))
+    """``suggested`` (in the review queue), ``confirmed`` or ``dismissed``."""
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("snapshots.id", ondelete="SET NULL")
+    )
+    """The Snapshot whose scan found it."""
+    detected_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
 class SrcRoutineRecord(Base):

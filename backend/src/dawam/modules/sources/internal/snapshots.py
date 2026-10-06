@@ -14,7 +14,9 @@ writes the immutable ``Snapshot*`` rows that point at them:
 - removed objects that look like added ones are stored as rename candidates for an
   editor to confirm (see ``renames``);
 - a catalog identical to the latest Snapshot's (same content hash) creates nothing;
-- view and routine text is stored once per content hash (``definition_texts``).
+- view and routine text is stored once per content hash (``definition_texts``);
+- every new Snapshot's column names are scanned for PII (``pii.scan_columns``), with no
+  load on the source.
 
 The caller holds the Source System's row lock, so extractions of one system never
 interleave.
@@ -51,6 +53,7 @@ from ..tables import (
 )
 from . import renames
 from .connector import SourceCatalog
+from .pii import scan_columns
 
 _INSERT_BATCH = 5000
 
@@ -445,6 +448,12 @@ def store_catalog(
         )
     _insert(db, SnapshotTableRecord, table_rows)
     _insert(db, SnapshotColumnRecord, column_rows)
+    scan_columns(
+        db,
+        snapshot_id=sid,
+        columns=[(row["src_column_id"], row["name"]) for row in column_rows],
+        at=taken_at,
+    )
     _insert(db, SnapshotConstraintRecord, constraint_rows)
     _insert(db, SnapshotIndexRecord, index_rows)
     _insert(

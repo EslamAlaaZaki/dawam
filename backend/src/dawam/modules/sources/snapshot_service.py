@@ -14,6 +14,7 @@ System's row lock.
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -33,11 +34,13 @@ from dawam.platform.errors import ApiError
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
-from .internal.diff import SnapshotDiff, diff_snapshots
+from .internal.diff import SnapshotDiff, SuspectedPiiColumn, diff_snapshots
+from .internal.pii import PROTECTING_STATUSES, protected_column_ids
 from .internal.snapshots import store_catalog
 from .tables import (
     ConnectionRecord,
     DefinitionTextRecord,
+    PiiFindingRecord,
     SnapshotColumnRecord,
     SnapshotConstraintRecord,
     SnapshotDbSchemaRecord,
@@ -100,6 +103,10 @@ class SnapshotColumn:
     tags: list[str] | None = None
     is_sensitive: bool | None = None
     version: int | None = None
+    pii_category: str | None = None
+    """Set when a PII finding was confirmed; only in the Source Schema."""
+    is_protected: bool | None = None
+    """By the one Protected Column policy; only in the Source Schema."""
 
 
 @dataclass(frozen=True)
@@ -328,7 +335,8 @@ class SnapshotService:
                     raise _not_found("Snapshot")
                 records.append(record)
             old, new = (self._content(db, record) for record in records)
-            return diff_snapshots(old, new)
+            diff = diff_snapshots(old, new)
+            return dataclasses.replace(diff, suspected_pii=self._new_pii(db, old, new))
 
     def source_schema(
         self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID
@@ -603,6 +611,37 @@ class SnapshotService:
             for r in rows
         ]
 
+    def _new_pii(
+        self, db: Session, old: SnapshotContent, new: SnapshotContent
+    ) -> list[SuspectedPiiColumn]:
+        """The columns in ``new`` and not in ``old`` with a suggested or confirmed finding
+        (a column of a brand-new table counts too)."""
+        before = {c.id for t in old.tables for c in t.columns}
+        added = {c.id: (t, c) for t in new.tables for c in t.columns if c.id not in before}
+        if not added:
+            return []
+        rows = db.scalars(
+            sa.select(PiiFindingRecord).where(
+                PiiFindingRecord.src_column_id.in_(list(added)),
+                PiiFindingRecord.status.in_(PROTECTING_STATUSES),
+            )
+        )
+        suspected = [
+            SuspectedPiiColumn(
+                column_id=f.src_column_id,
+                table_id=added[f.src_column_id][0].id,
+                db_schema=added[f.src_column_id][0].db_schema,
+                table=added[f.src_column_id][0].name,
+                column=added[f.src_column_id][1].name,
+                category=f.category,
+                confidence=f.confidence,
+                status=f.status,
+            )
+            for f in rows
+        ]
+        suspected.sort(key=lambda p: (p.db_schema, p.table, p.column, p.category))
+        return suspected
+
     def _statuses(self, db: Session, snapshot_id: uuid.UUID) -> dict[uuid.UUID, str]:
         """The current state of every Source Object the Snapshot has."""
         statuses: dict[uuid.UUID, str] = {}
@@ -627,6 +666,7 @@ class SnapshotService:
         sid = record.id
         statuses = self._statuses(db, sid) if with_status else {}
         enhanced_columns: dict[uuid.UUID, SrcColumnRecord] = {}
+        protected: set[uuid.UUID] = set()
         enhanced_tables: dict[uuid.UUID, SrcTableRecord] = {}
         if with_status:
             enhanced_columns = {
@@ -641,6 +681,7 @@ class SnapshotService:
                     )
                 )
             }
+            protected = protected_column_ids(db, enhanced_columns)
             enhanced_tables = {
                 t.id: t
                 for t in db.scalars(
@@ -687,6 +728,8 @@ class SnapshotService:
                             "tags": list(current.tags),
                             "is_sensitive": current.is_sensitive,
                             "version": current.version,
+                            "pii_category": current.pii_category,
+                            "is_protected": c.src_column_id in protected,
                         }
                     ),
                     id=c.src_column_id,

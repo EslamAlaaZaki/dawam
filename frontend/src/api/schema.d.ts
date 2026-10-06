@@ -955,6 +955,68 @@ export interface paths {
         patch: operations["updateColumnEnhancements"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pii Findings
+         * @description The Source System's PII findings (owners and editors).
+         */
+        get: operations["listPiiFindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Pii Finding
+         * @description Confirm a finding (owners and editors): the column becomes sensitive and takes the
+         *     finding's PII category. Audited.
+         */
+        post: operations["confirmPiiFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Pii Finding
+         * @description Dismiss a finding (owners and editors). The column stays protected only if it is
+         *     flagged sensitive. Audited.
+         */
+        post: operations["dismissPiiFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
         parameters: {
             query?: never;
@@ -2003,7 +2065,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -3474,6 +3536,83 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** PiiFinding */
+        PiiFinding: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /** Column */
+            column: string;
+            /**
+             * Rule
+             * @description The name rule that fired, e.g. `national_id`.
+             */
+            rule: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0 to 1; a name match alone is at least 0.5.
+             */
+            confidence: number;
+            /**
+             * Evidence
+             * @description Why it matched. Never a data value.
+             */
+            evidence: string;
+            /**
+             * Status
+             * @description `suggested` findings are the review queue.
+             * @enum {string}
+             */
+            status: "suggested" | "confirmed" | "dismissed";
+            /**
+             * Is Sensitive
+             * @description The column's own sensitive flag.
+             */
+            is_sensitive: boolean;
+            /**
+             * Is Protected
+             * @description `is_sensitive` or a `suggested`/`confirmed` finding on the column.
+             */
+            is_protected: boolean;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** PiiFindingPage */
+        PiiFindingPage: {
+            /**
+             * Items
+             * @description Most confident first.
+             */
+            items: components["schemas"]["PiiFinding"][];
+        };
         /** Platform */
         Platform: {
             /**
@@ -3952,6 +4091,16 @@ export interface components {
              * @description Send it back when editing the enhancements; set only in the Source Schema.
              */
             version?: number | null;
+            /**
+             * Pii Category
+             * @description Set when a PII finding was confirmed; set only in the Source Schema.
+             */
+            pii_category?: ("direct_identifier" | "quasi_identifier" | "sensitive" | "financial") | null;
+            /**
+             * Is Protected
+             * @description `is_sensitive` or a `suggested`/`confirmed` PII finding; set only in the Source Schema.
+             */
+            is_protected?: boolean | null;
         };
         /** SnapshotConstraint */
         SnapshotConstraint: {
@@ -4055,6 +4204,11 @@ export interface components {
             tables: components["schemas"]["TableChange"][];
             /** Routines */
             routines: components["schemas"]["RoutineChange"][];
+            /**
+             * Suspected Pii
+             * @description Columns new in this Snapshot that name rules suspect of holding PII (never values): highlight them in the diff.
+             */
+            suspected_pii: components["schemas"]["SuspectedPiiColumn"][];
         };
         /** SnapshotIndex */
         SnapshotIndex: {
@@ -4376,6 +4530,37 @@ export interface components {
              * @description DW Modeling, one entry per Layer.
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
+        };
+        /** SuspectedPiiColumn */
+        SuspectedPiiColumn: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /** Column */
+            column: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /** Confidence */
+            confidence: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "confirmed";
         };
         /** SystemProgress */
         SystemProgress: {
@@ -7054,6 +7239,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ColumnEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPiiFindings: {
+        parameters: {
+            query?: {
+                /** @description Only findings in this state; the review queue is `suggested`. */
+                status?: ("suggested" | "confirmed" | "dismissed") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiFindingPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirmPiiFinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                finding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiFinding"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    dismissPiiFinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                finding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiFinding"];
                 };
             };
             /** @description Validation error */

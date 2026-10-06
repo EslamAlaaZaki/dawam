@@ -3281,6 +3281,244 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "List Pii Findings",
+        "description": "The Source System's PII findings (owners and editors).",
+        "operationId": "listPiiFindings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "suggested",
+                    "confirmed",
+                    "dismissed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only findings in this state; the review queue is `suggested`.",
+              "title": "Status"
+            },
+            "description": "Only findings in this state; the review queue is `suggested`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiFindingPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/confirm": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Confirm Pii Finding",
+        "description": "Confirm a finding (owners and editors): the column becomes sensitive and takes the\nfinding's PII category. Audited.",
+        "operationId": "confirmPiiFinding",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiFinding"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Dismiss Pii Finding",
+        "description": "Dismiss a finding (owners and editors). The column stays protected only if it is\nflagged sensitive. Audited.",
+        "operationId": "dismissPiiFinding",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiFinding"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
       "get": {
         "tags": [
@@ -7575,6 +7813,7 @@
           "source_system.change_code",
           "source_system.extract",
           "source_schema.enhance",
+          "pii.review",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -10705,6 +10944,148 @@
         ],
         "title": "PendingInvitationPage"
       },
+      "PiiFinding": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "rule": {
+            "type": "string",
+            "title": "Rule",
+            "description": "The name rule that fired, e.g. `national_id`."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0 to 1; a name match alone is at least 0.5."
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence",
+            "description": "Why it matched. Never a data value."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "confirmed",
+              "dismissed"
+            ],
+            "title": "Status",
+            "description": "`suggested` findings are the review queue."
+          },
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive",
+            "description": "The column's own sensitive flag."
+          },
+          "is_protected": {
+            "type": "boolean",
+            "title": "Is Protected",
+            "description": "`is_sensitive` or a `suggested`/`confirmed` finding on the column."
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "column_id",
+          "table_id",
+          "db_schema",
+          "table",
+          "column",
+          "rule",
+          "category",
+          "confidence",
+          "evidence",
+          "status",
+          "is_sensitive",
+          "is_protected",
+          "detected_at",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "PiiFinding"
+      },
+      "PiiFindingPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PiiFinding"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Most confident first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "PiiFindingPage"
+      },
       "Platform": {
         "properties": {
           "platform": {
@@ -11718,6 +12099,36 @@
             ],
             "title": "Version",
             "description": "Send it back when editing the enhancements; set only in the Source Schema."
+          },
+          "pii_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "direct_identifier",
+                  "quasi_identifier",
+                  "sensitive",
+                  "financial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pii Category",
+            "description": "Set when a PII finding was confirmed; set only in the Source Schema."
+          },
+          "is_protected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Protected",
+            "description": "`is_sensitive` or a `suggested`/`confirmed` PII finding; set only in the Source Schema."
           }
         },
         "type": "object",
@@ -11980,6 +12391,14 @@
             },
             "type": "array",
             "title": "Routines"
+          },
+          "suspected_pii": {
+            "items": {
+              "$ref": "#/components/schemas/SuspectedPiiColumn"
+            },
+            "type": "array",
+            "title": "Suspected Pii",
+            "description": "Columns new in this Snapshot that name rules suspect of holding PII (never values): highlight them in the diff."
           }
         },
         "type": "object",
@@ -11988,7 +12407,8 @@
           "to_snapshot_id",
           "db_schemas",
           "tables",
-          "routines"
+          "routines",
+          "suspected_pii"
         ],
         "title": "SnapshotDiff"
       },
@@ -12715,6 +13135,66 @@
           "dw_modeling"
         ],
         "title": "StageProgress"
+      },
+      "SuspectedPiiColumn": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "confirmed"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "table_id",
+          "db_schema",
+          "table",
+          "column",
+          "category",
+          "confidence",
+          "status"
+        ],
+        "title": "SuspectedPiiColumn"
       },
       "SystemProgress": {
         "properties": {

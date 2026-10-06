@@ -306,11 +306,13 @@ def use_fake_llm(roles: RoleClients) -> None:
 
 
 class _OneTableSource:
-    """A stand-in source database with one table, for ``snapshot_id``."""
+    """A stand-in source database with one table, for ``snapshot_id``; its ``national_id``
+    column gets a PII finding."""
 
     def extract(self) -> SourceCatalog:
         column = ColumnInfo("id", 1, "integer", False, True, None, None)
-        table = TableInfo("public", "accounts", "table", 1, None, None, (column,))
+        national = ColumnInfo("national_id", 2, "text", True, False, None, None)
+        table = TableInfo("public", "accounts", "table", 1, None, None, (column, national))
         return SourceCatalog(tables=(table,), routines=(), schemas=("public",))
 
 
@@ -362,6 +364,13 @@ def column_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"][0]["id"]
 
 
+def pii_finding_id(roles: RoleClients) -> str:
+    """The name-rule finding on the stand-in table's ``national_id`` column."""
+    snapshot_id(roles)
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    return roles.client("owner").get(f"{system}/pii-findings").json()["items"][0]["id"]
+
+
 def rename_pair(roles: RoleClients) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     """A rename candidate and its removed and added column, written straight into the
     stand-in table (fresh per request, so confirming one does not affect the next):
@@ -407,6 +416,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "object_id": source_table_id,
     "table_id": table_id,
     "column_id": column_id,
+    "finding_id": pii_finding_id,
     "provider_id": provider_id,
     "model_id": model_id,
 }

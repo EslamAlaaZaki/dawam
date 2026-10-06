@@ -65,6 +65,8 @@ class SnapshotPage(BaseModel):
     items: list[SnapshotSummary] = Field(description="Newest first.")
 
 
+PiiCategory = Literal["direct_identifier", "quasi_identifier", "sensitive", "financial"]
+
 Classification = Literal["master", "transactional", "reference", "log", "landing"]
 
 ObjectStatus = Annotated[
@@ -105,6 +107,15 @@ class SnapshotColumn(BaseModel):
     version: int | None = Field(
         default=None,
         description="Send it back when editing the enhancements; set only in the Source Schema.",
+    )
+    pii_category: PiiCategory | None = Field(
+        default=None,
+        description="Set when a PII finding was confirmed; set only in the Source Schema.",
+    )
+    is_protected: bool | None = Field(
+        default=None,
+        description="`is_sensitive` or a `suggested`/`confirmed` PII finding; set only in the "
+        "Source Schema.",
     )
 
 
@@ -282,6 +293,19 @@ class DbSchemaChange(BaseModel):
     fields: list[FieldChange]
 
 
+class SuspectedPiiColumn(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_id: uuid.UUID
+    table_id: uuid.UUID
+    db_schema: str
+    table: str
+    column: str
+    category: PiiCategory
+    confidence: float
+    status: Literal["suggested", "confirmed"]
+
+
 class SnapshotDiff(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -290,6 +314,10 @@ class SnapshotDiff(BaseModel):
     db_schemas: list[DbSchemaChange]
     tables: list[TableChange]
     routines: list[RoutineChange]
+    suspected_pii: list[SuspectedPiiColumn] = Field(
+        description="Columns new in this Snapshot that name rules suspect of holding PII "
+        "(never values): highlight them in the diff."
+    )
 
 
 def _content_body(content: SnapshotContentRecord) -> dict:

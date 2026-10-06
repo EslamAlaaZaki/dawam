@@ -890,6 +890,26 @@ ROWS: list[Row] = [
             "added_id": str(pair[2]),
         },
     ),
+    # PII review queue (stories 133-135; §4.3 "Review PII findings"): owners and editors.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings",
+        "Review PII findings (the queue)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/confirm",
+        "Review PII findings (confirm)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss",
+        "Review PII findings (dismiss)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
 ]
 
 
