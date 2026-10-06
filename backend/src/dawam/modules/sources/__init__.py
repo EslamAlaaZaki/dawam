@@ -52,6 +52,7 @@ from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
 from .pii_service import PiiFinding, PiiService
+from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
@@ -65,6 +66,7 @@ from .snapshot_service import (
 
 __all__ = [
     "EXTRACT_JOB",
+    "PROFILE_JOB",
     "Connection",
     "ConnectionService",
     "EnhancementService",
@@ -72,6 +74,7 @@ __all__ = [
     "ImportStatus",
     "PiiFinding",
     "PiiService",
+    "ProfilingService",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
@@ -84,6 +87,7 @@ __all__ = [
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",
+    "TableProfile",
     "is_protected",
     "router",
 ]

@@ -20,11 +20,13 @@ from typing import Any
 
 import oracledb
 
+from . import profiling
 from .connector import (
     DEFAULT_ROW_LIMIT,
     DEFAULT_STATEMENT_TIMEOUT_SECONDS,
     ColumnInfo,
     ColumnProfile,
+    ColumnStats,
     ConnectionParams,
     ConnectionTest,
     ConnectorError,
@@ -455,6 +457,30 @@ class OracleConnector:
             cur.execute(statement)
             total, nulls, distinct = cur.fetchone()  # type: ignore[misc]
         return ColumnProfile(row_count=total, null_count=nulls, distinct_count=distinct)
+
+    def profile_column(
+        self,
+        schema: str,
+        table: str,
+        column: str,
+        data_type: str,
+        *,
+        row_cap: int,
+        top_n: bool,
+        with_min_max: bool,
+    ) -> ColumnStats:
+        self._require_allowed(schema)
+        return profiling.profile_column(
+            self._run,
+            "oracle",
+            schema,
+            table,
+            column,
+            data_type,
+            row_cap=row_cap,
+            top_n=top_n,
+            with_min_max=with_min_max,
+        )
 
     def sample(self, schema: str, table: str, *, limit: int = DEFAULT_ROW_LIMIT) -> QueryResult:
         self._require_allowed(schema)

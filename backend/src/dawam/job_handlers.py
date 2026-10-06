@@ -23,7 +23,7 @@ from dawam.modules.files import (
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
 from dawam.modules.llm import AdapterFactory, ProviderService
-from dawam.modules.sources import EXTRACT_JOB, SnapshotService
+from dawam.modules.sources import EXTRACT_JOB, PROFILE_JOB, ProfilingService, SnapshotService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -75,10 +75,21 @@ def _service_handlers(
         encryption_key=settings.encryption_key.get_secret_value(),
         clock=clock,
     )
+    profiling = ProfilingService(
+        engine,
+        workspaces=WorkspaceService(engine, clock=clock),
+        jobs=runner,
+        encryption_key=settings.encryption_key.get_secret_value(),
+        clock=clock,
+    )
     documents = build_document_search(
         runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
     )
-    return {EXTRACT_JOB: snapshots.run_extraction, REINDEX_JOB: documents.run_reindex}
+    return {
+        EXTRACT_JOB: snapshots.run_extraction,
+        PROFILE_JOB: profiling.run_profiling,
+        REINDEX_JOB: documents.run_reindex,
+    }
 
 
 def register_job_handlers(
