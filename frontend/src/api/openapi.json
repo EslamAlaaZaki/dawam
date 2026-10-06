@@ -3519,6 +3519,347 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Download Template",
+        "description": "The Schema Import Excel template (owners and editors): a sheet per kind of\nmetadata with header rows, and a README that explains every column.",
+        "operationId": "downloadSchemaImportTemplate",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Excel template.",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/validate": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Validate Import",
+        "description": "Check an upload and report; nothing is saved (owners and editors), as multipart\nform data.",
+        "operationId": "validateSchemaImport",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_validateSchemaImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/upload": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Upload Import",
+        "description": "Validate an upload and, when the report has no errors (and no warnings, or they\nare accepted), save it as a Snapshot with `origin = import` (owners and editors), as\nmultipart form data. With errors, or unaccepted warnings, nothing is saved:\n`imported` is false and the report says why. 422 `unsupported_engine`.",
+        "operationId": "uploadSchemaImport",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadSchemaImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOutcome"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Import Status",
+        "description": "Whether the Source System works from a Schema Import and which features that\ndisables (any member).",
+        "operationId": "getSchemaImportStatus",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/connection-requests": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Request Connection",
+        "description": "Ask the Workspace's owners to supply a live Connection (owners and editors); they\nare notified. 409 `connection_exists` if the Source System already has one.",
+        "operationId": "requestConnection",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionRequested"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates": {
       "get": {
         "tags": [
@@ -8008,6 +8349,42 @@
         ],
         "title": "Body_uploadDataWarehouseFile"
       },
+      "Body_uploadSchemaImport": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...)."
+          },
+          "accept_warnings": {
+            "type": "boolean",
+            "title": "Accept Warnings",
+            "description": "Save even though the report has warnings.",
+            "default": false
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine",
+            "description": "`postgresql`, `sqlserver`, `mysql` or `oracle`: how the database treats name case, for matching names to existing Source Objects. A Connection's engine wins; without either, names match exactly."
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_uploadSchemaImport"
+      },
       "Body_uploadSourceSystemFile": {
         "properties": {
           "file": {
@@ -8022,6 +8399,24 @@
           "file"
         ],
         "title": "Body_uploadSourceSystemFile"
+      },
+      "Body_validateSchemaImport": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_validateSchemaImport"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -8326,6 +8721,19 @@
           "username"
         ],
         "title": "ConnectionRequest"
+      },
+      "ConnectionRequested": {
+        "properties": {
+          "owners_notified": {
+            "type": "integer",
+            "title": "Owners Notified"
+          }
+        },
+        "type": "object",
+        "required": [
+          "owners_notified"
+        ],
+        "title": "ConnectionRequested"
       },
       "ConnectionTestResult": {
         "properties": {
@@ -9114,6 +9522,170 @@
           "email"
         ],
         "title": "ForgotPasswordRequest"
+      },
+      "ImportIssue": {
+        "properties": {
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet",
+            "description": "The sheet it is about; empty for the whole file."
+          },
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row",
+            "description": "The row in the sheet (the header is row 1)."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sheet",
+          "row",
+          "message"
+        ],
+        "title": "ImportIssue"
+      },
+      "ImportOutcome": {
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/ImportReport"
+          },
+          "imported": {
+            "type": "boolean",
+            "title": "Imported",
+            "description": "The import was accepted: a Snapshot was saved, or it matched the latest one (see `unchanged`). False means nothing was saved."
+          },
+          "unchanged": {
+            "type": "boolean",
+            "title": "Unchanged",
+            "description": "No differences from the previous Snapshot, so no new one was created."
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "report",
+          "imported",
+          "unchanged",
+          "snapshot"
+        ],
+        "title": "ImportOutcome"
+      },
+      "ImportReport": {
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ImportIssue"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Any error means nothing can be saved."
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ImportIssue"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Saved only if the user accepts them."
+          },
+          "schema_count": {
+            "type": "integer",
+            "title": "Schema Count"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count",
+            "description": "Tables and views."
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "routine_count": {
+            "type": "integer",
+            "title": "Routine Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "errors",
+          "warnings",
+          "schema_count",
+          "table_count",
+          "column_count",
+          "routine_count"
+        ],
+        "title": "ImportReport"
+      },
+      "ImportStatus": {
+        "properties": {
+          "has_connection": {
+            "type": "boolean",
+            "title": "Has Connection"
+          },
+          "latest_origin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "connection",
+                  "import"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Origin"
+          },
+          "imported": {
+            "type": "boolean",
+            "title": "Imported",
+            "description": "The Source System works from a Schema Import, so `disabled_features` do not work until it has a live Connection."
+          },
+          "disabled_features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disabled Features"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_connection",
+          "latest_origin",
+          "imported",
+          "disabled_features"
+        ],
+        "title": "ImportStatus"
       },
       "InvitationLinkOut": {
         "properties": {

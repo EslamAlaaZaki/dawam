@@ -42,8 +42,10 @@ from dawam.platform.storage import create_storage
 
 API_PREFIX = "/api/v1"
 
-UPLOAD_PATH = re.compile(rf"{API_PREFIX}/workspaces/[^/]+/systems/[^/]+/files")
-"""The file upload route (files module); its body is size-limited while it streams."""
+UPLOAD_PATH = re.compile(
+    rf"{API_PREFIX}/workspaces/[^/]+/systems/[^/]+/(files|import/upload|import/validate)"
+)
+"""The upload routes (files module, Schema Import); their body is size-limited while it streams."""
 UPLOAD_OVERHEAD_BYTES = 64 * 1024
 """Allowed on top of the file limit for the multipart framing around the file."""
 
