@@ -334,10 +334,24 @@ def test_non_ai_features_keep_working_when_the_budget_is_used_up(
     assert admin_client.get("/api/v1/workspaces").status_code == 200
 
 
-def test_a_failed_call_records_no_usage(admin_client, role_service, setup, fake_llm):
+def test_a_failed_call_is_recorded_with_estimated_tokens(
+    admin_client, role_service, setup, fake_llm
+):
     fake_llm.script(*[LlmError(RATE_LIMIT, "slow down")] * 4)
 
     with pytest.raises(LlmError):
         list(role_service.gateway_for_role("agent").chat(ASK))
 
-    assert admin_client.get(f"{BASE}/usage").json()["totals"]["calls"] == 0
+    totals = admin_client.get(f"{BASE}/usage").json()["totals"]
+    assert totals["calls"] == 1 and totals["estimated_calls"] == 1
+
+
+def test_an_abandoned_stream_is_recorded(admin_client, role_service, setup, fake_llm):
+    fake_llm.script(Reply(text="one two three four", usage=Usage(50, 10)))
+
+    stream = role_service.gateway_for_role("agent").chat(ASK, stream=True)
+    next(stream)
+    stream.close()
+
+    totals = admin_client.get(f"{BASE}/usage").json()["totals"]
+    assert totals["calls"] == 1 and totals["estimated_calls"] == 1

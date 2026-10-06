@@ -8,6 +8,7 @@ Workspace's monthly budgets before each call and records the tokens the call use
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -26,8 +27,11 @@ from .gateway import (
     Done,
     Gateway,
     Message,
+    TextDelta,
+    ToolCallEvent,
     ToolSpec,
     Usage,
+    _message_text,
     estimate_tokens,
 )
 from .internal import reindex
@@ -187,17 +191,31 @@ class MeteredGateway:
         """Like ``Gateway.chat``, but raises 429 ``token_budget_exhausted`` before the
         call when a budget is used up, and records the usage when the reply is done."""
         self._service.ensure_within_budget(self._workspace_id)
-        for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
-            if isinstance(event, Done) and event.usage is not None:
-                self._record(event.usage)
-            yield event
+        prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
+        produced: list[str] = []
+        reported: Usage | None = None
+        try:
+            for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
+                if isinstance(event, TextDelta):
+                    produced.append(event.text)
+                elif isinstance(event, ToolCallEvent):
+                    produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
+                elif isinstance(event, Done):
+                    reported = event.usage
+                yield event
+        finally:
+            # Errors and abandoned streams count too: estimate what was sent and received.
+            self._record(
+                reported or Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
+            )
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Like ``Gateway.embed``; embeddings report no usage, so the tokens are estimated."""
         self._service.ensure_within_budget(self._workspace_id)
-        vectors = self._gateway.embed(texts)
-        self._record(Usage(sum(estimate_tokens(t) for t in texts), 0, estimated=True))
-        return vectors
+        try:
+            return self._gateway.embed(texts)
+        finally:
+            self._record(Usage(sum(estimate_tokens(t) for t in texts), 0, estimated=True))
 
     def _record(self, usage: Usage) -> None:
         self._service.record_usage(
@@ -246,7 +264,10 @@ class RoleService:
             settings.light_model_id = light_model_id
             dimension = None
             if embedding_model_id is not None:
-                dimension = db.get(ModelRecord, embedding_model_id).embedding_dimension  # type: ignore[union-attr]
+                chosen = db.get(ModelRecord, embedding_model_id)
+                if chosen is None:
+                    raise _invalid("That model is not registered.", "embedding_model_id")
+                dimension = chosen.embedding_dimension
             reindex.note_assigned(settings, embedding_model_id, dimension, now)
             settings.updated_at = now
             return _assignments(settings)
@@ -293,6 +314,17 @@ class RoleService:
         light_allowed: bool = True,
     ) -> MeteredGateway:
         model_id, role = self.model_for_role(role, light_allowed=light_allowed)
+        return self.metered_gateway(model_id, role, workspace_id=workspace_id, user_id=user_id)
+
+    def metered_gateway(
+        self,
+        model_id: uuid.UUID,
+        role: str,
+        *,
+        workspace_id: uuid.UUID | None = None,
+        user_id: uuid.UUID | None = None,
+    ) -> MeteredGateway:
+        """A metered gateway for a specific registered model, used under ``role``."""
         with Session(self._engine) as db:
             name = db.scalar(sa.select(ModelRecord.name).where(ModelRecord.id == model_id))
         return MeteredGateway(
@@ -351,7 +383,8 @@ class RoleService:
 
     def ensure_within_budget(self, workspace_id: uuid.UUID | None) -> None:
         """Raise 429 ``token_budget_exhausted`` when this month's usage has reached the
-        installation's budget or the Workspace's. Checked before every model call."""
+        installation's budget or the Workspace's. Checked before every model call.
+        Soft by design (no locking): in-flight calls may overshoot a budget."""
         start, end = parse_month(self._clock().strftime("%Y-%m"))
         with Session(self._engine) as db:
             installation = self._settings(db).monthly_token_budget
