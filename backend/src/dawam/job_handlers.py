@@ -14,7 +14,15 @@ from collections.abc import Mapping
 
 import sqlalchemy as sa
 
+from dawam.modules.files import (
+    REINDEX_JOB,
+    DocumentAiPolicy,
+    DocumentSearchService,
+    NoDocumentAi,
+    RegisteredEmbeddingModels,
+)
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
+from dawam.modules.llm import AdapterFactory, ProviderService
 from dawam.modules.sources import EXTRACT_JOB, SnapshotService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
@@ -23,8 +31,42 @@ from dawam.platform.config import Settings
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
 
 
+def build_document_search(
+    runner: JobRunner,
+    engine: sa.Engine,
+    settings: Settings,
+    clock: Clock,
+    *,
+    llm_adapters: AdapterFactory | None = None,
+    document_ai: DocumentAiPolicy | None = None,
+) -> DocumentSearchService:
+    """The document search service, as the API and the worker build it. Until the
+    Workspace AI settings exist, ``document_ai`` defaults to ``NoDocumentAi``: documents
+    are searched with full-text only and never sent to a model."""
+    options = {"adapters": llm_adapters} if llm_adapters is not None else {}
+    providers = ProviderService(
+        engine,
+        encryption_key=settings.encryption_key.get_secret_value(),
+        clock=clock,
+        **options,
+    )
+    return DocumentSearchService(
+        engine,
+        workspaces=WorkspaceService(engine, clock=clock),
+        ai=document_ai or NoDocumentAi(),
+        embeddings=RegisteredEmbeddingModels(providers),
+        jobs=runner,
+        clock=clock,
+    )
+
+
 def _service_handlers(
-    runner: JobRunner, engine: sa.Engine, settings: Settings, clock: Clock
+    runner: JobRunner,
+    engine: sa.Engine,
+    settings: Settings,
+    clock: Clock,
+    llm_adapters: AdapterFactory | None,
+    document_ai: DocumentAiPolicy | None,
 ) -> dict[str, JobHandler]:
     snapshots = SnapshotService(
         engine,
@@ -33,15 +75,27 @@ def _service_handlers(
         encryption_key=settings.encryption_key.get_secret_value(),
         clock=clock,
     )
-    return {EXTRACT_JOB: snapshots.run_extraction}
+    documents = build_document_search(
+        runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
+    )
+    return {EXTRACT_JOB: snapshots.run_extraction, REINDEX_JOB: documents.run_reindex}
 
 
 def register_job_handlers(
-    runner: JobRunner, *, engine: sa.Engine, settings: Settings, clock: Clock
+    runner: JobRunner,
+    *,
+    engine: sa.Engine,
+    settings: Settings,
+    clock: Clock,
+    llm_adapters: AdapterFactory | None = None,
+    document_ai: DocumentAiPolicy | None = None,
 ) -> None:
     """Register every handler on ``runner``. A type the runner already has is left alone:
     tests build several apps on one shared runner, and the first app's handlers serve all."""
-    handlers = {**_service_handlers(runner, engine, settings, clock), **JOB_HANDLERS}
+    handlers = {
+        **_service_handlers(runner, engine, settings, clock, llm_adapters, document_ai),
+        **JOB_HANDLERS,
+    }
     for job_type, handler in handlers.items():
         try:
             runner.handler(job_type)

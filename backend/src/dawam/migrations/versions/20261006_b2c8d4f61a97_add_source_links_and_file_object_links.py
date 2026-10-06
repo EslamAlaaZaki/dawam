@@ -1,7 +1,7 @@
 """add source links and file object links: the files module's link tables.
 
 Revision ID: b2c8d4f61a97
-Revises: a1f4c7e92b35
+Revises: b2c8e5d1a047, b3c8d5e1f704
 Create Date: 2026-10-06 14:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b2c8d4f61a97"
-down_revision: str | Sequence[str] | None = "a1f4c7e92b35"
+down_revision: str | Sequence[str] | None = ("b2c8e5d1a047", "b3c8d5e1f704")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

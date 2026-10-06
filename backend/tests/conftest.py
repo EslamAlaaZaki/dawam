@@ -57,7 +57,7 @@ from tests.sample_source.sqlserver import (  # noqa: F401  (fixtures; the contai
     sqlserver,
 )
 
-POSTGRES_IMAGE = "postgres:16"
+POSTGRES_IMAGE = "pgvector/pgvector:pg16"
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
 """A fresh encryption key per test run; tests never need a real one."""
 

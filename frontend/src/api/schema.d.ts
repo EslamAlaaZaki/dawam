@@ -911,6 +911,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Table Enhancements
+         * @description Describe, tag, flag as sensitive and classify a table or view, with an SCD hint
+         *     (owners and editors); fields left out stay as they are. 409 `version_conflict` if
+         *     `version` is stale; 422 `invalid_enhancement`.
+         */
+        patch: operations["updateTableEnhancements"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Column Enhancements
+         * @description Describe, tag and flag a column as sensitive (owners and editors); fields left
+         *     out stay as they are. 409 `version_conflict` if `version` is stale; 422
+         *     `invalid_enhancement`.
+         */
+        patch: operations["updateColumnEnhancements"];
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1313,6 +1357,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/documents/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Documents
+         * @description Search the Workspace's uploaded documents (any member). Full-text search with Arabic
+         *     normalisation, combined with vector search when the Workspace's data-sharing level
+         *     includes documents and its internal-only setting allows the embedding provider. Each
+         *     result is a cited passage: the document and its section.
+         */
+        get: operations["searchDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/documents/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Documents
+         * @description Index every document of the Workspace again (owners and editors), as a background
+         *     job: run it after the embedding model or its dimension changes.
+         */
+        post: operations["reindexDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links": {
         parameters: {
             query?: never;
@@ -1586,7 +1674,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -1802,6 +1890,22 @@ export interface components {
             change: "added" | "removed" | "changed";
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
+        };
+        /** ColumnEnhancements */
+        ColumnEnhancements: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string | null;
+            /** Tags */
+            tags: string[];
+            /** Is Sensitive */
+            is_sensitive: boolean;
+            /** Version */
+            version: number;
         };
         /** Connection */
         Connection: {
@@ -2137,6 +2241,41 @@ export interface components {
              * @description The Workspace's name, typed exactly, to confirm.
              */
             name: string;
+        };
+        /** DocumentPassage */
+        DocumentPassage: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /**
+             * Document
+             * @description The document's name: the citation's first half.
+             */
+            document: string;
+            /**
+             * Section
+             * @description The heading (or `Part N`) the passage sits under.
+             */
+            section: string;
+            /** Text */
+            text: string;
+            /**
+             * Score
+             * @description Relative rank: higher is a better match.
+             */
+            score: number;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+        };
+        /** DocumentSearchResults */
+        DocumentSearchResults: {
+            /** Items */
+            items: components["schemas"]["DocumentPassage"][];
         };
         /** ErrorBody */
         ErrorBody: {
@@ -2885,6 +3024,17 @@ export interface components {
              */
             open: boolean;
         };
+        /** ReindexStarted */
+        ReindexStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `reindex_documents` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /** Status */
+            status: string;
+        };
         /** RemovedColumn */
         RemovedColumn: {
             /**
@@ -3186,6 +3336,26 @@ export interface components {
             default: string | null;
             /** Comment */
             comment: string | null;
+            /**
+             * Description
+             * @description Business description; set only in the Source Schema.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Set only in the Source Schema.
+             */
+            tags?: string[] | null;
+            /**
+             * Is Sensitive
+             * @description Set only in the Source Schema.
+             */
+            is_sensitive?: boolean | null;
+            /**
+             * Version
+             * @description Send it back when editing the enhancements; set only in the Source Schema.
+             */
+            version?: number | null;
         };
         /** SnapshotConstraint */
         SnapshotConstraint: {
@@ -3409,6 +3579,36 @@ export interface components {
             constraints: components["schemas"]["SnapshotConstraint"][];
             /** Indexes */
             indexes: components["schemas"]["SnapshotIndex"][];
+            /**
+             * Description
+             * @description Business description; set only in the Source Schema.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Set only in the Source Schema.
+             */
+            tags?: string[] | null;
+            /**
+             * Is Sensitive
+             * @description Set only in the Source Schema.
+             */
+            is_sensitive?: boolean | null;
+            /**
+             * Classification
+             * @description Set only in the Source Schema.
+             */
+            classification?: ("master" | "transactional" | "reference" | "log" | "landing") | null;
+            /**
+             * Scd Hint
+             * @description Set only in the Source Schema.
+             */
+            scd_hint?: string | null;
+            /**
+             * Version
+             * @description Send it back when editing the enhancements; set only in the Source Schema.
+             */
+            version?: number | null;
         };
         /** SourceLink */
         SourceLink: {
@@ -3627,6 +3827,26 @@ export interface components {
              */
             columns: components["schemas"]["ColumnChange"][];
         };
+        /** TableEnhancements */
+        TableEnhancements: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string | null;
+            /** Tags */
+            tags: string[];
+            /** Is Sensitive */
+            is_sensitive: boolean;
+            /** Classification */
+            classification: ("master" | "transactional" | "reference" | "log" | "landing") | null;
+            /** Scd Hint */
+            scd_hint: string | null;
+            /** Version */
+            version: number;
+        };
         /** Target */
         Target: {
             /**
@@ -3714,6 +3934,26 @@ export interface components {
              */
             unread_count: number;
         };
+        /** UpdateColumnEnhancements */
+        UpdateColumnEnhancements: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /**
+             * Description
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Replaces the tags.
+             */
+            tags?: string[] | null;
+            /** Is Sensitive */
+            is_sensitive?: boolean | null;
+        };
         /** UpdateKpiRequest */
         UpdateKpiRequest: {
             /**
@@ -3797,6 +4037,36 @@ export interface components {
             business_owner?: string | null;
             /** Technical Owner */
             technical_owner?: string | null;
+        };
+        /** UpdateTableEnhancements */
+        UpdateTableEnhancements: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /**
+             * Description
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            description?: string | null;
+            /**
+             * Tags
+             * @description Replaces the tags.
+             */
+            tags?: string[] | null;
+            /** Is Sensitive */
+            is_sensitive?: boolean | null;
+            /**
+             * Classification
+             * @description Send null to clear it; leave it out to keep it.
+             */
+            classification?: ("master" | "transactional" | "reference" | "log" | "landing") | null;
+            /**
+             * Scd Hint
+             * @description E.g. "changes slowly, history matters". Send null to clear it.
+             */
+            scd_hint?: string | null;
         };
         /**
          * UpdateUserRequest
@@ -6100,6 +6370,99 @@ export interface operations {
             };
         };
     };
+    updateTableEnhancements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTableEnhancements"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateColumnEnhancements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+                column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateColumnEnhancements"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listNotifications: {
         parameters: {
             query?: never;
@@ -7162,6 +7525,92 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchDocuments: {
+        parameters: {
+            query?: {
+                /** @description What to look for. */
+                q?: string;
+                /** @description Only this Source System. */
+                system_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSearchResults"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindexDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexStarted"];
                 };
             };
             /** @description Validation error */

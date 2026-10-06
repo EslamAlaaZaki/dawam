@@ -11,6 +11,12 @@ Public interface. Other modules import only what is re-exported here:
 - ``router``: ``GET|POST /workspaces/{workspace_id}/systems/{system_id}/files``,
   ``GET /workspaces/{workspace_id}/files/{file_id}/download``.
 
+- ``DocumentSearchService``: indexes uploaded documents (Postgres full-text with Arabic
+  normalisation; pgvector embeddings only when the Workspace's ``DocumentAiPolicy`` lets
+  documents reach the embedding model), searches them hybrid with cited passages, and
+  re-indexes on demand (the ``reindex_documents`` job, ``REINDEX_JOB``).
+- ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
+  ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
   Confluence pages by URL (``SourceLink``, story 65), and link documents to tables and
   columns (``FileObjectLink``, story 66); any member lists them, and the documents linked
@@ -22,7 +28,8 @@ Public interface. Other modules import only what is re-exported here:
   ``DELETE .../object-links/{object_type}/{object_id}`` and
   ``GET /workspaces/{workspace_id}/objects/{object_type}/{object_id}/documents``.
 
-Owns the ``workspace_files``, ``source_links`` and ``file_object_links`` tables.
+Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
+``file_object_links`` tables.
 """
 
 from fastapi import APIRouter
@@ -30,6 +37,17 @@ from fastapi import APIRouter
 from .api import router as _files_router
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
+from .search import (
+    REINDEX_JOB,
+    DocumentAiPolicy,
+    DocumentAiSettings,
+    DocumentSearchService,
+    EmbeddingModel,
+    EmbeddingModels,
+    NoDocumentAi,
+    Passage,
+    RegisteredEmbeddingModels,
+)
 from .service import FileContent, FileService, WorkspaceFile, WorkspaceFilePage
 
 router = APIRouter()
@@ -37,10 +55,19 @@ router.include_router(_files_router)
 router.include_router(_links_router)
 
 __all__ = [
+    "REINDEX_JOB",
+    "DocumentAiPolicy",
+    "DocumentAiSettings",
+    "DocumentSearchService",
+    "EmbeddingModel",
+    "EmbeddingModels",
     "FileContent",
     "FileObjectLink",
     "FileService",
     "LinkService",
+    "NoDocumentAi",
+    "Passage",
+    "RegisteredEmbeddingModels",
     "SourceLink",
     "SourceLinkPage",
     "WorkspaceFile",

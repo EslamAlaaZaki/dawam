@@ -20,6 +20,7 @@ from dawam import job_handlers
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
+from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.llm import AdapterFactory
 from dawam.modules.mail import MailService
@@ -56,6 +57,9 @@ class Services:
     clock: Clock = system_clock
     llm_adapters: AdapterFactory | None = None
     """Builds the LLM adapter for a provider; ``None`` uses the real ones (tests pass a fake)."""
+    document_ai: DocumentAiPolicy | None = None
+    """What each Workspace lets documents share with a model; ``None``: nothing (full-text
+    search only) until the Workspace AI settings exist."""
 
 
 def default_services() -> Services:
@@ -70,7 +74,12 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     engine = create_engine(settings.database_url)
     # The worker registers the same handlers: a job is submitted here and run there.
     job_handlers.register_job_handlers(
-        services.jobs, engine=engine, settings=settings, clock=services.clock
+        services.jobs,
+        engine=engine,
+        settings=settings,
+        clock=services.clock,
+        llm_adapters=services.llm_adapters,
+        document_ai=services.document_ai,
     )
 
     @asynccontextmanager
@@ -98,6 +107,15 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
+    # Indexing and searching uploaded documents (files); the worker builds the same service.
+    app.state.document_search = job_handlers.build_document_search(
+        services.jobs,
+        engine,
+        settings,
+        services.clock,
+        llm_adapters=services.llm_adapters,
+        document_ai=services.document_ai,
+    )
     # Where uploaded files live (local volume or S3-compatible bucket).
     app.state.storage = create_storage(settings)
     # Sign-up (auth) asks the admin module's system settings who may register.

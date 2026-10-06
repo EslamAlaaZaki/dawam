@@ -593,6 +593,18 @@ ROWS: list[Row] = [
         "Open Workspace content (download a file)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/documents/search",
+        "Open Workspace content (search documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/documents/reindex",
+        "Upload, edit, delete Workspace files (re-index documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     # External links and document-to-object links (stories 65, 66): viewers read,
     # editors change (§4.3 "Upload, edit, delete Workspace files" and Source System edits).
     Row(
@@ -739,6 +751,21 @@ ROWS: list[Row] = [
         "Open Workspace content (search the Source Schema)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=snapshot_id,
+    ),
+    # Source enhancements (stories 61, 62): owners and editors.
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}",
+        "Edit Source Schema enhancements (a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "tags": ["PII"]},
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}",
+        "Edit Source Schema enhancements (a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "is_sensitive": True},
     ),
 ]
 
