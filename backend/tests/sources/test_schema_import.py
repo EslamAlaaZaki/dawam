@@ -12,6 +12,7 @@ import io
 from openpyxl import load_workbook
 
 from tests.roles import RoleClients
+from tests.sources import test_extraction
 from tests.sources.test_extraction import (
     add_system,
     connect,
@@ -20,6 +21,8 @@ from tests.sources.test_extraction import (
     snapshots,
     tables_of,
 )
+
+scratch_source = test_extraction.scratch_source
 
 TABLES = "schema,table,kind,row_count\nsales,Customer,table,5\n"
 COLUMNS = (
