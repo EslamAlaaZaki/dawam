@@ -594,3 +594,34 @@ body {
   white-space: pre-wrap;
   font-size: 0.8125rem;
 }
+
+.schema-browser pre {
+  max-height: 20rem;
+  overflow: auto;
+  font-size: 0.8125rem;
+}
+
+.schema-browser table {
+  border-collapse: collapse;
+}
+
+.schema-browser th,
+.schema-browser td {
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.page button.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.status-badge {
+  font-size: 0.8125rem;
+  font-style: italic;
+}

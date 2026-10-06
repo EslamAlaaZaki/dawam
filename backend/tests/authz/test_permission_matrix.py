@@ -27,6 +27,7 @@ from tests.authz.matrix import (
     registered_routes,
     send,
     signed_in,
+    snapshot_id,
     system_id,
     workspace,
 )
@@ -606,6 +607,21 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}",
         "Open Workspace content (a Snapshot's catalog)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    # Source Schema browser (story 54): every member browses and searches it.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema",
+        "Open Workspace content (the Source Schema)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema/search",
+        "Open Workspace content (search the Source Schema)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
     ),
 ]
 
