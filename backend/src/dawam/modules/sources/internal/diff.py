@@ -67,12 +67,29 @@ class DbSchemaChange:
 
 
 @dataclass(frozen=True)
+class SuspectedPiiColumn:
+    """A column new in the newer Snapshot that has a ``suggested`` or ``confirmed`` PII
+    finding (spec story 139). Never holds a value."""
+
+    column_id: uuid.UUID
+    table_id: uuid.UUID
+    db_schema: str
+    table: str
+    column: str
+    category: str
+    confidence: float
+    status: str
+
+
+@dataclass(frozen=True)
 class SnapshotDiff:
     from_snapshot_id: uuid.UUID
     to_snapshot_id: uuid.UUID
     db_schemas: list[DbSchemaChange]
     tables: list[TableChange]
     routines: list[RoutineChange]
+    suspected_pii: list[SuspectedPiiColumn] = field(default_factory=list)
+    """New suspected PII columns; filled in by the service, which can read the findings."""
 
 
 _COLUMN_FIELDS = ("name", "ordinal", "data_type", "is_nullable", "is_pk", "default", "comment")
