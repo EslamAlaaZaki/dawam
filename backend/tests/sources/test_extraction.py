@@ -145,6 +145,7 @@ def test_an_editor_extracts_the_full_catalog_into_a_snapshot(
     assert columns["cust_no"] | {"id": None} == {
         "id": None,
         "name": "cust_no",
+        "status": None,
         "ordinal": 1,
         "data_type": "integer",
         "is_nullable": False,

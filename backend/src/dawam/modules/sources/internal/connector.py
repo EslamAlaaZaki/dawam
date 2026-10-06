@@ -1,7 +1,7 @@
 """The Connector interface: how DAWAM talks to a source database (spec §8, story 40).
 
-One implementation per engine (PostgreSQL and Oracle today; MySQL/MariaDB and SQL
-Server later). Every method opens its own short-lived session, so a Connector holds no state
+One implementation per engine (PostgreSQL, SQL Server, MySQL/MariaDB and Oracle today).
+Every method opens its own short-lived session, so a Connector holds no state
 beyond the ``ConnectionParams`` it was built from.
 
 Rules every implementation keeps:
@@ -183,10 +183,18 @@ class ConnectorFactory(Protocol):
 
 def connector_for(engine: str, params: ConnectionParams) -> Connector:
     """The registry: the Connector for ``engine`` (``ConnectorError`` if unsupported)."""
+    from .mysql import MySqlConnector
+    from .postgres import PostgresConnector
+    from .sqlserver import SqlServerConnector
+
     if engine == "postgresql":
         from .postgres import PostgresConnector
 
         return PostgresConnector(params)
+    if engine == "sqlserver":
+        return SqlServerConnector(params)
+    if engine == "mysql":  # MySQL and MariaDB
+        return MySqlConnector(params)
     if engine == "oracle":
         from .oracle import OracleConnector
 

@@ -47,7 +47,7 @@ ConnectionServiceDep = Annotated[ConnectionService, Depends(connection_service)]
 class Connection(BaseModel):
     id: uuid.UUID
     source_system_id: uuid.UUID
-    engine: Literal["postgresql", "oracle"]
+    engine: Literal["postgresql", "sqlserver", "mysql", "oracle"]
     host: str
     port: int
     database: str
@@ -67,9 +67,15 @@ class Connection(BaseModel):
 
 
 class ConnectionRequest(BaseModel):
-    engine: Literal["postgresql", "oracle"] = "postgresql"
+    engine: Literal["postgresql", "sqlserver", "mysql", "oracle"] = "postgresql"
     host: str = Field(max_length=HOST_MAX_LENGTH * 2)
-    port: int = Field(default=DEFAULT_PORTS["postgresql"], ge=1, le=65535)
+    port: int = Field(
+        default=DEFAULT_PORTS["postgresql"],
+        ge=1,
+        le=65535,
+        description="Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, "
+        "Oracle on 1521.",
+    )
     database: str = Field(
         max_length=IDENTIFIER_MAX_LENGTH * 2,
         description="The database name; for Oracle, the service name. Oracle Database Schemas "

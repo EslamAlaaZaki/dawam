@@ -1,0 +1,227 @@
+"""The adapter contract suite (spec §6.18): every adapter must pass it.
+
+It runs against recorded provider responses (``fixtures/<adapter>/``), so it needs no
+network and no database. A new adapter adds an ``AdapterCase`` to ``ADAPTERS`` and
+records the fixtures named below (``chat_text``, ``chat_stream``, ``tool_call``, ...);
+the same checks then cover streaming, the tool-call round trip, error mapping and usage
+reporting for it.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+import pytest
+
+from dawam.modules.llm import (
+    Adapter,
+    Done,
+    LlmError,
+    Message,
+    TextDelta,
+    ToolCall,
+    ToolCallEvent,
+    ToolSpec,
+    Usage,
+)
+from dawam.modules.llm.internal.openai_compatible import OpenAICompatibleAdapter
+from dawam.modules.llm.internal.transport import Transport, TransportError
+from tests.llm.replay import ReplayTransport, load
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@dataclass(frozen=True)
+class AdapterCase:
+    name: str
+    make: Callable[[Transport], Adapter]
+
+    def replay(self, *names: str | TransportError) -> tuple[Adapter, ReplayTransport]:
+        transport = ReplayTransport(
+            *(n if isinstance(n, TransportError) else load(FIXTURES / self.name, n) for n in names)
+        )
+        return self.make(transport), transport
+
+
+ADAPTERS = [
+    AdapterCase(
+        "openai_compatible",
+        lambda transport: OpenAICompatibleAdapter(
+            base_url="http://llm.test/v1",
+            api_key="sk-secret",
+            timeout_seconds=9,
+            transport=transport,
+        ),
+    ),
+]
+
+
+@pytest.fixture(params=ADAPTERS, ids=lambda case: case.name)
+def case(request: pytest.FixtureRequest) -> AdapterCase:
+    return request.param
+
+
+ASK = [Message("user", "Hi")]
+ECHO = ToolSpec(
+    "echo",
+    "Repeat the text.",
+    {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+)
+
+
+def run(adapter: Adapter, *, stream: bool = False, tools=(), messages=ASK):
+    return list(adapter.chat("test-model", messages, tools, stream, None))
+
+
+def test_a_reply_is_normalised_with_the_usage_the_provider_reported(case):
+    adapter, _ = case.replay("chat_text")
+
+    assert run(adapter) == [TextDelta("Hello there."), Done(Usage(12, 3), "stop")]
+
+
+def test_a_reply_without_usage_reports_none_so_the_gateway_can_estimate(case):
+    adapter, _ = case.replay("chat_text_no_usage")
+
+    assert run(adapter)[-1] == Done(None, "stop")
+
+
+def test_a_stream_yields_text_deltas_then_done_with_usage(case):
+    adapter, transport = case.replay("chat_stream")
+
+    events = run(adapter, stream=True)
+
+    assert [e.text for e in events if isinstance(e, TextDelta)] == ["Hello", " there."]
+    assert events[-1] == Done(Usage(12, 3), "stop")
+    assert transport.requests[0].json["stream"] is True
+
+
+def test_a_stream_without_usage_ends_with_done_and_no_usage(case):
+    adapter, _ = case.replay("chat_stream_no_usage")
+
+    assert run(adapter, stream=True)[-1] == Done(None, "stop")
+
+
+def test_a_tool_call_arrives_complete_with_parsed_arguments(case):
+    adapter, transport = case.replay("tool_call")
+
+    events = run(adapter, tools=[ECHO])
+
+    assert events[0] == ToolCallEvent(ToolCall("call_abc", "echo", {"text": "ping"}))
+    assert events[-1] == Done(Usage(40, 9), "tool_calls")
+    assert transport.requests[0].json["tools"][0]["function"]["name"] == "echo"
+
+
+def test_a_streamed_tool_call_is_assembled_from_its_fragments(case):
+    adapter, _ = case.replay("tool_call_stream")
+
+    events = run(adapter, stream=True, tools=[ECHO])
+
+    assert events == [
+        ToolCallEvent(ToolCall("call_abc", "echo", {"text": "ping"})),
+        Done(Usage(40, 9), "tool_calls"),
+    ]
+
+
+def test_a_tool_call_round_trip_sends_the_call_and_its_result_back(case):
+    adapter, transport = case.replay("chat_text")
+    call = ToolCall("call_abc", "echo", {"text": "ping"})
+    conversation = [
+        Message("system", "Be brief."),
+        Message("user", "Echo ping"),
+        Message("assistant", tool_calls=(call,)),
+        Message("tool", "ping", tool_call_id="call_abc"),
+    ]
+
+    events = run(adapter, tools=[ECHO], messages=conversation)
+
+    assert events[0] == TextDelta("Hello there.")
+    sent = transport.requests[0].json["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "assistant", "tool"]
+    assert sent[2]["tool_calls"] == [
+        {
+            "id": "call_abc",
+            "type": "function",
+            "function": {"name": "echo", "arguments": '{"text": "ping"}'},
+        }
+    ]
+    assert sent[3]["tool_call_id"] == "call_abc" and sent[3]["content"] == "ping"
+
+
+@pytest.mark.parametrize(
+    ("fixture", "code", "retryable"),
+    [
+        ("error_auth", "auth", False),
+        ("error_rate_limit", "rate_limit", True),
+        ("error_context", "context_overflow", False),
+        ("error_unavailable", "unavailable", True),
+        ("error_bad_request", "bad_request", False),
+    ],
+)
+def test_provider_errors_map_to_the_common_codes(case, fixture, code, retryable):
+    adapter, _ = case.replay(fixture)
+
+    with pytest.raises(LlmError) as raised:
+        run(adapter)
+
+    assert raised.value.code == code
+    assert raised.value.retryable is retryable
+
+
+def test_a_rate_limit_carries_the_wait_the_provider_asked_for(case):
+    adapter, _ = case.replay("error_rate_limit")
+
+    with pytest.raises(LlmError) as raised:
+        run(adapter)
+
+    assert raised.value.retry_after == 7
+
+
+def test_an_unreachable_provider_is_unavailable(case):
+    adapter, _ = case.replay(TransportError("The provider could not be reached."))
+
+    with pytest.raises(LlmError) as raised:
+        run(adapter)
+
+    assert raised.value.code == "unavailable"
+
+
+def test_an_error_message_never_contains_the_api_key(case):
+    adapter, _ = case.replay("error_auth")
+
+    with pytest.raises(LlmError) as raised:
+        run(adapter)
+
+    assert "sk-secret" not in raised.value.message
+
+
+def test_embeddings_come_back_one_per_text_in_order(case):
+    adapter, transport = case.replay("embed")
+
+    vectors = adapter.embed("embed-model", ["a", "b"])
+
+    assert vectors == [[1.0, 0.0, 0.25], [0.0, 1.0, 0.5]]
+    assert transport.requests[0].json == {"model": "embed-model", "input": ["a", "b"]}
+
+
+def test_requests_carry_the_key_and_the_provider_timeout(case):
+    adapter, transport = case.replay("chat_text")
+
+    run(adapter)
+
+    request = transport.requests[0]
+    assert request.url == "http://llm.test/v1/chat/completions"
+    assert request.headers["Authorization"] == "Bearer sk-secret"
+    assert request.timeout == 9
+
+
+def test_the_context_window_comes_from_the_servers_metadata_when_it_has_one(case):
+    adapter, _ = case.replay("models")
+    assert adapter.context_window("test-model") == 32768
+
+    adapter, _ = case.replay("models_without_metadata")
+    assert adapter.context_window("test-model") is None
+
+    adapter, _ = case.replay("error_unavailable")
+    assert adapter.context_window("test-model") is None

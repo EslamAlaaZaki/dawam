@@ -11,12 +11,13 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 
+from .snapshot_service import SnapshotContent as SnapshotContentRecord
 from .snapshot_service import SnapshotService
 
 router = APIRouter(tags=["sources"])
@@ -64,11 +65,22 @@ class SnapshotPage(BaseModel):
     items: list[SnapshotSummary] = Field(description="Newest first.")
 
 
+ObjectStatus = Annotated[
+    Literal["present", "source_removed", "out_of_scope", "deleted"],
+    Field(
+        description="The Source Object's state now: `present`, `source_removed` (gone from "
+        "the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. "
+        "Set only in the Source Schema: a stored Snapshot never changes."
+    ),
+]
+
+
 class SnapshotDbSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID = Field(description="The Source Object: the same in every Snapshot.")
     name: str
+    status: ObjectStatus | None = None
 
 
 class SnapshotColumn(BaseModel):
@@ -76,6 +88,7 @@ class SnapshotColumn(BaseModel):
 
     id: uuid.UUID = Field(description="The Source Object: the same in every Snapshot.")
     name: str
+    status: ObjectStatus | None = None
     ordinal: int
     data_type: str
     is_nullable: bool
@@ -113,6 +126,7 @@ class SnapshotTable(BaseModel):
     db_schema: str
     name: str
     kind: Literal["table", "view"]
+    status: ObjectStatus | None = None
     view_definition: str | None
     row_estimate: int | None
     comment: str | None
@@ -128,6 +142,7 @@ class SnapshotRoutine(BaseModel):
     db_schema: str
     name: str
     kind: Literal["procedure", "function"]
+    status: ObjectStatus | None = None
     signature: str = Field(description="The argument list, which tells overloads apart.")
     definition: str | None
 
@@ -136,6 +151,63 @@ class SnapshotContent(SnapshotSummary):
     db_schemas: list[SnapshotDbSchema]
     tables: list[SnapshotTable]
     routines: list[SnapshotRoutine]
+
+
+class RemovedTable(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="The Source Object.")
+    db_schema: str
+    name: str
+    kind: Literal["table", "view"]
+    status: Literal["source_removed", "out_of_scope"]
+
+
+class RemovedColumn(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="The Source Object.")
+    table_id: uuid.UUID
+    name: str
+    status: Literal["source_removed", "out_of_scope"]
+    data_type: str | None = Field(description="As of the latest Snapshot that had it.")
+
+
+class SourceSchema(SnapshotContent):
+    removed_tables: list[RemovedTable] = Field(
+        description="Tables and views the latest Snapshot no longer has, still tracked and "
+        "flagged `source_removed` or `out_of_scope`."
+    )
+    removed_columns: list[RemovedColumn] = Field(
+        description="Columns of the tables above the Snapshot no longer has, still tracked "
+        "and flagged `source_removed` or `out_of_scope`."
+    )
+
+
+class SearchHit(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: Literal["db_schema", "table", "view", "column", "routine"]
+    id: uuid.UUID = Field(description="The Source Object.")
+    name: str
+    db_schema: str | None = Field(description="Null for a Database Schema itself.")
+    table: str | None = Field(description="A column's table.")
+    status: ObjectStatus
+
+
+class SearchResults(BaseModel):
+    items: list[SearchHit] = Field(
+        description="Exact name matches first, then names starting with the query."
+    )
+
+
+def _content_body(content: SnapshotContentRecord) -> dict:
+    return {
+        **SnapshotSummary.model_validate(content.snapshot).model_dump(),
+        "db_schemas": content.db_schemas,
+        "tables": content.tables,
+        "routines": content.routines,
+    }
 
 
 @router.post("/extractions", operation_id="startExtraction", status_code=202)
@@ -176,11 +248,40 @@ def get_snapshot(
     columns, constraints, indexes and view definitions) and routines with their code
     (any member)."""
     content = snapshots.get(user, workspace_id, system_id, snapshot_id)
-    return SnapshotContent.model_validate(
+    return SnapshotContent.model_validate(_content_body(content))
+
+
+@router.get("/schema", operation_id="getSourceSchema")
+def get_source_schema(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    user: CurrentUser,
+    snapshots: SnapshotServiceDep,
+) -> SourceSchema:
+    """The Source Schema to browse (any member): the latest Snapshot (Database Schemas,
+    tables and views with columns, keys, indexes and view definitions, routines with
+    their code), every object with its state, plus the tables and views it no longer has.
+    404 before the first Snapshot."""
+    schema = snapshots.source_schema(user, workspace_id, system_id)
+    return SourceSchema.model_validate(
         {
-            **SnapshotSummary.model_validate(content.snapshot).model_dump(),
-            "db_schemas": content.db_schemas,
-            "tables": content.tables,
-            "routines": content.routines,
+            **_content_body(schema.content),
+            "removed_tables": schema.removed_tables,
+            "removed_columns": schema.removed_columns,
         }
     )
+
+
+@router.get("/schema/search", operation_id="searchSourceSchema")
+def search_source_schema(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    user: CurrentUser,
+    snapshots: SnapshotServiceDep,
+    q: Annotated[str, Query(max_length=200, description="Part of a name; case-insensitive.")] = "",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> SearchResults:
+    """Search the latest Snapshot's Database Schemas, tables, views, columns and routines
+    by name (any member). An empty query finds nothing; 404 before the first Snapshot."""
+    hits = snapshots.search(user, workspace_id, system_id, q, limit)
+    return SearchResults(items=[SearchHit.model_validate(h) for h in hits])

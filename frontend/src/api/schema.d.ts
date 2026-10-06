@@ -844,6 +844,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source Schema
+         * @description The Source Schema to browse (any member): the latest Snapshot (Database Schemas,
+         *     tables and views with columns, keys, indexes and view definitions, routines with
+         *     their code), every object with its state, plus the tables and views it no longer has.
+         *     404 before the first Snapshot.
+         */
+        get: operations["getSourceSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Source Schema
+         * @description Search the latest Snapshot's Database Schemas, tables, views, columns and routines
+         *     by name (any member). An empty query finds nothing; 404 before the first Snapshot.
+         */
+        get: operations["searchSourceSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -1246,6 +1290,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description Every provider with its models, each flagged internal or external (admins only).
+         */
+        get: operations["listLlmProviders"];
+        put?: never;
+        /**
+         * Create Provider
+         * @description Register a provider (admins only). The key is sealed before it is stored. 409
+         *     `provider_name_taken`; 422 `invalid_llm_config`.
+         */
+        post: operations["createLlmProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Provider
+         * @description One provider with its models (admins only). 404 `provider_not_found`.
+         */
+        get: operations["getLlmProvider"];
+        /**
+         * Update Provider
+         * @description Replace a provider's settings (admins only). Changing the base URL or the key
+         *     drops its models' test results.
+         */
+        put: operations["updateLlmProvider"];
+        post?: never;
+        /**
+         * Delete Provider
+         * @description Remove a provider and its models (admins only).
+         */
+        delete: operations["deleteLlmProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/providers/{provider_id}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Model
+         * @description Register a model of the provider (admins only). 409 `model_exists`.
+         */
+        post: operations["addLlmModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/models/{model_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Model
+         * @description Replace a model's name, roles and context window (admins only). A new name or
+         *     roles drop its test result.
+         */
+        put: operations["updateLlmModel"];
+        post?: never;
+        /** Delete Model */
+        delete: operations["deleteLlmModel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/models/{model_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Model
+         * @description "Test connection" (admins only): a short prompt and a dummy tool call, recording
+         *     tool, streaming and JSON-schema support, the context window and, for an embedding
+         *     model, its vector dimension. Always 200: a failure is `test_ok: false` with
+         *     `test_error_code` and a safe `test_error`.
+         */
+        post: operations["testLlmModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Setup
+         * @description Whether AI is set up: at least one agent model registered and tested (admins
+         *     only). Until then the admin console shows a banner.
+         */
+        get: operations["getLlmSetup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1479,7 +1663,7 @@ export interface components {
              * Engine
              * @enum {string}
              */
-            engine: "postgresql" | "oracle";
+            engine: "postgresql" | "sqlserver" | "mysql" | "oracle";
             /** Host */
             host: string;
             /** Port */
@@ -1527,11 +1711,12 @@ export interface components {
              * @default postgresql
              * @enum {string}
              */
-            engine: "postgresql" | "oracle";
+            engine: "postgresql" | "sqlserver" | "mysql" | "oracle";
             /** Host */
             host: string;
             /**
              * Port
+             * @description Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, Oracle on 1521.
              * @default 5432
              */
             port: number;
@@ -2037,6 +2222,183 @@ export interface components {
              */
             mart: string;
         };
+        /** LlmModel */
+        LlmModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Provider Id
+             * Format: uuid
+             */
+            provider_id: string;
+            /**
+             * Name
+             * @description The model name sent to the provider.
+             */
+            name: string;
+            /** Roles */
+            roles: ("agent" | "light" | "embedding")[];
+            /**
+             * Context Window
+             * @description Tokens: the admin's figure, or what the server's metadata reported.
+             */
+            context_window: number | null;
+            /**
+             * Tool Calling
+             * @description From the last test; null: not tested.
+             */
+            tool_calling: boolean | null;
+            /** Streaming */
+            streaming: boolean | null;
+            /**
+             * Json Schema
+             * @description Supports JSON-schema output.
+             */
+            json_schema: boolean | null;
+            /** Embedding Dimension */
+            embedding_dimension: number | null;
+            /**
+             * Limited
+             * @description Tested and without native tool calling: DAWAM works around it, with less reliable tool use.
+             */
+            limited: boolean;
+            /**
+             * Test Ok
+             * @description Null: not tested since it last changed.
+             */
+            test_ok: boolean | null;
+            /**
+             * Test Error Code
+             * @description `auth`, `rate_limit`, `context_overflow`, `unavailable`, `bad_request` or `invalid_response` when the test failed.
+             */
+            test_error_code: string | null;
+            /** Test Error */
+            test_error: string | null;
+            /** Last Tested At */
+            last_tested_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LlmModelRequest */
+        LlmModelRequest: {
+            /** Name */
+            name: string;
+            /**
+             * Roles
+             * @description `agent`, `light`, or `embedding` (on its own).
+             */
+            roles: ("agent" | "light" | "embedding")[];
+            /**
+             * Context Window
+             * @description Tokens. Leave out to take the server's figure when it reports one.
+             */
+            context_window?: number | null;
+        };
+        /** LlmProvider */
+        LlmProvider: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Adapter
+             * @constant
+             */
+            adapter: "openai_compatible";
+            /** Base Url */
+            base_url: string;
+            /**
+             * Has Api Key
+             * @description Whether a key is stored. It is never returned.
+             */
+            has_api_key: boolean;
+            /**
+             * Internal
+             * @description True for a provider inside your own infrastructure.
+             */
+            internal: boolean;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Models */
+            models: components["schemas"]["LlmModel"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LlmProviderList */
+        LlmProviderList: {
+            /** Items */
+            items: components["schemas"]["LlmProvider"][];
+        };
+        /** LlmProviderRequest */
+        LlmProviderRequest: {
+            /** Name */
+            name: string;
+            /**
+             * Adapter
+             * @default openai_compatible
+             * @constant
+             */
+            adapter: "openai_compatible";
+            /**
+             * Base Url
+             * @description Including the version prefix, e.g. `http://vllm:8000/v1`.
+             */
+            base_url: string;
+            /**
+             * Api Key
+             * @description Leave out to keep the stored key (allowed only for the base URL it was saved for, otherwise 422 `api_key_required`). An empty string clears it.
+             */
+            api_key?: string | null;
+            /**
+             * Internal
+             * @description Internal or external; Workspaces set to internal-only refuse external providers.
+             */
+            internal: boolean;
+            /**
+             * Timeout Seconds
+             * @default 60
+             */
+            timeout_seconds: number;
+        };
+        /** LlmSetupStatus */
+        LlmSetupStatus: {
+            /**
+             * Complete
+             * @description False until an agent model is registered and its test passed: show a banner to admins.
+             */
+            complete: boolean;
+            /** Has Agent Model */
+            has_agent_model: boolean;
+            /** Has Tested Agent Model */
+            has_tested_agent_model: boolean;
+            /**
+             * Has Internal Agent Model
+             * @description False: new Workspaces will default to not internal-only.
+             */
+            has_internal_agent_model: boolean;
+        };
         /** Me */
         Me: {
             /**
@@ -2280,12 +2642,101 @@ export interface components {
              */
             open: boolean;
         };
+        /** RemovedColumn */
+        RemovedColumn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object.
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "source_removed" | "out_of_scope";
+            /**
+             * Data Type
+             * @description As of the latest Snapshot that had it.
+             */
+            data_type: string | null;
+        };
+        /** RemovedTable */
+        RemovedTable: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object.
+             */
+            id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "table" | "view";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "source_removed" | "out_of_scope";
+        };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
             /** Token */
             token: string;
             /** Password */
             password: string;
+        };
+        /** SearchHit */
+        SearchHit: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "db_schema" | "table" | "view" | "column" | "routine";
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Object.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Db Schema
+             * @description Null for a Database Schema itself.
+             */
+            db_schema: string | null;
+            /**
+             * Table
+             * @description A column's table.
+             */
+            table: string | null;
+            /**
+             * Status
+             * @description The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes.
+             * @enum {string}
+             */
+            status: "present" | "source_removed" | "out_of_scope" | "deleted";
+        };
+        /** SearchResults */
+        SearchResults: {
+            /**
+             * Items
+             * @description Exact name matches first, then names starting with the query.
+             */
+            items: components["schemas"]["SearchHit"][];
         };
         /** SecurityEventOut */
         SecurityEventOut: {
@@ -2451,6 +2902,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
             /** Ordinal */
             ordinal: number;
             /** Data Type */
@@ -2544,6 +2997,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
         };
         /** SnapshotIndex */
         SnapshotIndex: {
@@ -2582,6 +3037,8 @@ export interface components {
              * @enum {string}
              */
             kind: "procedure" | "function";
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
             /**
              * Signature
              * @description The argument list, which tells overloads apart.
@@ -2648,6 +3105,8 @@ export interface components {
              * @enum {string}
              */
             kind: "table" | "view";
+            /** Status */
+            status?: ("present" | "source_removed" | "out_of_scope" | "deleted") | null;
             /** View Definition */
             view_definition: string | null;
             /** Row Estimate */
@@ -2660,6 +3119,63 @@ export interface components {
             constraints: components["schemas"]["SnapshotConstraint"][];
             /** Indexes */
             indexes: components["schemas"]["SnapshotIndex"][];
+        };
+        /** SourceSchema */
+        SourceSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "connection" | "import";
+            /**
+             * Job Id
+             * @description The job that produced it.
+             */
+            job_id: string | null;
+            /**
+             * Taken At
+             * Format: date-time
+             */
+            taken_at: string;
+            /** Is Latest */
+            is_latest: boolean;
+            /** Schema Count */
+            schema_count: number;
+            /**
+             * Table Count
+             * @description Tables and views.
+             */
+            table_count: number;
+            /** Column Count */
+            column_count: number;
+            /** Routine Count */
+            routine_count: number;
+            /** Db Schemas */
+            db_schemas: components["schemas"]["SnapshotDbSchema"][];
+            /** Tables */
+            tables: components["schemas"]["SnapshotTable"][];
+            /** Routines */
+            routines: components["schemas"]["SnapshotRoutine"][];
+            /**
+             * Removed Tables
+             * @description Tables and views the latest Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`.
+             */
+            removed_tables: components["schemas"]["RemovedTable"][];
+            /**
+             * Removed Columns
+             * @description Columns of the tables above the Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`.
+             */
+            removed_columns: components["schemas"]["RemovedColumn"][];
         };
         /** SourceSystem */
         SourceSystem: {
@@ -5074,6 +5590,92 @@ export interface operations {
             };
         };
     };
+    getSourceSchema: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchema"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchSourceSchema: {
+        parameters: {
+            query?: {
+                /** @description Part of a name; case-insensitive. */
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listNotifications: {
         parameters: {
             query?: never;
@@ -6136,6 +6738,412 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listLlmProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProviderList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProvider"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProvider"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProvider"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addLlmModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModel"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateLlmModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModel"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteLlmModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testLlmModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModel"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSetupStatus"];
                 };
             };
             /** @description Validation error */

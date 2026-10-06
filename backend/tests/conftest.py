@@ -14,6 +14,7 @@ with Testcontainers (once per test session). Fixtures:
   for the SMTP server, so emails reach it once SMTP settings are saved (without
   them, links are kept for admins). ``outbox.fail_with(reason)`` makes sends fail.
 - ``jobs``: the job runner; in tests background work always runs inline.
+- ``fake_llm``: the scripted fake LLM provider behind every registered provider.
 - ``fresh_database_url``: an empty, unmigrated database for tests that need one.
 - ``roles``: a client per permission-matrix role (anonymous, non-member user,
   viewer, editor, owner, non-member admin) on one Workspace; see ``tests/roles.py``.
@@ -40,6 +41,7 @@ from testcontainers.community.postgres import PostgresContainer
 from dawam.app import Services, create_app
 from dawam.modules.auth import AuthService, SystemRole
 from dawam.modules.jobs import InlineJobRunner
+from dawam.modules.llm import FakeAdapter
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
@@ -50,6 +52,10 @@ from tests.helpers import csrf_token, sign_in
 from tests.roles import RoleClients
 from tests.sample_source import sample_source  # noqa: F401  (fixture for every test)
 from tests.sample_source.oracle import oracle_source  # noqa: F401  (fixture for `oracle` tests)
+from tests.sample_source.sqlserver import (  # noqa: F401  (fixtures; the container starts on use)
+    sample_source_sqlserver,
+    sqlserver,
+)
 
 POSTGRES_IMAGE = "postgres:16"
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
@@ -109,6 +115,15 @@ def clock() -> FakeClock:
 @pytest.fixture
 def services(outbox: InMemoryOutbox, jobs: InlineJobRunner, clock: FakeClock) -> Services:
     return Services(email=outbox, jobs=jobs, clock=clock)
+
+
+@pytest.fixture
+def fake_llm(services: Services) -> FakeAdapter:
+    """The scripted fake LLM provider every provider of the app uses: queue replies with
+    ``fake_llm.script(Reply(...))``; ``fake_llm.calls`` records what was asked."""
+    fake = FakeAdapter()
+    services.llm_adapters = lambda kind, config: fake
+    return fake
 
 
 @pytest.fixture

@@ -63,6 +63,15 @@ export function ConnectionPanel({
   );
 }
 
+type Engine = Connection["engine"];
+
+const ENGINES: Record<Engine, { label: string; port: number; schema: string }> = {
+  postgresql: { label: "PostgreSQL", port: 5432, schema: "public" },
+  sqlserver: { label: "SQL Server", port: 1433, schema: "dbo" },
+  // A MySQL schema is a database: the owner names it.
+  mysql: { label: "MySQL / MariaDB", port: 3306, schema: "" },
+};
+
 function ConnectionForm({
   workspaceId,
   systemId,
@@ -76,18 +85,28 @@ function ConnectionForm({
 }) {
   const save = useSaveConnection(workspaceId, systemId);
   const test = useTestConnection(workspaceId, systemId);
+  const [engine, setEngine] = useState<Engine>(saved?.engine ?? "postgresql");
+  const [port, setPort] = useState(String(saved?.port ?? ENGINES[engine].port));
   const [schemas, setSchemas] = useState(
-    (saved?.allowed_schemas ?? ["public"]).join(", "),
+    (saved?.allowed_schemas ?? [ENGINES[engine].schema]).join(", "),
   );
+
+  // Switching engine moves the port and schema that are still the previous engine's default.
+  function chooseEngine(next: Engine) {
+    const previous = ENGINES[engine];
+    if (port === String(previous.port)) setPort(String(ENGINES[next].port));
+    if (schemas.trim() === previous.schema) setSchemas(ENGINES[next].schema);
+    setEngine(next);
+  }
 
   function read(form: HTMLFormElement): ConnectionRequest {
     const data = new FormData(form);
     const get = (name: string) => String(data.get(name) ?? "");
     const password = get("password");
     return {
-      engine: "postgresql",
+      engine,
       host: get("host").trim(),
-      port: Number(get("port")) || 5432,
+      port: Number(get("port")) || ENGINES[engine].port,
       database: get("database").trim(),
       username: get("username").trim(),
       // Left blank, the stored password is kept (and used for a test).
@@ -116,12 +135,27 @@ function ConnectionForm({
     <form className="form" onSubmit={onSubmit} aria-label="Connection">
       <h3 id="folder-title">Connection | Schema Import</h3>
       <p className="form-hint">
-        A PostgreSQL database DAWAM reads from. Give it a read-only user: DAWAM never writes.
+        A {ENGINES[engine].label} database DAWAM reads from. Give it a read-only user: DAWAM
+        never writes.
       </p>
       {readOnly && (
         <p role="status">This Workspace is archived: its Connection is read-only.</p>
       )}
       <fieldset disabled={readOnly} className="form">
+        <label>
+          Engine
+          <select
+            name="engine"
+            value={engine}
+            onChange={(event) => chooseEngine(event.target.value as Engine)}
+          >
+            {(Object.keys(ENGINES) as Engine[]).map((key) => (
+              <option key={key} value={key}>
+                {ENGINES[key].label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Host
           <input name="host" required maxLength={253} defaultValue={saved?.host} />
@@ -134,7 +168,8 @@ function ConnectionForm({
             min={1}
             max={65535}
             required
-            defaultValue={saved?.port ?? 5432}
+            value={port}
+            onChange={(event) => setPort(event.target.value)}
           />
         </label>
         <label>
@@ -211,7 +246,7 @@ function ConnectionForm({
         </p>
       )}
       {result?.ok && (
-        <p role="status">Connection works (PostgreSQL {result.server_version}).</p>
+        <p role="status">Connection works ({ENGINES[engine].label} {result.server_version}).</p>
       )}
       {result?.ok && result.missing_schemas.length > 0 && (
         <p className="form-error" role="alert">

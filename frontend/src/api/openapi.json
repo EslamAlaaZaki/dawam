@@ -2861,6 +2861,161 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Source Schema",
+        "description": "The Source Schema to browse (any member): the latest Snapshot (Database Schemas,\ntables and views with columns, keys, indexes and view definitions, routines with\ntheir code), every object with its state, plus the tables and views it no longer has.\n404 before the first Snapshot.",
+        "operationId": "getSourceSchema",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/schema/search": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Search Source Schema",
+        "description": "Search the latest Snapshot's Database Schemas, tables, views, columns and routines\nby name (any member). An empty query finds nothing; 404 before the first Snapshot.",
+        "operationId": "searchSourceSchema",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Part of a name; case-insensitive.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Part of a name; case-insensitive."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -4488,6 +4643,527 @@
           }
         }
       }
+    },
+    "/api/v1/admin/llm/providers": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "List Providers",
+        "description": "Every provider with its models, each flagged internal or external (admins only).",
+        "operationId": "listLlmProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProviderList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Create Provider",
+        "description": "Register a provider (admins only). The key is sealed before it is stored. 409\n`provider_name_taken`; 422 `invalid_llm_config`.",
+        "operationId": "createLlmProvider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/providers/{provider_id}": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Provider",
+        "description": "One provider with its models (admins only). 404 `provider_not_found`.",
+        "operationId": "getLlmProvider",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Provider Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Update Provider",
+        "description": "Replace a provider's settings (admins only). Changing the base URL or the key\ndrops its models' test results.",
+        "operationId": "updateLlmProvider",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Provider Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Delete Provider",
+        "description": "Remove a provider and its models (admins only).",
+        "operationId": "deleteLlmProvider",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Provider Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/providers/{provider_id}/models": {
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Add Model",
+        "description": "Register a model of the provider (admins only). 409 `model_exists`.",
+        "operationId": "addLlmModel",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Provider Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/models/{model_id}": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Update Model",
+        "description": "Replace a model's name, roles and context window (admins only). A new name or\nroles drop its test result.",
+        "operationId": "updateLlmModel",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Delete Model",
+        "operationId": "deleteLlmModel",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/models/{model_id}/test": {
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Test Model",
+        "description": "\"Test connection\" (admins only): a short prompt and a dummy tool call, recording\ntool, streaming and JSON-schema support, the context window and, for an embedding\nmodel, its vector dimension. Always 200: a failure is `test_ok: false` with\n`test_error_code` and a safe `test_error`.",
+        "operationId": "testLlmModel",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/setup": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Setup",
+        "description": "Whether AI is set up: at least one agent model registered and tested (admins\nonly). Until then the admin console shows a banner.",
+        "operationId": "getLlmSetup",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmSetupStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4994,6 +5670,8 @@
             "type": "string",
             "enum": [
               "postgresql",
+              "sqlserver",
+              "mysql",
               "oracle"
             ],
             "title": "Engine"
@@ -5092,6 +5770,8 @@
             "type": "string",
             "enum": [
               "postgresql",
+              "sqlserver",
+              "mysql",
               "oracle"
             ],
             "title": "Engine",
@@ -5107,6 +5787,7 @@
             "maximum": 65535.0,
             "minimum": 1.0,
             "title": "Port",
+            "description": "Default 5432 (PostgreSQL); MySQL/MariaDB usually listens on 3306, Oracle on 1521.",
             "default": 5432
           },
           "database": {
@@ -6182,6 +6863,386 @@
         "type": "object",
         "title": "LayerSchemas"
       },
+      "LlmModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Provider Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The model name sent to the provider."
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding"
+              ]
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window",
+            "description": "Tokens: the admin's figure, or what the server's metadata reported."
+          },
+          "tool_calling": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Calling",
+            "description": "From the last test; null: not tested."
+          },
+          "streaming": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streaming"
+          },
+          "json_schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Json Schema",
+            "description": "Supports JSON-schema output."
+          },
+          "embedding_dimension": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Dimension"
+          },
+          "limited": {
+            "type": "boolean",
+            "title": "Limited",
+            "description": "Tested and without native tool calling: DAWAM works around it, with less reliable tool use."
+          },
+          "test_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Ok",
+            "description": "Null: not tested since it last changed."
+          },
+          "test_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Error Code",
+            "description": "`auth`, `rate_limit`, `context_overflow`, `unavailable`, `bad_request` or `invalid_response` when the test failed."
+          },
+          "test_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Error"
+          },
+          "last_tested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tested At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider_id",
+          "name",
+          "roles",
+          "context_window",
+          "tool_calling",
+          "streaming",
+          "json_schema",
+          "embedding_dimension",
+          "limited",
+          "test_ok",
+          "test_error_code",
+          "test_error",
+          "last_tested_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LlmModel"
+      },
+      "LlmModelRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 400,
+            "title": "Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding"
+              ]
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Roles",
+            "description": "`agent`, `light`, or `embedding` (on its own)."
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window",
+            "description": "Tokens. Leave out to take the server's figure when it reports one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "roles"
+        ],
+        "title": "LlmModelRequest"
+      },
+      "LlmProvider": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "adapter": {
+            "type": "string",
+            "const": "openai_compatible",
+            "title": "Adapter"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key",
+            "description": "Whether a key is stored. It is never returned."
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "True for a provider inside your own infrastructure."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "title": "Timeout Seconds"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModel"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "adapter",
+          "base_url",
+          "has_api_key",
+          "internal",
+          "timeout_seconds",
+          "models",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LlmProvider"
+      },
+      "LlmProviderList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LlmProvider"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LlmProviderList"
+      },
+      "LlmProviderRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Name"
+          },
+          "adapter": {
+            "type": "string",
+            "const": "openai_compatible",
+            "title": "Adapter",
+            "default": "openai_compatible"
+          },
+          "base_url": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Base Url",
+            "description": "Including the version prefix, e.g. `http://vllm:8000/v1`."
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key",
+            "description": "Leave out to keep the stored key (allowed only for the base URL it was saved for, otherwise 422 `api_key_required`). An empty string clears it."
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "Internal or external; Workspaces set to internal-only refuse external providers."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "base_url",
+          "internal"
+        ],
+        "title": "LlmProviderRequest"
+      },
+      "LlmSetupStatus": {
+        "properties": {
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "description": "False until an agent model is registered and its test passed: show a banner to admins."
+          },
+          "has_agent_model": {
+            "type": "boolean",
+            "title": "Has Agent Model"
+          },
+          "has_tested_agent_model": {
+            "type": "boolean",
+            "title": "Has Tested Agent Model"
+          },
+          "has_internal_agent_model": {
+            "type": "boolean",
+            "title": "Has Internal Agent Model",
+            "description": "False: new Workspaces will default to not internal-only."
+          }
+        },
+        "type": "object",
+        "required": [
+          "complete",
+          "has_agent_model",
+          "has_tested_agent_model",
+          "has_internal_agent_model"
+        ],
+        "title": "LlmSetupStatus"
+      },
       "Me": {
         "properties": {
           "id": {
@@ -6682,6 +7743,97 @@
         ],
         "title": "RegistrationStatus"
       },
+      "RemovedColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object."
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "source_removed",
+              "out_of_scope"
+            ],
+            "title": "Status"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Type",
+            "description": "As of the latest Snapshot that had it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "table_id",
+          "name",
+          "status",
+          "data_type"
+        ],
+        "title": "RemovedColumn"
+      },
+      "RemovedTable": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object."
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "view"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "source_removed",
+              "out_of_scope"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "db_schema",
+          "name",
+          "kind",
+          "status"
+        ],
+        "title": "RemovedTable"
+      },
       "ResetPasswordRequest": {
         "properties": {
           "token": {
@@ -6701,6 +7853,93 @@
           "password"
         ],
         "title": "ResetPasswordRequest"
+      },
+      "SearchHit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "view",
+              "column",
+              "routine"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Object."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "db_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Schema",
+            "description": "Null for a Database Schema itself."
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table",
+            "description": "A column's table."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed",
+              "out_of_scope",
+              "deleted"
+            ],
+            "title": "Status",
+            "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "db_schema",
+          "table",
+          "status"
+        ],
+        "title": "SearchHit"
+      },
+      "SearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Exact name matches first, then names starting with the query."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SearchResults"
       },
       "SecurityEventOut": {
         "properties": {
@@ -7053,6 +8292,24 @@
             "type": "string",
             "title": "Name"
           },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
           "ordinal": {
             "type": "integer",
             "title": "Ordinal"
@@ -7292,6 +8549,24 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           }
         },
         "type": "object",
@@ -7368,6 +8643,24 @@
               "function"
             ],
             "title": "Kind"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "signature": {
             "type": "string",
@@ -7496,6 +8789,24 @@
             ],
             "title": "Kind"
           },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "source_removed",
+                  "out_of_scope",
+                  "deleted"
+                ],
+                "description": "The Source Object's state now: `present`, `source_removed` (gone from the source), `out_of_scope` (outside the allowed Database Schemas) or `deleted`. Set only in the Source Schema: a stored Snapshot never changes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
           "view_definition": {
             "anyOf": [
               {
@@ -7565,6 +8876,123 @@
           "indexes"
         ],
         "title": "SnapshotTable"
+      },
+      "SourceSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "connection",
+              "import"
+            ],
+            "title": "Origin"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "The job that produced it."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At"
+          },
+          "is_latest": {
+            "type": "boolean",
+            "title": "Is Latest"
+          },
+          "schema_count": {
+            "type": "integer",
+            "title": "Schema Count"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count",
+            "description": "Tables and views."
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "routine_count": {
+            "type": "integer",
+            "title": "Routine Count"
+          },
+          "db_schemas": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDbSchema"
+            },
+            "type": "array",
+            "title": "Db Schemas"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotTable"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "routines": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotRoutine"
+            },
+            "type": "array",
+            "title": "Routines"
+          },
+          "removed_tables": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedTable"
+            },
+            "type": "array",
+            "title": "Removed Tables",
+            "description": "Tables and views the latest Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`."
+          },
+          "removed_columns": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedColumn"
+            },
+            "type": "array",
+            "title": "Removed Columns",
+            "description": "Columns of the tables above the Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_system_id",
+          "origin",
+          "job_id",
+          "taken_at",
+          "is_latest",
+          "schema_count",
+          "table_count",
+          "column_count",
+          "routine_count",
+          "db_schemas",
+          "tables",
+          "routines",
+          "removed_tables",
+          "removed_columns"
+        ],
+        "title": "SourceSchema"
       },
       "SourceSystem": {
         "properties": {

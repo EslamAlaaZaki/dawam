@@ -4,7 +4,8 @@ An owner or editor starts an extraction (``start_extraction``); it runs as an
 ``extract`` background job (``run_extraction`` is its handler) that reads the
 Connection's allowed Database Schemas and stores the result as a new Snapshot, unless
 nothing changed since the latest one. Any member reads Snapshots (``list`` and
-``get``), archived Workspaces included.
+``get``), archived Workspaces included, and browse and search the Source Schema
+(``source_schema``, ``search``).
 
 The source is read outside any app-database transaction, so a slow source never holds a
 row lock here; the Snapshot is then written in one transaction holding the Source
@@ -44,10 +45,14 @@ from .tables import (
     SnapshotRoutineRecord,
     SnapshotTableRecord,
     SourceSystemRecord,
+    SrcColumnRecord,
+    SrcDbSchemaRecord,
+    SrcRoutineRecord,
+    SrcTableRecord,
 )
 
 EXTRACT_JOB = "extract"
-FOLDS_CASE = {"postgresql": False, "oracle": True}
+FOLDS_CASE = {"postgresql": False, "sqlserver": True, "mysql": True, "oracle": True}
 """Whether the engine folds identifier case, so names differing only in case may match
 the same Source Object (PostgreSQL keeps quoted ``"Customer"`` and ``customer`` apart)."""
 
@@ -72,6 +77,8 @@ class SnapshotDbSchema:
     id: uuid.UUID
     """The Source Object (``SrcDbSchema``)."""
     name: str
+    status: str | None
+    """The Source Object's state now, set only in the Source Schema (a Snapshot never changes)."""
 
 
 @dataclass(frozen=True)
@@ -79,6 +86,7 @@ class SnapshotColumn:
     id: uuid.UUID
     """The Source Object (``SrcColumn``): the same in every Snapshot."""
     name: str
+    status: str | None
     ordinal: int
     data_type: str
     is_nullable: bool
@@ -114,6 +122,7 @@ class SnapshotTable:
     name: str
     kind: str
     """``table`` or ``view``."""
+    status: str | None
     view_definition: str | None
     row_estimate: int | None
     comment: str | None
@@ -130,6 +139,7 @@ class SnapshotRoutine:
     name: str
     kind: str
     """``procedure`` or ``function``."""
+    status: str | None
     signature: str
     definition: str | None
 
@@ -140,6 +150,53 @@ class SnapshotContent:
     db_schemas: list[SnapshotDbSchema]
     tables: list[SnapshotTable]
     routines: list[SnapshotRoutine]
+
+
+@dataclass(frozen=True)
+class RemovedTable:
+    """A table or view the latest Snapshot no longer has, kept visible and flagged."""
+
+    id: uuid.UUID
+    db_schema: str
+    name: str
+    kind: str
+    status: str
+    """``source_removed`` (gone from the source) or ``out_of_scope`` (outside the allowed
+    Database Schemas)."""
+
+
+@dataclass(frozen=True)
+class RemovedColumn:
+    """A column of a table in the latest Snapshot that the Snapshot no longer has."""
+
+    id: uuid.UUID
+    table_id: uuid.UUID
+    name: str
+    status: str
+    data_type: str | None
+    """As of the latest Snapshot that had it."""
+
+
+@dataclass(frozen=True)
+class SourceSchema:
+    """The Source System's latest Snapshot plus the Source Objects it lacks."""
+
+    content: SnapshotContent
+    removed_tables: list[RemovedTable]
+    removed_columns: list[RemovedColumn]
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    kind: str
+    """``db_schema``, ``table``, ``view``, ``column`` or ``routine``."""
+    id: uuid.UUID
+    name: str
+    db_schema: str | None
+    """The Database Schema holding it; ``None`` for a Database Schema itself."""
+    table: str | None
+    """A column's table."""
+    status: str
 
 
 def _summary(record: SnapshotRecord) -> SnapshotSummary:
@@ -237,6 +294,77 @@ class SnapshotService:
                 raise _not_found("Snapshot")
             return self._content(db, record)
 
+    def source_schema(
+        self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID
+    ) -> SourceSchema:
+        """The latest Snapshot with its objects' states, and the tables and views it no
+        longer has but that are still tracked (any member). 404 before the first Snapshot."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            self._load_system(db, workspace_id, system_id)
+            record = self._latest(db, system_id)
+            kept = sa.select(SnapshotTableRecord.src_table_id).where(
+                SnapshotTableRecord.snapshot_id == record.id
+            )
+            removed = [
+                RemovedTable(
+                    id=table.id,
+                    db_schema=schema_name,
+                    name=table.name,
+                    kind=table.kind,
+                    status=table.status,
+                )
+                for table, schema_name in db.execute(
+                    sa.select(SrcTableRecord, SrcDbSchemaRecord.name)
+                    .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+                    .where(
+                        SrcDbSchemaRecord.source_system_id == system_id,
+                        SrcTableRecord.status.in_(("source_removed", "out_of_scope")),
+                        SrcTableRecord.id.not_in(kept),
+                    )
+                    .order_by(SrcDbSchemaRecord.name, SrcTableRecord.name)
+                )
+            ]
+            kept_columns = sa.select(SnapshotColumnRecord.src_column_id).where(
+                SnapshotColumnRecord.snapshot_id == record.id
+            )
+            removed_columns = [
+                RemovedColumn(
+                    id=column.id,
+                    table_id=column.table_id,
+                    name=column.name,
+                    status=column.status,
+                    data_type=column.current_definition.get("data_type"),
+                )
+                for column in db.scalars(
+                    sa.select(SrcColumnRecord)
+                    .where(
+                        SrcColumnRecord.table_id.in_(kept),
+                        SrcColumnRecord.status.in_(("source_removed", "out_of_scope")),
+                        SrcColumnRecord.id.not_in(kept_columns),
+                    )
+                    .order_by(SrcColumnRecord.table_id, SrcColumnRecord.name)
+                )
+            ]
+            return SourceSchema(
+                content=self._content(db, record, with_status=True),
+                removed_tables=removed,
+                removed_columns=removed_columns,
+            )
+
+    def search(
+        self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID, query: str, limit: int
+    ) -> list[SearchHit]:
+        """Database Schemas, tables, views, columns and routines of the latest Snapshot
+        whose name contains ``query`` (case-insensitive; any member). Exact matches come
+        first, then names starting with it, then the rest."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            self._load_system(db, workspace_id, system_id)
+            record = self._latest(db, system_id)
+            term = query.strip()
+            return self._search(db, record.id, term, limit) if term else []
+
     # -- the job ------------------------------------------------------------------------
 
     def run_extraction(self, params: Mapping[str, Any], ctx: JobContext) -> None:
@@ -330,8 +458,138 @@ class SnapshotService:
             raise _not_found()
         return record
 
-    def _content(self, db: Session, record: SnapshotRecord) -> SnapshotContent:
+    def _latest(self, db: Session, system_id: uuid.UUID) -> SnapshotRecord:
+        record = db.scalars(
+            sa.select(SnapshotRecord).where(
+                SnapshotRecord.source_system_id == system_id, SnapshotRecord.is_latest
+            )
+        ).first()
+        if record is None:
+            raise _not_found("Snapshot")
+        return record
+
+    def _search(
+        self, db: Session, snapshot_id: uuid.UUID, term: str, limit: int
+    ) -> list[SearchHit]:
+        escape = "\\"
+        escaped = term.replace(escape, escape * 2).replace("%", escape + "%")
+        escaped = escaped.replace("_", escape + "_")
+        contains, prefix = f"%{escaped}%", f"{escaped}%"
+        schemas = (
+            sa.select(
+                sa.literal("db_schema").label("kind"),
+                SnapshotDbSchemaRecord.src_db_schema_id.label("id"),
+                SnapshotDbSchemaRecord.name.label("name"),
+                sa.null().label("db_schema"),
+                sa.null().label("tbl"),
+                SrcDbSchemaRecord.status.label("status"),
+            )
+            .join(
+                SrcDbSchemaRecord, SrcDbSchemaRecord.id == SnapshotDbSchemaRecord.src_db_schema_id
+            )
+            .where(
+                SnapshotDbSchemaRecord.snapshot_id == snapshot_id,
+                SnapshotDbSchemaRecord.name.ilike(contains, escape=escape),
+            )
+        )
+        tables = (
+            sa.select(
+                SnapshotTableRecord.kind.label("kind"),
+                SnapshotTableRecord.src_table_id.label("id"),
+                SnapshotTableRecord.name.label("name"),
+                SnapshotTableRecord.db_schema.label("db_schema"),
+                sa.null().label("tbl"),
+                SrcTableRecord.status.label("status"),
+            )
+            .join(SrcTableRecord, SrcTableRecord.id == SnapshotTableRecord.src_table_id)
+            .where(
+                SnapshotTableRecord.snapshot_id == snapshot_id,
+                SnapshotTableRecord.name.ilike(contains, escape=escape),
+            )
+        )
+        columns = (
+            sa.select(
+                sa.literal("column").label("kind"),
+                SnapshotColumnRecord.src_column_id.label("id"),
+                SnapshotColumnRecord.name.label("name"),
+                SnapshotTableRecord.db_schema.label("db_schema"),
+                SnapshotTableRecord.name.label("tbl"),
+                SrcColumnRecord.status.label("status"),
+            )
+            .join(SrcColumnRecord, SrcColumnRecord.id == SnapshotColumnRecord.src_column_id)
+            .join(
+                SnapshotTableRecord,
+                sa.and_(
+                    SnapshotTableRecord.snapshot_id == SnapshotColumnRecord.snapshot_id,
+                    SnapshotTableRecord.src_table_id == SnapshotColumnRecord.src_table_id,
+                ),
+            )
+            .where(
+                SnapshotColumnRecord.snapshot_id == snapshot_id,
+                SnapshotColumnRecord.name.ilike(contains, escape=escape),
+            )
+        )
+        routines = (
+            sa.select(
+                sa.literal("routine").label("kind"),
+                SnapshotRoutineRecord.src_routine_id.label("id"),
+                SnapshotRoutineRecord.name.label("name"),
+                SnapshotRoutineRecord.db_schema.label("db_schema"),
+                sa.null().label("tbl"),
+                SrcRoutineRecord.status.label("status"),
+            )
+            .join(SrcRoutineRecord, SrcRoutineRecord.id == SnapshotRoutineRecord.src_routine_id)
+            .where(
+                SnapshotRoutineRecord.snapshot_id == snapshot_id,
+                SnapshotRoutineRecord.name.ilike(contains, escape=escape),
+            )
+        )
+        hits = sa.union_all(schemas, tables, columns, routines).subquery()
+        rank = sa.case(
+            (sa.func.lower(hits.c.name) == term.lower(), 0),
+            (hits.c.name.ilike(prefix, escape=escape), 1),
+            else_=2,
+        )
+        rows = db.execute(
+            sa.select(hits)
+            .order_by(rank, hits.c.name, hits.c.db_schema, hits.c.tbl, hits.c.kind)
+            .limit(limit)
+        )
+        return [
+            SearchHit(
+                kind=r.kind,
+                id=r.id,
+                name=r.name,
+                db_schema=r.db_schema,
+                table=r.tbl,
+                status=r.status,
+            )
+            for r in rows
+        ]
+
+    def _statuses(self, db: Session, snapshot_id: uuid.UUID) -> dict[uuid.UUID, str]:
+        """The current state of every Source Object the Snapshot has."""
+        statuses: dict[uuid.UUID, str] = {}
+        for source_object, snapshot_row, link in (
+            (SrcDbSchemaRecord, SnapshotDbSchemaRecord, SnapshotDbSchemaRecord.src_db_schema_id),
+            (SrcTableRecord, SnapshotTableRecord, SnapshotTableRecord.src_table_id),
+            (SrcColumnRecord, SnapshotColumnRecord, SnapshotColumnRecord.src_column_id),
+            (SrcRoutineRecord, SnapshotRoutineRecord, SnapshotRoutineRecord.src_routine_id),
+        ):
+            statuses.update(
+                db.execute(
+                    sa.select(source_object.id, source_object.status)
+                    .join(snapshot_row, link == source_object.id)
+                    .where(snapshot_row.snapshot_id == snapshot_id)
+                ).all()
+            )
+        return statuses
+
+    def _content(
+        self, db: Session, record: SnapshotRecord, *, with_status: bool = False
+    ) -> SnapshotContent:
         sid = record.id
+        statuses = self._statuses(db, sid) if with_status else {}
         texts = {
             row.hash: row.text
             for row in db.execute(
@@ -359,6 +617,7 @@ class SnapshotService:
                 SnapshotColumn(
                     id=c.src_column_id,
                     name=c.name,
+                    status=statuses.get(c.src_column_id),
                     ordinal=c.ordinal,
                     data_type=c.data_type,
                     is_nullable=c.is_nullable,
@@ -399,6 +658,7 @@ class SnapshotService:
                 db_schema=t.db_schema,
                 name=t.name,
                 kind=t.kind,
+                status=statuses.get(t.src_table_id),
                 view_definition=texts.get(t.view_definition_hash or ""),
                 row_estimate=t.row_estimate,
                 comment=t.comment,
@@ -418,6 +678,7 @@ class SnapshotService:
                 db_schema=r.db_schema,
                 name=r.name,
                 kind=r.kind,
+                status=statuses.get(r.src_routine_id),
                 signature=r.signature,
                 definition=texts.get(r.definition_hash or ""),
             )
@@ -432,7 +693,9 @@ class SnapshotService:
             )
         ]
         db_schemas = [
-            SnapshotDbSchema(id=s.src_db_schema_id, name=s.name)
+            SnapshotDbSchema(
+                id=s.src_db_schema_id, name=s.name, status=statuses.get(s.src_db_schema_id)
+            )
             for s in db.scalars(
                 sa.select(SnapshotDbSchemaRecord)
                 .where(SnapshotDbSchemaRecord.snapshot_id == sid)

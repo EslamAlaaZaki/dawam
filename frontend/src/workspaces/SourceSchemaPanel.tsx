@@ -4,14 +4,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
-import { snapshotsKey, useSnapshots, useStartExtraction } from "../api/snapshots";
+import { snapshotsKey, sourceSchemaKey, useSnapshots, useStartExtraction } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { SchemaBrowser } from "./SchemaBrowser";
 
 /**
- * A Source System's Source Schema (spec stories 45, 46): its Snapshots, newest first, and
- * for owners and editors a button that extracts metadata from the Connection as a
- * background job. The list refreshes once that job finishes.
+ * A Source System's Source Schema (spec stories 45, 46, 54): the browser over its latest
+ * Snapshot, its Snapshots newest first, and for owners and editors a button that extracts
+ * metadata from the Connection as a background job. Both refresh once that job finishes.
  */
 export function SourceSchemaPanel({
   workspace,
@@ -32,6 +33,7 @@ export function SourceSchemaPanel({
   useEffect(() => {
     if (finished) {
       void queryClient.invalidateQueries({ queryKey: snapshotsKey(workspace.id, system.id) });
+      void queryClient.invalidateQueries({ queryKey: sourceSchemaKey(workspace.id, system.id) });
     }
   }, [finished, queryClient, workspace.id, system.id]);
 
@@ -62,6 +64,9 @@ export function SourceSchemaPanel({
       )}
       {snapshots.isSuccess && snapshots.data.length === 0 && (
         <p className="empty-state">No Snapshot yet. Extract metadata from the Connection.</p>
+      )}
+      {snapshots.isSuccess && snapshots.data.length > 0 && (
+        <SchemaBrowser workspaceId={workspace.id} systemId={system.id} />
       )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
         <ul aria-label="Snapshots">

@@ -33,6 +33,7 @@ class SampleSource:
     """A user that can write to ``core.customers`` (the write-privilege warning)."""
     admin: tuple[str, str]
     """The container's superuser."""
+    engine: str = "postgresql"
 
     def connection_body(self, *, user: str = "reader", **overrides: object) -> dict[str, object]:
         """A ``PUT .../connection`` body for this database (``user``: reader, writer, admin)."""
@@ -40,7 +41,7 @@ class SampleSource:
             user
         ]
         body: dict[str, object] = {
-            "engine": "postgresql",
+            "engine": self.engine,
             "host": self.host,
             "port": self.port,
             "database": self.database,

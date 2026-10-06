@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 
 import EmailSettingsPage from "../app/(signed-in)/admin/email/page";
 import LinksToSharePage from "../app/(signed-in)/admin/email/links/page";
+import LlmSettingsPage from "../app/(signed-in)/admin/llm/page";
 import SignedInLayout from "../app/(signed-in)/layout";
 import InvitationsPage from "../app/(signed-in)/admin/invitations/page";
 import AdminWorkspacesPage from "../app/(signed-in)/admin/workspaces/page";
@@ -90,6 +91,12 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <EmailSettingsPage />
+        </SignedInLayout>
+      );
+    case "/admin/llm":
+      return (
+        <SignedInLayout>
+          <LlmSettingsPage />
         </SignedInLayout>
       );
     case "/admin/email/links":

@@ -15,6 +15,7 @@ from dawam.modules import (
     files,
     jobs,
     kpis,
+    llm,
     mail,
     notifications,
     sources,
@@ -35,6 +36,7 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     workspaces,
     kpis,
     files,
+    llm,
 )
 
 __all__ = ["ALL_MODULES"]

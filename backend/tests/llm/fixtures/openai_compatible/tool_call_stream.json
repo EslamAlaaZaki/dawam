@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "text/event-stream"
+  },
+  "body_lines": [
+    "data: {\"id\": \"chatcmpl-4\", \"object\": \"chat.completion.chunk\", \"model\": \"test-model\", \"choices\": [{\"index\": 0, \"delta\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"index\": 0, \"id\": \"call_abc\", \"type\": \"function\", \"function\": {\"name\": \"echo\", \"arguments\": \"\"}}]}, \"finish_reason\": null}]}",
+    "",
+    "data: {\"id\": \"chatcmpl-4\", \"object\": \"chat.completion.chunk\", \"model\": \"test-model\", \"choices\": [{\"index\": 0, \"delta\": {\"tool_calls\": [{\"index\": 0, \"function\": {\"arguments\": \"{\\\"text\\\": \"}}]}, \"finish_reason\": null}]}",
+    "",
+    "data: {\"id\": \"chatcmpl-4\", \"object\": \"chat.completion.chunk\", \"model\": \"test-model\", \"choices\": [{\"index\": 0, \"delta\": {\"tool_calls\": [{\"index\": 0, \"function\": {\"arguments\": \"\\\"ping\\\"}\"}}]}, \"finish_reason\": null}]}",
+    "",
+    "data: {\"id\": \"chatcmpl-4\", \"object\": \"chat.completion.chunk\", \"model\": \"test-model\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"tool_calls\"}]}",
+    "",
+    "data: {\"id\": \"chatcmpl-4\", \"object\": \"chat.completion.chunk\", \"model\": \"test-model\", \"choices\": [], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 9, \"total_tokens\": 49}}",
+    "",
+    "data: [DONE]",
+    ""
+  ]
+}
