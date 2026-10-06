@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
+from openpyxl.worksheet.worksheet import Worksheet
 
 from dawam.modules.auth import User
 
@@ -53,8 +54,22 @@ class DataDictionary:
     data: bytes
 
 
-def _yes(value: bool | None) -> str:
-    return "yes" if value else "no"
+def _yes(value: bool | None) -> str | None:
+    return None if value is None else ("yes" if value else "no")
+
+
+def _text(value: object) -> object:
+    """Enum members as their value, anything else as it is."""
+    return getattr(value, "value", value)
+
+
+def _append(sheet: Worksheet, values: list[object]) -> None:
+    """Append a row with every text cell stored as a string: user- or source-supplied text
+    starting with ``=``, ``+``, ``-`` or ``@`` must never become a formula."""
+    sheet.append([_text(v) for v in values])
+    for cell in sheet[sheet.max_row]:
+        if isinstance(cell.value, str):
+            cell.data_type = "s"
 
 
 def build_dictionary(schema: SourceSchema) -> bytes:
@@ -73,7 +88,8 @@ def build_dictionary(schema: SourceSchema) -> bytes:
             cell.font = Font(bold=True)
         sheet.freeze_panes = "A2"
     for table in schema.content.tables:
-        tables.append(
+        _append(
+            tables,
             [
                 table.db_schema,
                 table.name,
@@ -85,10 +101,11 @@ def build_dictionary(schema: SourceSchema) -> bytes:
                 table.scd_hint,
                 _yes(table.is_sensitive),
                 table.comment,
-            ]
+            ],
         )
         for column in table.columns:
-            columns.append(
+            _append(
+                columns,
                 [
                     table.db_schema,
                     table.name,
@@ -104,7 +121,7 @@ def build_dictionary(schema: SourceSchema) -> bytes:
                     _yes(column.is_sensitive),
                     column.pii_category,
                     column.comment,
-                ]
+                ],
             )
     buffer = io.BytesIO()
     workbook.save(buffer)

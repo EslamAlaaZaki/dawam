@@ -122,3 +122,26 @@ def test_a_viewer_cannot_save_the_dictionary(roles: RoleClients, sample_source: 
     system = enhanced(roles, sample_source)
 
     assert roles.client("viewer").post(f"{system}/files/data-dictionary").status_code == 403
+
+
+def test_text_starting_like_a_formula_is_stored_as_text(
+    roles: RoleClients, sample_source: SampleSource
+):
+    system = enhanced(roles, sample_source)
+    [table] = [
+        t
+        for t in schema(roles, system)["tables"]
+        if (t["db_schema"], t["name"]) == ("core", "customers")
+    ]
+    formula = '=HYPERLINK("http://evil.example","click")'
+    response = roles.client("editor").patch(
+        f"{system}/tables/{table['id']}",
+        json={"version": table["version"], "description": formula},
+    )
+    assert response.status_code == 200, response.text
+
+    data = roles.client("viewer").get(f"{system}/data-dictionary").content
+
+    sheet = load_workbook(io.BytesIO(data))["Tables"]
+    [cell] = [c for row in sheet.iter_rows() for c in row if c.value == formula]
+    assert cell.data_type == "s"
