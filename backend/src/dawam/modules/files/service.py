@@ -277,7 +277,9 @@ class FileService:
             record = db.get(WorkspaceFileRecord, file_id)
             if record is None or record.workspace_id != workspace_id:
                 raise _not_found()
-            name = record.path
+            name, mime = record.path, record.mime
+        if text_only and mime not in {t.mime for t in TEXT_TYPES}:
+            raise _not_editable()
         try:
             file_type = detect(name, data)
         except Unsupported as exc:

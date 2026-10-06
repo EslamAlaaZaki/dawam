@@ -155,7 +155,7 @@ def test_any_member_downloads_a_whole_area_as_a_zip(roles: RoleClients):
     assert response.headers["content-type"] == "application/zip"
     assert response.headers["content-disposition"].startswith("attachment;")
     assert zip_of(response) == {"a.md": b"# A", "b.png": PNG}
-    assert roles.client("non_member").get(url).status_code == 403
+    assert roles.client("non_member").get(url).status_code == 404
 
 
 def test_the_data_warehouse_area_downloads_as_a_zip(roles: RoleClients):
