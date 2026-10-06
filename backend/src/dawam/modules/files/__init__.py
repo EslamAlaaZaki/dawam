@@ -2,14 +2,19 @@
 
 Public interface. Other modules import only what is re-exported here:
 
-- ``FileService``: upload a file to a Source System's file area (owners and editors),
-  list the area and download a file (any member). Uploads are checked for size and type
+- ``FileService``: upload a file to a Source System's or the Data Warehouse's file area
+  (owners and editors), list an area, download a file or a whole area as a zip (any
+  member), and edit a text file or replace a binary one in place (owners and editors).
+  Uploads are checked for size and type
   (sniffed against an allow-list, not trusted from the client), stored under a random
   key in the configured storage backend (``dawam.platform.storage``) and have their
   text extracted (``WorkspaceFile.text_status``). A *document* is such a file; there is
   one model. Every call authorizes through the workspaces module's policy.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/systems/{system_id}/files``,
-  ``GET /workspaces/{workspace_id}/files/{file_id}/download``.
+  ``GET|POST /workspaces/{workspace_id}/data-warehouse/files``,
+  ``GET .../systems/{system_id}/files/download`` and ``.../data-warehouse/files/download``
+  (zips), ``GET /workspaces/{workspace_id}/files/{file_id}/download``,
+  ``GET|PUT .../files/{file_id}/content`` (text edit), ``PUT .../files/{file_id}/replace``.
 
 - ``DocumentSearchService``: indexes uploaded documents (Postgres full-text with Arabic
   normalisation; pgvector embeddings only when the Workspace's ``DocumentAiPolicy`` lets
@@ -48,7 +53,7 @@ from .search import (
     Passage,
     RegisteredEmbeddingModels,
 )
-from .service import FileContent, FileService, WorkspaceFile, WorkspaceFilePage
+from .service import FileContent, FileService, TextFile, WorkspaceFile, WorkspaceFilePage
 
 router = APIRouter()
 router.include_router(_files_router)
@@ -70,6 +75,7 @@ __all__ = [
     "RegisteredEmbeddingModels",
     "SourceLink",
     "SourceLinkPage",
+    "TextFile",
     "WorkspaceFile",
     "WorkspaceFilePage",
     "router",

@@ -36,7 +36,10 @@ function workspace(role: WorkspaceRole): Workspace {
     description: "",
     domain: "",
     role,
-    permissions: role === "owner" ? ["workspace.edit", "workspace.view"] : ["workspace.view"],
+    permissions:
+      role === "owner"
+        ? ["workspace.edit", "workspace.view"]
+        : ["workspace.view"],
     status: "active",
     archived_at: null,
     version: 1,
@@ -74,13 +77,19 @@ function open(role: WorkspaceRole, query = "") {
     if (path === `/api/v1/workspaces/${ID}/members`) {
       return json({ items: [] });
     }
-    return json({ error: { code: "not_found", message: "Not Found", details: {} } }, 404);
+    return json(
+      { error: { code: "not_found", message: "Not Found", details: {} } },
+      404,
+    );
   };
   const client = createApiClient({
     baseUrl: "http://dawam.test",
-    fetch: async (input: RequestInfo | URL, init?: RequestInit) => handle(new Request(input, init)),
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) =>
+      handle(new Request(input, init)),
   });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
@@ -130,6 +139,7 @@ describe("the folder tree", () => {
       "Evaluation",
       "Lineage",
       "Score",
+      "Files",
       "DDL",
     ]);
     expect(item("Staging")).toHaveAttribute("aria-level", "3");
@@ -141,8 +151,10 @@ describe("the folder tree", () => {
     open("viewer");
     await tree();
 
-    expect(screen.getAllByRole("treeitem")).toHaveLength(19);
-    expect(screen.getByRole("heading", { name: "Retail DW" })).toBeInTheDocument();
+    expect(screen.getAllByRole("treeitem")).toHaveLength(20);
+    expect(
+      screen.getByRole("heading", { name: "Retail DW" }),
+    ).toBeInTheDocument();
   });
 
   it("starts with the Workspace selected and one tab stop on the tree", async () => {
@@ -150,7 +162,9 @@ describe("the folder tree", () => {
     await tree();
 
     expect(item("Retail DW")).toHaveAttribute("aria-selected", "true");
-    const tabStops = screen.getAllByRole("treeitem").filter((n) => n.tabIndex === 0);
+    const tabStops = screen
+      .getAllByRole("treeitem")
+      .filter((n) => n.tabIndex === 0);
     expect(tabStops).toEqual([item("Retail DW")]);
   });
 
@@ -182,7 +196,9 @@ describe("the folder tree", () => {
 
     press("Data Warehouse", "ArrowLeft");
     expect(item("Data Warehouse")).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("treeitem", { name: "Staging" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("treeitem", { name: "Staging" }),
+    ).not.toBeInTheDocument();
 
     press("Data Warehouse", "ArrowRight");
     expect(item("Data Warehouse")).toHaveAttribute("aria-expanded", "true");
@@ -198,7 +214,9 @@ describe("the folder tree", () => {
     fireEvent.click(within(item("Data Warehouse")).getAllByText("▾")[0]!);
 
     expect(item("Data Warehouse")).toHaveAttribute("aria-expanded", "false");
-    const tabStops = screen.getAllByRole("treeitem").filter((n) => n.tabIndex === 0);
+    const tabStops = screen
+      .getAllByRole("treeitem")
+      .filter((n) => n.tabIndex === 0);
     expect(tabStops).toEqual([item("Data Warehouse")]);
     expect(item("Data Warehouse")).toHaveFocus();
   });
@@ -225,7 +243,9 @@ describe("the folder tree", () => {
     expect(currentLocation()).toBe(`/workspaces/${ID}?folder=systems`);
     expect(item("Systems")).toHaveAttribute("aria-selected", "true");
     expect(item("Retail DW")).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByRole("heading", { name: "Systems" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Systems" }),
+    ).toBeInTheDocument();
   });
 
   it("selects a folder on click", async () => {
@@ -235,20 +255,28 @@ describe("the folder tree", () => {
     // The second "Mappings" is the Core Layer's.
     fireEvent.click(screen.getAllByRole("treeitem", { name: "Mappings" })[1]!);
 
-    expect(currentLocation()).toBe(`/workspaces/${ID}?folder=dw%2Fcore%2Fmappings`);
+    expect(currentLocation()).toBe(
+      `/workspaces/${ID}?folder=dw%2Fcore%2Fmappings`,
+    );
   });
 
   it("opens the folder named in the URL, so a link or a reload lands on it", async () => {
     open("viewer", "?folder=dw/staging/mappings");
     await tree();
 
-    expect(screen.getByRole("heading", { name: "Mappings" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Mappings" }),
+    ).toBeInTheDocument();
     const selected = screen
       .getAllByRole("treeitem")
       .filter((n) => n.getAttribute("aria-selected") === "true");
     expect(selected).toHaveLength(1);
     expect(selected[0]).toHaveAttribute("aria-level", "4");
-    expect(screen.getByText("The Staging Layer's mappings will appear here once it exists.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The Staging Layer's mappings will appear here once it exists.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("falls back to the Workspace for an unknown folder", async () => {
@@ -264,10 +292,16 @@ describe("the folder tree", () => {
 
     fireEvent.click(item("Systems"));
     expect(
-      screen.getByText("No Source Systems yet. Each Source System you add will get its own folder here."),
+      screen.getByText(
+        "No Source Systems yet. Each Source System you add will get its own folder here.",
+      ),
     ).toBeInTheDocument();
     fireEvent.click(item("Lineage"));
-    expect(screen.getByText("Lineage appears here once there is a DW Schema to trace.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Lineage appears here once there is a DW Schema to trace.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 
@@ -277,14 +311,19 @@ describe("the stage-progress panel", () => {
 
     const panel = await screen.findByRole("region", { name: "Stage progress" });
 
-    const rows = (await within(panel).findAllByRole("listitem"))
-      .map((row) => row.textContent);
+    const rows = (await within(panel).findAllByRole("listitem")).map(
+      (row) => row.textContent,
+    );
     expect(rows).toEqual([
       "KPIsNot started",
       "DW Modeling: StagingNot started",
       "DW Modeling: CoreNot started",
       "DW Modeling: MartNot started",
     ]);
-    expect(within(panel).getByText("No Source Systems yet, so there is no Source Analysis to show.")).toBeInTheDocument();
+    expect(
+      within(panel).getByText(
+        "No Source Systems yet, so there is no Source Analysis to show.",
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -17,10 +17,26 @@ export interface SystemFolderInfo {
 }
 
 const SYSTEM_FOLDERS = [
-  ["connection", "Connection | Schema Import", "How this system's metadata gets in will appear here."],
-  ["source-schema", "Source Schema", "The Source Schema will appear here once metadata is loaded."],
-  ["profiling", "Profiling", "Profiles will appear here once the data has been profiled."],
-  ["pii", "PII", "PII findings will appear here once the system has been scanned."],
+  [
+    "connection",
+    "Connection | Schema Import",
+    "How this system's metadata gets in will appear here.",
+  ],
+  [
+    "source-schema",
+    "Source Schema",
+    "The Source Schema will appear here once metadata is loaded.",
+  ],
+  [
+    "profiling",
+    "Profiling",
+    "Profiles will appear here once the data has been profiled.",
+  ],
+  [
+    "pii",
+    "PII",
+    "PII findings will appear here once the system has been scanned.",
+  ],
   ["documents", "Documents", "Uploaded documents and links will appear here."],
   ["kpis", "KPIs", "KPIs based on this system will appear here."],
   ["outputs", "Outputs", "Generated files will appear here."],
@@ -74,7 +90,8 @@ export function workspaceFolders(
         id: "systems",
         label: "Systems",
         children: systems.map(systemFolder),
-        empty: "No Source Systems yet. Each Source System you add will get its own folder here.",
+        empty:
+          "No Source Systems yet. Each Source System you add will get its own folder here.",
       },
       {
         id: "dw",
@@ -95,7 +112,8 @@ export function workspaceFolders(
             id: "dw/kpis",
             label: "KPIs",
             children: [],
-            empty: "No KPIs yet. Business metrics for the Data Warehouse will be listed here.",
+            empty:
+              "No KPIs yet. Business metrics for the Data Warehouse will be listed here.",
           },
           ...(dwSetUp
             ? [
@@ -106,13 +124,21 @@ export function workspaceFolders(
                   id: "dw/lineage",
                   label: "Lineage",
                   children: [],
-                  empty: "Lineage appears here once there is a DW Schema to trace.",
+                  empty:
+                    "Lineage appears here once there is a DW Schema to trace.",
                 },
                 {
                   id: "dw/score",
                   label: "Score",
                   children: [],
                   empty: "The Data Warehouse has not been scored yet.",
+                },
+                {
+                  id: "dw/files",
+                  label: "Files",
+                  children: [],
+                  empty:
+                    "Generated and uploaded files of the Data Warehouse appear here.",
                 },
                 {
                   id: "dw/ddl",
