@@ -4644,6 +4644,475 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/download": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Download Source System Files",
+        "description": "The whole file area of a Source System as a zip (any member).",
+        "operationId": "downloadSourceSystemFiles",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The area's files as a zip.",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "List Data Warehouse Files",
+        "description": "The files of the Data Warehouse's file area (any member), by name. 404 until the\nData Warehouse is set up.",
+        "operationId": "listDataWarehouseFiles",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFilePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Upload Data Warehouse File",
+        "description": "Upload a file to the Data Warehouse's file area (owners and editors), as multipart\nform data; same types and limits as a Source System upload.",
+        "operationId": "uploadDataWarehouseFile",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadDataWarehouseFile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/download": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Download Data Warehouse Files",
+        "description": "The whole file area of the Data Warehouse as a zip (any member).",
+        "operationId": "downloadDataWarehouseFiles",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The area's files as a zip.",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/files/{file_id}/content": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Read File Text",
+        "description": "A text file's content for editing (any member). 415 `not_editable` for a binary\nfile (PDF, DOCX, XLSX, images).",
+        "operationId": "readFileText",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextContent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save File Text",
+        "description": "Overwrite a Markdown, SQL, YAML, CSV, JSON or text file in place (owners and\neditors); there is no version history. 413 `file_too_large`, 415 `not_editable`.",
+        "operationId": "saveFileText",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "File Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/files/{file_id}/replace": {
+      "put": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Replace File",
+        "description": "Replace a file's content with an upload (owners and editors), keeping its name; the\nupload's own name is ignored but its content must be of the type the file's name says.\n413 `file_too_large`, 415 `unsupported_file_type`.",
+        "operationId": "replaceFile",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "File Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_replaceFile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/providers": {
       "get": {
         "tags": [
@@ -5600,6 +6069,36 @@
           "next_cursor"
         ],
         "title": "AdminWorkspacePage"
+      },
+      "Body_replaceFile": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "The new content, of the same type."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_replaceFile"
+      },
+      "Body_uploadDataWarehouseFile": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "The file to upload."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_uploadDataWarehouseFile"
       },
       "Body_uploadSourceSystemFile": {
         "properties": {
@@ -9198,6 +9697,38 @@
           "to"
         ],
         "title": "TestEmailOut"
+      },
+      "TextContent": {
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/WorkspaceFile"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "The file's text (UTF-8)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "content"
+        ],
+        "title": "TextContent"
+      },
+      "TextUpdate": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "The new text; it overwrites the file in place."
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "TextUpdate"
       },
       "TransferOwnershipRequest": {
         "properties": {

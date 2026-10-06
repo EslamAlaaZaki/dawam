@@ -50,7 +50,10 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   if (workspace.isError) {
     const error = workspace.error;
     // 404: missing, or not the user's to see. 422: not a Workspace id at all.
-    if (error instanceof ApiError && (error.status === 404 || error.status === 422)) {
+    if (
+      error instanceof ApiError &&
+      (error.status === 404 || error.status === 422)
+    ) {
       return <WorkspaceNotFound />;
     }
     return (
@@ -60,19 +63,28 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     );
   }
   const systemList = systems.data ?? [];
-  const root = workspaceFolders(workspace.data.name, warehouse.data?.set_up ?? false, systemList);
+  const root = workspaceFolders(
+    workspace.data.name,
+    warehouse.data?.set_up ?? false,
+    systemList,
+  );
   const requested = searchParams.get("folder") ?? "";
   // The setup step becomes the Data Warehouse folder itself once it is done, so a
   // link (or the page right after saving) to it still lands in the Data Warehouse.
-  const wanted = warehouse.data?.set_up && requested === "dw/setup" ? "dw" : requested;
+  const wanted =
+    warehouse.data?.set_up && requested === "dw/setup" ? "dw" : requested;
   const folder = findFolder(root, wanted) ?? root;
   // Whether the Data Warehouse is set up decides which of its folders exist, so do not
   // resolve one (and fall back to the root) before that is known.
   const inDataWarehouse = wanted === "dw" || wanted.startsWith("dw/");
   // `systems/<id>`: the folder of one Source System.
-  const openSystem = systemList.find((system) => folder.id === `systems/${system.id}`);
+  const openSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}`,
+  );
   // `systems/<id>/kpis` and `dw/kpis`: a KPI folder, of that system or of the Data Warehouse.
-  const kpiSystem = systemList.find((system) => folder.id === `systems/${system.id}/kpis`);
+  const kpiSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/kpis`,
+  );
   const connectionSystem = systemList.find(
     (system) => folder.id === `systems/${system.id}/connection`,
   );
@@ -88,7 +100,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   );
 
   function select(id: string) {
-    router.push(id === "" ? pathname : `${pathname}?${new URLSearchParams({ folder: id })}`);
+    router.push(
+      id === ""
+        ? pathname
+        : `${pathname}?${new URLSearchParams({ folder: id })}`,
+    );
   }
 
   return (
@@ -100,7 +116,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       <p>Your role: {ROLE_LABELS[workspace.data.role]}</p>
       {workspace.data.status === "archived" && (
         <p className="archived-banner" role="status">
-          This Workspace is archived and read-only. Exports and reading still work.
+          This Workspace is archived and read-only. Exports and reading still
+          work.
         </p>
       )}
       <div className="workspace-layout">
@@ -111,10 +128,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           {inDataWarehouse && warehouse.isPending ? (
             <Loading />
           ) : inDataWarehouse && warehouse.isError ? (
-            <p role="alert">Could not load the Data Warehouse: {warehouse.error.message}</p>
+            <p role="alert">
+              Could not load the Data Warehouse: {warehouse.error.message}
+            </p>
           ) : folder.id === "" ? (
             <>
-              <WorkspaceDetails workspace={workspace.data} reload={() => workspace.refetch()} />
+              <WorkspaceDetails
+                workspace={workspace.data}
+                reload={() => workspace.refetch()}
+              />
               <MembersPanel workspace={workspace.data} />
               <LifecyclePanel workspace={workspace.data} />
             </>
@@ -132,10 +154,25 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               key={folder.id}
               workspace={workspace.data}
               scope={{ systemId: kpiSystem?.id ?? null }}
-              title={kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"}
+              title={
+                kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"
+              }
             />
           ) : documentsSystem ? (
-            <DocumentsPanel workspace={workspace.data} system={documentsSystem} />
+            <DocumentsPanel
+              key={folder.id}
+              workspace={workspace.data}
+              area={{ systemId: documentsSystem.id }}
+              title="Documents"
+              ownerName={documentsSystem.name}
+            />
+          ) : folder.id === "dw/files" ? (
+            <DocumentsPanel
+              workspace={workspace.data}
+              area="data-warehouse"
+              title="Files"
+              ownerName="the Data Warehouse"
+            />
           ) : openSystem ? (
             <SystemDetails
               workspace={workspace.data}
@@ -143,9 +180,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               reload={() => systems.refetch()}
             />
           ) : connectionSystem ? (
-            <ConnectionPanel workspace={workspace.data} system={connectionSystem} />
+            <ConnectionPanel
+              workspace={workspace.data}
+              system={connectionSystem}
+            />
           ) : schemaSystem ? (
-            <SourceSchemaPanel workspace={workspace.data} system={schemaSystem} />
+            <SourceSchemaPanel
+              workspace={workspace.data}
+              system={schemaSystem}
+            />
           ) : (
             <section aria-labelledby="folder-title">
               <h3 id="folder-title">{folder.label}</h3>
@@ -160,7 +203,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function WorkspaceDetails({ workspace, reload }: { workspace: Workspace; reload: () => void }) {
+function WorkspaceDetails({
+  workspace,
+  reload,
+}: {
+  workspace: Workspace;
+  reload: () => void;
+}) {
   const update = useUpdateWorkspace(workspace.id);
 
   if (!allows(workspace, "workspace.edit")) {
@@ -182,23 +231,32 @@ function WorkspaceDetails({ workspace, reload }: { workspace: Workspace; reload:
     );
   }
 
-  const conflict = update.error instanceof ApiError && update.error.status === 409;
+  const conflict =
+    update.error instanceof ApiError && update.error.status === 409;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    update.mutate({ version: workspace.version, ...readDetails(event.currentTarget) });
+    update.mutate({
+      version: workspace.version,
+      ...readDetails(event.currentTarget),
+    });
   }
 
   return (
     // A new version (saved, or reloaded) refills the inputs.
-    <form key={workspace.version} className="form" onSubmit={onSubmit} aria-labelledby="details-title">
+    <form
+      key={workspace.version}
+      className="form"
+      onSubmit={onSubmit}
+      aria-labelledby="details-title"
+    >
       <h3 id="details-title">Details</h3>
       <DetailsFields initial={workspace} />
       {conflict ? (
         <div className="form-error" role="alert">
           <p>
-            Someone else changed this Workspace since you opened it. Reload it to see their
-            changes, then edit again.
+            Someone else changed this Workspace since you opened it. Reload it
+            to see their changes, then edit again.
           </p>
           <button
             type="button"

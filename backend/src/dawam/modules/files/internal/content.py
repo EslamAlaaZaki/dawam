@@ -40,12 +40,18 @@ XLSX = FileType(
 )
 MARKDOWN = FileType("md", "text/markdown", (".md", ".markdown"))
 TEXT = FileType("txt", "text/plain", (".txt",))
+SQL = FileType("sql", "application/sql", (".sql",))
+YAML = FileType("yaml", "application/yaml", (".yaml", ".yml"))
+CSV = FileType("csv", "text/csv", (".csv",))
+JSON = FileType("json", "application/json", (".json",))
 PNG = FileType("png", "image/png", (".png",))
 JPEG = FileType("jpeg", "image/jpeg", (".jpg", ".jpeg"))
 GIF = FileType("gif", "image/gif", (".gif",))
 WEBP = FileType("webp", "image/webp", (".webp",))
 
-ALLOWED_TYPES = (PDF, DOCX, XLSX, MARKDOWN, TEXT, PNG, JPEG, GIF, WEBP)
+TEXT_TYPES = (MARKDOWN, TEXT, SQL, YAML, CSV, JSON)
+"""Types stored as UTF-8 text: these can be edited in the browser (spec §6.17)."""
+ALLOWED_TYPES = (PDF, DOCX, XLSX, *TEXT_TYPES, PNG, JPEG, GIF, WEBP)
 """The allow-list. SVG and HTML are deliberately absent: they can carry script."""
 
 _IMAGES = (PNG, JPEG, GIF, WEBP)
@@ -109,11 +115,11 @@ def detect(filename: str, data: bytes) -> FileType:
     claimed = _BY_EXTENSION.get(filename[dot:].lower()) if dot >= 0 else None
     if claimed is None:
         raise Unsupported(
-            "That file type is not allowed. Upload a PDF, DOCX, XLSX, Markdown, text or "
-            "image (PNG, JPEG, GIF or WebP) file."
+            "That file type is not allowed. Upload a PDF, DOCX, XLSX, Markdown, SQL, YAML, "
+            "CSV, JSON, text or image (PNG, JPEG, GIF or WebP) file."
         )
     found = _binary_kind(data)
-    if found is None and claimed in (MARKDOWN, TEXT) and _is_text(data):
+    if found is None and claimed in TEXT_TYPES and _is_text(data):
         found = claimed
     if found is None or found != claimed:
         raise Unsupported("The file's content does not match its extension.")
@@ -159,7 +165,7 @@ class _Text:
 
 
 def _extract(file_type: FileType, data: bytes) -> str:
-    if file_type in (MARKDOWN, TEXT):
+    if file_type in TEXT_TYPES:
         return data[: EXTRACTED_TEXT_MAX_CHARS * 4].decode("utf-8-sig", errors="ignore")
     out = _Text()
     if file_type is PDF:
