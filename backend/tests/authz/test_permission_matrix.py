@@ -658,6 +658,13 @@ ROWS: list[Row] = [
         "Open Workspace content (a Snapshot's catalog)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}/diff/{against_id}",
+        "Open Workspace content (diff two Snapshots)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        path_params={"against_id": snapshot_id},
+    ),
     # Source Schema browser (story 54): every member browses and searches it.
     Row(
         "GET",

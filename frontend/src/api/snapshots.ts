@@ -19,7 +19,9 @@ export function useSnapshots(workspaceId: string, systemId: string) {
     queryFn: async () => {
       const { data, error, response } = await client.GET(
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots",
-        { params: { path: { workspace_id: workspaceId, system_id: systemId } } },
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+        },
       );
       if (error) {
         throw new ApiError(response.status, error.error);
@@ -37,14 +39,17 @@ export function useStartExtraction(workspaceId: string, systemId: string) {
     mutationFn: async () => {
       const { data, error, response } = await client.POST(
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/extractions",
-        { params: { path: { workspace_id: workspaceId, system_id: systemId } } },
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+        },
       );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
   });
 }
 
@@ -56,7 +61,11 @@ export const sourceSchemaKey = (workspaceId: string, systemId: string) =>
 
 /** The Source Schema to browse: the latest Snapshot plus the objects it no longer has
  * (spec story 54). Only asked for once the system has a Snapshot. */
-export function useSourceSchema(workspaceId: string, systemId: string, enabled: boolean) {
+export function useSourceSchema(
+  workspaceId: string,
+  systemId: string,
+  enabled: boolean,
+) {
   const client = useApiClient();
   return useQuery({
     queryKey: sourceSchemaKey(workspaceId, systemId),
@@ -77,10 +86,18 @@ export function useSourceSchema(workspaceId: string, systemId: string, enabled: 
 }
 
 /** Names containing `query`, in the latest Snapshot; nothing is asked for an empty query. */
-export function useSchemaSearch(workspaceId: string, systemId: string, query: string) {
+export function useSchemaSearch(
+  workspaceId: string,
+  systemId: string,
+  query: string,
+) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...sourceSchemaKey(workspaceId, systemId), "search", query] as const,
+    queryKey: [
+      ...sourceSchemaKey(workspaceId, systemId),
+      "search",
+      query,
+    ] as const,
     enabled: query !== "",
     queryFn: async () => {
       const { data, error, response } = await client.GET(
@@ -96,6 +113,47 @@ export function useSchemaSearch(workspaceId: string, systemId: string, query: st
         throw new ApiError(response.status, error.error);
       }
       return data.items;
+    },
+  });
+}
+
+export type SnapshotDiff = components["schemas"]["SnapshotDiff"];
+
+/** What changed from Snapshot `from` to Snapshot `to` (spec story 52); asked for only once
+ * both are chosen. */
+export function useSnapshotDiff(
+  workspaceId: string,
+  systemId: string,
+  from: string | null,
+  to: string | null,
+) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [
+      ...snapshotsKey(workspaceId, systemId),
+      "diff",
+      from,
+      to,
+    ] as const,
+    enabled: from != null && to != null,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots/{snapshot_id}/diff/{against_id}",
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              system_id: systemId,
+              snapshot_id: to ?? "",
+              against_id: from ?? "",
+            },
+          },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
     },
   });
 }
