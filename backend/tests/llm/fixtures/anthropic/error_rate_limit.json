@@ -1,0 +1,14 @@
+{
+  "status": 429,
+  "headers": {
+    "Content-Type": "application/json",
+    "retry-after": "7"
+  },
+  "body": {
+    "type": "error",
+    "error": {
+      "type": "rate_limit_error",
+      "message": "Number of request tokens has exceeded your rate limit."
+    }
+  }
+}
