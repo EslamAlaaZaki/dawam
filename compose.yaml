@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dawam}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dawam}

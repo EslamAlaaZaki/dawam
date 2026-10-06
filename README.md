@@ -34,7 +34,7 @@ start (see [Sign in](#sign-in)). Compose starts five services:
 | `web`    | The Next.js web UI (pages only). |
 | `app`    | The FastAPI backend: the API, and the only place that authenticates, authorizes and stores data. Applies database migrations on startup. |
 | `worker` | The background worker process. |
-| `db`     | PostgreSQL 16, the only metadata store (data in the `db-data` volume). |
+| `db`     | PostgreSQL 16 with pgvector, the only metadata store (data in the `db-data` volume). |
 
 Everything else is reachable only inside the Compose network, so every request
 passes through `edge`. It overwrites `X-Forwarded-For` and `X-Forwarded-Proto` with
@@ -246,11 +246,11 @@ python tools/check_boundaries.py        # module-boundary check
 pytest                                  # tests (needs Docker, see below)
 ```
 
-To run the API outside Docker, point it at any PostgreSQL 16 server, for example:
+To run the API outside Docker, point it at any PostgreSQL 16 server with the pgvector extension, for example:
 
 ```sh
 docker run -d --name dawam-dev-db -p 5432:5432 \
-  -e POSTGRES_USER=dawam -e POSTGRES_PASSWORD=dawam postgres:16
+  -e POSTGRES_USER=dawam -e POSTGRES_PASSWORD=dawam pgvector/pgvector:pg16
 export DAWAM_DATABASE_URL=postgresql+psycopg://dawam:dawam@localhost:5432/dawam
 export DAWAM_ENCRYPTION_KEY=...   # a key you generated once (see above); keep reusing it
 python -m dawam serve     # API on :8000, migrates on startup

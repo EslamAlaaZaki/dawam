@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -20,8 +21,10 @@ from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_c
 from dawam.platform.storage import FileStorage, new_key
 
 from .internal.content import Unsupported, detect, extract_text
+from .search import DocumentSearchService
 from .tables import PATH_MAX_LENGTH, WorkspaceFileRecord
 
+logger = logging.getLogger(__name__)
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -106,6 +109,7 @@ class FileService:
         workspaces: WorkspaceService,
         systems: SourceSystemService,
         storage: FileStorage,
+        search: DocumentSearchService,
         clock: Clock,
         max_upload_bytes: int,
     ) -> None:
@@ -113,6 +117,7 @@ class FileService:
         self._workspaces = workspaces
         self._systems = systems
         self._storage = storage
+        self._search = search
         self._clock = clock
         self.max_upload_bytes = max_upload_bytes
 
@@ -126,7 +131,7 @@ class FileService:
         content: BinaryIO,
     ) -> WorkspaceFile:
         """Put a file in a Source System's file area (owners and editors); its text is
-        extracted for search. A file with the same name there is overwritten in place
+        extracted and indexed for search. A file with the same name there is overwritten in place
         (spec §6.17). 404 for a system not in the Workspace, 413 ``file_too_large``,
         415 ``unsupported_file_type``, 422 ``invalid_file_name``."""
         self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
@@ -197,6 +202,10 @@ class FileService:
             raise
         if replaced_key is not None:
             self._storage.delete(replaced_key)
+        try:
+            self._search.index_file(workspace_id, view.id)
+        except Exception:  # the upload stands; a re-index repairs the search index
+            logger.exception("indexing document %s failed", view.id)
         return view
 
     def list_for_system(
