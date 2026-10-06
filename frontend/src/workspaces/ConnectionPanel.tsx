@@ -70,6 +70,8 @@ const ENGINES: Record<Engine, { label: string; port: number; schema: string }> =
   sqlserver: { label: "SQL Server", port: 1433, schema: "dbo" },
   // A MySQL schema is a database: the owner names it.
   mysql: { label: "MySQL / MariaDB", port: 3306, schema: "" },
+  // An Oracle schema is a user name, as Oracle stores it (usually upper case): the owner names it.
+  oracle: { label: "Oracle", port: 1521, schema: "" },
 };
 
 function ConnectionForm({

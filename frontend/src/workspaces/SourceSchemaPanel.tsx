@@ -8,6 +8,7 @@ import { snapshotsKey, sourceSchemaKey, useSnapshots, useStartExtraction } from 
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
 import { SchemaBrowser } from "./SchemaBrowser";
+import { SnapshotDiffView } from "./SnapshotDiffView";
 
 /**
  * A Source System's Source Schema (spec stories 45, 46, 54): the browser over its latest
@@ -80,6 +81,14 @@ export function SourceSchemaPanel({
             </li>
           ))}
         </ul>
+      )}
+      {snapshots.isSuccess && (
+        <SnapshotDiffView
+          key={snapshots.data.map((s) => s.id).join()}
+          workspaceId={workspace.id}
+          systemId={system.id}
+          snapshots={snapshots.data}
+        />
       )}
     </section>
   );
