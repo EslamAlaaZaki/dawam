@@ -11,6 +11,8 @@ writes the immutable ``Snapshot*`` rows that point at them:
 - objects missing from the catalog become ``source_removed``, or ``out_of_scope`` when
   their Database Schema is no longer allowed; nothing is ever deleted, and a ``deleted``
   object (a user's soft delete) keeps that state;
+- removed objects that look like added ones are stored as rename candidates for an
+  editor to confirm (see ``renames``);
 - a catalog identical to the latest Snapshot's (same content hash) creates nothing;
 - view and routine text is stored once per content hash (``definition_texts``).
 
@@ -34,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from ..tables import (
     DefinitionTextRecord,
+    RenameCandidateRecord,
     SnapshotColumnRecord,
     SnapshotConstraintRecord,
     SnapshotDbSchemaRecord,
@@ -46,6 +49,7 @@ from ..tables import (
     SrcRoutineRecord,
     SrcTableRecord,
 )
+from . import renames
 from .connector import SourceCatalog
 
 _INSERT_BATCH = 5000
@@ -162,6 +166,8 @@ def store_catalog(
         | {r.schema for r in catalog.routines}
     )
     matched_schemas = _match(existing_schemas, schema_names, name_fold)
+    added_schemas: list[SrcDbSchemaRecord] = []
+    removed_schemas: list[SrcDbSchemaRecord] = []
     schemas: dict[str, SrcDbSchemaRecord] = {}
     for name in schema_names:
         schema = matched_schemas.get(name)
@@ -170,6 +176,7 @@ def store_catalog(
                 id=uuid.uuid4(), source_system_id=source_system_id, name=name, status="present"
             )
             db.add(schema)
+            added_schemas.append(schema)
         else:
             schema.name = name
             _bring_back(schema)
@@ -182,6 +189,8 @@ def store_catalog(
 
     for schema in existing_schemas.values():
         if id(schema) not in seen:
+            if schema.status == "present":
+                removed_schemas.append(schema)
             _set_missing(schema, missing_status(schema))
 
     # -- Tables and views ---------------------------------------------------------------
@@ -205,6 +214,7 @@ def store_catalog(
     incoming_tables = {(schemas[t.schema].id, t.name): t for t in catalog.tables}
     matched_tables = _match(existing_tables, incoming_tables, keyed_fold(1))
     tables: dict[tuple[str, str], SrcTableRecord] = {}
+    added_tables: list[tuple[SrcTableRecord, Any]] = []
     view_hashes: dict[tuple[str, str], str | None] = {}
     for key, info in incoming_tables.items():
         view_hash = keep_text(info.definition) if info.kind == "view" else None
@@ -222,6 +232,7 @@ def store_catalog(
                 version=1,
             )
             db.add(table)
+            added_tables.append((table, info))
         else:
             table.kind = info.kind
             _revise(table, info.name, definition)
@@ -229,8 +240,11 @@ def store_catalog(
         tables[(info.schema, info.name)] = table
     present_tables = {id(t) for t in tables.values()}
     table_by_id = {t.id: t for t in existing_tables.values()}
+    removed_tables: list[SrcTableRecord] = []
     for table in existing_tables.values():
         if id(table) not in present_tables:
+            if table.status == "present":
+                removed_tables.append(table)
             _set_missing(table, missing_status(schema_by_id[table.db_schema_id]))
 
     # -- Columns ------------------------------------------------------------------------
@@ -248,6 +262,7 @@ def store_catalog(
     }
     matched_columns = _match(existing_columns, incoming_columns, keyed_fold(1))
     columns: dict[tuple[uuid.UUID, str], SrcColumnRecord] = {}
+    added_columns: list[tuple[SrcColumnRecord, Any]] = []
     for key, info in incoming_columns.items():
         definition = {
             "data_type": info.data_type,
@@ -267,16 +282,20 @@ def store_catalog(
                 version=1,
             )
             db.add(column)
+            added_columns.append((column, info))
         else:
             _revise(column, info.name, definition)
             _bring_back(column)
         columns[(key[0], info.name)] = column
     present_columns = {id(c) for c in columns.values()}
+    removed_columns: list[SrcColumnRecord] = []
     for column in existing_columns.values():
         if id(column) in present_columns:
             continue
         table = table_by_id.get(column.table_id)
         if table is not None and id(table) in present_tables:
+            if column.status == "present":
+                removed_columns.append(column)
             _set_missing(column, "source_removed")
         elif table is not None:
             _set_missing(column, missing_status(schema_by_id[table.db_schema_id]))
@@ -414,6 +433,16 @@ def store_catalog(
                     "is_unique": index.is_unique,
                 }
             )
+    if latest is not None:
+        _propose_renames(
+            db,
+            snapshot=snapshot,
+            previous=latest,
+            removed=(removed_schemas, removed_tables, removed_columns),
+            added=(added_schemas, added_tables, added_columns),
+            existing_tables=existing_tables,
+            catalog=catalog,
+        )
     _insert(db, SnapshotTableRecord, table_rows)
     _insert(db, SnapshotColumnRecord, column_rows)
     _insert(db, SnapshotConstraintRecord, constraint_rows)
@@ -435,3 +464,110 @@ def store_catalog(
         ],
     )
     return snapshot
+
+
+def _propose_renames(
+    db: Session,
+    *,
+    snapshot: SnapshotRecord,
+    previous: SnapshotRecord,
+    removed: tuple[list[SrcDbSchemaRecord], list[SrcTableRecord], list[SrcColumnRecord]],
+    added: tuple[
+        list[SrcDbSchemaRecord],
+        list[tuple[SrcTableRecord, Any]],
+        list[tuple[SrcColumnRecord, Any]],
+    ],
+    existing_tables: Mapping[tuple[uuid.UUID, str], SrcTableRecord],
+    catalog: SourceCatalog,
+) -> None:
+    """Store the pairs of removed and added objects that look like renames (spec story 52a)
+    as ``suggested`` candidates of ``snapshot``."""
+    removed_schemas, removed_tables, removed_columns = removed
+    added_schemas, added_tables, added_columns = added
+    if not (removed_schemas or removed_tables or removed_columns):
+        return
+    before = db.execute(
+        sa.select(
+            SnapshotColumnRecord.src_column_id,
+            SnapshotColumnRecord.src_table_id,
+            SnapshotColumnRecord.name,
+            SnapshotColumnRecord.ordinal,
+            SnapshotColumnRecord.data_type,
+        ).where(SnapshotColumnRecord.snapshot_id == previous.id)
+    ).all()
+    by_column = {row.src_column_id: row for row in before}
+    names_by_table: dict[uuid.UUID, set[str]] = {}
+    for row in before:
+        names_by_table.setdefault(row.src_table_id, set()).add(row.name.casefold())
+    new_table_ids = {table.id for table, _ in added_tables}
+    old_tables: dict[uuid.UUID, set[str]] = {}
+    for table in existing_tables.values():
+        old_tables.setdefault(table.db_schema_id, set()).add(table.name.casefold())
+    new_tables: dict[str, set[str]] = {}
+    for info in catalog.tables:
+        new_tables.setdefault(info.schema, set()).add(info.name.casefold())
+
+    found: list[tuple[str, renames.Match]] = []
+    found += [
+        ("column", m)
+        for m in renames.column_matches(
+            [
+                renames.ColumnShape(c.id, c.table_id, c.name, row.data_type, row.ordinal)
+                for c in removed_columns
+                for row in [by_column.get(c.id)]
+                if row is not None
+            ],
+            [
+                renames.ColumnShape(c.id, c.table_id, c.name, info.data_type, info.ordinal)
+                for c, info in added_columns
+                if c.table_id not in new_table_ids
+            ],
+        )
+    ]
+    found += [
+        ("table", m)
+        for m in renames.table_matches(
+            [
+                renames.TableShape(
+                    t.id, t.db_schema_id, t.name, t.kind, frozenset(names_by_table.get(t.id, ()))
+                )
+                for t in removed_tables
+            ],
+            [
+                renames.TableShape(
+                    t.id,
+                    t.db_schema_id,
+                    t.name,
+                    t.kind,
+                    frozenset(c.name.casefold() for c in info.columns),
+                )
+                for t, info in added_tables
+            ],
+        )
+    ]
+    found += [
+        ("db_schema", m)
+        for m in renames.schema_matches(
+            [
+                renames.SchemaShape(s.id, s.name, frozenset(old_tables.get(s.id, ())))
+                for s in removed_schemas
+            ],
+            [
+                renames.SchemaShape(s.id, s.name, frozenset(new_tables.get(s.name, ())))
+                for s in added_schemas
+            ],
+        )
+    ]
+    db.add_all(
+        RenameCandidateRecord(
+            id=uuid.uuid4(),
+            snapshot_id=snapshot.id,
+            object_type=object_type,
+            old_object_id=match.old_id,
+            new_object_id=match.new_id,
+            new_name=match.new_name,
+            confidence=match.confidence,
+            status="suggested",
+        )
+        for object_type, match in found
+    )

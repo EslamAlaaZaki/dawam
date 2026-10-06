@@ -30,6 +30,7 @@ from datetime import timedelta
 from enum import Enum
 from typing import Any
 
+import sqlalchemy as sa
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
@@ -361,7 +362,35 @@ def column_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"][0]["id"]
 
 
+def rename_pair(roles: RoleClients) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """A rename candidate and its removed and added column, written straight into the
+    stand-in table (fresh per request, so confirming one does not affect the next):
+    ``(candidate_id, removed_id, added_id)``."""
+    snapshot = snapshot_id(roles)
+    table = uuid.UUID(table_id(roles))
+    removed, added, candidate = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    column = sa.text(
+        "INSERT INTO src_columns (id, table_id, name, current_definition, status, version) "
+        "VALUES (:id, :table, :name, '{}', :status, 1)"
+    )
+    with roles.app.state.engine.begin() as conn:
+        conn.execute(
+            column, {"id": removed, "table": table, "name": "old", "status": "source_removed"}
+        )
+        conn.execute(column, {"id": added, "table": table, "name": "new", "status": "present"})
+        conn.execute(
+            sa.text(
+                "INSERT INTO rename_candidates (id, snapshot_id, object_type, old_object_id, "
+                "new_object_id, new_name, confidence, status) VALUES (:id, :snapshot, 'column', "
+                ":old, :new, 'new', 0.9, 'suggested')"
+            ),
+            {"id": candidate, "snapshot": snapshot, "old": removed, "new": added},
+        )
+    return candidate, removed, added
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
+    "candidate_id": lambda roles: rename_pair(roles)[0],
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,
     "user_id": lambda roles: roles.user("non_member").id,
