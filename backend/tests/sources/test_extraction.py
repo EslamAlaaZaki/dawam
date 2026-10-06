@@ -156,6 +156,8 @@ def test_an_editor_extracts_the_full_catalog_into_a_snapshot(
         "tags": None,
         "is_sensitive": None,
         "version": None,
+        "pii_category": None,
+        "is_protected": None,
     }
     assert columns["national_id"]["comment"] == "National ID number"
     assert columns["email"]["is_nullable"] and not columns["email"]["is_pk"]
