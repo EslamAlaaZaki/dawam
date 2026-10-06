@@ -4909,6 +4909,158 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/documents/search": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Search Documents",
+        "description": "Search the Workspace's uploaded documents (any member). Full-text search with Arabic\nnormalisation, combined with vector search when the Workspace's data-sharing level\nincludes documents and its internal-only setting allows the embedding provider. Each\nresult is a cited passage: the document and its section.",
+        "operationId": "searchDocuments",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "What to look for.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "What to look for."
+          },
+          {
+            "name": "system_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this Source System.",
+              "title": "System Id"
+            },
+            "description": "Only this Source System."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/documents/reindex": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Reindex Documents",
+        "description": "Index every document of the Workspace again (owners and editors), as a background\njob: run it after the embedding model or its dimension changes.",
+        "operationId": "reindexDocuments",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReindexStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/providers": {
       "get": {
         "tags": [
@@ -6690,6 +6842,65 @@
         ],
         "title": "DeleteWorkspaceRequest"
       },
+      "DocumentPassage": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "File Id"
+          },
+          "document": {
+            "type": "string",
+            "title": "Document",
+            "description": "The document's name: the citation's first half."
+          },
+          "section": {
+            "type": "string",
+            "title": "Section",
+            "description": "The heading (or `Part N`) the passage sits under."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Relative rank: higher is a better match."
+          },
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "document",
+          "section",
+          "text",
+          "score",
+          "source_system_id"
+        ],
+        "title": "DocumentPassage"
+      },
+      "DocumentSearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentPassage"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DocumentSearchResults"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -8165,6 +8376,26 @@
           "open"
         ],
         "title": "RegistrationStatus"
+      },
+      "ReindexStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `reindex_documents` job: follow it at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "ReindexStarted"
       },
       "RemovedColumn": {
         "properties": {

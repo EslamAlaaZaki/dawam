@@ -1357,6 +1357,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/documents/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Documents
+         * @description Search the Workspace's uploaded documents (any member). Full-text search with Arabic
+         *     normalisation, combined with vector search when the Workspace's data-sharing level
+         *     includes documents and its internal-only setting allows the embedding provider. Each
+         *     result is a cited passage: the document and its section.
+         */
+        get: operations["searchDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/documents/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Documents
+         * @description Index every document of the Workspace again (owners and editors), as a background
+         *     job: run it after the embedding model or its dimension changes.
+         */
+        post: operations["reindexDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/llm/providers": {
         parameters: {
             query?: never;
@@ -2066,6 +2110,41 @@ export interface components {
              */
             name: string;
         };
+        /** DocumentPassage */
+        DocumentPassage: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /**
+             * Document
+             * @description The document's name: the citation's first half.
+             */
+            document: string;
+            /**
+             * Section
+             * @description The heading (or `Part N`) the passage sits under.
+             */
+            section: string;
+            /** Text */
+            text: string;
+            /**
+             * Score
+             * @description Relative rank: higher is a better match.
+             */
+            score: number;
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
+        };
+        /** DocumentSearchResults */
+        DocumentSearchResults: {
+            /** Items */
+            items: components["schemas"]["DocumentPassage"][];
+        };
         /** ErrorBody */
         ErrorBody: {
             /**
@@ -2769,6 +2848,17 @@ export interface components {
              * @description Whether visitors may sign up on their own.
              */
             open: boolean;
+        };
+        /** ReindexStarted */
+        ReindexStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `reindex_documents` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /** Status */
+            status: string;
         };
         /** RemovedColumn */
         RemovedColumn: {
@@ -7200,6 +7290,92 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchDocuments: {
+        parameters: {
+            query?: {
+                /** @description What to look for. */
+                q?: string;
+                /** @description Only this Source System. */
+                system_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSearchResults"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindexDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexStarted"];
                 };
             };
             /** @description Validation error */
