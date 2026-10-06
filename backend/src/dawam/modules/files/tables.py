@@ -52,3 +52,56 @@ class WorkspaceFileRecord(Base):
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+TITLE_MAX_LENGTH = 200
+URL_MAX_LENGTH = 2000
+NOTE_MAX_LENGTH = 2000
+LINK_KINDS = ("repo", "jira", "confluence", "other")
+OBJECT_TYPES = ("table", "column")
+
+
+class SourceLinkRecord(Base):
+    """A link by URL from a Source System to a repository, Jira issue, Confluence page
+    or anything else (spec §6.17, story 65)."""
+
+    __tablename__ = "source_links"
+    __table_args__ = (
+        sa.CheckConstraint("kind IN ('repo', 'jira', 'confluence', 'other')", name="kind"),
+        sa.Index("ix_source_links_system_title", "source_system_id", "title", "id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_system_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source_systems.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(sa.String(16))
+    title: Mapped[str] = mapped_column(sa.String(TITLE_MAX_LENGTH))
+    url: Mapped[str] = mapped_column(sa.String(URL_MAX_LENGTH))
+    note: Mapped[str] = mapped_column(sa.String(NOTE_MAX_LENGTH))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class FileObjectLinkRecord(Base):
+    """A document linked to a table or column, so it shows on that page (story 66)."""
+
+    __tablename__ = "file_object_links"
+    __table_args__ = (
+        sa.CheckConstraint("object_type IN ('table', 'column')", name="object_type"),
+        sa.Index("ix_file_object_links_object", "object_type", "object_id"),
+    )
+
+    file_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspace_files.id", ondelete="CASCADE"), primary_key=True
+    )
+    object_type: Mapped[str] = mapped_column(sa.String(16), primary_key=True)
+    object_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    """A Source Table or Column (no foreign key: it depends on ``object_type``)."""
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

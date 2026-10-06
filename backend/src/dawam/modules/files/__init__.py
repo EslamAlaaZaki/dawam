@@ -11,10 +11,39 @@ Public interface. Other modules import only what is re-exported here:
 - ``router``: ``GET|POST /workspaces/{workspace_id}/systems/{system_id}/files``,
   ``GET /workspaces/{workspace_id}/files/{file_id}/download``.
 
-Owns the ``workspace_files`` table.
+- ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
+  Confluence pages by URL (``SourceLink``, story 65), and link documents to tables and
+  columns (``FileObjectLink``, story 66); any member lists them, and the documents linked
+  to a table or column. Editing uses the ``EDIT_SOURCE_SYSTEM`` rule for links and the
+  ``UPLOAD_FILE`` rule for document links.
+- the ``router`` also serves ``GET|POST /workspaces/{workspace_id}/systems/{system_id}/links``,
+  ``PATCH|DELETE .../links/{source_link_id}``,
+  ``GET|POST /workspaces/{workspace_id}/files/{file_id}/object-links``,
+  ``DELETE .../object-links/{object_type}/{object_id}`` and
+  ``GET /workspaces/{workspace_id}/objects/{object_type}/{object_id}/documents``.
+
+Owns the ``workspace_files``, ``source_links`` and ``file_object_links`` tables.
 """
 
-from .api import router
+from fastapi import APIRouter
+
+from .api import router as _files_router
+from .link_api import router as _links_router
+from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .service import FileContent, FileService, WorkspaceFile, WorkspaceFilePage
 
-__all__ = ["FileContent", "FileService", "WorkspaceFile", "WorkspaceFilePage", "router"]
+router = APIRouter()
+router.include_router(_files_router)
+router.include_router(_links_router)
+
+__all__ = [
+    "FileContent",
+    "FileObjectLink",
+    "FileService",
+    "LinkService",
+    "SourceLink",
+    "SourceLinkPage",
+    "WorkspaceFile",
+    "WorkspaceFilePage",
+    "router",
+]
