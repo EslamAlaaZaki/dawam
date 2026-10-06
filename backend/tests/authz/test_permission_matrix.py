@@ -767,6 +767,40 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=save_a_connection,
     ),
+    # Schema Import (stories 47, 49-51): owners and editors download the template, validate
+    # and upload, and ask for a Connection; every member sees the disabled features.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template",
+        "Run extraction / Schema Import / profiling (the template)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/validate",
+        "Run extraction / Schema Import / profiling (validate an upload)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        files=lambda roles: {"files": ("tables.csv", b"schema,table,kind\n", "text/csv")},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/upload",
+        "Run extraction / Schema Import / profiling (upload an import)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        files=lambda roles: {"files": ("tables.csv", b"schema,table,kind\n", "text/csv")},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import",
+        "Open Workspace content (what an imported system cannot do)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/connection-requests",
+        "Run extraction / Schema Import / profiling (ask for a Connection)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/snapshots",

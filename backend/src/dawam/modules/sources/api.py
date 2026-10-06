@@ -19,6 +19,7 @@ from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
 from .connection_api import router as connection_router
 from .enhancement_api import router as enhancement_router
+from .import_api import router as import_router
 from .service import SourceSystem as SourceSystemView
 from .service import SourceSystemService
 from .snapshot_api import router as snapshot_router
@@ -169,3 +170,4 @@ def update_source_system(
 router.include_router(connection_router, prefix="/{system_id}/connection")
 router.include_router(snapshot_router, prefix="/{system_id}")
 router.include_router(enhancement_router, prefix="/{system_id}")
+router.include_router(import_router, prefix="/{system_id}/import")
