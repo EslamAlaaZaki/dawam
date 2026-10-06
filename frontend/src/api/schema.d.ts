@@ -955,6 +955,91 @@ export interface paths {
         patch: operations["updateColumnEnhancements"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rename Candidates
+         * @description Removed columns, tables and Database Schemas that look like added ones (any
+         *     member): the open candidates of the latest Snapshot.
+         */
+        get: operations["listRenameCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Rename
+         * @description Confirm a rename (owners and editors): the removed object keeps its identity,
+         *     descriptions and mappings under the new name. Audited. 409 `rename_conflict` if it was
+         *     already decided or an object changed.
+         */
+        post: operations["confirmRename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Rename
+         * @description Reject a rename (owners and editors): the removal and the addition stand.
+         */
+        post: operations["rejectRename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/renames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Removed Object
+         * @description Merge a removed object into an added one of the same kind, for a rename noticed
+         *     late (owners and editors); audited. 409 `rename_conflict` if they are not a removed
+         *     and an added object of the same kind (and, for columns, table).
+         */
+        post: operations["mergeRemovedObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -3070,6 +3155,26 @@ export interface components {
              */
             items: components["schemas"]["Member"][];
         };
+        /** MergeRequest */
+        MergeRequest: {
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "db_schema" | "table" | "column";
+            /**
+             * Removed Id
+             * Format: uuid
+             * @description The Source Object that is gone from the source.
+             */
+            removed_id: string;
+            /**
+             * Added Id
+             * Format: uuid
+             * @description The Source Object of the same kind that was added.
+             */
+            added_id: string;
+        };
         /** NamingRules */
         NamingRules: {
             /**
@@ -3291,6 +3396,82 @@ export interface components {
              * @enum {string}
              */
             status: "source_removed" | "out_of_scope";
+        };
+        /** RenameCandidate */
+        RenameCandidate: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             * @description The Snapshot that proposed it.
+             */
+            snapshot_id: string;
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "db_schema" | "table" | "column";
+            /**
+             * Old Object Id
+             * Format: uuid
+             * @description The removed Source Object.
+             */
+            old_object_id: string;
+            /** Old Name */
+            old_name: string;
+            /**
+             * Location
+             * @description A table's Database Schema; a column's `schema.table`.
+             */
+            location: string | null;
+            /**
+             * New Object Id
+             * Format: uuid
+             * @description The added Source Object.
+             */
+            new_object_id: string;
+            /** New Name */
+            new_name: string;
+            /**
+             * Confidence
+             * @description 0 to 1: how alike the two objects are.
+             */
+            confidence: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "confirmed" | "rejected";
+        };
+        /** RenameCandidateList */
+        RenameCandidateList: {
+            /**
+             * Items
+             * @description The open candidates of the latest Snapshot, most confident first.
+             */
+            items: components["schemas"]["RenameCandidate"][];
+        };
+        /** RenamedObject */
+        RenamedObject: {
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "db_schema" | "table" | "column";
+            /**
+             * Id
+             * Format: uuid
+             * @description The surviving Source Object: the one that was removed.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Previous Name */
+            previous_name: string;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -6666,6 +6847,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ColumnEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listRenameCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameCandidateList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirmRename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenamedObject"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectRename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    mergeRemovedObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenamedObject"];
                 };
             };
             /** @description Validation error */

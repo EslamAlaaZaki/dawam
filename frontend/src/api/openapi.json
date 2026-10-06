@@ -3281,6 +3281,289 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "List Rename Candidates",
+        "description": "Removed columns, tables and Database Schemas that look like added ones (any\nmember): the open candidates of the latest Snapshot.",
+        "operationId": "listRenameCandidates",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameCandidateList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/confirm": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Confirm Rename",
+        "description": "Confirm a rename (owners and editors): the removed object keeps its identity,\ndescriptions and mappings under the new name. Audited. 409 `rename_conflict` if it was\nalready decided or an object changed.",
+        "operationId": "confirmRename",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/rename-candidates/{candidate_id}/reject": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Reject Rename",
+        "description": "Reject a rename (owners and editors): the removal and the addition stand.",
+        "operationId": "rejectRename",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/renames": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Merge Removed Object",
+        "description": "Merge a removed object into an added one of the same kind, for a rename noticed\nlate (owners and editors); audited. 409 `rename_conflict` if they are not a removed\nand an added object of the same kind (and, for columns, table).",
+        "operationId": "mergeRemovedObject",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -9612,6 +9895,38 @@
         ],
         "title": "MemberList"
       },
+      "MergeRequest": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "removed_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Removed Id",
+            "description": "The Source Object that is gone from the source."
+          },
+          "added_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Added Id",
+            "description": "The Source Object of the same kind that was added."
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_type",
+          "removed_id",
+          "added_id"
+        ],
+        "title": "MergeRequest"
+      },
       "NamingRules": {
         "properties": {
           "case_style": {
@@ -10073,6 +10388,142 @@
           "status"
         ],
         "title": "RemovedTable"
+      },
+      "RenameCandidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "description": "The Snapshot that proposed it."
+          },
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "old_object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Old Object Id",
+            "description": "The removed Source Object."
+          },
+          "old_name": {
+            "type": "string",
+            "title": "Old Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location",
+            "description": "A table's Database Schema; a column's `schema.table`."
+          },
+          "new_object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "New Object Id",
+            "description": "The added Source Object."
+          },
+          "new_name": {
+            "type": "string",
+            "title": "New Name"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0 to 1: how alike the two objects are."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "confirmed",
+              "rejected"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "snapshot_id",
+          "object_type",
+          "old_object_id",
+          "old_name",
+          "location",
+          "new_object_id",
+          "new_name",
+          "confidence",
+          "status"
+        ],
+        "title": "RenameCandidate"
+      },
+      "RenameCandidateList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RenameCandidate"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The open candidates of the latest Snapshot, most confident first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RenameCandidateList"
+      },
+      "RenamedObject": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "db_schema",
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The surviving Source Object: the one that was removed."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "previous_name": {
+            "type": "string",
+            "title": "Previous Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_type",
+          "id",
+          "name",
+          "previous_name"
+        ],
+        "title": "RenamedObject"
       },
       "ResetPasswordRequest": {
         "properties": {
