@@ -4309,6 +4309,210 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/audit": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "List Audit",
+        "description": "The audit trail of the Workspace's critical entities, newest first, with old and\nnew values (any member, viewers included; 404 for anyone else). Entries are\nread-only: old values are re-entered by hand as a new change, never restored.\nConnection entries never hold secrets, and show host and username to owners only.",
+        "operationId": "listAudit",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One object.",
+              "title": "Entity Id"
+            },
+            "description": "One object."
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "name": "via",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "user",
+                    "ai",
+                    "regeneration",
+                    "sync",
+                    "propagation",
+                    "import",
+                    "platform_change",
+                    "system_code_change"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Via"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From this moment, inclusive.",
+              "title": "Since"
+            },
+            "description": "From this moment, inclusive."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Until this moment, inclusive.",
+              "title": "Until"
+            },
+            "description": "Until this moment, inclusive."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/kpis": {
       "get": {
         "tags": [
@@ -7134,6 +7338,123 @@
           "next_cursor"
         ],
         "title": "AdminWorkspacePage"
+      },
+      "AuditEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityActor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who did it; null if that user is gone."
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "user",
+              "ai",
+              "regeneration",
+              "sync",
+              "propagation",
+              "import",
+              "platform_change",
+              "system_code_change"
+            ],
+            "title": "Via",
+            "description": "How: by hand, the AI, a sync, an import, ..."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "What kind of entity changed: `kpi`, `member`, ..."
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old",
+            "description": "The changed fields before the change, so they can be re-entered by hand; null for a create."
+          },
+          "new": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New",
+            "description": "The fields after the change; null for a delete."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "actor",
+          "via",
+          "entity_type",
+          "entity_id",
+          "old",
+          "new",
+          "created_at"
+        ],
+        "title": "AuditEntry"
+      },
+      "AuditPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditPage"
       },
       "Body_replaceFile": {
         "properties": {
