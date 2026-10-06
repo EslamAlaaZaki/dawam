@@ -2828,9 +2828,9 @@ export interface components {
             name: string;
             /**
              * Adapter
-             * @constant
+             * @enum {string}
              */
-            adapter: "openai_compatible";
+            adapter: "openai_compatible" | "anthropic";
             /** Base Url */
             base_url: string;
             /**
@@ -2870,12 +2870,12 @@ export interface components {
             /**
              * Adapter
              * @default openai_compatible
-             * @constant
+             * @enum {string}
              */
-            adapter: "openai_compatible";
+            adapter: "openai_compatible" | "anthropic";
             /**
              * Base Url
-             * @description Including the version prefix, e.g. `http://vllm:8000/v1`.
+             * @description Including the version prefix, e.g. `http://vllm:8000/v1` or `https://api.anthropic.com/v1`.
              */
             base_url: string;
             /**

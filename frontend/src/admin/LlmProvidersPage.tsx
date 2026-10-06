@@ -68,7 +68,7 @@ function ProviderForm() {
     create.mutate(
       {
         name: String(data.get("name") ?? "").trim(),
-        adapter: "openai_compatible",
+        adapter: data.get("adapter") === "anthropic" ? "anthropic" : "openai_compatible",
         base_url: String(data.get("base_url") ?? "").trim(),
         api_key: apiKey || undefined,
         internal: data.get("internal") === "true",
@@ -86,7 +86,14 @@ function ProviderForm() {
         <input name="name" required />
       </label>
       <label>
-        Base URL (with its version prefix, e.g. http://vllm:8000/v1)
+        Type
+        <select name="adapter" defaultValue="openai_compatible">
+          <option value="openai_compatible">OpenAI-compatible (vLLM, Ollama, OpenAI, ...)</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+        </select>
+      </label>
+      <label>
+        Base URL (with its version prefix, e.g. http://vllm:8000/v1 or https://api.anthropic.com/v1)
         <input name="base_url" type="url" required />
       </label>
       <label>

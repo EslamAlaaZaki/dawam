@@ -12,11 +12,7 @@ from collections.abc import Iterator, Sequence
 from typing import Any
 
 from ..gateway import (
-    AUTH,
-    BAD_REQUEST,
-    CONTEXT_OVERFLOW,
     INVALID_RESPONSE,
-    RATE_LIMIT,
     UNAVAILABLE,
     ChatEvent,
     Done,
@@ -29,18 +25,8 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
+from .wire import detail, error_for, json_body
 
-MAX_DETAIL_CHARS = 300
-_CONTEXT_MARKERS = (
-    "context_length_exceeded",
-    "context length",
-    "context window",
-    "maximum context",
-    "max_model_len",
-    "too many tokens",
-    "prompt is too long",
-    "reduce the length",
-)
 _CONTEXT_WINDOW_KEYS = ("max_model_len", "context_length", "context_window", "max_context_length")
 
 
@@ -87,7 +73,7 @@ class OpenAICompatibleAdapter:
             if stream:
                 yield from _stream_events(response)
             else:
-                yield from _reply_events(_json(response))
+                yield from _reply_events(json_body(response))
         except OSError:
             raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
         finally:
@@ -96,7 +82,7 @@ class OpenAICompatibleAdapter:
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         response = self._post("/embeddings", {"model": model, "input": list(texts)})
         try:
-            data = _json(response)
+            data = json_body(response)
         except OSError:
             raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
         finally:
@@ -120,7 +106,7 @@ class OpenAICompatibleAdapter:
         try:
             if response.status != 200:
                 return None
-            data = _json(response)
+            data = json_body(response)
         except (LlmError, OSError):
             return None
         finally:
@@ -140,7 +126,7 @@ class OpenAICompatibleAdapter:
         response = self._send("POST", path, json.dumps(body).encode("utf-8"))
         if response.status >= 400:
             try:
-                raise _error_for(response)
+                raise error_for(response)
             finally:
                 response.close()
         return response
@@ -184,58 +170,6 @@ def _wire_message(message: Message) -> dict[str, Any]:
     if message.tool_call_id is not None:
         wire["tool_call_id"] = message.tool_call_id
     return wire
-
-
-def _json(response: HttpResponse) -> Any:
-    try:
-        return json.loads(response.read())
-    except ValueError:
-        raise LlmError(INVALID_RESPONSE, "The provider's reply was not valid JSON.") from None
-
-
-def _detail(payload: Any) -> str:
-    """The provider's own explanation, trimmed (it never holds our API key)."""
-    error = payload.get("error") if isinstance(payload, dict) else None
-    message = error.get("message") if isinstance(error, dict) else error
-    if not isinstance(message, str) and isinstance(payload, dict):
-        message = payload.get("message") or payload.get("detail")
-    return message[:MAX_DETAIL_CHARS] if isinstance(message, str) else ""
-
-
-def _error_for(response: HttpResponse) -> LlmError:
-    try:
-        raw = response.read().decode("utf-8", "replace")
-    except OSError:
-        raw = ""
-    try:
-        payload: Any = json.loads(raw)
-    except ValueError:
-        payload = None
-    detail = _detail(payload)
-    suffix = f" ({detail})" if detail else ""
-    status = response.status
-    if status in (401, 403):
-        return LlmError(AUTH, "The provider rejected the API key." + suffix)
-    if status == 429:
-        return LlmError(
-            RATE_LIMIT,
-            "The provider is rate limiting requests." + suffix,
-            retry_after=_retry_after(response.headers.get("retry-after")),
-        )
-    lowered = (raw or "").lower()
-    if status in (400, 413, 422) and any(marker in lowered for marker in _CONTEXT_MARKERS):
-        return LlmError(CONTEXT_OVERFLOW, "The conversation is too long for the model." + suffix)
-    if status >= 500:
-        return LlmError(UNAVAILABLE, f"The provider failed (HTTP {status})." + suffix)
-    return LlmError(BAD_REQUEST, f"The provider refused the request (HTTP {status})." + suffix)
-
-
-def _retry_after(value: str | None) -> float | None:
-    try:
-        seconds = float(value) if value is not None else None
-    except ValueError:
-        return None
-    return seconds if seconds is not None and seconds >= 0 else None
 
 
 def _usage(raw: Any) -> Usage | None:
@@ -293,7 +227,7 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
         if not isinstance(chunk, dict):
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.")
         if "error" in chunk:
-            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + _detail(chunk))
+            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(chunk))
         usage = _usage(chunk.get("usage")) or usage
         for choice in chunk.get("choices") or []:
             delta = choice.get("delta") or {}

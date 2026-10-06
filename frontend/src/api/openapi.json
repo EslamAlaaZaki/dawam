@@ -8983,7 +8983,10 @@
           },
           "adapter": {
             "type": "string",
-            "const": "openai_compatible",
+            "enum": [
+              "openai_compatible",
+              "anthropic"
+            ],
             "title": "Adapter"
           },
           "base_url": {
@@ -9062,7 +9065,10 @@
           },
           "adapter": {
             "type": "string",
-            "const": "openai_compatible",
+            "enum": [
+              "openai_compatible",
+              "anthropic"
+            ],
             "title": "Adapter",
             "default": "openai_compatible"
           },
@@ -9070,7 +9076,7 @@
             "type": "string",
             "maxLength": 1000,
             "title": "Base Url",
-            "description": "Including the version prefix, e.g. `http://vllm:8000/v1`."
+            "description": "Including the version prefix, e.g. `http://vllm:8000/v1` or `https://api.anthropic.com/v1`."
           },
           "api_key": {
             "anyOf": [
