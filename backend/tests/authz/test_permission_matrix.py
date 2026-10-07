@@ -1075,6 +1075,13 @@ ROWS: list[Row] = [
         "Open Workspace content (the inferred relationships)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    # The Source System dashboard (story 63): every member reads the counts.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/summary",
+        "Open Workspace content (the Source System dashboard)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
     Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept",

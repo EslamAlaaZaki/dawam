@@ -38,6 +38,9 @@ Public interface. Other modules import only what is re-exported here:
   text, and (live Connection and profiling only) value overlap; those at or above the
   threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
   Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
+- ``SourceSummaryService``: any member reads a Source System's dashboard (``SourceSummary``: table
+  count, documented %, profiled %, relationships and PII found, computed on read) at
+  ``GET .../systems/{system_id}/summary``; ``source_analysis`` fills the stage-progress port.
 - ``PiiRuleService``: owners add, edit and delete the Workspace's custom PII rules (name
   keywords and/or a regex, a category and a confidence) and switch built-in rules off or on;
   built-in rules are never edited. ``internal.pii.load_rule_set`` feeds them to the name scan
@@ -113,6 +116,7 @@ from .snapshot_service import (
     SnapshotSummary,
     SourceSchema,
 )
+from .summary_service import SourceSummary, SourceSummaryService
 
 router = APIRouter()
 router.include_router(_systems_router)
@@ -153,6 +157,8 @@ __all__ = [
     "SnapshotService",
     "SnapshotSummary",
     "SourceSchema",
+    "SourceSummary",
+    "SourceSummaryService",
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",

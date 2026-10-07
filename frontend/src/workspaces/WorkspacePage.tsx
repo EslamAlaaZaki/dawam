@@ -24,6 +24,7 @@ import { LifecyclePanel } from "./LifecyclePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
+import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
@@ -187,11 +188,14 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               ownerName="the Data Warehouse"
             />
           ) : openSystem ? (
-            <SystemDetails
-              workspace={workspace.data}
-              system={openSystem}
-              reload={() => systems.refetch()}
-            />
+            <>
+              <SourceSummaryPanel workspaceId={workspaceId} system={openSystem} />
+              <SystemDetails
+                workspace={workspace.data}
+                system={openSystem}
+                reload={() => systems.refetch()}
+              />
+            </>
           ) : connectionSystem ? (
             <ConnectionPanel
               workspace={workspace.data}

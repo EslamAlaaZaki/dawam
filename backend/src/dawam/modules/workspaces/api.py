@@ -44,6 +44,7 @@ def workspace_service(request: Request) -> WorkspaceService:
         clock=clock,
         events=SecurityEventRecorder(state.engine, clock=clock),
         on_archived=getattr(state, "on_workspace_archived", None),
+        source_analysis=getattr(state, "source_analysis", None),
     )
 
 

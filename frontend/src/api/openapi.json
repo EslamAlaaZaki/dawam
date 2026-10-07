@@ -5492,6 +5492,71 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/summary": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Source Summary",
+        "description": "The Source System dashboard: counts computed from the Source Schema, profiles,\nrelationships and PII findings (any member; never a value).",
+        "operationId": "getSourceSummary",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/pii-rules": {
       "get": {
         "tags": [
@@ -17014,6 +17079,101 @@
           "removed_columns"
         ],
         "title": "SourceSchema"
+      },
+      "SourceSummary": {
+        "properties": {
+          "system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "System Id"
+          },
+          "has_snapshot": {
+            "type": "boolean",
+            "title": "Has Snapshot",
+            "description": "False until the first Snapshot (extraction or import)."
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count",
+            "description": "Tables and views in the latest Snapshot."
+          },
+          "documented_tables": {
+            "type": "integer",
+            "title": "Documented Tables",
+            "description": "Of them, those with a description."
+          },
+          "documented_pct": {
+            "type": "number",
+            "title": "Documented Pct",
+            "description": "0 to 100; 0 when there are no tables."
+          },
+          "profiled_tables": {
+            "type": "integer",
+            "title": "Profiled Tables",
+            "description": "Of them, those with at least one column profile."
+          },
+          "profiled_pct": {
+            "type": "number",
+            "title": "Profiled Pct",
+            "description": "0 to 100; 0 when there are no tables."
+          },
+          "relationships_found": {
+            "type": "integer",
+            "title": "Relationships Found",
+            "description": "Suggested and accepted relationships."
+          },
+          "relationships_accepted": {
+            "type": "integer",
+            "title": "Relationships Accepted"
+          },
+          "relationships_to_review": {
+            "type": "integer",
+            "title": "Relationships To Review",
+            "description": "Suggested ones waiting for a decision."
+          },
+          "pii_found": {
+            "type": "integer",
+            "title": "Pii Found",
+            "description": "Columns with a suggested or confirmed PII finding."
+          },
+          "pii_confirmed": {
+            "type": "integer",
+            "title": "Pii Confirmed"
+          },
+          "pii_to_review": {
+            "type": "integer",
+            "title": "Pii To Review",
+            "description": "Columns whose finding is still suggested."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "in_progress",
+              "complete"
+            ],
+            "title": "Status",
+            "description": "Source Analysis: `complete` once every table is documented and profiled and no PII finding or relationship waits for review."
+          }
+        },
+        "type": "object",
+        "required": [
+          "system_id",
+          "has_snapshot",
+          "table_count",
+          "documented_tables",
+          "documented_pct",
+          "profiled_tables",
+          "profiled_pct",
+          "relationships_found",
+          "relationships_accepted",
+          "relationships_to_review",
+          "pii_found",
+          "pii_confirmed",
+          "pii_to_review",
+          "status"
+        ],
+        "title": "SourceSummary"
       },
       "SourceSystem": {
         "properties": {
