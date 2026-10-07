@@ -1938,6 +1938,565 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "List Tables",
+        "description": "The DW Schema's tables, optionally of one Layer (any member). Empty before the\nData Warehouse is set up.",
+        "operationId": "listDwTables",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "staging",
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Layer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTableList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Create Table",
+        "description": "Create a Core or Mart fact, dimension or bridge (editors and owners). A fact needs a\ngrain and a fact type. A dimension gets a surrogate key and an unknown member (key -1);\nan SCD2 dimension gets the housekeeping columns; a bridge gets its group key. 422\n`invalid_model`; 409 `name_taken`; 404 `not_set_up`.",
+        "operationId": "createDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDwTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Get Table",
+        "description": "A table with its columns (any member).",
+        "operationId": "getDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Update Table",
+        "description": "Change a table (editors and owners); fields left out stay as they are. 409\n`version_conflict` if `version` is stale; 422 `invalid_model`.",
+        "operationId": "updateDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDwTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Delete Table",
+        "description": "Delete a table and its columns (editors and owners). 409 `table_referenced` while\nanother table's foreign key points at it.",
+        "operationId": "deleteDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Create Column",
+        "description": "Add a column (editors and owners). A measure sits on a fact and may declare its\nadditivity; a foreign key references a dimension, with an optional role name. 422\n`invalid_model`; 409 `name_taken`.",
+        "operationId": "createDwColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDwColumnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwColumn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}": {
+      "patch": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Update Column",
+        "description": "Change a column (editors and owners); fields left out stay as they are, null\nclears an optional one. 409 `version_conflict` if `version` is stale; 422\n`system_column` for an SCD2 housekeeping column.",
+        "operationId": "updateDwColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          },
+          {
+            "name": "dw_column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDwColumnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwColumn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Delete Column",
+        "description": "Delete a column (editors and owners); not an SCD2 housekeeping one.",
+        "operationId": "deleteDwColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          },
+          {
+            "name": "dw_column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Column Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/data-warehouse/platforms": {
       "get": {
         "tags": [
@@ -7808,6 +8367,7 @@
           "workspace.leave",
           "data_warehouse.set_up",
           "data_warehouse.change_platform",
+          "dw_schema.edit",
           "source_system.create",
           "source_system.edit",
           "source_system.change_code",
@@ -8817,6 +9377,237 @@
         ],
         "title": "ConnectionTestResult"
       },
+      "CreateDwColumnRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "data_type": {
+            "$ref": "#/components/schemas/DwDataType"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "sk",
+              "nk",
+              "fk",
+              "measure",
+              "attribute",
+              "degenerate_dimension",
+              "audit",
+              "scd_valid_from",
+              "scd_valid_to",
+              "scd_current_flag",
+              "row_hash"
+            ],
+            "title": "Role"
+          },
+          "is_nullable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Nullable"
+          },
+          "additivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "additive",
+                  "semi_additive",
+                  "non_additive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additivity",
+            "description": "For a measure."
+          },
+          "scd_type_override": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type Override",
+            "description": "For a dimension attribute."
+          },
+          "references_table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "References Table Id",
+            "description": "Required for a foreign key."
+          },
+          "role_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Name",
+            "description": "For a role-playing foreign key."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "semantic_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "data_type",
+          "role"
+        ],
+        "title": "CreateDwColumnRequest"
+      },
+      "CreateDwTableRequest": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer",
+            "description": "`core` or `mart`."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fact",
+              "dimension",
+              "bridge"
+            ],
+            "title": "Kind"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain",
+            "description": "Required for a fact: what one row stands for."
+          },
+          "fact_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "transactional",
+                  "periodic_snapshot",
+                  "accumulating_snapshot",
+                  "factless"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Type",
+            "description": "Required for a fact."
+          },
+          "is_aggregate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Aggregate"
+          },
+          "scd_type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type",
+            "description": "A dimension's SCD type; default 1."
+          },
+          "is_conformed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Conformed"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "name",
+          "kind"
+        ],
+        "title": "CreateDwTableRequest"
+      },
       "CreateKpiRequest": {
         "properties": {
           "name": {
@@ -9334,6 +10125,481 @@
           "items"
         ],
         "title": "DocumentSearchResults"
+      },
+      "DwColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "data_type": {
+            "$ref": "#/components/schemas/DwDataType"
+          },
+          "is_nullable": {
+            "type": "boolean",
+            "title": "Is Nullable"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "sk",
+              "nk",
+              "fk",
+              "measure",
+              "attribute",
+              "degenerate_dimension",
+              "audit",
+              "scd_valid_from",
+              "scd_valid_to",
+              "scd_current_flag",
+              "row_hash"
+            ],
+            "title": "Role"
+          },
+          "additivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "additive",
+                  "semi_additive",
+                  "non_additive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additivity"
+          },
+          "scd_type_override": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type Override"
+          },
+          "references_table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "References Table Id"
+          },
+          "role_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "semantic_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Type"
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "DAWAM maintains it (SCD2 housekeeping)."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "table_id",
+          "name",
+          "ordinal",
+          "data_type",
+          "is_nullable",
+          "role",
+          "additivity",
+          "scd_type_override",
+          "references_table_id",
+          "role_name",
+          "description",
+          "semantic_type",
+          "is_system",
+          "version"
+        ],
+        "title": "DwColumn"
+      },
+      "DwDataType": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "E.g. integer, bigint, decimal, string, date, timestamp."
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length",
+            "description": "For char, string and binary."
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision",
+            "description": "For decimal."
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale",
+            "description": "For decimal."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "DwDataType",
+        "description": "A neutral data type, translated to the target platform only when DDL is produced."
+      },
+      "DwTable": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "fact_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "transactional",
+                  "periodic_snapshot",
+                  "accumulating_snapshot",
+                  "factless"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Type"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain"
+          },
+          "is_aggregate": {
+            "type": "boolean",
+            "title": "Is Aggregate"
+          },
+          "scd_type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type",
+            "description": "A dimension's SCD type (0, 1 or 2)."
+          },
+          "is_conformed": {
+            "type": "boolean",
+            "title": "Is Conformed"
+          },
+          "unknown_member": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DwUnknownMember"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dimensions only."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/DwColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "layer",
+          "name",
+          "kind",
+          "fact_type",
+          "grain",
+          "is_aggregate",
+          "scd_type",
+          "is_conformed",
+          "unknown_member",
+          "description",
+          "columns",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "DwTable"
+      },
+      "DwTableList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DwTableSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DwTableList"
+      },
+      "DwTableSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "fact_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "transactional",
+                  "periodic_snapshot",
+                  "accumulating_snapshot",
+                  "factless"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Type"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain"
+          },
+          "is_aggregate": {
+            "type": "boolean",
+            "title": "Is Aggregate"
+          },
+          "scd_type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type"
+          },
+          "is_conformed": {
+            "type": "boolean",
+            "title": "Is Conformed"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "layer",
+          "name",
+          "kind",
+          "fact_type",
+          "grain",
+          "is_aggregate",
+          "scd_type",
+          "is_conformed",
+          "description",
+          "column_count",
+          "version"
+        ],
+        "title": "DwTableSummary"
+      },
+      "DwUnknownMember": {
+        "properties": {
+          "surrogate_key": {
+            "type": "integer",
+            "title": "Surrogate Key",
+            "description": "Always -1."
+          },
+          "defaults": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Defaults",
+            "description": "Column name to its value in the unknown-member row."
+          }
+        },
+        "type": "object",
+        "required": [
+          "surrogate_key",
+          "defaults"
+        ],
+        "title": "DwUnknownMember"
       },
       "ErrorBody": {
         "properties": {
@@ -13611,6 +14877,277 @@
           "version"
         ],
         "title": "UpdateColumnEnhancements"
+      },
+      "UpdateDwColumnRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DwDataType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sk",
+                  "nk",
+                  "fk",
+                  "measure",
+                  "attribute",
+                  "degenerate_dimension",
+                  "audit",
+                  "scd_valid_from",
+                  "scd_valid_to",
+                  "scd_current_flag",
+                  "row_hash"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "is_nullable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Nullable"
+          },
+          "additivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "additive",
+                  "semi_additive",
+                  "non_additive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additivity"
+          },
+          "scd_type_override": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type Override"
+          },
+          "references_table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "References Table Id"
+          },
+          "role_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "semantic_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateDwColumnRequest"
+      },
+      "UpdateDwTableRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The `version` you last saw."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain"
+          },
+          "fact_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "transactional",
+                  "periodic_snapshot",
+                  "accumulating_snapshot",
+                  "factless"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Type"
+          },
+          "is_aggregate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Aggregate"
+          },
+          "scd_type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scd Type",
+            "description": "Making it 2 adds the SCD2 housekeeping columns."
+          },
+          "is_conformed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Conformed"
+          },
+          "unknown_member_defaults": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Member Defaults",
+            "description": "Replaces the unknown member's default values (dimensions)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateDwTableRequest"
       },
       "UpdateKpiRequest": {
         "properties": {

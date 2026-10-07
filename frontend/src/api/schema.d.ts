@@ -627,6 +627,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tables
+         * @description The DW Schema's tables, optionally of one Layer (any member). Empty before the
+         *     Data Warehouse is set up.
+         */
+        get: operations["listDwTables"];
+        put?: never;
+        /**
+         * Create Table
+         * @description Create a Core or Mart fact, dimension or bridge (editors and owners). A fact needs a
+         *     grain and a fact type. A dimension gets a surrogate key and an unknown member (key -1);
+         *     an SCD2 dimension gets the housekeeping columns; a bridge gets its group key. 422
+         *     `invalid_model`; 409 `name_taken`; 404 `not_set_up`.
+         */
+        post: operations["createDwTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table
+         * @description A table with its columns (any member).
+         */
+        get: operations["getDwTable"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Table
+         * @description Delete a table and its columns (editors and owners). 409 `table_referenced` while
+         *     another table's foreign key points at it.
+         */
+        delete: operations["deleteDwTable"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Table
+         * @description Change a table (editors and owners); fields left out stay as they are. 409
+         *     `version_conflict` if `version` is stale; 422 `invalid_model`.
+         */
+        patch: operations["updateDwTable"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Column
+         * @description Add a column (editors and owners). A measure sits on a fact and may declare its
+         *     additivity; a foreign key references a dimension, with an optional role name. 422
+         *     `invalid_model`; 409 `name_taken`.
+         */
+        post: operations["createDwColumn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Column
+         * @description Delete a column (editors and owners); not an SCD2 housekeeping one.
+         */
+        delete: operations["deleteDwColumn"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Column
+         * @description Change a column (editors and owners); fields left out stay as they are, null
+         *     clears an optional one. 409 `version_conflict` if `version` is stale; 422
+         *     `system_column` for an SCD2 housekeeping column.
+         */
+        patch: operations["updateDwColumn"];
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -2065,7 +2171,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2531,6 +2637,80 @@ export interface components {
              */
             missing_schemas: string[];
         };
+        /** CreateDwColumnRequest */
+        CreateDwColumnRequest: {
+            /** Name */
+            name: string;
+            data_type: components["schemas"]["DwDataType"];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash";
+            /** Is Nullable */
+            is_nullable?: boolean | null;
+            /**
+             * Additivity
+             * @description For a measure.
+             */
+            additivity?: ("additive" | "semi_additive" | "non_additive") | null;
+            /**
+             * Scd Type Override
+             * @description For a dimension attribute.
+             */
+            scd_type_override?: number | null;
+            /**
+             * References Table Id
+             * @description Required for a foreign key.
+             */
+            references_table_id?: string | null;
+            /**
+             * Role Name
+             * @description For a role-playing foreign key.
+             */
+            role_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Semantic Type */
+            semantic_type?: string | null;
+        };
+        /** CreateDwTableRequest */
+        CreateDwTableRequest: {
+            /**
+             * Layer
+             * @description `core` or `mart`.
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "fact" | "dimension" | "bridge";
+            /**
+             * Grain
+             * @description Required for a fact: what one row stands for.
+             */
+            grain?: string | null;
+            /**
+             * Fact Type
+             * @description Required for a fact.
+             */
+            fact_type?: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Is Aggregate */
+            is_aggregate?: boolean | null;
+            /**
+             * Scd Type
+             * @description A dimension's SCD type; default 1.
+             */
+            scd_type?: number | null;
+            /** Is Conformed */
+            is_conformed?: boolean | null;
+            /** Description */
+            description?: string | null;
+        };
         /** CreateKpiRequest */
         CreateKpiRequest: {
             /** Name */
@@ -2770,6 +2950,177 @@ export interface components {
         DocumentSearchResults: {
             /** Items */
             items: components["schemas"]["DocumentPassage"][];
+        };
+        /** DwColumn */
+        DwColumn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            data_type: components["schemas"]["DwDataType"];
+            /** Is Nullable */
+            is_nullable: boolean;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash";
+            /** Additivity */
+            additivity: ("additive" | "semi_additive" | "non_additive") | null;
+            /** Scd Type Override */
+            scd_type_override: number | null;
+            /** References Table Id */
+            references_table_id: string | null;
+            /** Role Name */
+            role_name: string | null;
+            /** Description */
+            description: string;
+            /** Semantic Type */
+            semantic_type: string | null;
+            /**
+             * Is System
+             * @description DAWAM maintains it (SCD2 housekeeping).
+             */
+            is_system: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * DwDataType
+         * @description A neutral data type, translated to the target platform only when DDL is produced.
+         */
+        DwDataType: {
+            /**
+             * Type
+             * @description E.g. integer, bigint, decimal, string, date, timestamp.
+             */
+            type: string;
+            /**
+             * Length
+             * @description For char, string and binary.
+             */
+            length?: number | null;
+            /**
+             * Precision
+             * @description For decimal.
+             */
+            precision?: number | null;
+            /**
+             * Scale
+             * @description For decimal.
+             */
+            scale?: number | null;
+        };
+        /** DwTable */
+        DwTable: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Fact Type */
+            fact_type: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Grain */
+            grain: string | null;
+            /** Is Aggregate */
+            is_aggregate: boolean;
+            /**
+             * Scd Type
+             * @description A dimension's SCD type (0, 1 or 2).
+             */
+            scd_type: number | null;
+            /** Is Conformed */
+            is_conformed: boolean;
+            /** @description Dimensions only. */
+            unknown_member: components["schemas"]["DwUnknownMember"] | null;
+            /** Description */
+            description: string;
+            /** Columns */
+            columns: components["schemas"]["DwColumn"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** DwTableList */
+        DwTableList: {
+            /** Items */
+            items: components["schemas"]["DwTableSummary"][];
+        };
+        /** DwTableSummary */
+        DwTableSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Fact Type */
+            fact_type: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Grain */
+            grain: string | null;
+            /** Is Aggregate */
+            is_aggregate: boolean;
+            /** Scd Type */
+            scd_type: number | null;
+            /** Is Conformed */
+            is_conformed: boolean;
+            /** Description */
+            description: string;
+            /** Column Count */
+            column_count: number;
+            /** Version */
+            version: number;
+        };
+        /** DwUnknownMember */
+        DwUnknownMember: {
+            /**
+             * Surrogate Key
+             * @description Always -1.
+             */
+            surrogate_key: number;
+            /**
+             * Defaults
+             * @description Column name to its value in the unknown-member row.
+             */
+            defaults: {
+                [key: string]: string | number | boolean | null;
+            };
         };
         /** ErrorBody */
         ErrorBody: {
@@ -4752,6 +5103,65 @@ export interface components {
             /** Is Sensitive */
             is_sensitive?: boolean | null;
         };
+        /** UpdateDwColumnRequest */
+        UpdateDwColumnRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /** Name */
+            name?: string | null;
+            data_type?: components["schemas"]["DwDataType"] | null;
+            /** Role */
+            role?: ("sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash") | null;
+            /** Is Nullable */
+            is_nullable?: boolean | null;
+            /** Additivity */
+            additivity?: ("additive" | "semi_additive" | "non_additive") | null;
+            /** Scd Type Override */
+            scd_type_override?: number | null;
+            /** References Table Id */
+            references_table_id?: string | null;
+            /** Role Name */
+            role_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Semantic Type */
+            semantic_type?: string | null;
+        };
+        /** UpdateDwTableRequest */
+        UpdateDwTableRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Grain */
+            grain?: string | null;
+            /** Fact Type */
+            fact_type?: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Is Aggregate */
+            is_aggregate?: boolean | null;
+            /**
+             * Scd Type
+             * @description Making it 2 adds the SCD2 housekeeping columns.
+             */
+            scd_type?: number | null;
+            /** Is Conformed */
+            is_conformed?: boolean | null;
+            /**
+             * Unknown Member Defaults
+             * @description Replaces the unknown member's default values (dimensions).
+             */
+            unknown_member_defaults?: {
+                [key: string]: string | number | boolean | null;
+            } | null;
+        };
         /** UpdateKpiRequest */
         UpdateKpiRequest: {
             /**
@@ -6422,6 +6832,348 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDwTables: {
+        parameters: {
+            query?: {
+                layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTableList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDwTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDwTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDwColumn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDwColumnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwColumn"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDwColumn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDwColumn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDwColumnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwColumn"];
+                };
             };
             /** @description Validation error */
             422: {
