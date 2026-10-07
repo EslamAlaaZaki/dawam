@@ -687,6 +687,14 @@ ROWS: list[Row] = [
         setup=ensure_data_warehouse,
         json=lambda roles: {"kind": "date"},
     ),
+    # Staging generation (spec §6.7).
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate",
+        "Edit KPIs, DW Schema, mappings (generate the Staging Layer)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+    ),
     # Column mappings and lineage (stories 99, 100, 104).
     Row(
         "GET",

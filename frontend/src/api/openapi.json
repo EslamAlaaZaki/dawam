@@ -3259,6 +3259,61 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-staging"
+        ],
+        "summary": "Generate Staging",
+        "description": "Generate the Staging Layer from the Source Schema (owners and editors; software,\nno AI): one Staging Table per source base table (and per view opted in), named\n`stg_<system code>_<database schema>_<table>`, with translated column types, the audit\ncolumns, and `direct` mappings and lineage from the source. Names and types that needed\na placeholder, a hash suffix or a lossy translation are flagged for review. Running it\nagain adds only what is new. 404 `not_set_up` before the Data Warehouse is set up.",
+        "operationId": "generateStaging",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagingResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/data-warehouse/platforms": {
       "get": {
         "tags": [
@@ -14403,6 +14458,14 @@
             "type": "array",
             "title": "Naming Violations",
             "description": "The Data Warehouse's naming rules this name breaks (a warning, not an error)."
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags",
+            "description": "What staging generation flagged on a staging column (empty otherwise)."
           }
         },
         "type": "object",
@@ -14422,7 +14485,8 @@
           "semantic_type",
           "is_system",
           "version",
-          "naming_violations"
+          "naming_violations",
+          "review_flags"
         ],
         "title": "DwColumn"
       },
@@ -14591,6 +14655,14 @@
             },
             "type": "array",
             "title": "Naming Violations"
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags",
+            "description": "What staging generation flagged on a Staging Table (empty otherwise)."
           }
         },
         "type": "object",
@@ -14610,7 +14682,8 @@
           "created_at",
           "updated_at",
           "version",
-          "naming_violations"
+          "naming_violations",
+          "review_flags"
         ],
         "title": "DwTable"
       },
@@ -16980,6 +17053,20 @@
             "maxLength": 64,
             "title": "Bridge Prefix",
             "default": "bridge_"
+          },
+          "load_ts_column": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Load Ts Column",
+            "description": "Name of the load-timestamp audit column of Staging Tables.",
+            "default": "load_ts"
+          },
+          "source_system_column": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Source System Column",
+            "description": "Name of the System Code audit column of Staging Tables.",
+            "default": "source_system"
           }
         },
         "type": "object",
@@ -18147,6 +18234,25 @@
         ],
         "title": "ResetPasswordRequest"
       },
+      "ReviewFlag": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ReviewFlag"
+      },
       "RoutineChange": {
         "properties": {
           "id": {
@@ -18613,7 +18719,9 @@
               "case_style": "lower",
               "dimension_prefix": "dim_",
               "fact_prefix": "fact_",
-              "bridge_prefix": "bridge_"
+              "bridge_prefix": "bridge_",
+              "load_ts_column": "load_ts",
+              "source_system_column": "source_system"
             }
           },
           "date_dimension": {
@@ -19563,6 +19671,18 @@
             "title": "Scd Hint",
             "description": "Set only in the Source Schema."
           },
+          "include_view_in_staging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include View In Staging",
+            "description": "Whether a view gets a Staging Table; set only in the Source Schema."
+          },
           "version": {
             "anyOf": [
               {
@@ -20027,6 +20147,83 @@
         ],
         "title": "StageProgress"
       },
+      "StagingFlag": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Name",
+            "description": "Null for a flag on the table itself."
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "column_name",
+          "code",
+          "message"
+        ],
+        "title": "StagingFlag"
+      },
+      "StagingResult": {
+        "properties": {
+          "tables_created": {
+            "type": "integer",
+            "title": "Tables Created"
+          },
+          "columns_created": {
+            "type": "integer",
+            "title": "Columns Created",
+            "description": "Including the audit columns."
+          },
+          "tables_existing": {
+            "type": "integer",
+            "title": "Tables Existing",
+            "description": "Source tables that already had a Staging Table; left as they are."
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/StagingFlag"
+            },
+            "type": "array",
+            "title": "Flags",
+            "description": "What to review, for the tables just created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables_created",
+          "columns_created",
+          "tables_existing",
+          "flags"
+        ],
+        "title": "StagingResult"
+      },
       "StartProfilingRequest": {
         "properties": {
           "table_ids": {
@@ -20272,6 +20469,10 @@
             ],
             "title": "Scd Hint"
           },
+          "include_view_in_staging": {
+            "type": "boolean",
+            "title": "Include View In Staging"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -20285,6 +20486,7 @@
           "is_sensitive",
           "classification",
           "scd_hint",
+          "include_view_in_staging",
           "version"
         ],
         "title": "TableEnhancements"
@@ -21586,6 +21788,18 @@
             ],
             "title": "Scd Hint",
             "description": "E.g. \"changes slowly, history matters\". Send null to clear it."
+          },
+          "include_view_in_staging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include View In Staging",
+            "description": "Give this view a Staging Table (views only; base tables always get one)."
           }
         },
         "type": "object",

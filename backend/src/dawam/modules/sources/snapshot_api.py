@@ -164,6 +164,10 @@ class SnapshotTable(BaseModel):
         default=None, description="Set only in the Source Schema."
     )
     scd_hint: str | None = Field(default=None, description="Set only in the Source Schema.")
+    include_view_in_staging: bool | None = Field(
+        default=None,
+        description="Whether a view gets a Staging Table; set only in the Source Schema.",
+    )
     version: int | None = Field(
         default=None,
         description="Send it back when editing the enhancements; set only in the Source Schema.",

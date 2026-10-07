@@ -97,6 +97,13 @@ class DwTableRecord(Base):
     unknown_member: Mapped[dict[str, Any] | None] = mapped_column(sa.JSON)
     """A dimension's unknown member: ``{"surrogate_key": -1, "defaults": {column: value}}``."""
     description: Mapped[str] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH), default="")
+    source_table_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
+    """A Staging Table's Source Object (``src_tables.id``, a plain id: that table is the
+    sources module's); at most one Staging Table per Source Table."""
+    review_flags: Mapped[list[dict[str, Any]]] = mapped_column(
+        sa.JSON, default=list, server_default=sa.text("'[]'")
+    )
+    """What generation flagged for review: ``[{"code", "message"}]`` (spec §6.7)."""
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -143,6 +150,12 @@ class DwColumnRecord(Base):
     semantic_type: Mapped[str | None] = mapped_column(sa.String(64))
     is_system: Mapped[bool] = mapped_column(default=False)
     """DAWAM maintains it (SCD2 housekeeping): not edited or deleted by hand."""
+    source_column_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
+    """A staging column's Source Object (``src_columns.id``)."""
+    review_flags: Mapped[list[dict[str, Any]]] = mapped_column(
+        sa.JSON, default=list, server_default=sa.text("'[]'")
+    )
+    """What generation flagged for review: ``[{"code", "message"}]``."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
