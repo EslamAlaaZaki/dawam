@@ -22,6 +22,7 @@ import dawam
 from dawam import job_handlers
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
+from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ObjectHandlers, reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
@@ -143,6 +144,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         reject_pending_change_sets(db, workspace_id, at)
 
     app.state.on_workspace_archived = on_workspace_archived
+    # Change Sets proposed in a private conversation are hidden from everyone else.
+    app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
     app.state.change_set_handlers = ObjectHandlers(
         SourceEnhancementHandler("source_table"), SourceEnhancementHandler("source_column")

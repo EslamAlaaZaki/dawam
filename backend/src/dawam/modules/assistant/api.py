@@ -39,6 +39,7 @@ from .service import (
     RunView,
     Started,
     StreamEvent,
+    readable_conversations,
 )
 from .tables import MESSAGE_MAX_LENGTH, TITLE_MAX_LENGTH
 
@@ -67,6 +68,7 @@ def assistant_service(request: Request) -> AssistantService:
                 handlers=state.change_set_handlers,
                 notifications=NotificationService(engine, clock=clock),
                 clock=clock,
+                conversations=readable_conversations(engine),
             ),
             files=FileService(
                 engine,

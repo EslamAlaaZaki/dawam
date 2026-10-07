@@ -526,3 +526,93 @@ def test_source_enhancement_items_are_validated_when_proposed(
             [ProposedItem("t", "source_table", "delete", {}, object_id=uuid.UUID(table["id"]))],
         )
     assert deleting.value.status_code == 422
+
+
+def test_a_needs_owner_item_survives_a_later_subset_decision(roles: RoleClients):
+    gadgets, plain = Widgets("gadget", Action.CHANGE_SYSTEM_CODE), Widgets("widget")
+    for handler in (gadgets, plain):
+        roles.app.state.change_set_handlers.register(handler)
+    gadget = gadgets.make()
+    proposed = propose(
+        roles,
+        [
+            ProposedItem("g", "gadget", "update", {"color": "blue"}, object_id=gadget),
+            item("w", plain.make()),
+        ],
+    )
+    first = decide(roles, proposed.change_set.id, "accept", [proposed.items[0].id]).json()
+    assert [i["status"] for i in first["change_set"]["items"]] == ["needs_owner", "expired"]
+
+    again = decide(roles, proposed.change_set.id, "accept", []).json()
+
+    assert again["change_set"]["items"][0]["status"] == "needs_owner"
+    assert again["change_set"]["change_set"]["status"] == "pending"
+    owner = decide(roles, proposed.change_set.id, "accept", as_role="owner").json()
+    assert owner["accepted"] == [str(proposed.items[0].id)]
+    assert gadgets.store[gadget]["color"] == "blue"
+
+
+def test_an_item_that_changes_nothing_leaves_no_audit_entry(roles: RoleClients, widgets: Widgets):
+    a = widgets.make()
+    proposed = propose(roles, [item("a", a, color="red")])  # already red
+
+    body = decide(roles, proposed.change_set.id, "accept").json()
+
+    assert body["accepted"] == [str(proposed.items[0].id)]
+    audit = AuditService(roles.app.state.engine)
+    assert audit.list(roles.workspace_id, entity_type="widget", entity_id=a) == []
+
+
+def test_concurrent_proposals_of_one_scope_leave_one_pending_set(
+    roles: RoleClients, widgets: Widgets
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    roles.client("editor")
+    a = widgets.make()
+
+    def run(_: int):
+        return propose(roles, [item("a", a)], scope={"same": True})
+
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(run, range(4)))
+
+    page = engine(roles).list(roles.user("editor"), roles.workspace_id, status="pending")
+    assert len(page.items) == 1
+
+
+def test_change_sets_of_a_private_conversation_are_hidden_from_other_members(
+    roles: RoleClients, widgets: Widgets
+):
+    base = f"/api/v1/workspaces/{roles.workspace_id}"
+    owner = roles.client("owner")
+    created = owner.post(f"{base}/assistant/conversations", json={})
+    conversation = created.json()["id"]
+    roles.client("editor")
+    service = engine(roles)
+    proposed = service.propose(
+        roles.user("owner"),
+        roles.workspace_id,
+        origin="ai",
+        scope={"k": 1},
+        title="Private",
+        items=[item("a", widgets.make())],
+        conversation_id=uuid.UUID(conversation),
+    )
+    plain = propose(roles, [item("a", widgets.make())], scope={"k": 2})
+    path = f"{base}/change-sets"
+
+    def ids(role):
+        return {c["id"] for c in roles.client(role).get(path).json()["items"]}
+
+    assert ids("owner") == {str(proposed.change_set.id), str(plain.change_set.id)}
+    assert ids("editor") == {str(plain.change_set.id)}
+    assert roles.client("editor").get(f"{path}/{proposed.change_set.id}").status_code == 404
+    assert roles.client("owner").get(f"{path}/{proposed.change_set.id}").status_code == 200
+
+    shared = owner.patch(
+        f"{base}/assistant/conversations/{conversation}", json={"shared_with_workspace": True}
+    )
+    assert shared.status_code == 200
+    assert str(proposed.change_set.id) in ids("editor")
+    assert roles.client("editor").get(f"{path}/{proposed.change_set.id}").status_code == 200

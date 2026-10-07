@@ -68,6 +68,27 @@ class SourceEnhancementHandler:
             set_fields(record, self.object_type, payload)
         db.expire(record)
 
+    def in_scope(
+        self,
+        db: Session,
+        workspace_id: uuid.UUID,
+        object_id: uuid.UUID,
+        scope: Mapping[str, Any],
+    ) -> bool:
+        """The object belongs to the Source System the scope names (if it names one)."""
+        wanted = scope.get("source_system_id")
+        if wanted is None:
+            return True
+        query = sa.select(SrcDbSchemaRecord.source_system_id).join(
+            SrcTableRecord, SrcTableRecord.db_schema_id == SrcDbSchemaRecord.id
+        )
+        if self.object_type == COLUMN:
+            query = query.join(SrcColumnRecord, SrcColumnRecord.table_id == SrcTableRecord.id)
+            query = query.where(SrcColumnRecord.id == object_id)
+        else:
+            query = query.where(SrcTableRecord.id == object_id)
+        return str(db.scalar(query)) == str(wanted)
+
     def current_values(
         self,
         db: Session,

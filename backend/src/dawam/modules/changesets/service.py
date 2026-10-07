@@ -13,6 +13,7 @@ failing item aborts all of it.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ from dawam.modules.notifications import NotificationService
 from dawam.modules.workspaces import Action, WorkspaceService, required_role
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.hooks import ReadableConversations
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
 from .handlers import ObjectHandlers
@@ -275,7 +277,12 @@ class ChangeSetService:
         handlers: ObjectHandlers,
         notifications: NotificationService,
         clock: Clock,
+        conversations: ReadableConversations | None = None,
     ) -> None:
+        """``conversations`` tells which assistant conversations a user may read; Change
+        Sets proposed in a private one are hidden from everyone else (spec story 151).
+        Without it, every conversation counts as private."""
+        self._conversations = conversations
         self._engine = engine
         self._workspaces = workspaces
         self._handlers = handlers
@@ -310,6 +317,9 @@ class ChangeSetService:
             raise _invalid(f"A Change Set has at most {MAX_ITEMS} items.")
         now = self._clock()
         with Session(self._engine) as db, db.begin():
+            # Concurrent proposals of one origin and scope queue up, so one pending set remains.
+            key = f"{workspace_id}:{origin}:{json.dumps(dict(scope), sort_keys=True, default=str)}"
+            db.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtextextended(key, 0))))
             ids: dict[str, uuid.UUID] = {}
             records: list[ChangeSetItemRecord] = []
             change_set_id = uuid.uuid4()
@@ -317,7 +327,9 @@ class ChangeSetService:
                 if proposed.key in ids:
                     raise _invalid(f"Two items share the key `{proposed.key}`.")
                 records.append(
-                    self._item_record(db, workspace_id, change_set_id, position, proposed, ids)
+                    self._item_record(
+                        db, workspace_id, change_set_id, position, proposed, ids, scope
+                    )
                 )
                 ids[proposed.key] = records[-1].id
             self._supersede(db, workspace_id, origin, scope)
@@ -348,6 +360,7 @@ class ChangeSetService:
         position: int,
         proposed: ProposedItem,
         earlier: Mapping[str, uuid.UUID],
+        scope: Mapping[str, Any],
     ) -> ChangeSetItemRecord:
         if proposed.operation not in OPERATIONS:
             raise _invalid(f"Unknown operation `{proposed.operation}`.", item=proposed.key)
@@ -365,6 +378,16 @@ class ChangeSetService:
         except ValueError as exc:
             raise _invalid(str(exc), item=proposed.key) from None
         handler.validate(db, workspace_id, proposed.operation, proposed.object_id, proposed.payload)
+        in_scope = getattr(handler, "in_scope", None)
+        if (
+            in_scope is not None
+            and proposed.object_id is not None
+            and not in_scope(db, workspace_id, proposed.object_id, scope)
+        ):
+            raise _invalid(
+                f"`{proposed.label or proposed.key}` is outside this Change Set's scope.",
+                item=proposed.key,
+            )
         base_values = dict(proposed.base_values) if proposed.base_values is not None else None
         if proposed.operation != "create" and proposed.object_id is not None:
             fields = list(base_values if base_values is not None else proposed.payload)
@@ -430,7 +453,25 @@ class ChangeSetService:
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
             record = self._load(db, workspace_id, change_set_id)
+            if record.conversation_id not in self._readable(
+                user, workspace_id, [record.conversation_id]
+            ):
+                raise _not_found()
             return self._detail(db, record)
+
+    def _readable(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        conversation_ids: Sequence[uuid.UUID | None],
+    ) -> set[uuid.UUID | None]:
+        """Of ``conversation_ids`` (``None``: no conversation), those whose Change Sets
+        ``user`` may see."""
+        real = [c for c in dict.fromkeys(conversation_ids) if c is not None]
+        allowed: set[uuid.UUID | None] = {None}
+        if real and self._conversations is not None:
+            allowed |= set(self._conversations(user.id, workspace_id, real))
+        return allowed
 
     def list(
         self,
@@ -452,6 +493,22 @@ class ChangeSetService:
             .where(ChangeSetRecord.workspace_id == workspace_id)
             .order_by(ChangeSetRecord.created_at.desc(), ChangeSetRecord.id.desc())
             .limit(limit + 1)
+        )
+        with Session(self._engine) as db:
+            used = list(
+                db.scalars(
+                    sa.select(ChangeSetRecord.conversation_id)
+                    .where(
+                        ChangeSetRecord.workspace_id == workspace_id,
+                        ChangeSetRecord.conversation_id.is_not(None),
+                    )
+                    .distinct()
+                )
+            )
+        readable = [c for c in self._readable(user, workspace_id, used) if c is not None]
+        query = query.where(
+            ChangeSetRecord.conversation_id.is_(None)
+            | ChangeSetRecord.conversation_id.in_(readable)
         )
         if status is not None:
             query = query.where(ChangeSetRecord.status == status)
@@ -573,8 +630,10 @@ class ChangeSetService:
 
             for item_id in waiting:
                 by_id[item_id].status = "needs_owner" if item_id in owner_only else "pending"
+            # Whatever an owner still has to decide stays open, with what depends on it.
+            kept = _dependents(items, {str(i.id) for i in items if i.status == "needs_owner"})
             for item in items:
-                if item.status in OPEN_STATUSES and str(item.id) not in waiting:
+                if item.status in OPEN_STATUSES and str(item.id) not in waiting | kept:
                     item.status = "expired"
                     item.status_reason = "Closed without a decision."
             record.status = _close_state(items)
@@ -710,6 +769,8 @@ class ChangeSetService:
         applied = handler.apply(
             db, record.workspace_id, item.operation, item.object_id, item.payload, at=now
         )
+        if applied.old == applied.new:  # the object already had these values
+            return
         record_audit(
             db,
             workspace_id=record.workspace_id,

@@ -573,3 +573,24 @@ def _system_prompt(context: PageContext | None) -> str:
     described = {"type": context.type, "id": context.id, "name": context.label}
     page = quote_data("page context", json.dumps(described, ensure_ascii=False))
     return f"{SYSTEM_PROMPT}\n\nThe member is looking at this object right now:\n{page}"
+
+
+def readable_conversations(engine: sa.Engine) -> Callable[..., set[uuid.UUID]]:
+    """The ``ReadableConversations`` port: which of some conversations a member may read."""
+
+    def readable(
+        user_id: uuid.UUID, workspace_id: uuid.UUID, conversation_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        with Session(engine) as db:
+            return set(
+                db.scalars(
+                    sa.select(ConversationRecord.id).where(
+                        ConversationRecord.workspace_id == workspace_id,
+                        ConversationRecord.id.in_(conversation_ids),
+                        (ConversationRecord.user_id == user_id)
+                        | ConversationRecord.shared_with_workspace.is_(True),
+                    )
+                )
+            )
+
+    return readable

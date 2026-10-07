@@ -34,6 +34,7 @@ from .service import (
     RunView,
     Started,
     ToolCallView,
+    readable_conversations,
 )
 
 __all__ = [
@@ -49,5 +50,6 @@ __all__ = [
     "ToolCallView",
     "ToolRegistry",
     "ToolServices",
+    "readable_conversations",
     "router",
 ]

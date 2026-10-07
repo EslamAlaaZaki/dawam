@@ -581,7 +581,7 @@ def test_propose_changes_is_a_write_tool_that_only_proposes(roles, model, fake_l
     [(_, shown)] = [e for e in events if e[0] == "tool"]
     assert shown["status"] == ("ok" if allowed else "refused")
     assert ("propose_changes" in tool_names(fake_llm)) is allowed
-    listing = roles.client("owner").get(
+    listing = client.get(
         f"/api/v1/workspaces/{roles.workspace_id}/change-sets", params={"conversation_id": cid}
     )
     found = listing.json()["items"]
@@ -595,3 +595,38 @@ def test_propose_changes_is_a_write_tool_that_only_proposes(roles, model, fake_l
         f"/api/v1/workspaces/{roles.workspace_id}/systems/{system}/schema"
     )
     assert schema.json()["tables"][0]["description"] is None  # nothing changed yet
+
+
+def test_propose_changes_refuses_objects_outside_the_named_source_system(roles, model, fake_llm):
+    from tests.authz.matrix import table_id
+
+    table = table_id(roles)
+    owner = roles.client("owner")
+    systems = owner.get(f"/api/v1/workspaces/{roles.workspace_id}/systems").json()["items"]
+    other = owner.post(
+        f"/api/v1/workspaces/{roles.workspace_id}/systems", json={"name": "Other", "code": "oth"}
+    ).json()["id"]
+    assert other != systems[0]["id"]
+
+    def propose(system_id):
+        return tool(
+            "propose_changes",
+            title="Describe",
+            source_system_id=system_id,
+            items=[
+                {
+                    "key": "t",
+                    "object_type": "source_table",
+                    "object_id": table,
+                    "changes": {"description": "x"},
+                }
+            ],
+        )
+
+    for wrong in (other, "00000000-0000-4000-8000-000000000000"):
+        fake_llm.script(Reply(tool_calls=(propose(wrong),)), Reply(text="done"))
+        cid = conversation(owner, roles)
+        events = ask(owner, roles, cid, "Go")
+        assert [d["status"] for n, d in events if n == "tool"] == ["error"]
+    listing = owner.get(f"/api/v1/workspaces/{roles.workspace_id}/change-sets")
+    assert listing.json()["items"] == []
