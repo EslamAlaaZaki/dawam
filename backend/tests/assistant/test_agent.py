@@ -4,6 +4,7 @@ No network or database: the loop depends only on the gateway interface and a too
 from __future__ import annotations
 
 import itertools
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -26,7 +27,9 @@ from dawam.modules.llm import (
     Usage,
 )
 
-LOOKUP = ToolSpec("lookup", "Find it.", {"type": "object"})
+LOOKUP = ToolSpec(
+    "lookup", "Find it.", {"type": "object", "properties": {"id": {"type": "integer"}}}
+)
 
 
 class Tools:
@@ -227,3 +230,157 @@ def test_the_stop_flag_is_not_read_on_every_delta():
     run(adapter, is_cancelled=lambda: polls.append(1) or False, delta_poll_seconds=100.0)
 
     assert len(polls) == 2  # the model call's start and its first event, not every delta
+
+
+# -- limited mode: prompted tools -------------------------------------------------------
+
+LIMITED = Capabilities(tool_calling=False)
+
+
+def limited(adapter: FakeAdapter, tools: Tools | None = None, **options: Any) -> list[Any]:
+    options.setdefault("gateway", gateway(adapter, capabilities=LIMITED))
+    return run(adapter, tools, **options)
+
+
+def json_call(**arguments: Any) -> str:
+    return json.dumps({"tool": "lookup", "arguments": arguments})
+
+
+def test_limited_mode_describes_tools_in_the_prompt_and_offers_none_natively():
+    adapter = FakeAdapter().script(Reply(text="plain answer"))
+
+    events = limited(adapter)
+
+    sent = adapter.calls[0]
+    assert sent.tools == () and "lookup" in (sent.messages[0].content or "")
+    assert (sent.messages[0].content or "").startswith("SYSTEM")
+    assert events[-1].status == "completed" and events[-1].text == "plain answer"
+    assert [e.text for e in events if isinstance(e, Text)] == ["plain answer"]
+
+
+def test_a_json_tool_call_runs_the_tool_and_its_result_comes_back_quoted():
+    adapter = FakeAdapter().script(Reply(text=json_call(id=7)), Reply(text="Found at row 7"))
+    tools = Tools()
+
+    events = limited(adapter, tools)
+
+    assert tools.ran == [("lookup", {"id": 7})]
+    second = adapter.calls[1].messages
+    assert [m.role for m in second] == ["system", "user", "assistant", "user"]
+    assert second[2].tool_calls == () and second[2].content == json_call(id=7)
+    assert (second[3].content or "").startswith('<data source="tool:lookup">')
+    assert events[-1].text == "Found at row 7" and events[-1].tool_calls[0].status == "ok"
+    assert all(e.text != json_call(id=7) for e in events if isinstance(e, Text))
+
+
+def test_malformed_json_is_retried_with_a_correction_and_then_succeeds():
+    adapter = FakeAdapter().script(
+        Reply(text='{"tool": "lookup", "arguments": {"id": 7'),
+        Reply(text=json_call(id=7)),
+        Reply(text="done"),
+    )
+    tools = Tools()
+
+    events = limited(adapter, tools)
+
+    assert tools.ran == [("lookup", {"id": 7})] and events[-1].status == "completed"
+    retry = adapter.calls[1].messages
+    assert [m.role for m in retry[-2:]] == ["assistant", "user"]
+    assert "not a valid tool call" in (retry[-1].content or "")
+
+
+def test_schema_invalid_arguments_never_reach_the_tool_and_are_retried_twice_then_fail():
+    bad = Reply(text=json_call(id="x"))
+    adapter = FakeAdapter().script(bad, bad, bad, Reply(text="never"))
+    tools = Tools()
+
+    events = limited(adapter, tools)
+
+    assert tools.ran == [] and len(adapter.calls) == 3
+    assert events[-1].status == "failed" and events[-1].error_code == "invalid_tool_call"
+
+
+def test_an_unknown_tool_in_prompted_mode_is_never_executed():
+    adapter = FakeAdapter().script(
+        Reply(text='{"tool": "drop_all", "arguments": {}}'), Reply(text="ok then")
+    )
+    tools = Tools()
+
+    events = limited(adapter, tools)
+
+    assert tools.ran == [] and events[-1].text == "ok then"
+
+
+def test_retries_are_counted_in_token_usage():
+    adapter = FakeAdapter().script(
+        Reply(text="{bad", usage=Usage(10, 5)), Reply(text="fine", usage=Usage(20, 5))
+    )
+
+    finished = limited(adapter)[-1]
+
+    assert (finished.prompt_tokens, finished.completion_tokens) == (30, 10)
+
+
+def test_the_tool_cap_in_prompted_mode_stops_offering_tools():
+    adapter = FakeAdapter().script(
+        Reply(text=json_call(id=1)), Reply(text=json_call(id=2)), Reply(text="summary")
+    )
+    tools = Tools()
+
+    events = limited(adapter, tools, max_tool_calls=2)
+
+    assert len(tools.ran) == 2
+    assert "lookup" not in (adapter.calls[2].messages[0].content or "")
+    assert events[-1].status == "tool_limit" and events[-1].text == "summary"
+
+
+def test_tool_call_json_is_just_text_when_the_model_has_native_calls():
+    adapter = FakeAdapter().script(Reply(text=json_call(id=1)))
+    tools = Tools()
+
+    events = run(adapter, tools)
+
+    assert tools.ran == [] and events[-1].text == json_call(id=1)
+
+
+# -- context management ------------------------------------------------------------------
+
+
+def test_a_large_tool_result_is_cut_to_fit_a_small_window():
+    adapter = FakeAdapter().script(Reply(tool_calls=(call(),)), Reply(text="ok"))
+    big = ToolOutcome("z" * 50_000, "ok")
+    small = gateway(adapter, capabilities=Capabilities(context_window=2000))
+
+    run(adapter, Tools(big), gateway=small)
+
+    content = adapter.calls[1].messages[3].content or ""
+    assert len(content) < 3000 and "left out" in content and content.endswith("</data>")
+
+
+def test_older_turns_are_dropped_to_fit_the_window_but_the_question_is_kept():
+    adapter = FakeAdapter().script(Reply(text="ok"))
+    history = [Message("user" if i % 2 == 0 else "assistant", "old " * 400) for i in range(10)] + [
+        Message("user", "NEW QUESTION")
+    ]
+
+    list(
+        run_agent(
+            gateway(adapter, capabilities=Capabilities(context_window=1000)),
+            Tools(),
+            system="SYSTEM",
+            history=history,
+        )
+    )
+
+    sent = adapter.calls[0].messages
+    assert len(sent) < len(history) + 1 and sent[-1].content == "NEW QUESTION"
+    assert sum(len(m.content or "") for m in sent) // 4 <= 1000
+
+
+def test_an_unknown_window_leaves_the_conversation_untouched():
+    adapter = FakeAdapter().script(Reply(text="ok"))
+    history = [Message("user", "old " * 4000), Message("assistant", "a"), Message("user", "q")]
+
+    list(run_agent(gateway(adapter), Tools(), system="SYSTEM", history=history))
+
+    assert len(adapter.calls[0].messages) == 4
