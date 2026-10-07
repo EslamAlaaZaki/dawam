@@ -139,6 +139,25 @@ class ColumnProfile:
 
 
 @dataclass(frozen=True)
+class ColumnStats:
+    """What profiling learns about one column from a sample of its table (spec §6.5).
+    ``minimum``, ``maximum`` and ``top_values`` are real data: ``None`` unless the caller
+    asked for them (never for a Protected Column)."""
+
+    row_count: int
+    """Rows in the sample."""
+    null_count: int
+    distinct_count: int | None
+    minimum: str | None
+    maximum: str | None
+    avg_length: float | None
+    max_length: int | None
+    top_values: list[tuple[str, int]] | None
+    patterns: list[str]
+    """Names of the patterns most values follow (``email``, ``phone``...), never values."""
+
+
+@dataclass(frozen=True)
 class QueryResult:
     columns: tuple[str, ...]
     rows: tuple[tuple[Any, ...], ...]
@@ -161,6 +180,20 @@ class Connector(Protocol):
 
     def profile(self, schema: str, table: str, column: str) -> ColumnProfile:
         """Row, null and distinct counts of one column."""
+        ...
+
+    def profile_column(
+        self,
+        schema: str,
+        table: str,
+        column: str,
+        data_type: str,
+        *,
+        row_cap: int,
+        top_n: bool,
+        with_min_max: bool,
+    ) -> ColumnStats:
+        """Statistics of one column over the table's first ``row_cap`` rows (spec §6.5)."""
         ...
 
     def sample(self, schema: str, table: str, *, limit: int = DEFAULT_ROW_LIMIT) -> QueryResult:

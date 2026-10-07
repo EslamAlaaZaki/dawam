@@ -23,6 +23,14 @@ Public interface. Other modules import only what is re-exported here:
   ``confirm`` (sets ``is_sensitive`` and the PII category) or ``dismiss``; decisions are
   audited. Name rules run on every new Snapshot. ``is_protected`` is the one Protected
   Column policy: ``is_sensitive`` or a ``suggested``/``confirmed`` finding.
+- ``DataDictionaryService``: any member exports the latest Snapshot with its enhancements as
+  an XLSX data dictionary (``DataDictionary``, never values); ``files`` saves it to the file
+  area. ``GET .../systems/{system_id}/data-dictionary`` downloads it.
+- ``PiiScanService``: owners and editors start a value-based PII scan of selected tables of a
+  Source System with a live Connection (``start_scan`` queues a ``pii_scan`` job; ``run_scan``
+  is its handler, which ``dawam.job_handlers`` registers). Sampled values are tested in memory
+  against ``dawam.platform.pii_validators`` and discarded; only the match ratio is stored, as
+  the evidence of a ``suggested`` finding (confidence at least 0.5).
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -35,6 +43,7 @@ Public interface. Other modules import only what is re-exported here:
   ``PATCH .../systems/{system_id}/tables/{table_id}[/columns/{column_id}]``,
   ``GET .../systems/{system_id}/pii-findings``,
   ``POST .../systems/{system_id}/pii-findings/{finding_id}/confirm|dismiss``,
+  ``POST .../systems/{system_id}/pii-scans``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
 
@@ -48,10 +57,14 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 
 from .api import router
 from .connection_service import Connection, ConnectionService
+from .dictionary_api import DataDictionaryServiceDep
+from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
+from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService
+from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
@@ -65,13 +78,20 @@ from .snapshot_service import (
 
 __all__ = [
     "EXTRACT_JOB",
+    "PII_SCAN_JOB",
+    "PROFILE_JOB",
     "Connection",
     "ConnectionService",
+    "DataDictionary",
+    "DataDictionaryService",
+    "DataDictionaryServiceDep",
     "EnhancementService",
     "ImportResult",
     "ImportStatus",
     "PiiFinding",
+    "PiiScanService",
     "PiiService",
+    "ProfilingService",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
@@ -84,6 +104,7 @@ __all__ = [
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",
+    "TableProfile",
     "is_protected",
     "router",
 ]

@@ -911,6 +911,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/data-dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Data Dictionary
+         * @description The Source System's data dictionary as an Excel workbook (any member): a `Tables`
+         *     and a `Columns` sheet with types, descriptions, tags, classifications and PII
+         *     categories, never values. 404 before the first Snapshot. To keep a copy, save it to the
+         *     file area with `POST .../files/data-dictionary`.
+         */
+        get: operations["downloadDataDictionary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
         parameters: {
             query?: never;
@@ -1011,6 +1034,29 @@ export interface paths {
          *     flagged sensitive. Audited.
          */
         post: operations["dismissPiiFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Pii Scan
+         * @description Scan the selected tables' sampled values for PII, as a background job (owners and
+         *     editors; live Connection only). Values are tested in memory and discarded: only the
+         *     match ratio is kept, as the evidence of a `suggested` finding. 409
+         *     `connection_missing` without a Connection; 422 for no tables or a bad sample size.
+         */
+        post: operations["startPiiScan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1203,6 +1249,90 @@ export interface paths {
          *     and an added object of the same kind (and, for columns, table).
          */
         post: operations["mergeRemovedObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Profiling
+         * @description Profile the chosen tables (owners and editors) as a background job. 409
+         *     `profiling_unavailable` for a Source System with no live Connection (a Schema Import
+         *     has none): profiling needs one.
+         */
+        post: operations["startProfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table Profile
+         * @description A table's profile and its columns' (any member). Min/max and top-N values are
+         *     never shown for a Protected Column.
+         */
+        get: operations["getTableProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Column Profile
+         * @description One column's profile (any member).
+         */
+        get: operations["getColumnProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profiling-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Table Top N
+         * @description Switch top-N value capture on or off for a table (owners only; audited). Off by
+         *     default; switching it off deletes the stored values.
+         */
+        put: operations["setTableTopN"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1608,6 +1738,28 @@ export interface paths {
          *     422 `invalid_file_name`.
          */
         post: operations["uploadSourceSystemFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Data Dictionary
+         * @description Export the Source System's data dictionary into its file area as
+         *     `data-dictionary-<code>.xlsx` (owners and editors), overwriting the previous one.
+         *     404 before the first Snapshot.
+         */
+        post: operations["saveDataDictionary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2178,7 +2330,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2508,6 +2660,85 @@ export interface components {
             is_sensitive: boolean;
             /** Version */
             version: number;
+        };
+        /** ColumnProfile */
+        ColumnProfile: {
+            /**
+             * Row Count
+             * @description Rows in the sample.
+             */
+            row_count: number;
+            /**
+             * Row Cap
+             * @description The sample cap of the run.
+             */
+            row_cap: number;
+            /**
+             * Sampled
+             * @description The sample hit its cap: the table may be larger.
+             */
+            sampled: boolean;
+            /**
+             * Null Pct
+             * @description 0 to 100.
+             */
+            null_pct: number;
+            /**
+             * Distinct Count
+             * @description Null for types the engine cannot compare.
+             */
+            distinct_count: number | null;
+            /**
+             * Min
+             * @description Always null for a Protected Column.
+             */
+            min: string | null;
+            /**
+             * Max
+             * @description Always null for a Protected Column.
+             */
+            max: string | null;
+            /**
+             * Avg Len
+             * @description Text columns only.
+             */
+            avg_len: number | null;
+            /**
+             * Max Len
+             * @description Text columns only.
+             */
+            max_len: number | null;
+            /**
+             * Top Values
+             * @description Only while the table's top-N switch is on; never for a Protected Column.
+             */
+            top_values: components["schemas"]["TopValue"][] | null;
+            /**
+             * Patterns
+             * @description Detected patterns such as `email` or `phone`.
+             */
+            patterns: string[];
+            /**
+             * Profiled At
+             * Format: date-time
+             */
+            profiled_at: string;
+        };
+        /** ColumnProfileView */
+        ColumnProfileView: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Name */
+            name: string;
+            /** Data Type */
+            data_type: string | null;
+            /** Is Protected */
+            is_protected: boolean;
+            /** @description Null until the column is profiled. */
+            profile: components["schemas"]["ColumnProfile"] | null;
         };
         /** Connection */
         Connection: {
@@ -3862,6 +4093,34 @@ export interface components {
              */
             items: components["schemas"]["PiiFinding"][];
         };
+        /** PiiScanRequest */
+        PiiScanRequest: {
+            /**
+             * Table Ids
+             * @description The Source Tables to scan.
+             */
+            table_ids: string[];
+            /**
+             * Sample Size
+             * @description Rows sampled per table (1 to 10000); a column is tested on at most this many values.
+             * @default 1000
+             */
+            sample_size: number;
+        };
+        /** PiiScanStarted */
+        PiiScanStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `pii_scan` job: follow its status, progress and log at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
         /** Platform */
         Platform: {
             /**
@@ -3892,6 +4151,20 @@ export interface components {
         PlatformList: {
             /** Items */
             items: components["schemas"]["Platform"][];
+        };
+        /** ProfilingStarted */
+        ProfilingStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `profile` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** ReassignOwnerRequest */
         ReassignOwnerRequest: {
@@ -4780,6 +5053,26 @@ export interface components {
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
         };
+        /** StartProfilingRequest */
+        StartProfilingRequest: {
+            /**
+             * Table Ids
+             * @description The tables and views to profile.
+             */
+            table_ids: string[];
+            /**
+             * Row Cap
+             * @description At most this many rows of each table are read.
+             * @default 100000
+             */
+            row_cap: number;
+            /**
+             * Timeout Seconds
+             * @description Each source query is stopped after this long.
+             * @default 30
+             */
+            timeout_seconds: number;
+        };
         /** SuspectedPiiColumn */
         SuspectedPiiColumn: {
             /**
@@ -4877,6 +5170,32 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** TableProfile */
+        TableProfile: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Top N Enabled
+             * @description An owner's switch; off by default.
+             */
+            top_n_enabled: boolean;
+            /**
+             * Row Count
+             * @description Rows in the sample; null before profiling.
+             */
+            row_count: number | null;
+            /** Profiled At */
+            profiled_at: string | null;
+            /** Columns */
+            columns: components["schemas"]["ColumnProfileView"][];
+        };
         /** Target */
         Target: {
             /**
@@ -4919,6 +5238,18 @@ export interface components {
              * @description The new text; it overwrites the file in place.
              */
             content: string;
+        };
+        /** TopNRequest */
+        TopNRequest: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** TopValue */
+        TopValue: {
+            /** Value */
+            value: string;
+            /** Count */
+            count: number;
         };
         /** TransferOwnershipRequest */
         TransferOwnershipRequest: {
@@ -7417,6 +7748,47 @@ export interface operations {
             };
         };
     };
+    downloadDataDictionary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The data dictionary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     updateTableEnhancements: {
         parameters: {
             query?: never;
@@ -7616,6 +7988,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PiiFinding"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startPiiScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiScanStarted"];
                 };
             };
             /** @description Validation error */
@@ -7997,6 +8414,182 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenamedObject"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startProfiling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartProfilingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilingStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getTableProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableProfile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getColumnProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+                column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnProfileView"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setTableTopN: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopNRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableProfile"];
                 };
             };
             /** @description Validation error */
@@ -9086,6 +9679,47 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_uploadSourceSystemFile"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveDataDictionary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {

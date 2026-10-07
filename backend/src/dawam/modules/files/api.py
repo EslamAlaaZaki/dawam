@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
-from dawam.modules.sources import SourceSystemService
+from dawam.modules.sources import DataDictionaryServiceDep, SourceSystemService
 from dawam.modules.warehouse import DataWarehouseService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
@@ -110,6 +110,27 @@ def upload_source_system_file(
     422 `invalid_file_name`."""
     return _out(
         files.upload(user, workspace_id, system_id, filename=file.filename or "", content=file.file)
+    )
+
+
+@router.post(
+    "/systems/{system_id}/files/data-dictionary",
+    operation_id="saveDataDictionary",
+    status_code=201,
+)
+def save_data_dictionary(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    user: CurrentUser,
+    files: FileServiceDep,
+    dictionaries: DataDictionaryServiceDep,
+) -> WorkspaceFile:
+    """Export the Source System's data dictionary into its file area as
+    `data-dictionary-<code>.xlsx` (owners and editors), overwriting the previous one.
+    404 before the first Snapshot."""
+    export = dictionaries.export(user, workspace_id, system_id)
+    return _out(
+        files.save_generated(user, workspace_id, system_id, name=export.name, data=export.data)
     )
 
 

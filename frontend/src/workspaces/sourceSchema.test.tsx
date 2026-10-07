@@ -33,7 +33,12 @@ const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
     "job.cancel_own",
     "workspace.view",
   ],
-  editor: ["source_system.extract", "job.cancel_own", "workspace.view"],
+  editor: [
+    "source_system.extract",
+    "file.upload",
+    "job.cancel_own",
+    "workspace.view",
+  ],
   viewer: ["job.cancel_own", "workspace.view"],
 };
 
@@ -288,5 +293,47 @@ describe("a Source System's Source Schema", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This Source System has no Connection.",
     );
+  });
+
+  it("offers any member the data dictionary download, and editors a save to files", async () => {
+    renderApp(
+      backend("viewer", { snapshots: [snapshot({})], jobs: [] }),
+      FOLDER,
+    );
+
+    const link = await screen.findByRole("link", {
+      name: /Download data dictionary/,
+    });
+    expect(link).toHaveAttribute("href", `${SYSTEM}/data-dictionary`);
+    expect(
+      screen.queryByRole("button", { name: /Save data dictionary/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("saves the data dictionary into the file area", async () => {
+    const requests: ApiRequest[] = [];
+    renderApp(
+      backend("editor", { snapshots: [snapshot({})], jobs: [] }, (r) => {
+        requests.push(r);
+        return r.method === "POST" &&
+          r.path === `${SYSTEM}/files/data-dictionary`
+          ? json({ id: "f1", name: "data-dictionary-cbs.xlsx" }, 201)
+          : undefined;
+      }),
+      FOLDER,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Save data dictionary to files",
+      }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Saved data-dictionary-cbs.xlsx",
+    );
+    expect(requests.find((r) => r.method === "POST")).toMatchObject({
+      csrf: CSRF_TOKEN,
+    });
   });
 });
