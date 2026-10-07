@@ -11096,10 +11096,6 @@
           },
           "adapter": {
             "type": "string",
-            "enum": [
-              "openai_compatible",
-              "anthropic"
-            ],
             "title": "Adapter"
           },
           "base_url": {
@@ -11178,11 +11174,8 @@
           },
           "adapter": {
             "type": "string",
-            "enum": [
-              "openai_compatible",
-              "anthropic"
-            ],
             "title": "Adapter",
+            "description": "`openai_compatible`, `anthropic`, `azure_openai` or a plugin kind.",
             "default": "openai_compatible"
           },
           "base_url": {
