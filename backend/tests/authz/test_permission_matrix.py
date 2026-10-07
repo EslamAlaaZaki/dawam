@@ -8,6 +8,7 @@ route has none. Adding an endpoint means adding its row here: copy the matching
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter
 
 import pytest
@@ -22,6 +23,7 @@ from tests.authz.matrix import (
     colleague_id,
     credentials_of,
     describe,
+    ensure_data_warehouse,
     linked_file_id,
     outcome_of,
     public,
@@ -555,6 +557,65 @@ ROWS: list[Row] = [
         setup=_set_up_data_warehouse,
         json=lambda roles: {"version": 1, "naming_rules": {"case_style": "upper"}},
     ),
+    # Core and Mart model editor (stories 89-93a; §4.3 "Edit KPIs, DW Schema, mappings").
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables",
+        "Open Workspace content (list the DW Schema's tables)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables",
+        "Edit KPIs, DW Schema, mappings (create a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+        json=lambda roles: {"layer": "core", "name": "dim_customer", "kind": "dimension"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
+        "Open Workspace content (a table and its columns)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
+        "Edit KPIs, DW Schema, mappings (edit a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "description": "Sales facts"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
+        "Edit KPIs, DW Schema, mappings (delete a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns",
+        "Edit KPIs, DW Schema, mappings (add a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {
+            "name": "quantity",
+            "data_type": {"type": "integer"},
+            "role": "measure",
+            "additivity": "additive",
+        },
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (edit a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "additivity": "additive"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (delete a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     # Source Systems (story 39). Changing a System Code is owner-only: the PATCH row
     # sends no code; tests/sources/test_source_systems.py covers the code change.
     Row(
@@ -1025,6 +1086,45 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject",
         "Edit Source Schema enhancements & documents (reject a relationship)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Workspace PII rules (story 136; §6.12): owners only.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/pii-rules",
+        "Manage PII rules (list)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/pii-rules",
+        "Manage PII rules (add a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {
+            "name": f"r_{uuid.uuid4().hex[:12]}",
+            "keywords": ["emp_no"],
+            "category": "direct_identifier",
+        },
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}",
+        "Manage PII rules (edit a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"confidence": 0.9},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}",
+        "Manage PII rules (delete a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}",
+        "Manage PII rules (switch a built-in rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"enabled": False},
+        path_params={"rule_id": lambda roles: "email"},
     ),
 ]
 

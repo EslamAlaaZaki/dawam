@@ -257,6 +257,53 @@ class RelationshipRecord(Base):
     decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
+class PiiCustomRuleRecord(Base):
+    """A Workspace's own PII rule (spec §6.12, story 136): name keywords and/or a regex for
+    sampled values, with the category and confidence a finding of it gets."""
+
+    __tablename__ = "pii_custom_rules"
+    __table_args__ = (
+        sa.UniqueConstraint("workspace_id", "name"),
+        sa.CheckConstraint(
+            "category IN ('direct_identifier', 'quasi_identifier', 'sensitive', 'financial')",
+            name="category",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(sa.String(40))
+    """Identifier-safe and unique per Workspace; a finding's rule is ``custom:<name>``."""
+    description: Mapped[str] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH), default="")
+    keywords: Mapped[list[str]] = mapped_column(sa.ARRAY(sa.String(64)), default=list)
+    """As the Owner typed them; matched after normalisation."""
+    pattern: Mapped[str | None] = mapped_column(sa.String(200))
+    category: Mapped[str] = mapped_column(sa.String(32))
+    confidence: Mapped[float] = mapped_column()
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class PiiDisabledRuleRecord(Base):
+    """A built-in PII rule an Owner switched off for one Workspace. No row: enabled."""
+
+    __tablename__ = "pii_disabled_rules"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    rule: Mapped[str] = mapped_column(sa.String(48), primary_key=True)
+    disabled_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    disabled_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
 class ColumnProfileRecord(Base):
     """The latest profile of a Source Column (spec §7): aggregates over a sample of the
     table. ``min``, ``max`` and ``top_values`` are real data, so they stay ``NULL`` for

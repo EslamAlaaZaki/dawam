@@ -1,0 +1,32 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "object": "list",
+    "model": "embed-model",
+    "data": [
+      {
+        "object": "embedding",
+        "index": 1,
+        "embedding": [
+          0.0,
+          1.0,
+          0.5
+        ]
+      },
+      {
+        "object": "embedding",
+        "index": 0,
+        "embedding": [
+          1.0,
+          0.0,
+          0.25
+        ]
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 4,
+      "total_tokens": 4
+    }
+  }
+}

@@ -373,11 +373,72 @@ def column_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"][0]["id"]
 
 
+def ensure_data_warehouse(roles: RoleClients) -> None:
+    """Sets the Data Warehouse up through the API unless it already is."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse"
+    if not owner.get(path).json()["set_up"]:
+        response = owner.post(path, json={"target_platform": "postgresql"})
+        assert response.status_code == 201, response.text
+
+
+def dw_table_id(roles: RoleClients) -> str:
+    """A fact in the Core model (the owner adds it once, after setting the warehouse up)."""
+    ensure_data_warehouse(roles)
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables"
+    listed = owner.get(path).json()["items"]
+    if listed:
+        return listed[0]["id"]
+    response = owner.post(
+        path,
+        json={
+            "layer": "core",
+            "name": "fact_sales",
+            "kind": "fact",
+            "grain": "One row per order line",
+            "fact_type": "transactional",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def dw_column_id(roles: RoleClients) -> str:
+    """A measure of that fact."""
+    table = dw_table_id(roles)
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables/{table}"
+    columns = owner.get(path).json()["columns"]
+    if columns:
+        return columns[0]["id"]
+    response = owner.post(
+        f"{path}/columns",
+        json={"name": "amount", "data_type": {"type": "integer"}, "role": "measure"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
 def pii_finding_id(roles: RoleClients) -> str:
     """The name-rule finding on the stand-in table's ``national_id`` column."""
     snapshot_id(roles)
     system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
     return roles.client("owner").get(f"{system}/pii-findings").json()["items"][0]["id"]
+
+
+def pii_rule_id(roles: RoleClients) -> str:
+    """A fresh custom PII rule (so deleting one does not affect the next request)."""
+    response = roles.client("owner").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/pii-rules",
+        json={
+            "name": f"r_{uuid.uuid4().hex[:12]}",
+            "keywords": ["emp_no"],
+            "category": "direct_identifier",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
 
 
 def rename_pair(roles: RoleClients) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
@@ -447,8 +508,11 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "object_id": source_table_id,
     "table_id": table_id,
     "column_id": column_id,
+    "dw_table_id": dw_table_id,
+    "dw_column_id": dw_column_id,
     "finding_id": pii_finding_id,
     "relationship_id": relationship_id,
+    "rule_id": pii_rule_id,
     "provider_id": provider_id,
     "model_id": model_id,
 }
