@@ -49,3 +49,8 @@ def test_an_unqualified_column_has_no_table():
 def test_text_that_is_not_one_expression_is_unparsable(sql):
     with pytest.raises(Unparsable):
         parse_expression(sql, "postgresql")
+
+
+def test_names_differing_only_in_case_are_one_column():
+    parsed = parse_expression("T.A || t.a", "postgresql")
+    assert parsed.value == refs(("t", "a"))

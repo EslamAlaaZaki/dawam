@@ -241,6 +241,12 @@ class MappingService:
             parsed, validation = self._parse(warehouse, mapping_type, sql)
             inputs = self._resolve(db, warehouse, table, parsed) if parsed else {}
             before = _snapshot(record) if record else None
+            if record is not None and before == {
+                "mapping_type": mapping_type,
+                "rule_text": rule_text,
+                "sql_expression": sql,
+            }:
+                return self._column_view(db, column, record)
             if record is None:
                 record = ColumnMappingRecord(
                     id=uuid.uuid4(),

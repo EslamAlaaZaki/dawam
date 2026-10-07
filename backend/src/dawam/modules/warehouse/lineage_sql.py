@@ -80,7 +80,8 @@ def parse_expression(sql: str, platform: str) -> ParsedExpression:
     for column in root.find_all(exp.Column):
         if isinstance(column.this, exp.Star):
             raise Unparsable("A column name is expected, not *.")
-        ref = ColumnRef(column.table or None, column.name)
+        # Unquoted names are case-insensitive: T.a and t.a are one column.
+        ref = ColumnRef((column.table or "").lower() or None, column.name.lower())
         target = uses if _steering(column) else value
         if ref not in target:
             target.append(ref)

@@ -18,35 +18,44 @@ from sqlalchemy.orm import Session
 MAX_DEPTH = 64
 """A safety net beside the cycle guard; Layers are three deep."""
 
+# Each step is one recursive term; its LATERAL step is two index-friendly branches (the
+# node itself, and its table's ``uses`` edges) rather than an ``OR`` the planner cannot index.
 _UPSTREAM = sa.text("""
     WITH RECURSIVE walk(edge_id, from_id, path) AS (
-        SELECT e.id, e.from_id, ARRAY[e.id]
-          FROM lineage_edges e
-         WHERE e.to_id = :start
-            OR e.to_id = (SELECT table_id FROM dw_columns WHERE id = :start)
+        SELECT e.id, e.from_id, ARRAY[e.id] FROM lineage_edges e WHERE e.to_id = :start
         UNION ALL
-        SELECT e.id, e.from_id, w.path || e.id
+        SELECT e.id, e.from_id, ARRAY[e.id]
+          FROM dw_columns c JOIN lineage_edges e ON e.to_id = c.table_id
+         WHERE c.id = :start
+        UNION ALL
+        SELECT s.id, s.from_id, w.path || s.id
           FROM walk w
-          JOIN lineage_edges e
-            ON e.to_id = w.from_id
-            OR e.to_id = (SELECT table_id FROM dw_columns c WHERE c.id = w.from_id)
-         WHERE NOT e.id = ANY(w.path) AND cardinality(w.path) < :max_depth
+         CROSS JOIN LATERAL (
+              SELECT e.id, e.from_id FROM lineage_edges e WHERE e.to_id = w.from_id
+              UNION ALL
+              SELECT e.id, e.from_id
+                FROM dw_columns c JOIN lineage_edges e ON e.to_id = c.table_id
+               WHERE c.id = w.from_id
+         ) s
+         WHERE NOT s.id = ANY(w.path) AND cardinality(w.path) < :max_depth
     )
     SELECT DISTINCT edge_id FROM walk
 """)
 
 _DOWNSTREAM = sa.text("""
     WITH RECURSIVE walk(edge_id, to_id, path) AS (
-        SELECT e.id, e.to_id, ARRAY[e.id]
-          FROM lineage_edges e
-         WHERE e.from_id = :start
+        SELECT e.id, e.to_id, ARRAY[e.id] FROM lineage_edges e WHERE e.from_id = :start
         UNION ALL
-        SELECT e.id, e.to_id, w.path || e.id
+        SELECT s.id, s.to_id, w.path || s.id
           FROM walk w
-          JOIN lineage_edges e
-            ON e.from_id = w.to_id
-            OR e.from_id IN (SELECT id FROM dw_columns c WHERE c.table_id = w.to_id)
-         WHERE NOT e.id = ANY(w.path) AND cardinality(w.path) < :max_depth
+         CROSS JOIN LATERAL (
+              SELECT e.id, e.to_id FROM lineage_edges e WHERE e.from_id = w.to_id
+              UNION ALL
+              SELECT e.id, e.to_id
+                FROM dw_columns c JOIN lineage_edges e ON e.from_id = c.id
+               WHERE c.table_id = w.to_id
+         ) s
+         WHERE NOT s.id = ANY(w.path) AND cardinality(w.path) < :max_depth
     )
     SELECT DISTINCT edge_id FROM walk
 """)
