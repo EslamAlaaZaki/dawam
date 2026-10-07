@@ -24,12 +24,14 @@ from .mapping_api import router as mapping_router
 from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .service import CaseStyle, DataWarehouseService, Weekday
+from .validation_api import router as validation_router
 
 router = APIRouter(tags=["data-warehouse"])
 router.include_router(model_router)
 router.include_router(mapping_router)
 router.include_router(lineage_router)
 router.include_router(ddl_router)
+router.include_router(validation_router)
 
 
 def data_warehouse_service(request: Request) -> DataWarehouseService:

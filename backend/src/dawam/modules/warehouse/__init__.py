@@ -14,6 +14,12 @@ Public interface. Other modules import only what is re-exported here:
   inserts and the seed rows of generated tables; ``files`` saves it, plus ``seed_files``
   (CSV and ``INSERT`` script per generated table), to the file area. ``GET
   .../data-warehouse/ddl`` downloads it.
+- ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
+  (errors: unparsable SQL, GROUP BY gaps; warnings: unmapped columns, a missing integration
+  rule, data-type compatibility such as truncation, see ``type_compat``) and reads ``coverage``
+  per table, per Layer and for the whole Data Warehouse (branch-aware). ``modeling_progress``
+  fills the DW Modeling part of the stage-progress port. ``GET .../data-warehouse/validation``
+  and ``GET .../data-warehouse/coverage``.
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
@@ -39,7 +45,9 @@ from .platforms import (
     max_identifier_length,
     platform_profile,
 )
+from .mapping_service import MappingService
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
+from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
     "PLATFORM_PROFILES",
@@ -52,9 +60,12 @@ __all__ = [
     "DdlService",
     "DdlServiceDep",
     "LayerSchemas",
+    "MappingService",
     "NamingRules",
     "PlatformProfile",
     "TargetPlatform",
+    "ValidationReport",
+    "ValidationService",
     "is_reserved_word",
     "max_identifier_length",
     "platform_profile",

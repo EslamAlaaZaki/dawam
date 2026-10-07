@@ -27,6 +27,7 @@ from dawam.modules.files import DocumentSearchService, FileService
 from dawam.modules.kpis import KpiService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import PiiService, ProfilingService, SnapshotService
+from dawam.modules.warehouse import ValidationService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 
@@ -46,6 +47,7 @@ class ToolServices:
     profiling: ProfilingService
     pii: PiiService
     documents: DocumentSearchService
+    validation: ValidationService
 
 
 @dataclass(frozen=True)
@@ -470,6 +472,21 @@ def _read_file(ctx: ToolContext, args: _ReadFile) -> Any:
     return {"name": text.file.name, "content": content}
 
 
+class _RunValidation(BaseModel):
+    pass
+
+
+def _run_validation(ctx: ToolContext, args: _RunValidation) -> Any:
+    report = ctx.services.validation.run_validation(ctx.user, ctx.workspace_id)
+    return {
+        "error_count": report.error_count,
+        "warning_count": report.warning_count,
+        "problems": report.problems,
+        "coverage": report.coverage,
+        "link": f"/workspaces/{ctx.workspace_id}/data-warehouse",
+    }
+
+
 def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     return ctx.services.files.save_generated(
         ctx.user, ctx.workspace_id, args.system_id, name=args.name, data=args.content.encode()
@@ -548,6 +565,16 @@ TOOLS: tuple[Tool, ...] = (
         Action.VIEW_WORKSPACE,
         _read_file,
         level=DataSharingLevel.DOCUMENTS,
+    ),
+    Tool(
+        "run_validation",
+        "Validate the Core and Mart mappings of the Data Warehouse: errors (SQL that does not "
+        "parse, GROUP BY gaps), warnings (unmapped columns, data-type truncation) and the "
+        "mapping coverage per table, Layer and Data Warehouse.",
+        _RunValidation,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _run_validation,
     ),
     Tool(
         "generate_file",

@@ -27,7 +27,7 @@ from dawam.modules.sources import (
     SnapshotService,
     SourceSystemService,
 )
-from dawam.modules.warehouse import DataWarehouseService
+from dawam.modules.warehouse import DataWarehouseService, MappingService, ValidationService
 from dawam.modules.workspaces import WorkspaceService
 
 from .internal.agent import Text, ToolFinished
@@ -91,6 +91,11 @@ def assistant_service(request: Request) -> AssistantService:
             ),
             pii=PiiService(engine, workspaces=workspaces, clock=clock),
             documents=state.document_search,
+            validation=ValidationService(
+                engine,
+                workspaces=workspaces,
+                mappings=MappingService(engine, workspaces=workspaces, clock=clock),
+            ),
         ),
     )
     return AssistantService(

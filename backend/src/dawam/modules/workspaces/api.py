@@ -46,6 +46,7 @@ def workspace_service(request: Request) -> WorkspaceService:
         on_archived=getattr(state, "on_workspace_archived", None),
         source_analysis=getattr(state, "source_analysis", None),
         on_created=getattr(state, "on_workspace_created", None),
+        modeling_progress=getattr(state, "modeling_progress", None),
     )
 
 
