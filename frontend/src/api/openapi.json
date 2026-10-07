@@ -4078,6 +4078,81 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-scans": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Start Pii Scan",
+        "description": "Scan the selected tables' sampled values for PII, as a background job (owners and\neditors; live Connection only). Values are tested in memory and discarded: only the\nmatch ratio is kept, as the evidence of a `suggested` finding. 409\n`connection_missing` without a Connection; 422 for no tables or a bad sample size.",
+        "operationId": "startPiiScan",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiScanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiScanStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
       "get": {
         "tags": [
@@ -12351,6 +12426,58 @@
           "items"
         ],
         "title": "PiiFindingPage"
+      },
+      "PiiScanRequest": {
+        "properties": {
+          "table_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Table Ids",
+            "description": "The Source Tables to scan."
+          },
+          "sample_size": {
+            "type": "integer",
+            "title": "Sample Size",
+            "description": "Rows sampled per table (1 to 10000); a column is tested on at most this many values.",
+            "default": 1000
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_ids"
+        ],
+        "title": "PiiScanRequest"
+      },
+      "PiiScanStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `pii_scan` job: follow its status, progress and log at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "PiiScanStarted"
       },
       "Platform": {
         "properties": {
