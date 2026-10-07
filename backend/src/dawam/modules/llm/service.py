@@ -25,7 +25,7 @@ from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 
 from .gateway import Capabilities, Gateway, ProbeResult, probe
-from .internal.adapters import ADAPTER_KINDS, AdapterConfig, AdapterFactory, adapter_for
+from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, adapter_kinds
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
     NAME_MAX_LENGTH,
@@ -433,8 +433,9 @@ class ProviderService:
 
     @staticmethod
     def _clean(data: ProviderInput) -> ProviderInput:
-        if data.adapter not in ADAPTER_KINDS:
-            raise _invalid(f"The adapter must be one of: {', '.join(ADAPTER_KINDS)}.", "adapter")
+        kinds = adapter_kinds()
+        if data.adapter not in kinds:
+            raise _invalid(f"The adapter must be one of: {', '.join(kinds)}.", "adapter")
         if not 1 <= data.timeout_seconds <= MAX_TIMEOUT_SECONDS:
             raise _invalid(
                 f"The timeout must be between 1 and {MAX_TIMEOUT_SECONDS} seconds.",

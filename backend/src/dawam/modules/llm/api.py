@@ -88,7 +88,7 @@ class LlmModel(BaseModel):
 class LlmProvider(BaseModel):
     id: uuid.UUID
     name: str
-    adapter: Literal["openai_compatible", "anthropic"]
+    adapter: str
     base_url: str
     has_api_key: bool = Field(description="Whether a key is stored. It is never returned.")
     internal: bool = Field(description="True for a provider inside your own infrastructure.")
@@ -100,7 +100,10 @@ class LlmProvider(BaseModel):
 
 class LlmProviderRequest(BaseModel):
     name: str = Field(max_length=NAME_MAX_LENGTH * 2)
-    adapter: Literal["openai_compatible", "anthropic"] = "openai_compatible"
+    adapter: str = Field(
+        default="openai_compatible",
+        description="`openai_compatible`, `anthropic`, `azure_openai` or a plugin kind.",
+    )
     base_url: str = Field(
         max_length=URL_MAX_LENGTH * 2,
         description="Including the version prefix, e.g. `http://vllm:8000/v1` or "
