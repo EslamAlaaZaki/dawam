@@ -35,8 +35,8 @@ Public interface. Other modules import only what is re-exported here:
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
 Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
-``llm_usage`` and ``llm_workspace_settings`` tables. Imports ``auth``, ``activity``, ``audit`` and ``workspaces``
-(for the admin policy).
+``llm_usage`` and ``llm_workspace_settings`` tables. Imports ``auth``, ``activity``,
+``audit`` and ``workspaces`` (for the admin policy).
 """
 
 from fastapi import APIRouter
