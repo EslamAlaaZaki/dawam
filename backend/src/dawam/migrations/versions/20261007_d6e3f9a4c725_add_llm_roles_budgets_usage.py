@@ -1,7 +1,7 @@
 """add LLM model-role settings, token budgets and usage.
 
 Revision ID: d6e3f9a4c725
-Revises: c5d2e8f3a614
+Revises: d6e3f9a4b725
 Create Date: 2026-10-07 09:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d6e3f9a4c725"
-down_revision: str | Sequence[str] | None = "c5d2e8f3a614"
+down_revision: str | Sequence[str] | None = "d6e3f9a4b725"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -58,3 +58,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_llm_usage_created_at", "llm_usage", ["created_at"])
+
+
+def downgrade() -> None:
+    op.drop_index("ix_llm_usage_created_at", table_name="llm_usage")
+    op.drop_table("llm_usage")
+    op.drop_table("llm_workspace_budgets")
+    op.drop_table("llm_settings")
