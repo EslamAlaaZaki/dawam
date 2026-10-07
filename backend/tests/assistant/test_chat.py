@@ -544,3 +544,54 @@ def test_a_stray_conversation_id_is_a_404(roles, model):
     response = owner.get(f"{base(roles)}/conversations/{uuid.uuid4()}")
 
     assert response.status_code == 404
+
+
+# -- propose_changes (Change Sets, stories 147, 148) -------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("role", "allowed"), [("viewer", False), ("editor", True), ("owner", True)]
+)
+def test_propose_changes_is_a_write_tool_that_only_proposes(roles, model, fake_llm, role, allowed):
+    from tests.authz.matrix import table_id
+
+    table = table_id(roles)
+    systems = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/systems")
+    system = systems.json()["items"][0]["id"]
+    client = roles.client(role)
+    propose = tool(
+        "propose_changes",
+        title="Describe customers",
+        source_system_id=system,
+        items=[
+            {
+                "key": "t",
+                "object_type": "source_table",
+                "object_id": table,
+                "changes": {"description": "Bank customers"},
+                "label": "core.customers",
+            }
+        ],
+    )
+    fake_llm.script(Reply(tool_calls=(propose,)), Reply(text="Proposed."))
+    cid = conversation(client, roles)
+
+    events = ask(client, roles, cid, "Describe the customers table")
+
+    [(_, shown)] = [e for e in events if e[0] == "tool"]
+    assert shown["status"] == ("ok" if allowed else "refused")
+    assert ("propose_changes" in tool_names(fake_llm)) is allowed
+    listing = roles.client("owner").get(
+        f"/api/v1/workspaces/{roles.workspace_id}/change-sets", params={"conversation_id": cid}
+    )
+    found = listing.json()["items"]
+    if allowed:
+        [proposed] = found
+        assert proposed["status"] == "pending" and proposed["origin"] == "ai"
+        assert proposed["item_counts"] == {"pending": 1}
+    else:
+        assert found == []
+    schema = roles.client("owner").get(
+        f"/api/v1/workspaces/{roles.workspace_id}/systems/{system}/schema"
+    )
+    assert schema.json()["tables"][0]["description"] is None  # nothing changed yet

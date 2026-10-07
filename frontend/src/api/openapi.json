@@ -1469,6 +1469,349 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/change-sets": {
+      "get": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "List Change Sets",
+        "description": "The Workspace's Change Sets, newest first (any member).",
+        "operationId": "listChangeSets",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "applied",
+                    "partially_applied",
+                    "rejected",
+                    "superseded"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this status.",
+              "title": "Status"
+            },
+            "description": "Only this status."
+          },
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only those the assistant proposed in this chat.",
+              "title": "Conversation Id"
+            },
+            "description": "Only those the assistant proposed in this chat."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}": {
+      "get": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "Get Change Set",
+        "description": "A Change Set with every item, as a diff (any member). 404 if not in the Workspace.",
+        "operationId": "getChangeSet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "change_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/accept": {
+      "post": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "Accept Change Set",
+        "description": "Accept all or some items (owners and editors) and apply them in one transaction.\nWhat they depend on is accepted too. Stale items and their dependents are skipped and\nreported; owner-only items stay `needs_owner` unless an owner accepts. 409\n`change_set_closed`; 422 `invalid_change_set`.",
+        "operationId": "acceptChangeSet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "change_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Set Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/reject": {
+      "post": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "Reject Change Set",
+        "description": "Reject all or some items (owners and editors); items that depend on them are\nrejected too. 409 `change_set_closed`; 422 `invalid_change_set`.",
+        "operationId": "rejectChangeSet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "change_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Set Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{job_id}": {
       "get": {
         "tags": [
@@ -11312,6 +11655,7 @@
           "source_table.top_n",
           "pii.review",
           "pii.manage_rules",
+          "change_set.review",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -11699,6 +12043,46 @@
           "next_cursor"
         ],
         "title": "AdminWorkspacePage"
+      },
+      "ApplyResult": {
+        "properties": {
+          "change_set": {
+            "$ref": "#/components/schemas/ChangeSetDetail"
+          },
+          "accepted": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Accepted"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedItem"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "description": "Stale items and the items that depend on them, not applied."
+          },
+          "needs_owner": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Needs Owner",
+            "description": "Items an owner still has to accept (owner-only ones and what depends on them)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set",
+          "accepted",
+          "skipped",
+          "needs_owner"
+        ],
+        "title": "ApplyResult"
       },
       "ApprovedAgentModel": {
         "properties": {
@@ -12113,6 +12497,301 @@
           "role"
         ],
         "title": "ChangeRoleRequest"
+      },
+      "ChangeSet": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "regeneration",
+              "sync",
+              "propagation",
+              "import",
+              "platform_change",
+              "system_code_change"
+            ],
+            "title": "Origin"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "partially_applied",
+              "rejected",
+              "superseded"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "applied_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied By"
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "item_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Item Counts",
+            "description": "Items by status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "origin",
+          "scope",
+          "title",
+          "conversation_id",
+          "created_by",
+          "status",
+          "created_at",
+          "applied_by",
+          "applied_at",
+          "item_counts"
+        ],
+        "title": "ChangeSet"
+      },
+      "ChangeSetDetail": {
+        "properties": {
+          "change_set": {
+            "$ref": "#/components/schemas/ChangeSet"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeSetItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set",
+          "items"
+        ],
+        "title": "ChangeSetDetail"
+      },
+      "ChangeSetItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type",
+            "description": "What the item changes, e.g. `source_table`."
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ],
+            "title": "Operation"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "What the diff shows for the object, e.g. `core.customers`."
+          },
+          "base_values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Values",
+            "description": "The values of the changed fields when the item was proposed (the diff's 'before'); an item is stale when one of them has changed since."
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "The new values (the diff's 'after')."
+          },
+          "depends_on": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Depends On"
+          },
+          "required_role": {
+            "type": "string",
+            "enum": [
+              "editor",
+              "owner"
+            ],
+            "title": "Required Role"
+          },
+          "is_conflict": {
+            "type": "boolean",
+            "title": "Is Conflict"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "needs_owner",
+              "accepted",
+              "rejected",
+              "stale",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "object_type",
+          "object_id",
+          "operation",
+          "label",
+          "base_values",
+          "payload",
+          "depends_on",
+          "required_role",
+          "is_conflict",
+          "status",
+          "status_reason"
+        ],
+        "title": "ChangeSetItem"
+      },
+      "ChangeSetPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeSet"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ChangeSetPage"
       },
       "ColumnChange": {
         "properties": {
@@ -13707,6 +14386,29 @@
           "fields"
         ],
         "title": "DbSchemaChange"
+      },
+      "DecisionRequest": {
+        "properties": {
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids",
+            "description": "The items to decide; leave out for every open item."
+          }
+        },
+        "type": "object",
+        "title": "DecisionRequest"
       },
       "DeleteWorkspaceRequest": {
         "properties": {
@@ -18077,6 +18779,34 @@
           "password"
         ],
         "title": "SignInRequest"
+      },
+      "SkippedItem": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Item Id"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "stale",
+              "depends_on_skipped"
+            ],
+            "title": "Reason"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "reason",
+          "detail"
+        ],
+        "title": "SkippedItem"
       },
       "SmtpSettingsIn": {
         "properties": {

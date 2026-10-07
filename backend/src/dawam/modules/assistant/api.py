@@ -18,9 +18,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from dawam.modules.auth import CurrentUser
+from dawam.modules.changesets import ChangeSetService
 from dawam.modules.files import FileService
 from dawam.modules.kpis import KpiService
 from dawam.modules.llm import ProviderService, RoleService, WorkspaceAiService
+from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import SourceSystemService
 from dawam.modules.warehouse import DataWarehouseService
 from dawam.modules.workspaces import WorkspaceService
@@ -59,6 +61,13 @@ def assistant_service(request: Request) -> AssistantService:
         workspaces,
         ToolServices(
             kpis=KpiService(engine, workspaces=workspaces, systems=systems, clock=clock),
+            change_sets=ChangeSetService(
+                engine,
+                workspaces=workspaces,
+                handlers=state.change_set_handlers,
+                notifications=NotificationService(engine, clock=clock),
+                clock=clock,
+            ),
             files=FileService(
                 engine,
                 workspaces=workspaces,

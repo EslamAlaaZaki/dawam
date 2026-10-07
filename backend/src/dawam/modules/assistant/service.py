@@ -340,7 +340,7 @@ class AssistantService:
             record.updated_at = now
             history = self._history(db, conversation_id)
             started = Started(run.id, message.id)
-        return self._stream(user, workspace_id, started, history, context)
+        return self._stream(user, workspace_id, conversation_id, started, history, context)
 
     def stop(self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
         """Ask the conversation's running response to stop (by the member who started it).
@@ -360,6 +360,7 @@ class AssistantService:
         self,
         user: User,
         workspace_id: uuid.UUID,
+        conversation_id: uuid.UUID,
         started: Started,
         history: Sequence[Message],
         context: PageContext | None,
@@ -374,7 +375,9 @@ class AssistantService:
                 gateway = self._roles.gateway_for_role(
                     "agent", workspace_id=workspace_id, user_id=user.id
                 )
-                tools = self._tools.bind(user, workspace_id, self._ai.policy(workspace_id))
+                tools = self._tools.bind(
+                    user, workspace_id, self._ai.policy(workspace_id), conversation_id
+                )
                 for event in run_agent(
                     gateway,
                     tools,

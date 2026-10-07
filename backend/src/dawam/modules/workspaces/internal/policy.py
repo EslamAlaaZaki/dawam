@@ -104,6 +104,11 @@ class Action(StrEnum):
     MANAGE_PII_RULES = "pii.manage_rules"
     """List, add, edit and delete the Workspace's custom PII rules and switch built-in rules
     on or off (owners only; spec §6.12, story 136)."""
+    REVIEW_CHANGE_SETS = "change_set.review"
+    """Propose Change Sets (through the assistant) and accept or reject their items (owners
+    and editors; spec §4.3 "Accept / reject Change Set items"). Owner-only items need an
+    owner whatever this action says: each item carries the role its own action requires
+    (``required_role``). Reading Change Sets needs only ``VIEW_WORKSPACE``."""
     CANCEL_OWN_JOB = "job.cancel_own"
     """Cancel a background job the user started (any member who started one)."""
     CANCEL_ANY_JOB = "job.cancel_any"
@@ -211,6 +216,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.ENABLE_TOP_N: _WorkspaceRule(min_role="owner"),
     Action.REVIEW_PII: _WorkspaceRule(min_role="editor"),
     Action.MANAGE_PII_RULES: _WorkspaceRule(min_role="owner"),
+    Action.REVIEW_CHANGE_SETS: _WorkspaceRule(min_role="editor"),
     Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
@@ -228,6 +234,18 @@ WORKSPACE_ACTIONS: tuple[Action, ...] = tuple(
     action for action, rule in _RULES.items() if isinstance(rule, _WorkspaceRule)
 )
 """The actions whose resource is a ``WorkspaceScope``."""
+
+
+def required_role(action: Action) -> Literal["editor", "owner"]:
+    """The lowest Workspace role that may accept a Change Set item whose change needs
+    ``action``: what the item carries as its ``required_role``, so it never drifts from the
+    matrix. Items are decided by editors and owners, so a viewer-level action needs an
+    editor. ``ValueError`` for an action no Workspace role performs or one that is not
+    Workspace-scoped."""
+    rule = _RULES[action]
+    if not isinstance(rule, _WorkspaceRule) or rule.min_role is None:
+        raise ValueError(f"no Workspace role performs {action}")
+    return "owner" if rule.min_role == "owner" else "editor"
 
 
 def can(user: User, action: Action, resource: Resource) -> bool:

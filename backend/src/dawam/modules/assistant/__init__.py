@@ -17,7 +17,8 @@ Public interface. Other modules import only what is re-exported here:
   (answers over Server-Sent Events) and ``POST .../conversations/{id}/stop``.
 
 Owns the ``assistant_conversations``, ``assistant_messages`` and ``assistant_runs`` tables.
-Imports ``auth``, ``workspaces``, ``llm``, ``files``, ``kpis``, ``sources`` and ``warehouse``.
+Imports ``auth``, ``workspaces``, ``llm``, ``files``, ``kpis``, ``changesets``, ``notifications``,
+``sources`` and ``warehouse``.
 """
 
 from .api import router
