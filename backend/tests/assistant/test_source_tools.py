@@ -15,13 +15,6 @@ import pytest
 from dawam.modules.llm import FakeAdapter, Reply
 from tests.assistant import test_chat
 from tests.assistant.test_chat import ask, conversation, tool, tool_names
-    ask,
-    conversation,
-    model,
-    settings,
-    tool,
-    tool_names,
-)
 from tests.roles import RoleClients
 from tests.sample_source import SampleSource
 from tests.sources import test_extraction
