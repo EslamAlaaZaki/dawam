@@ -119,6 +119,8 @@ class Row:
     """A request body that would succeed for an allowed role."""
     files: Body | None = field(default=None, kw_only=True)
     """Multipart form files (``{"file": (name, bytes, type)}``) for an upload route."""
+    query: Mapping[str, str] | None = field(default=None, kw_only=True)
+    """Query parameters a route requires."""
     setup: Callable[[RoleClients], object] | None = field(default=None, kw_only=True)
     """Run before the request, for state an allowed role needs to succeed (e.g. a
     second owner, so the owner may leave)."""
@@ -209,6 +211,17 @@ def kpi_id(roles: RoleClients) -> uuid.UUID:
     if listed:
         return uuid.UUID(listed[0]["id"])
     response = owner.post(path, json={"name": "Customer count"})
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
+def comment_id(roles: RoleClients) -> uuid.UUID:
+    """A thread's first comment (the owner adds it through the API once)."""
+    owner = roles.client("owner")
+    response = owner.post(
+        f"/api/v1/workspaces/{roles.workspace_id}/comments",
+        json={"object_type": "kpi", "object_id": str(kpi_id(roles)), "body": "Net of fees?"},
+    )
     assert response.status_code == 201, response.text
     return uuid.UUID(response.json()["id"])
 
@@ -555,6 +568,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "job_id": job_id,
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
+    "comment_id": comment_id,
     "file_id": file_id,
     "snapshot_id": snapshot_id,
     "source_link_id": source_link_id,
@@ -593,7 +607,7 @@ def send(row: Row, role: Role, roles: RoleClients) -> Any:
     path = request_path(row, roles)
     json = row.json(roles) if row.json is not None else None
     files = row.files(roles) if row.files is not None else None
-    return client.request(row.method, path, json=json, files=files)
+    return client.request(row.method, path, json=json, files=files, params=row.query)
 
 
 _IGNORED_METHODS = frozenset({"HEAD", "OPTIONS"})

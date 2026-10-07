@@ -12,6 +12,7 @@ from dawam.modules import (
     admin,
     audit,
     auth,
+    collaboration,
     files,
     jobs,
     kpis,
@@ -35,6 +36,7 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     notifications,
     workspaces,
     kpis,
+    collaboration,
     files,
     llm,
 )
