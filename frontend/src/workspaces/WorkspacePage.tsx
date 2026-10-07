@@ -25,6 +25,7 @@ import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { MembersPanel } from "./MembersPanel";
+import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
@@ -99,6 +100,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     (system) => folder.id === `systems/${system.id}/documents`,
   );
 
+  // `dw/<layer>/model`: a Layer's tables.
+  const modelLayer = (["staging", "core", "mart"] as const).find(
+    (layer) => folder.id === `dw/${layer}/model`,
+  );
+
   function select(id: string) {
     router.push(
       id === ""
@@ -165,6 +171,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               area={{ systemId: documentsSystem.id }}
               title="Documents"
               ownerName={documentsSystem.name}
+            />
+          ) : modelLayer ? (
+            <ModelPanel
+              // Another Layer starts with no table open.
+              key={folder.id}
+              workspace={workspace.data}
+              layer={modelLayer}
             />
           ) : folder.id === "dw/files" ? (
             <DocumentsPanel
