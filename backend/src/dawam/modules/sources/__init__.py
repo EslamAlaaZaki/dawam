@@ -31,6 +31,11 @@ Public interface. Other modules import only what is re-exported here:
   is its handler, which ``dawam.job_handlers`` registers). Sampled values are tested in memory
   against ``dawam.platform.pii_validators`` and discarded; only the match ratio is stored, as
   the evidence of a ``suggested`` finding (confidence at least 0.5).
+- ``check_query``: the AI source query guard (ADR 0002). Given SQL, the engine and a
+  ``GuardCatalog`` of the latest Snapshot (``load_guard_catalog`` builds one), it returns
+  ``Rejected(reason)`` or a ``SafeQuery``: fully qualified SQL regenerated from the verified
+  parse tree, plus which output columns to mask. Run ``SafeQuery.sql``, never the input.
+  ``untraceable_views`` lists the views the guard cannot trace (not queryable).
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -62,6 +67,18 @@ from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
+from .internal.query_guard import (
+    GuardCatalog,
+    GuardColumn,
+    GuardTable,
+    OutputColumn,
+    Rejected,
+    SafeQuery,
+    UntraceableView,
+    check_query,
+    untraceable_views,
+)
+from .internal.query_guard_catalog import load_guard_catalog
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
@@ -86,15 +103,21 @@ __all__ = [
     "DataDictionaryService",
     "DataDictionaryServiceDep",
     "EnhancementService",
+    "GuardCatalog",
+    "GuardColumn",
+    "GuardTable",
     "ImportResult",
     "ImportStatus",
+    "OutputColumn",
     "PiiFinding",
     "PiiScanService",
     "PiiService",
     "ProfilingService",
+    "Rejected",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
+    "SafeQuery",
     "SchemaImportService",
     "SearchHit",
     "SnapshotContent",
@@ -105,6 +128,10 @@ __all__ = [
     "SourceSystemPage",
     "SourceSystemService",
     "TableProfile",
+    "UntraceableView",
+    "check_query",
     "is_protected",
+    "load_guard_catalog",
     "router",
+    "untraceable_views",
 ]
