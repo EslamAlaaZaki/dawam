@@ -8617,6 +8617,364 @@
           }
         }
       }
+    },
+    "/api/v1/admin/llm/roles": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Roles",
+        "description": "Which model fills each role, and whether re-indexing is needed (admins only).",
+        "operationId": "getLlmRoles",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRoles"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Roles",
+        "description": "Assign models to the roles (admins only). The agent role is required; every model\nmust be registered and have passed \"Test connection\". Switching the embedding model\nsets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`.",
+        "operationId": "setLlmRoles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRoles"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Budgets",
+        "description": "The installation's monthly token budget and every Workspace's own (admins only).",
+        "operationId": "getLlmBudgets",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets/installation": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Installation Budget",
+        "description": "Set (or, with null, remove) the installation's monthly token budget (admins\nonly). Once it is used up, AI calls fail with 429 `token_budget_exhausted`; the rest\nof DAWAM keeps working.",
+        "operationId": "setLlmInstallationBudget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Workspace Budget",
+        "description": "Set a Workspace's own monthly token budget (admins only). 404 `workspace_not_found`.",
+        "operationId": "setLlmWorkspaceBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmWorkspaceBudgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Workspace Budget",
+        "description": "Remove a Workspace's own budget (admins only): only the installation's applies.",
+        "operationId": "clearLlmWorkspaceBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/usage": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Usage",
+        "description": "AI usage in a month, in total, per Workspace and per user, with tokens per model\nrole (admins only).",
+        "operationId": "getLlmUsage",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`YYYY-MM` (UTC); default: this month.",
+              "title": "Month"
+            },
+            "description": "`YYYY-MM` (UTC); default: this month."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmUsage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11283,6 +11641,58 @@
         ],
         "title": "LinkDocumentRequest"
       },
+      "LlmBudgetRequest": {
+        "properties": {
+          "monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Token Budget",
+            "description": "Tokens per calendar month (UTC). Null removes the installation's limit."
+          }
+        },
+        "type": "object",
+        "required": [
+          "monthly_token_budget"
+        ],
+        "title": "LlmBudgetRequest"
+      },
+      "LlmBudgets": {
+        "properties": {
+          "installation_monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installation Monthly Token Budget",
+            "description": "Null: unlimited."
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceBudget"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "installation_monthly_token_budget",
+          "workspaces"
+        ],
+        "title": "LlmBudgets"
+      },
       "LlmModel": {
         "properties": {
           "id": {
@@ -11639,6 +12049,128 @@
         ],
         "title": "LlmProviderRequest"
       },
+      "LlmRoles": {
+        "properties": {
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "Required for AI to work; null only until an admin assigns one."
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id",
+            "description": "Null: light tasks (titles, short summaries) use the agent model."
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id"
+          },
+          "reindex_needed": {
+            "type": "boolean",
+            "title": "Reindex Needed",
+            "description": "True after the embedding model or its vector dimension changed: documents must be indexed again."
+          },
+          "reindex_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "embedding_model_changed",
+                  "embedding_dimension_changed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reindex Reason"
+          },
+          "reindex_flagged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reindex Flagged At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_model_id",
+          "light_model_id",
+          "embedding_model_id",
+          "reindex_needed",
+          "reindex_reason",
+          "reindex_flagged_at"
+        ],
+        "title": "LlmRoles"
+      },
+      "LlmRolesRequest": {
+        "properties": {
+          "agent_model_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agent Model Id"
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id"
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_model_id"
+        ],
+        "title": "LlmRolesRequest"
+      },
       "LlmSetupStatus": {
         "properties": {
           "complete": {
@@ -11668,6 +12200,248 @@
           "has_internal_agent_model"
         ],
         "title": "LlmSetupStatus"
+      },
+      "LlmUsage": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "`YYYY-MM` (UTC)."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LlmUsageTotals"
+          },
+          "installation_monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installation Monthly Token Budget"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceUsage"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/LlmUserUsage"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "totals",
+          "installation_monthly_token_budget",
+          "workspaces",
+          "users"
+        ],
+        "title": "LlmUsage"
+      },
+      "LlmUsageTotals": {
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "title": "Prompt Tokens"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "title": "Completion Tokens"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "estimated_calls": {
+            "type": "integer",
+            "title": "Estimated Calls",
+            "description": "Calls whose tokens DAWAM estimated."
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "calls",
+          "estimated_calls"
+        ],
+        "title": "LlmUsageTotals"
+      },
+      "LlmUserUsage": {
+        "properties": {
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LlmUsageTotals"
+          },
+          "tokens_by_role": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Tokens By Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "totals",
+          "tokens_by_role"
+        ],
+        "title": "LlmUserUsage"
+      },
+      "LlmWorkspaceBudget": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name",
+            "description": "Null if the Workspace no longer exists."
+          },
+          "monthly_token_budget": {
+            "type": "integer",
+            "title": "Monthly Token Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "monthly_token_budget"
+        ],
+        "title": "LlmWorkspaceBudget"
+      },
+      "LlmWorkspaceBudgetRequest": {
+        "properties": {
+          "monthly_token_budget": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
+            "title": "Monthly Token Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "monthly_token_budget"
+        ],
+        "title": "LlmWorkspaceBudgetRequest"
+      },
+      "LlmWorkspaceUsage": {
+        "properties": {
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id",
+            "description": "Null: calls made for no Workspace, or one since deleted."
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LlmUsageTotals"
+          },
+          "tokens_by_role": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Tokens By Role"
+          },
+          "monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Token Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "totals",
+          "tokens_by_role",
+          "monthly_token_budget"
+        ],
+        "title": "LlmWorkspaceUsage"
       },
       "Me": {
         "properties": {

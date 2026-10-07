@@ -16,10 +16,17 @@ Public interface. Other modules import only what is re-exported here:
   ``/chat/completions`` and ``/embeddings``) or the ``anthropic`` one (Claude through
   the Messages API; chat only, no embeddings). Nothing else imports a vendor SDK.
 - ``FakeAdapter`` (with ``Reply``): the scripted fake provider every test can use.
-- ``router``: ``/admin/llm/providers[/{provider_id}[/models]]``,
+- ``RoleService``: model roles (``agent`` required, ``light``, ``embedding``), monthly token
+  budgets (installation and per Workspace) and usage. ``gateway_for_role(role, workspace_id=,
+  user_id=)`` is how features call a model: the ``MeteredGateway`` checks the budgets before
+  every call (429 ``token_budget_exhausted``) and records tokens per call; ``light`` falls
+  back to the agent model when unassigned or not allowed.
+- ``router``: ``/admin/llm/roles``, ``/admin/llm/budgets[...]``, ``/admin/llm/usage``,
+  ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
-Owns the ``llm_providers`` and ``llm_models`` tables. Imports ``auth`` and ``workspaces``
+Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets`` and
+``llm_usage`` tables. Imports ``auth`` and ``workspaces``
 (for the admin policy).
 """
 
@@ -40,6 +47,12 @@ from .gateway import (
 )
 from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for
 from .internal.fake import FakeAdapter, Reply
+from .role_service import (
+    MeteredGateway,
+    RoleAssignments,
+    RoleService,
+    UsageReport,
+)
 from .service import (
     Model,
     ModelInput,
@@ -60,18 +73,22 @@ __all__ = [
     "Gateway",
     "LlmError",
     "Message",
+    "MeteredGateway",
     "Model",
     "ModelInput",
     "Provider",
     "ProviderInput",
     "ProviderService",
     "Reply",
+    "RoleAssignments",
+    "RoleService",
     "SetupStatus",
     "TextDelta",
     "ToolCall",
     "ToolCallEvent",
     "ToolSpec",
     "Usage",
+    "UsageReport",
     "adapter_for",
     "router",
 ]
