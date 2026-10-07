@@ -59,6 +59,9 @@ function SetupForm({ workspace, warehouse }: { workspace: Workspace; warehouse: 
         dimension_prefix: text("dimension_prefix"),
         fact_prefix: text("fact_prefix"),
         bridge_prefix: text("bridge_prefix"),
+        // Not on this form: keep what is set (the audit columns of Staging Tables).
+        load_ts_column: warehouse.naming_rules?.load_ts_column ?? "load_ts",
+        source_system_column: warehouse.naming_rules?.source_system_column ?? "source_system",
       },
       date_dimension: {
         start_year: Number(text("start_year")),

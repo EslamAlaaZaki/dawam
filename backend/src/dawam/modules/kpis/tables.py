@@ -54,6 +54,8 @@ class KpiRecord(Base):
     targets: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     """A list of ``{"label": ..., "value": ...}``."""
     origin: Mapped[str] = mapped_column(sa.String(8))
+    rationale: Mapped[str | None] = mapped_column(sa.String(TEXT_MAX_LENGTH))
+    """Why the AI suggested the KPI; ``None`` for any other origin."""
     status: Mapped[str] = mapped_column(sa.String(16))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")

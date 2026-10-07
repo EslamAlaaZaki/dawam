@@ -23,8 +23,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from dawam.modules.auth import User
+from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
-from dawam.modules.kpis import KpiService
+from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import PiiService, ProfilingService, SnapshotService
 from dawam.modules.warehouse import ScoreService
@@ -37,12 +38,14 @@ logger = logging.getLogger(__name__)
 
 MAX_RESULT_CHARS = 20_000
 MAX_FILE_TEXT_CHARS = 15_000
+MAX_PROPOSED_ITEMS = 200
 
 
 @dataclass(frozen=True)
 class ToolServices:
     kpis: KpiService
     files: FileService
+    change_sets: ChangeSetService
     snapshots: SnapshotService
     profiling: ProfilingService
     pii: PiiService
@@ -58,6 +61,7 @@ class ToolContext:
     policy: DataSharingPolicy
     """What the Workspace lets the model see; a tool that may send more or less than its own
     ``level`` asks it."""
+    conversation_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +152,57 @@ class _GenerateFile(BaseModel):
     system_id: uuid.UUID = Field(description="The Source System whose file area gets the file.")
     name: str = Field(min_length=1, max_length=200, description="File name, e.g. `notes.md`.")
     content: str = Field(max_length=200_000, description="The file's text.")
+
+
+class _KpiIdea(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="The KPI's name.")
+    rationale: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="Why this KPI fits: which tables, columns or documents point to it.",
+    )
+    definition: str = Field(default="", max_length=4000, description="The business definition.")
+    formula_text: str = Field(default="", max_length=4000, description="The formula in words.")
+    unit: str = Field(default="", max_length=50)
+    aggregation: str = Field(default="", max_length=50)
+
+
+class _SuggestKpis(BaseModel):
+    suggestions: list[_KpiIdea] = Field(min_length=1, max_length=20)
+    system_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Source System the KPIs are documented under; leave out for the "
+        "Data Warehouse.",
+    )
+
+
+class _ChangeItem(BaseModel):
+    key: str = Field(
+        min_length=1, max_length=40, description="A short name for this item, for `depends_on`."
+    )
+    object_type: Literal["source_table", "source_column"] = Field(
+        description="`source_table` or `source_column`."
+    )
+    object_id: uuid.UUID = Field(description="The table's or column's id.")
+    changes: dict[str, Any] = Field(
+        min_length=1,
+        description="The fields to change and their new values. Tables and columns: "
+        "`description` (text), `tags` (list of text), `is_sensitive` (boolean). Tables only: "
+        "`classification` (master, transactional, reference, log or landing) and `scd_hint` "
+        "(text).",
+    )
+    label: str = Field(
+        default="", max_length=200, description="What to call the object, e.g. `core.customers`."
+    )
+    depends_on: list[str] = Field(
+        default_factory=list, description="Keys of earlier items this one needs."
+    )
+
+
+class _ProposeChanges(BaseModel):
+    title: str = Field(min_length=1, max_length=200, description="What the changes are for.")
+    source_system_id: uuid.UUID = Field(description="The Source System the objects belong to.")
+    items: list[_ChangeItem] = Field(min_length=1, max_length=MAX_PROPOSED_ITEMS)
 
 
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
@@ -515,6 +570,61 @@ def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     )
 
 
+def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
+    result = ctx.services.kpis.suggest(
+        ctx.user,
+        ctx.workspace_id,
+        [KpiSuggestion(**idea.model_dump()) for idea in args.suggestions],
+        source_system_id=args.system_id,
+    )
+    folder = "dw" if args.system_id is None else f"systems/{args.system_id}"
+    return {
+        "created": [
+            {
+                "id": kpi.id,
+                "name": kpi.name,
+                "status": kpi.status,
+                "origin": kpi.origin,
+                "link": f"?folder={folder}/kpis",
+            }
+            for kpi in result.created
+        ],
+        "skipped": result.skipped,
+        "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
+        "existing KPIs are never changed.",
+    }
+
+
+def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
+    """The changes are not made: they become a Change Set the user reviews."""
+    detail = ctx.services.change_sets.propose(
+        ctx.user,
+        ctx.workspace_id,
+        origin="ai",
+        scope={"kind": "source_enhancements", "source_system_id": str(args.source_system_id)},
+        title=args.title,
+        conversation_id=ctx.conversation_id,
+        items=[
+            ProposedItem(
+                key=item.key,
+                object_type=item.object_type,
+                operation="update",
+                object_id=item.object_id,
+                payload=item.changes,
+                label=item.label,
+                depends_on=item.depends_on,
+            )
+            for item in args.items
+        ],
+    )
+    return {
+        "change_set_id": detail.change_set.id,
+        "status": "proposed",
+        "note": "The user reviews these changes; nothing has been changed yet.",
+        "items": len(detail.items),
+    }
+
+
 TOOLS: tuple[Tool, ...] = (
     Tool(
         "search_catalog",
@@ -605,6 +715,27 @@ TOOLS: tuple[Tool, ...] = (
         Action.UPLOAD_FILE,
         _generate_file,
     ),
+    Tool(
+        "suggest_kpis",
+        "After reading a Source System's schema, profiles and documents, propose KPIs. They "
+        "are created as AI-labelled drafts with your rationale; a name that already exists "
+        "is skipped and existing KPIs are never changed. Never put sample values or "
+        "personal data in the text.",
+        _SuggestKpis,
+        "write",
+        Action.EDIT_KPI,
+        _suggest_kpis,
+    ),
+    Tool(
+        "propose_changes",
+        "Propose descriptions, tags, sensitivity flags, classifications and SCD hints for "
+        "a Source System's tables and columns. Nothing changes until the user accepts the "
+        "proposal as a Change Set.",
+        _ProposeChanges,
+        "write",
+        Action.REVIEW_CHANGE_SETS,
+        _propose_changes,
+    ),
 )
 
 
@@ -674,8 +805,15 @@ class ToolRegistry:
         self._services = services
         self._tools = {tool.name: tool for tool in tools}
 
-    def bind(self, user: User, workspace_id: uuid.UUID, policy: DataSharingPolicy) -> BoundTools:
-        return BoundTools(self, ToolContext(user, workspace_id, self._services, policy), policy)
+    def bind(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        policy: DataSharingPolicy,
+        conversation_id: uuid.UUID | None = None,
+    ) -> BoundTools:
+        ctx = ToolContext(user, workspace_id, self._services, policy, conversation_id)
+        return BoundTools(self, ctx, policy)
 
     def allowed(self, ctx: ToolContext, policy: DataSharingPolicy, tool: Tool) -> ApiError | None:
         """Why ``tool`` may not be used now, or ``None``."""

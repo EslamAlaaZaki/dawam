@@ -646,6 +646,37 @@ body {
   color: #8a1c1c;
 }
 
+.change-set {
+  margin: 1rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #bcccdc;
+}
+
+.change-items {
+  list-style: none;
+  padding: 0;
+}
+
+.change-item {
+  padding: 0.25rem 0;
+}
+
+.change-diff {
+  margin: 0.25rem 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.change-diff del {
+  color: #8a1c1c;
+}
+
+.change-diff ins {
+  color: #1f6f3d;
+  text-decoration: none;
+}
+
 .assistant-tools {
   font-size: 0.875rem;
 }

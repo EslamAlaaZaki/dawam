@@ -35,7 +35,14 @@ from .tables import (
     SrcTableRecord,
 )
 
-TABLE_FIELDS = ("description", "tags", "is_sensitive", "classification", "scd_hint")
+TABLE_FIELDS = (
+    "description",
+    "tags",
+    "is_sensitive",
+    "classification",
+    "scd_hint",
+    "include_view_in_staging",
+)
 COLUMN_FIELDS = ("description", "tags", "is_sensitive")
 """The enhancements of a table and of a column: what the audit trail records."""
 
@@ -48,6 +55,7 @@ class TableEnhancements:
     is_sensitive: bool
     classification: str | None
     scd_hint: str | None
+    include_view_in_staging: bool
     version: int
 
 
@@ -98,6 +106,29 @@ def _classification(value: str | None) -> str | None:
 
 def _snapshot(record: Any, fields: tuple[str, ...]) -> dict[str, Any]:
     return {f: list(v) if isinstance(v := getattr(record, f), list) else v for f in fields}
+
+
+def set_fields(
+    record: SrcTableRecord | SrcColumnRecord, entity_type: str, changes: Mapping[str, Any]
+) -> None:
+    """Validate ``changes`` and set them on ``record`` (no version check, audit or flush)."""
+    for field, value in changes.items():
+        if field == "description":
+            record.description = _text(value, "description", field, DESCRIPTION_MAX_LENGTH)
+        elif field == "tags":
+            record.tags = _tags(value)
+        elif field == "is_sensitive":
+            record.is_sensitive = bool(value)
+        elif field == "classification" and isinstance(record, SrcTableRecord):
+            record.classification = _classification(value)
+        elif field == "include_view_in_staging" and isinstance(record, SrcTableRecord):
+            if record.kind != "view":
+                raise _invalid("Only a view can be opted in; every base table is staged.", field)
+            record.include_view_in_staging = bool(value)
+        elif field == "scd_hint" and isinstance(record, SrcTableRecord):
+            record.scd_hint = _text(value, "SCD hint", field, SCD_HINT_MAX_LENGTH)
+        else:  # pragma: no cover - a programming error
+            raise ValueError(f"cannot change {entity_type} field {field!r}")
 
 
 def _not_found(what: str) -> ApiError:
@@ -206,19 +237,7 @@ class EnhancementService:
                 {"current_version": record.version},
             )
         before = _snapshot(record, fields)
-        for field, value in changes.items():
-            if field == "description":
-                record.description = _text(value, "description", field, DESCRIPTION_MAX_LENGTH)
-            elif field == "tags":
-                record.tags = _tags(value)
-            elif field == "is_sensitive":
-                record.is_sensitive = bool(value)
-            elif field == "classification" and isinstance(record, SrcTableRecord):
-                record.classification = _classification(value)
-            elif field == "scd_hint" and isinstance(record, SrcTableRecord):
-                record.scd_hint = _text(value, "SCD hint", field, SCD_HINT_MAX_LENGTH)
-            else:  # pragma: no cover - a programming error
-                raise ValueError(f"cannot change {entity_type} field {field!r}")
+        set_fields(record, entity_type, changes)
         after = _snapshot(record, fields)
         changed = [f for f in fields if before[f] != after[f]]
         if not changed:

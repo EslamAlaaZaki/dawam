@@ -486,6 +486,6 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
 
     ask(client, roles, conversation(client, roles), "hello")
 
-    offered = tool_names(fake_llm) - {"generate_file"}
-    extra = {"get_pii_findings"} if role != "viewer" else set()
+    offered = tool_names(fake_llm) - {"generate_file", "suggest_kpis"}
+    extra = {"get_pii_findings", "propose_changes"} if role != "viewer" else set()
     assert offered == expected | extra

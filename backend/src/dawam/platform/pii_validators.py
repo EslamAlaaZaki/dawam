@@ -224,3 +224,39 @@ def match_ratio(
         if validate(rule, value, today=day):
             matched += 1
     return MatchRatio(matched, total) if total else None
+
+
+_WORD = re.compile(r"\S+")
+_EDGE_PUNCTUATION = ",.;:!?()[]{}\"'"
+MAX_REDACTED_WORDS = 8
+"""The most words one value may span in text (a grouped IBAN or card number)."""
+
+
+def redact_text(text: str, *, today: date | None = None) -> str:
+    """``text`` with every value a distinctive validator (weight 1) accepts replaced by
+    ``[redacted: <rule>]``. Values may span several words (``SA03 8000 ...``). Weaker
+    validators (a 10-digit number, a date) are left alone: in prose they are mostly not PII."""
+    day = today or date.today()
+    strong = [v for v in VALIDATORS.values() if v.weight >= 1.0]
+    words = list(_WORD.finditer(text))
+    out: list[str] = []
+    cursor = 0
+    index = 0
+    while index < len(words):
+        for length in range(min(MAX_REDACTED_WORDS, len(words) - index), 0, -1):
+            first, last = words[index], words[index + length - 1]
+            raw = text[first.start() : last.end()]
+            candidate = raw.strip(_EDGE_PUNCTUATION)
+            rule = next((v.id for v in strong if validate(v.id, candidate, today=day)), None)
+            if rule is None:
+                continue
+            start = first.start() + raw.index(candidate)
+            out.append(text[cursor:start])
+            out.append(f"[redacted: {rule}]")
+            cursor = start + len(candidate)
+            index += length
+            break
+        else:
+            index += 1
+    out.append(text[cursor:])
+    return "".join(out)

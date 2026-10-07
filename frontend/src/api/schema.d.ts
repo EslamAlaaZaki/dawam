@@ -478,6 +478,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/change-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Change Sets
+         * @description The Workspace's Change Sets, newest first (any member).
+         */
+        get: operations["listChangeSets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Change Set
+         * @description A Change Set with every item, as a diff (any member). 404 if not in the Workspace.
+         */
+        get: operations["getChangeSet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Change Set
+         * @description Accept all or some items (owners and editors) and apply them in one transaction.
+         *     What they depend on is accepted too. Stale items and their dependents are skipped and
+         *     reported; owner-only items stay `needs_owner` unless an owner accepts. 409
+         *     `change_set_closed`; 422 `invalid_change_set`.
+         */
+        post: operations["acceptChangeSet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Change Set
+         * @description Reject all or some items (owners and editors); items that depend on them are
+         *     rejected too. 409 `change_set_closed`; 422 `invalid_change_set`.
+         */
+        post: operations["rejectChangeSet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -957,6 +1041,31 @@ export interface paths {
         get: operations["getScoreHistory"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Staging
+         * @description Generate the Staging Layer from the Source Schema (owners and editors; software,
+         *     no AI): one Staging Table per source base table (and per view opted in), named
+         *     `stg_<system code>_<database schema>_<table>`, with translated column types, the audit
+         *     columns, and `direct` mappings and lineage from the source. Names and types that needed
+         *     a placeholder, a hash suffix or a lossy translation are flagged for review. Running it
+         *     again adds only what is new. 404 `not_set_up` before the Data Warehouse is set up.
+         */
+        post: operations["generateStaging"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3052,7 +3161,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -3254,6 +3363,22 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** ApplyResult */
+        ApplyResult: {
+            change_set: components["schemas"]["ChangeSetDetail"];
+            /** Accepted */
+            accepted: string[];
+            /**
+             * Skipped
+             * @description Stale items and the items that depend on them, not applied.
+             */
+            skipped: components["schemas"]["SkippedItem"][];
+            /**
+             * Needs Owner
+             * @description Items an owner still has to accept (owner-only ones and what depends on them).
+             */
+            needs_owner: string[];
+        };
         /** ApprovedAgentModel */
         ApprovedAgentModel: {
             /**
@@ -3454,6 +3579,125 @@ export interface components {
              * @enum {string}
              */
             role: "viewer" | "editor" | "owner";
+        };
+        /** ChangeSet */
+        ChangeSet: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "ai" | "regeneration" | "sync" | "propagation" | "import" | "platform_change" | "system_code_change";
+            /** Scope */
+            scope: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "applied" | "partially_applied" | "rejected" | "superseded";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Applied By */
+            applied_by: string | null;
+            /** Applied At */
+            applied_at: string | null;
+            /**
+             * Item Counts
+             * @description Items by status.
+             */
+            item_counts: {
+                [key: string]: number;
+            };
+        };
+        /** ChangeSetDetail */
+        ChangeSetDetail: {
+            change_set: components["schemas"]["ChangeSet"];
+            /** Items */
+            items: components["schemas"]["ChangeSetItem"][];
+        };
+        /** ChangeSetItem */
+        ChangeSetItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /**
+             * Object Type
+             * @description What the item changes, e.g. `source_table`.
+             */
+            object_type: string;
+            /** Object Id */
+            object_id: string | null;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "create" | "update" | "delete";
+            /**
+             * Label
+             * @description What the diff shows for the object, e.g. `core.customers`.
+             */
+            label: string;
+            /**
+             * Base Values
+             * @description The values of the changed fields when the item was proposed (the diff's 'before'); an item is stale when one of them has changed since.
+             */
+            base_values: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Payload
+             * @description The new values (the diff's 'after').
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Depends On */
+            depends_on: string[];
+            /**
+             * Required Role
+             * @enum {string}
+             */
+            required_role: "editor" | "owner";
+            /** Is Conflict */
+            is_conflict: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "needs_owner" | "accepted" | "rejected" | "stale" | "expired";
+            /** Status Reason */
+            status_reason: string | null;
+        };
+        /** ChangeSetPage */
+        ChangeSetPage: {
+            /** Items */
+            items: components["schemas"]["ChangeSet"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** ColumnChange */
         ColumnChange: {
@@ -4252,6 +4496,14 @@ export interface components {
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
         };
+        /** DecisionRequest */
+        DecisionRequest: {
+            /**
+             * Item Ids
+             * @description The items to decide; leave out for every open item.
+             */
+            item_ids?: string[] | null;
+        };
         /** DeleteWorkspaceRequest */
         DeleteWorkspaceRequest: {
             /**
@@ -4343,6 +4595,11 @@ export interface components {
              * @description The Data Warehouse's naming rules this name breaks (a warning, not an error).
              */
             naming_violations: components["schemas"]["NamingViolation"][];
+            /**
+             * Review Flags
+             * @description What staging generation flagged on a staging column (empty otherwise).
+             */
+            review_flags: components["schemas"]["ReviewFlag"][];
         };
         /**
          * DwDataType
@@ -4419,6 +4676,11 @@ export interface components {
             version: number;
             /** Naming Violations */
             naming_violations: components["schemas"]["NamingViolation"][];
+            /**
+             * Review Flags
+             * @description What staging generation flagged on a Staging Table (empty otherwise).
+             */
+            review_flags: components["schemas"]["ReviewFlag"][];
         };
         /** DwTableList */
         DwTableList: {
@@ -4863,6 +5125,11 @@ export interface components {
              * @enum {string}
              */
             origin: "user" | "ai" | "rule";
+            /**
+             * Rationale
+             * @description Why the AI suggested the KPI; null unless `origin` is `ai`.
+             */
+            rationale: string | null;
             /**
              * Status
              * @enum {string}
@@ -5568,6 +5835,18 @@ export interface components {
              * @default bridge_
              */
             bridge_prefix: string;
+            /**
+             * Load Ts Column
+             * @description Name of the load-timestamp audit column of Staging Tables.
+             * @default load_ts
+             */
+            load_ts_column: string;
+            /**
+             * Source System Column
+             * @description Name of the System Code audit column of Staging Tables.
+             * @default source_system
+             */
+            source_system_column: string;
         };
         /** NamingViolation */
         NamingViolation: {
@@ -6119,6 +6398,16 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** ReviewFlag */
+        ReviewFlag: {
+            /**
+             * Code
+             * @description `placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+        };
         /** RoutineChange */
         RoutineChange: {
             /**
@@ -6400,7 +6689,9 @@ export interface components {
              *       "case_style": "lower",
              *       "dimension_prefix": "dim_",
              *       "fact_prefix": "fact_",
-             *       "bridge_prefix": "bridge_"
+             *       "bridge_prefix": "bridge_",
+             *       "load_ts_column": "load_ts",
+             *       "source_system_column": "source_system"
              *     }
              */
             naming_rules: components["schemas"]["NamingRules"];
@@ -6424,6 +6715,21 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** SkippedItem */
+        SkippedItem: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "stale" | "depends_on_skipped";
+            /** Detail */
+            detail: string;
         };
         /** SmtpSettingsIn */
         SmtpSettingsIn: {
@@ -6784,6 +7090,11 @@ export interface components {
              */
             scd_hint?: string | null;
             /**
+             * Include View In Staging
+             * @description Whether a view gets a Staging Table; set only in the Source Schema.
+             */
+            include_view_in_staging?: boolean | null;
+            /**
              * Version
              * @description Send it back when editing the enhancements; set only in the Source Schema.
              */
@@ -7028,6 +7339,48 @@ export interface components {
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
         };
+        /** StagingFlag */
+        StagingFlag: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Name
+             * @description Null for a flag on the table itself.
+             */
+            column_name: string | null;
+            /**
+             * Code
+             * @description `placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** StagingResult */
+        StagingResult: {
+            /** Tables Created */
+            tables_created: number;
+            /**
+             * Columns Created
+             * @description Including the audit columns.
+             */
+            columns_created: number;
+            /**
+             * Tables Existing
+             * @description Source tables that already had a Staging Table; left as they are.
+             */
+            tables_existing: number;
+            /**
+             * Flags
+             * @description What to review, for the tables just created.
+             */
+            flags: components["schemas"]["StagingFlag"][];
+        };
         /** StartProfilingRequest */
         StartProfilingRequest: {
             /**
@@ -7142,6 +7495,8 @@ export interface components {
             classification: ("master" | "transactional" | "reference" | "log" | "landing") | null;
             /** Scd Hint */
             scd_hint: string | null;
+            /** Include View In Staging */
+            include_view_in_staging: boolean;
             /** Version */
             version: number;
         };
@@ -7589,6 +7944,11 @@ export interface components {
              * @description E.g. "changes slowly, history matters". Send null to clear it.
              */
             scd_hint?: string | null;
+            /**
+             * Include View In Staging
+             * @description Give this view a Staging Table (views only; base tables always get one).
+             */
+            include_view_in_staging?: boolean | null;
         };
         /** UpdateTableMappingRequest */
         UpdateTableMappingRequest: {
@@ -8869,6 +9229,186 @@ export interface operations {
             };
         };
     };
+    listChangeSets: {
+        parameters: {
+            query?: {
+                /** @description Only this status. */
+                status?: ("pending" | "applied" | "partially_applied" | "rejected" | "superseded") | null;
+                /** @description Only those the assistant proposed in this chat. */
+                conversation_id?: string | null;
+                /** @description How many items to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getChangeSet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                change_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetDetail"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptChangeSet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                change_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResult"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectChangeSet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                change_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetDetail"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getJob: {
         parameters: {
             query?: never;
@@ -10070,6 +10610,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoreHistory"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    generateStaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagingResult"];
                 };
             };
             /** @description Validation error */

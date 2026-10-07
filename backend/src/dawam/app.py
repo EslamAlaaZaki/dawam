@@ -8,23 +8,28 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, FastAPI
+from sqlalchemy.orm import Session
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
 from dawam import job_handlers
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
+from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
+from dawam.modules.changesets import ObjectHandlers, reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.llm import AdapterFactory, on_workspace_created
 from dawam.modules.mail import MailService
-from dawam.modules.sources import SourceSummaryService
+from dawam.modules.sources import SourceEnhancementHandler, SourceSummaryService
 from dawam.modules.warehouse import (
     ScoreScheduler,
     ScoreService,
@@ -148,10 +153,23 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # Accepting an invitation into a Workspace (auth) joins it through the workspaces module.
     app.state.invited_membership = InvitedWorkspaceMembership(clock=services.clock)
 
-    # Archiving a Workspace (workspaces) cancels its jobs: workspaces cannot import jobs.
-    app.state.on_workspace_archived = JobService(
+    # Archiving a Workspace (workspaces) cancels its jobs and rejects its pending Change Sets:
+    # workspaces cannot import jobs or changesets.
+    cancel_jobs = JobService(
         engine, runner=services.jobs, clock=services.clock
     ).cancel_for_workspace
+
+    def on_workspace_archived(db: Session, workspace_id: uuid.UUID, at: datetime) -> None:
+        cancel_jobs(db, workspace_id, at)
+        reject_pending_change_sets(db, workspace_id, at)
+
+    app.state.on_workspace_archived = on_workspace_archived
+    # Change Sets proposed in a private conversation are hidden from everyone else.
+    app.state.readable_conversations = readable_conversations(engine)
+    # Each module that owns objects a Change Set may change registers its handlers here.
+    app.state.change_set_handlers = ObjectHandlers(
+        SourceEnhancementHandler("source_table"), SourceEnhancementHandler("source_column")
+    )
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot
     # import sources, which computes it.
     app.state.source_analysis = SourceSummaryService(
