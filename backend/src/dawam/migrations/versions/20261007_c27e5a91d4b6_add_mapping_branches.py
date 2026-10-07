@@ -60,6 +60,18 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_column_mappings_branch_id"), "column_mappings", ["branch_id"], unique=False
     )
+    op.add_column("lineage_edges", sa.Column("branch_id", sa.Uuid(), nullable=True))
+    op.create_foreign_key(
+        op.f("fk_lineage_edges_branch_id_mapping_branches"),
+        "lineage_edges",
+        "mapping_branches",
+        ["branch_id"],
+        ["id"],
+        ondelete="CASCADE",
+    )
+    op.create_index(
+        op.f("ix_lineage_edges_branch_id"), "lineage_edges", ["branch_id"], unique=False
+    )
     op.drop_constraint(op.f("uq_column_mappings_dw_column_id"), "column_mappings", type_="unique")
     op.create_index(
         "uq_column_mappings_column_branch",
@@ -83,6 +95,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index(op.f("ix_lineage_edges_branch_id"), table_name="lineage_edges")
+    op.drop_constraint(
+        op.f("fk_lineage_edges_branch_id_mapping_branches"), "lineage_edges", type_="foreignkey"
+    )
+    op.drop_column("lineage_edges", "branch_id")
     op.execute("DELETE FROM column_mappings WHERE branch_id IS NOT NULL")
     op.drop_constraint(op.f("ck_column_mappings_mapping_type"), "column_mappings", type_="check")
     op.create_check_constraint(

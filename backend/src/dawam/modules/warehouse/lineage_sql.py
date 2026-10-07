@@ -96,6 +96,8 @@ class BranchParts:
     """The ``GROUP BY`` expressions, normalized."""
     group_columns: frozenset[ColumnRef]
     """Every column the ``GROUP BY`` expressions read."""
+    refs: tuple[ColumnRef, ...]
+    """Every column the joins, filters, GROUP BY and HAVING read (table aliases resolved)."""
 
 
 def _normal(node: exp.Expression, platform: str) -> str:
@@ -130,18 +132,60 @@ def parse_branch(
     columns = frozenset(
         ColumnRef((c.table or "").lower() or None, c.name.lower())
         for g in group_nodes
-        for c in g.find_all(exp.Column)
+        for c in ([g] if isinstance(g, exp.Column) else [])
     )
+    aliases = {t.alias.lower(): t.name.lower() for t in tree.find_all(exp.Table) if t.alias}
+    refs: list[ColumnRef] = []
+    for c in tree.find_all(exp.Column):
+        table = (c.table or "").lower() or None
+        ref = ColumnRef(aliases.get(table, table) if table else None, c.name.lower())
+        if ref not in refs:
+            refs.append(ref)
     return BranchParts(
         tables=tuple(dict.fromkeys(t.name.lower() for t in tree.find_all(exp.Table))),
         group_by=tuple(_normal(g, platform) for g in group_nodes),
         group_columns=columns,
+        refs=tuple(refs),
     )
 
 
+def cast_null(data_type: dict[str, object], platform: str) -> str:
+    """``CAST(NULL AS <type>)`` for a neutral column type, in the target dialect."""
+    kind = {
+        "smallint": exp.DataType.Type.SMALLINT,
+        "integer": exp.DataType.Type.INT,
+        "bigint": exp.DataType.Type.BIGINT,
+        "decimal": exp.DataType.Type.DECIMAL,
+        "float": exp.DataType.Type.FLOAT,
+        "double": exp.DataType.Type.DOUBLE,
+        "boolean": exp.DataType.Type.BOOLEAN,
+        "char": exp.DataType.Type.CHAR,
+        "string": exp.DataType.Type.VARCHAR,
+        "text": exp.DataType.Type.TEXT,
+        "binary": exp.DataType.Type.VARBINARY,
+        "date": exp.DataType.Type.DATE,
+        "time": exp.DataType.Type.TIME,
+        "timestamp": exp.DataType.Type.TIMESTAMP,
+        "timestamptz": exp.DataType.Type.TIMESTAMPTZ,
+        "uuid": exp.DataType.Type.UUID,
+        "json": exp.DataType.Type.JSON,
+    }.get(str(data_type.get("type")), exp.DataType.Type.TEXT)
+    params = []
+    if kind == exp.DataType.Type.DECIMAL and data_type.get("precision"):
+        params = [data_type["precision"], data_type.get("scale") or 0]
+    elif kind in (exp.DataType.Type.CHAR, exp.DataType.Type.VARCHAR, exp.DataType.Type.VARBINARY):
+        params = [data_type["length"]] if data_type.get("length") else []
+    node = exp.DataType(
+        this=kind,
+        expressions=[exp.DataTypeParam(this=exp.Literal.number(p)) for p in params],
+    )
+    return exp.Cast(this=exp.Null(), to=node).sql(dialect=DIALECTS.get(platform))
+
+
 def is_group_safe(sql: str, parts: BranchParts, platform: str) -> bool:
-    """Whether an output expression is valid beside the branch's ``GROUP BY``: it
-    aggregates, or it is a grouped expression, or it reads only grouped columns."""
+    """Whether an output expression is valid beside the branch's ``GROUP BY``: every
+    column it reads is inside an aggregate or window, inside a grouped expression, or a
+    grouped column."""
     try:
         trees = sqlglot.parse(f"SELECT {sql}", read=DIALECTS.get(platform))
     except SqlglotError:
@@ -150,11 +194,19 @@ def is_group_safe(sql: str, parts: BranchParts, platform: str) -> bool:
     if not isinstance(tree, exp.Select) or len(tree.expressions) != 1:
         return True
     root = tree.expressions[0]
-    if root.find(exp.AggFunc, exp.Window) is not None:
+    return all(_column_safe(c, root, parts, platform) for c in root.find_all(exp.Column))
+
+
+def _column_safe(
+    column: exp.Column, root: exp.Expression, parts: BranchParts, platform: str
+) -> bool:
+    if ColumnRef((column.table or "").lower() or None, column.name.lower()) in parts.group_columns:
         return True
-    if _normal(root, platform) in parts.group_by:
-        return True
-    return all(
-        ColumnRef((c.table or "").lower() or None, c.name.lower()) in parts.group_columns
-        for c in root.find_all(exp.Column)
-    )
+    node: exp.Expression | None = column
+    while node is not None:
+        if isinstance(node, (exp.AggFunc, exp.Window)) or _normal(node, platform) in parts.group_by:
+            return True
+        if node is root:
+            break
+        node = node.parent
+    return False

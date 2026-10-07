@@ -4,7 +4,62 @@ from __future__ import annotations
 
 import pytest
 
-from dawam.modules.warehouse.lineage_sql import ColumnRef, Unparsable, parse_expression
+from dawam.modules.warehouse.lineage_sql import (
+    ColumnRef,
+    Unparsable,
+    cast_null,
+    is_group_safe,
+    parse_branch,
+    parse_expression,
+)
+
+PG = "postgresql"
+
+
+@pytest.mark.parametrize(
+    "sql, safe",
+    [
+        ("s.region", True),
+        ("SUM(s.amount)", True),
+        ("UPPER(s.region)", True),
+        ("s.region || '-' || SUM(s.amount)", True),
+        ("COUNT(*)", True),
+        ("s.amount", False),
+        ("SUM(s.amount) + s.amount", False),
+        ("CASE WHEN SUM(s.amount) > 0 THEN s.amount END", False),
+        ("CASE WHEN SUM(s.amount) > 0 THEN s.region END", True),
+        ("SUM(s.amount) / s.qty", False),
+    ],
+)
+def test_an_output_is_group_safe_only_when_every_bare_column_is_grouped(sql, safe):
+    parts = parse_branch("s", "", "", "s.region", None, PG)
+
+    assert is_group_safe(sql, parts, PG) is safe
+
+
+def test_a_grouped_expression_covers_the_columns_inside_it():
+    parts = parse_branch("s", "", "", "UPPER(s.region)", None, PG)
+
+    assert is_group_safe("UPPER(s.region)", parts, PG)
+    assert not is_group_safe("s.region", parts, PG)
+
+
+def test_branch_references_resolve_table_aliases():
+    parts = parse_branch(
+        "crm c", "JOIN cb b ON b.id = c.id", "c.active", "c.region", "COUNT(b.id) > 1", PG
+    )
+
+    assert set(parts.refs) == set(
+        refs(("cb", "id"), ("crm", "id"), ("crm", "active"), ("crm", "region"))
+    )
+
+
+def test_a_typed_null_uses_the_column_type():
+    assert cast_null({"type": "string", "length": 20}, PG) == "CAST(NULL AS VARCHAR(20))"
+    assert cast_null({"type": "decimal", "precision": 12, "scale": 2}, PG) == (
+        "CAST(NULL AS DECIMAL(12, 2))"
+    )
+    assert cast_null({"type": "date"}, PG) == "CAST(NULL AS DATE)"
 
 
 def refs(*pairs: tuple[str, str]) -> tuple[ColumnRef, ...]:

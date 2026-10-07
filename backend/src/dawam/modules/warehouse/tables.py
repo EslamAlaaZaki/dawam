@@ -256,3 +256,7 @@ class LineageEdgeRecord(Base):
     mapping_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("column_mappings.id", ondelete="CASCADE"), index=True
     )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("mapping_branches.id", ondelete="CASCADE"), index=True
+    )
+    """Set on the ``uses`` edges of a branch's own joins, filters, GROUP BY and HAVING."""

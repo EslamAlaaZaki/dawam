@@ -39,6 +39,7 @@ from .lineage_sql import (
     ColumnRef,
     ParsedExpression,
     Unparsable,
+    cast_null,
     is_group_safe,
     parse_branch,
     parse_expression,
@@ -431,7 +432,7 @@ class MappingService:
             table = self._table(db, warehouse, table_id, lock=True)
             now = self._clock()
             mapping = self._table_mapping(db, table, now)
-            values = self._branch_values(db, warehouse, table, fields)
+            values, parts = self._branch_values(db, warehouse, table, fields)
             last = db.scalar(
                 sa.select(sa.func.max(MappingBranchRecord.ordinal)).where(
                     MappingBranchRecord.table_mapping_id == mapping.id
@@ -448,6 +449,7 @@ class MappingService:
             )
             db.add(branch)
             db.flush()
+            self._replace_branch_edges(db, warehouse, table, branch, parts)
             self._record_branch(db, user, workspace_id, table, branch, "created", None, values, now)
             return self._view(db, table)
 
@@ -472,11 +474,12 @@ class MappingService:
             if branch.version != version:
                 raise _conflict(branch.version)
             before = {f: getattr(branch, f) for f in BRANCH_FIELDS}
-            values = self._branch_values(db, warehouse, table, {**before, **changes})
+            values, parts = self._branch_values(db, warehouse, table, {**before, **changes})
             changed = [f for f in BRANCH_FIELDS if before[f] != values[f]]
             if changed:
                 for f in changed:
                     setattr(branch, f, values[f])
+                self._replace_branch_edges(db, warehouse, table, branch, parts)
                 branch.version += 1
                 branch.updated_at = now
                 self._record_branch(
@@ -557,9 +560,9 @@ class MappingService:
         warehouse: DataWarehouseRecord,
         table: DwTableRecord,
         fields: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """The checked branch fields: the text limits, the SQL as one query and every table
-        it names found in the Layer directly below."""
+    ) -> tuple[dict[str, Any], BranchParts]:
+        """The checked branch fields and how the SQL reads: the text limits, the SQL as one
+        query and every table it names found in the Layer directly below."""
         name = _text(fields.get("name"), "name", "name", BRANCH_NAME_MAX_LENGTH)
         if not name:
             raise _invalid("name", "A branch needs a name.")
@@ -593,7 +596,7 @@ class MappingService:
                     f"{name_used} is not a {layer} table; {table.layer} tables are mapped "
                     f"from the {layer} Layer.",
                 )
-        return {
+        values = {
             "name": name,
             "driving_input": driving,
             "joins": joins,
@@ -601,6 +604,35 @@ class MappingService:
             "group_by": group_by,
             "having": having,
         }
+        return values, parts
+
+    def _replace_branch_edges(
+        self,
+        db: Session,
+        warehouse: DataWarehouseRecord,
+        table: DwTableRecord,
+        branch: MappingBranchRecord,
+        parts: BranchParts,
+    ) -> None:
+        """The branch's ``uses`` edges: each column its joins, filters, GROUP BY and HAVING
+        read steers the target table. Columns must exist in the Layer below."""
+        inputs = self._resolve(
+            db, warehouse, table, ParsedExpression(value=(), uses=parts.refs, is_column=False)
+        )
+        db.execute(sa.delete(LineageEdgeRecord).where(LineageEdgeRecord.branch_id == branch.id))
+        for ref in parts.refs:
+            db.add(
+                LineageEdgeRecord(
+                    id=uuid.uuid4(),
+                    kind="uses",
+                    from_type="dw_column",
+                    from_id=inputs[ref][1].id,
+                    to_type="dw_table",
+                    to_id=table.id,
+                    branch_id=branch.id,
+                )
+            )
+        db.flush()
 
     def _branch(
         self, db: Session, mapping: TableMappingRecord, branch_id: uuid.UUID
@@ -1039,7 +1071,7 @@ class MappingService:
                         "derived",
                         "constant",
                     )
-                    else "NULL"
+                    else cast_null(column.data_type, platform)
                 )
                 select.append(f"{value} AS {exp.to_identifier(column.name).sql(dialect=dialect)}")
             lines = [f"SELECT {', '.join(select)}", f"FROM {branch.driving_input}"]

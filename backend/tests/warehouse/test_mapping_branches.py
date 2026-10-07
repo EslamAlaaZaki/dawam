@@ -138,6 +138,42 @@ def test_a_branch_column_mapping_derives_its_own_edges(warehouse, model):
     }
 
 
+def uses_labels(roles, model) -> set[str]:
+    up = roles.client("viewer").get(f"{base(roles)}/lineage/columns/{model['name']['id']}")
+    return {e["from_label"] for e in up.json()["edges"] if e["kind"] == "uses"}
+
+
+def test_branch_joins_and_filters_derive_uses_edges_replaced_on_every_save(warehouse, model):
+    created = add_branch(
+        warehouse,
+        model,
+        joins="JOIN cb_customer b ON b.customer_id = crm_customer.customer_id",
+        filters="crm_customer.full_name <> ''",
+    )
+    branch = created.json()["branches"][0]
+    path = f"{mapping_path(warehouse, model['mart']['id'])}/branches/{branch['id']}"
+
+    assert uses_labels(warehouse, model) == {
+        "cb_customer.customer_id",
+        "crm_customer.customer_id",
+        "crm_customer.full_name",
+    }
+    changed = warehouse.client("editor").patch(
+        path, json={"version": 1, "joins": "", "filters": "", "group_by": "crm_customer.full_name"}
+    )
+    assert changed.status_code == 200, changed.text
+    assert uses_labels(warehouse, model) == {"crm_customer.full_name"}
+    assert warehouse.client("editor").delete(path).status_code == 204
+    assert uses_labels(warehouse, model) == set()
+
+
+def test_a_branch_condition_must_read_columns_of_the_layer_below(warehouse, model):
+    response = add_branch(warehouse, model, filters="crm_customer.nope = 1")
+
+    assert response.status_code == 422, response.text
+    assert get_mapping(warehouse, model["mart"]["id"])["branches"] == []
+
+
 def test_not_in_branch_only_applies_inside_a_branch_and_carries_no_sql(warehouse, model):
     branch = add_branch(warehouse, model).json()["branches"][0]["id"]
     table_level = warehouse.client("editor").put(
