@@ -783,7 +783,36 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=save_a_connection,
     ),
-    # Schema Import (stories 47, 49-51): owners and editors download the template, validate
+    # Profiling (stories 55-57): owners and editors run it, only owners switch top-N on
+    # per table, every member reads the profiles.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling",
+        "Run extraction / Schema Import / profiling (profile tables)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"table_ids": [table_id(roles)]},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile",
+        "Open Workspace content (a table's profile)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile",
+        "Open Workspace content (a column's profile)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profiling-settings",
+        "Switch top-N value profiling on or off for a table",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"enabled": False},
+    ),  # Schema Import (stories 47, 49-51): owners and editors download the template, validate
     # and upload, and ask for a Connection; every member sees the disabled features.
     Row(
         "GET",

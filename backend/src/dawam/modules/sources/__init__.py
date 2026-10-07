@@ -64,6 +64,7 @@ from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService
+from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
@@ -78,6 +79,7 @@ from .snapshot_service import (
 __all__ = [
     "EXTRACT_JOB",
     "PII_SCAN_JOB",
+    "PROFILE_JOB",
     "Connection",
     "ConnectionService",
     "DataDictionary",
@@ -89,6 +91,7 @@ __all__ = [
     "PiiFinding",
     "PiiScanService",
     "PiiService",
+    "ProfilingService",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
@@ -101,6 +104,7 @@ __all__ = [
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",
+    "TableProfile",
     "is_protected",
     "router",
 ]

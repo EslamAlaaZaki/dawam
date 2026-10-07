@@ -111,7 +111,7 @@ export function SourceSchemaPanel({
         <p role="status">Saved {save.data.name} to the file area.</p>
       )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
-        <SchemaBrowser workspaceId={workspace.id} systemId={system.id} />
+        <SchemaBrowser workspace={workspace} systemId={system.id} />
       )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
         <ul aria-label="Snapshots">

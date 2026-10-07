@@ -144,6 +144,9 @@ class SrcTableRecord(Base):
         sa.ARRAY(sa.String(TAG_MAX_LENGTH)), default=list, server_default="{}"
     )
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    top_n_enabled: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    """An owner's per-table switch: profiling may keep the most frequent values of the
+    table's columns (never a Protected Column's). Off by default (spec §6.5)."""
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
     """Goes up by one whenever the current definition (or the name's case) changes, and
@@ -212,6 +215,36 @@ class PiiFindingRecord(Base):
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
     decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+
+
+class ColumnProfileRecord(Base):
+    """The latest profile of a Source Column (spec §7): aggregates over a sample of the
+    table. ``min``, ``max`` and ``top_values`` are real data, so they stay ``NULL`` for
+    a Protected Column, and ``top_values`` also while the table's top-N switch is off."""
+
+    __tablename__ = "column_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    src_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), unique=True
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(sa.ForeignKey("jobs.id", ondelete="SET NULL"))
+    row_count: Mapped[int] = mapped_column(sa.BigInteger)
+    """Rows in the sample."""
+    row_cap: Mapped[int] = mapped_column(sa.BigInteger)
+    """The sample cap of the run; a ``row_count`` equal to it means the table may be larger."""
+    null_pct: Mapped[float] = mapped_column()
+    distinct_count: Mapped[int | None] = mapped_column(sa.BigInteger)
+    min: Mapped[str | None] = mapped_column(sa.Text)
+    max: Mapped[str | None] = mapped_column(sa.Text)
+    avg_len: Mapped[float | None] = mapped_column()
+    max_len: Mapped[int | None] = mapped_column(sa.BigInteger)
+    top_values: Mapped[list[dict[str, Any]] | None] = mapped_column(sa.JSON)
+    """``[{"value": ..., "count": ...}]``, most frequent first."""
+    patterns: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.String(32)), default=list, server_default="{}"
+    )
+    profiled_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
 class SrcRoutineRecord(Base):

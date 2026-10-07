@@ -23,6 +23,7 @@ from .enhancement_api import router as enhancement_router
 from .import_api import router as import_router
 from .pii_api import router as pii_router
 from .pii_scan_api import router as pii_scan_router
+from .profiling_api import router as profiling_router
 from .rename_api import router as rename_router
 from .service import SourceSystem as SourceSystemView
 from .service import SourceSystemService
@@ -179,3 +180,4 @@ router.include_router(pii_router, prefix="/{system_id}")
 router.include_router(pii_scan_router, prefix="/{system_id}")
 router.include_router(import_router, prefix="/{system_id}/import")
 router.include_router(rename_router, prefix="/{system_id}")
+router.include_router(profiling_router, prefix="/{system_id}")

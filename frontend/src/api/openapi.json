@@ -4279,6 +4279,326 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Start Profiling",
+        "description": "Profile the chosen tables (owners and editors) as a background job. 409\n`profiling_unavailable` for a Source System with no live Connection (a Schema Import\nhas none): profiling needs one.",
+        "operationId": "startProfiling",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartProfilingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilingStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Table Profile",
+        "description": "A table's profile and its columns' (any member). Min/max and top-N values are\nnever shown for a Protected Column.",
+        "operationId": "getTableProfile",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Column Profile",
+        "description": "One column's profile (any member).",
+        "operationId": "getColumnProfile",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Column Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnProfileView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profiling-settings": {
+      "put": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Set Table Top N",
+        "description": "Switch top-N value capture on or off for a table (owners only; audited). Off by\ndefault; switching it off deletes the stored values.",
+        "operationId": "setTableTopN",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopNRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -8013,6 +8333,8 @@
           "source_system.change_code",
           "source_system.extract",
           "source_schema.enhance",
+          "source_system.profile",
+          "source_table.top_n",
           "pii.review",
           "job.cancel_own",
           "job.cancel_any",
@@ -8737,6 +9059,182 @@
           "version"
         ],
         "title": "ColumnEnhancements"
+      },
+      "ColumnProfile": {
+        "properties": {
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "description": "Rows in the sample."
+          },
+          "row_cap": {
+            "type": "integer",
+            "title": "Row Cap",
+            "description": "The sample cap of the run."
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled",
+            "description": "The sample hit its cap: the table may be larger."
+          },
+          "null_pct": {
+            "type": "number",
+            "title": "Null Pct",
+            "description": "0 to 100."
+          },
+          "distinct_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distinct Count",
+            "description": "Null for types the engine cannot compare."
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min",
+            "description": "Always null for a Protected Column."
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "Always null for a Protected Column."
+          },
+          "avg_len": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Len",
+            "description": "Text columns only."
+          },
+          "max_len": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Len",
+            "description": "Text columns only."
+          },
+          "top_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TopValue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Values",
+            "description": "Only while the table's top-N switch is on; never for a Protected Column."
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Patterns",
+            "description": "Detected patterns such as `email` or `phone`."
+          },
+          "profiled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Profiled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_count",
+          "row_cap",
+          "sampled",
+          "null_pct",
+          "distinct_count",
+          "min",
+          "max",
+          "avg_len",
+          "max_len",
+          "top_values",
+          "patterns",
+          "profiled_at"
+        ],
+        "title": "ColumnProfile"
+      },
+      "ColumnProfileView": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Type"
+          },
+          "is_protected": {
+            "type": "boolean",
+            "title": "Is Protected"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ColumnProfile"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until the column is profiled."
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "name",
+          "data_type",
+          "is_protected",
+          "profile"
+        ],
+        "title": "ColumnProfileView"
       },
       "Connection": {
         "properties": {
@@ -11404,6 +11902,33 @@
         ],
         "title": "PlatformList"
       },
+      "ProfilingStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `profile` job: follow it at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "ProfilingStarted"
+      },
       "ReassignOwnerRequest": {
         "properties": {
           "user_id": {
@@ -13388,6 +13913,42 @@
         ],
         "title": "StageProgress"
       },
+      "StartProfilingRequest": {
+        "properties": {
+          "table_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Table Ids",
+            "description": "The tables and views to profile."
+          },
+          "row_cap": {
+            "type": "integer",
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Row Cap",
+            "description": "At most this many rows of each table are read.",
+            "default": 100000
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "description": "Each source query is stopped after this long.",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_ids"
+        ],
+        "title": "StartProfilingRequest"
+      },
       "SuspectedPiiColumn": {
         "properties": {
           "column_id": {
@@ -13614,6 +14175,70 @@
         ],
         "title": "TableEnhancements"
       },
+      "TableProfile": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "top_n_enabled": {
+            "type": "boolean",
+            "title": "Top N Enabled",
+            "description": "An owner's switch; off by default."
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count",
+            "description": "Rows in the sample; null before profiling."
+          },
+          "profiled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profiled At"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnProfileView"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "db_schema",
+          "name",
+          "top_n_enabled",
+          "row_count",
+          "profiled_at",
+          "columns"
+        ],
+        "title": "TableProfile"
+      },
       "Target": {
         "properties": {
           "label": {
@@ -13701,6 +14326,37 @@
           "content"
         ],
         "title": "TextUpdate"
+      },
+      "TopNRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "TopNRequest"
+      },
+      "TopValue": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "TopValue"
       },
       "TransferOwnershipRequest": {
         "properties": {
