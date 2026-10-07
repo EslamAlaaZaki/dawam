@@ -205,3 +205,14 @@ def test_other_modules_read_limits_and_reserved_words_from_the_package():
     assert is_reserved_word("snowflake", "view")
     assert is_reserved_word("bigquery", "unnest")
     assert platform_profile("snowflake").label == "Snowflake"
+
+
+def test_the_service_rejects_an_unknown_case_style():
+    from dawam.modules.warehouse import NamingRules
+    from dawam.modules.warehouse.service import _Settings, _validate
+    from dawam.platform.errors import ApiError
+
+    rules = NamingRules(case_style="title")  # type: ignore[arg-type]
+    with pytest.raises(ApiError) as caught:
+        _validate(_Settings("postgresql", naming_rules=rules))
+    assert caught.value.details == {"field": "naming_rules.case_style"}

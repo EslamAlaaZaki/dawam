@@ -3338,6 +3338,11 @@ export interface components {
             is_system: boolean;
             /** Version */
             version: number;
+            /**
+             * Naming Violations
+             * @description The Data Warehouse's naming rules this name breaks (a warning, not an error).
+             */
+            naming_violations: components["schemas"]["NamingViolation"][];
         };
         /**
          * DwDataType
@@ -3412,6 +3417,8 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+            /** Naming Violations */
+            naming_violations: components["schemas"]["NamingViolation"][];
         };
         /** DwTableList */
         DwTableList: {
@@ -3450,6 +3457,11 @@ export interface components {
             column_count: number;
             /** Version */
             version: number;
+            /**
+             * Naming Violation Count
+             * @description How many naming rules the table's own name breaks.
+             */
+            naming_violation_count: number;
         };
         /** DwUnknownMember */
         DwUnknownMember: {
@@ -4296,6 +4308,21 @@ export interface components {
              * @default bridge_
              */
             bridge_prefix: string;
+        };
+        /** NamingViolation */
+        NamingViolation: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "case_style" | "prefix";
+            /** Message */
+            message: string;
+            /**
+             * Expected
+             * @description The prefix, or the case style, the name should follow.
+             */
+            expected: string;
         };
         /** Notification */
         Notification: {

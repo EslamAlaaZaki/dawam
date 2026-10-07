@@ -11299,6 +11299,14 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "naming_violations": {
+            "items": {
+              "$ref": "#/components/schemas/NamingViolation"
+            },
+            "type": "array",
+            "title": "Naming Violations",
+            "description": "The Data Warehouse's naming rules this name breaks (a warning, not an error)."
           }
         },
         "type": "object",
@@ -11317,7 +11325,8 @@
           "description",
           "semantic_type",
           "is_system",
-          "version"
+          "version",
+          "naming_violations"
         ],
         "title": "DwColumn"
       },
@@ -11479,6 +11488,13 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "naming_violations": {
+            "items": {
+              "$ref": "#/components/schemas/NamingViolation"
+            },
+            "type": "array",
+            "title": "Naming Violations"
           }
         },
         "type": "object",
@@ -11497,7 +11513,8 @@
           "columns",
           "created_at",
           "updated_at",
-          "version"
+          "version",
+          "naming_violations"
         ],
         "title": "DwTable"
       },
@@ -11599,6 +11616,11 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "naming_violation_count": {
+            "type": "integer",
+            "title": "Naming Violation Count",
+            "description": "How many naming rules the table's own name breaks."
           }
         },
         "type": "object",
@@ -11614,7 +11636,8 @@
           "is_conformed",
           "description",
           "column_count",
-          "version"
+          "version",
+          "naming_violation_count"
         ],
         "title": "DwTableSummary"
       },
@@ -13502,6 +13525,34 @@
         },
         "type": "object",
         "title": "NamingRules"
+      },
+      "NamingViolation": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "case_style",
+              "prefix"
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "expected": {
+            "type": "string",
+            "title": "Expected",
+            "description": "The prefix, or the case style, the name should follow."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "expected"
+        ],
+        "title": "NamingViolation"
       },
       "Notification": {
         "properties": {
