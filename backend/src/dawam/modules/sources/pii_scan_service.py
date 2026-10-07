@@ -31,6 +31,8 @@ from dawam.platform.errors import ApiError
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
+from .internal.pii import load_rule_set
+from .internal.pii_rules import RuleSet
 from .internal.pii_scan import DEFAULT_SAMPLE_SIZE, MAX_SAMPLE_SIZE, ValueFinding, score_column
 from .tables import (
     ConnectionRecord,
@@ -154,6 +156,7 @@ class PiiScanService:
                     options=dict(connection.options),
                 ),
             )
+            rules = load_rule_set(db, system.workspace_id)
             targets = [
                 (table_id, schema_name, table_name)
                 for table_id, schema_name, table_name in db.execute(
@@ -176,7 +179,7 @@ class PiiScanService:
                 sample = connector.sample(schema_name, table_name, limit=sample_size)
             except ConnectorError as exc:
                 raise PiiScanError(exc.message) from None
-            found = self._score(sample.columns, sample.rows)
+            found = self._score(sample.columns, sample.rows, rules)
             written = self._record(table_id, found)
             recorded += written
             ctx.log(
@@ -188,12 +191,12 @@ class PiiScanService:
     # -- internals ----------------------------------------------------------------------
 
     def _score(
-        self, names: tuple[str, ...], rows: tuple[tuple[Any, ...], ...]
+        self, names: tuple[str, ...], rows: tuple[tuple[Any, ...], ...], rules: RuleSet
     ) -> dict[str, ValueFinding]:
         """The finding per column name; the sampled values stay inside this call."""
         found: dict[str, ValueFinding] = {}
         for position, name in enumerate(names):
-            finding = score_column(name, (row[position] for row in rows))
+            finding = score_column(name, (row[position] for row in rows), rules=rules)
             if finding is not None:
                 found[name] = finding
         return found
