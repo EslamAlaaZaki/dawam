@@ -144,6 +144,11 @@ class SrcTableRecord(Base):
         sa.ARRAY(sa.String(TAG_MAX_LENGTH)), default=list, server_default="{}"
     )
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    include_view_in_staging: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    """An editor's opt-in to give a view a Staging Table (spec §6.7); base tables always get one."""
+    placeholder_no: Mapped[int | None] = mapped_column()
+    """Stands in for a non-Latin name in staging (``tbl_007``); assigned once per Source
+    System and never derived from ordering, so it stays stable across Snapshots."""
     top_n_enabled: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     """An owner's per-table switch: profiling may keep the most frequent values of the
     table's columns (never a Protected Column's). Off by default (spec §6.5)."""
@@ -172,6 +177,8 @@ class SrcColumnRecord(Base):
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     pii_category: Mapped[str | None] = mapped_column(sa.String(32))
     """Set when an Editor confirms a PII finding (spec story 135)."""
+    placeholder_no: Mapped[int | None] = mapped_column()
+    """Stands in for a non-Latin name in staging (``col_017``); assigned once per table."""
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
 

@@ -52,6 +52,10 @@ class NamingRules:
     dimension_prefix: str = "dim_"
     fact_prefix: str = "fact_"
     bridge_prefix: str = "bridge_"
+    load_ts_column: str = "load_ts"
+    """The audit column of every Staging Table that says when the row was loaded."""
+    source_system_column: str = "source_system"
+    """The audit column of every Staging Table that holds the System Code."""
 
 
 @dataclass(frozen=True)
@@ -137,6 +141,26 @@ def _validate(settings: _Settings) -> None:
     used = [p.lower() for p in prefixes.values() if p]
     if len(used) != len(set(used)):
         raise _invalid("naming_rules", "Dimension, fact and bridge prefixes must differ.")
+
+    audit_names = {
+        "load_ts_column": rules.load_ts_column,
+        "source_system_column": rules.source_system_column,
+    }
+    for field_name, name in audit_names.items():
+        if not SAFE_IDENTIFIER.fullmatch(name) or len(name.encode()) > max_identifier_length(
+            platform
+        ):
+            raise _invalid(
+                f"naming_rules.{field_name}",
+                "An audit column name uses letters, digits and underscores only, starts "
+                f"with a letter or underscore and is at most {limit} bytes on {platform}.",
+            )
+        if is_reserved_word(platform, name):
+            raise _invalid(
+                f"naming_rules.{field_name}", f"{name!r} is a reserved word on {platform}."
+            )
+    if rules.load_ts_column.lower() == rules.source_system_column.lower():
+        raise _invalid("naming_rules", "The two audit columns need different names.")
 
     dates = settings.date_dimension
     if dates.start_year > dates.end_year:

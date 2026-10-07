@@ -46,6 +46,10 @@ class UpdateTableEnhancements(BaseModel):
         default=None,
         description='E.g. "changes slowly, history matters". Send null to clear it.',
     )
+    include_view_in_staging: bool | None = Field(
+        default=None,
+        description="Give this view a Staging Table (views only; base tables always get one).",
+    )
 
 
 class UpdateColumnEnhancements(BaseModel):
@@ -66,6 +70,7 @@ class TableEnhancements(BaseModel):
     is_sensitive: bool
     classification: Classification | None
     scd_hint: str | None
+    include_view_in_staging: bool
     version: int
 
 

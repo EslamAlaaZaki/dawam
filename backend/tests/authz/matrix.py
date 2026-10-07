@@ -36,9 +36,11 @@ from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Route
 
 from dawam.modules.auth import AuthService, Invitations
+from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.jobs import InlineJobRunner, JobService, QueuedJobRunner
 from dawam.modules.llm import FakeAdapter
 from dawam.modules.mail import MailService
+from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import EXTRACT_JOB, SnapshotService
 from dawam.modules.sources.internal.connector import ColumnInfo, SourceCatalog, TableInfo
 from dawam.modules.workspaces import WorkspaceService
@@ -386,6 +388,39 @@ def column_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"][0]["id"]
 
 
+def change_set_id(roles: RoleClients) -> uuid.UUID:
+    """A pending Change Set the editor proposed: one description change to the stand-in table."""
+    table = table_id(roles)
+    state = roles.app.state
+    clock = state.services.clock
+    roles.client("editor")  # makes the user a member
+    service = ChangeSetService(
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        handlers=state.change_set_handlers,
+        notifications=NotificationService(state.engine, clock=clock),
+        clock=clock,
+    )
+    detail = service.propose(
+        roles.user("editor"),
+        roles.workspace_id,
+        origin="ai",
+        scope={"kind": "source_enhancements"},
+        title="Describe the table",
+        items=[
+            ProposedItem(
+                "t",
+                "source_table",
+                "update",
+                {"description": "Described"},
+                object_id=uuid.UUID(table),
+                label="table",
+            )
+        ],
+    )
+    return detail.change_set.id
+
+
 def ensure_data_warehouse(roles: RoleClients) -> None:
     """Sets the Data Warehouse up through the API unless it already is."""
     owner = roles.client("owner")
@@ -581,6 +616,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "job_id": job_id,
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
+    "change_set_id": change_set_id,
     "comment_id": comment_id,
     "file_id": file_id,
     "snapshot_id": snapshot_id,

@@ -1469,6 +1469,349 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/change-sets": {
+      "get": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "List Change Sets",
+        "description": "The Workspace's Change Sets, newest first (any member).",
+        "operationId": "listChangeSets",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "applied",
+                    "partially_applied",
+                    "rejected",
+                    "superseded"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this status.",
+              "title": "Status"
+            },
+            "description": "Only this status."
+          },
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only those the assistant proposed in this chat.",
+              "title": "Conversation Id"
+            },
+            "description": "Only those the assistant proposed in this chat."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return at most.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}": {
+      "get": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "Get Change Set",
+        "description": "A Change Set with every item, as a diff (any member). 404 if not in the Workspace.",
+        "operationId": "getChangeSet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "change_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/accept": {
+      "post": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "Accept Change Set",
+        "description": "Accept all or some items (owners and editors) and apply them in one transaction.\nWhat they depend on is accepted too. Stale items and their dependents are skipped and\nreported; owner-only items stay `needs_owner` unless an owner accepts. 409\n`change_set_closed`; 422 `invalid_change_set`.",
+        "operationId": "acceptChangeSet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "change_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Set Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/reject": {
+      "post": {
+        "tags": [
+          "change-sets"
+        ],
+        "summary": "Reject Change Set",
+        "description": "Reject all or some items (owners and editors); items that depend on them are\nrejected too. 409 `change_set_closed`; 422 `invalid_change_set`.",
+        "operationId": "rejectChangeSet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "change_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Set Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{job_id}": {
       "get": {
         "tags": [
@@ -3234,6 +3577,61 @@
             "description": "The DDL package.",
             "content": {
               "application/sql": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-staging"
+        ],
+        "summary": "Generate Staging",
+        "description": "Generate the Staging Layer from the Source Schema (owners and editors; software,\nno AI): one Staging Table per source base table (and per view opted in), named\n`stg_<system code>_<database schema>_<table>`, with translated column types, the audit\ncolumns, and `direct` mappings and lineage from the source. Names and types that needed\na placeholder, a hash suffix or a lossy translation are flagged for review. Running it\nagain adds only what is new. 404 `not_set_up` before the Data Warehouse is set up.",
+        "operationId": "generateStaging",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagingResult"
+                }
+              }
             }
           },
           "422": {
@@ -11583,6 +11981,7 @@
           "source_table.top_n",
           "pii.review",
           "pii.manage_rules",
+          "change_set.review",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -12029,6 +12428,46 @@
         ],
         "title": "AdminWorkspacePage"
       },
+      "ApplyResult": {
+        "properties": {
+          "change_set": {
+            "$ref": "#/components/schemas/ChangeSetDetail"
+          },
+          "accepted": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Accepted"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedItem"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "description": "Stale items and the items that depend on them, not applied."
+          },
+          "needs_owner": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Needs Owner",
+            "description": "Items an owner still has to accept (owner-only ones and what depends on them)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set",
+          "accepted",
+          "skipped",
+          "needs_owner"
+        ],
+        "title": "ApplyResult"
+      },
       "ApprovedAgentModel": {
         "properties": {
           "id": {
@@ -12442,6 +12881,301 @@
           "role"
         ],
         "title": "ChangeRoleRequest"
+      },
+      "ChangeSet": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "regeneration",
+              "sync",
+              "propagation",
+              "import",
+              "platform_change",
+              "system_code_change"
+            ],
+            "title": "Origin"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "partially_applied",
+              "rejected",
+              "superseded"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "applied_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied By"
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "item_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Item Counts",
+            "description": "Items by status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "origin",
+          "scope",
+          "title",
+          "conversation_id",
+          "created_by",
+          "status",
+          "created_at",
+          "applied_by",
+          "applied_at",
+          "item_counts"
+        ],
+        "title": "ChangeSet"
+      },
+      "ChangeSetDetail": {
+        "properties": {
+          "change_set": {
+            "$ref": "#/components/schemas/ChangeSet"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeSetItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set",
+          "items"
+        ],
+        "title": "ChangeSetDetail"
+      },
+      "ChangeSetItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type",
+            "description": "What the item changes, e.g. `source_table`."
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ],
+            "title": "Operation"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "What the diff shows for the object, e.g. `core.customers`."
+          },
+          "base_values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Values",
+            "description": "The values of the changed fields when the item was proposed (the diff's 'before'); an item is stale when one of them has changed since."
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "The new values (the diff's 'after')."
+          },
+          "depends_on": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Depends On"
+          },
+          "required_role": {
+            "type": "string",
+            "enum": [
+              "editor",
+              "owner"
+            ],
+            "title": "Required Role"
+          },
+          "is_conflict": {
+            "type": "boolean",
+            "title": "Is Conflict"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "needs_owner",
+              "accepted",
+              "rejected",
+              "stale",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "object_type",
+          "object_id",
+          "operation",
+          "label",
+          "base_values",
+          "payload",
+          "depends_on",
+          "required_role",
+          "is_conflict",
+          "status",
+          "status_reason"
+        ],
+        "title": "ChangeSetItem"
+      },
+      "ChangeSetPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeSet"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ChangeSetPage"
       },
       "ColumnChange": {
         "properties": {
@@ -14205,6 +14939,29 @@
         ],
         "title": "DbSchemaChange"
       },
+      "DecisionRequest": {
+        "properties": {
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids",
+            "description": "The items to decide; leave out for every open item."
+          }
+        },
+        "type": "object",
+        "title": "DecisionRequest"
+      },
       "DeleteWorkspaceRequest": {
         "properties": {
           "name": {
@@ -14403,6 +15160,14 @@
             "type": "array",
             "title": "Naming Violations",
             "description": "The Data Warehouse's naming rules this name breaks (a warning, not an error)."
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags",
+            "description": "What staging generation flagged on a staging column (empty otherwise)."
           }
         },
         "type": "object",
@@ -14422,7 +15187,8 @@
           "semantic_type",
           "is_system",
           "version",
-          "naming_violations"
+          "naming_violations",
+          "review_flags"
         ],
         "title": "DwColumn"
       },
@@ -14591,6 +15357,14 @@
             },
             "type": "array",
             "title": "Naming Violations"
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags",
+            "description": "What staging generation flagged on a Staging Table (empty otherwise)."
           }
         },
         "type": "object",
@@ -14610,7 +15384,8 @@
           "created_at",
           "updated_at",
           "version",
-          "naming_violations"
+          "naming_violations",
+          "review_flags"
         ],
         "title": "DwTable"
       },
@@ -16993,6 +17768,20 @@
             "maxLength": 64,
             "title": "Bridge Prefix",
             "default": "bridge_"
+          },
+          "load_ts_column": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Load Ts Column",
+            "description": "Name of the load-timestamp audit column of Staging Tables.",
+            "default": "load_ts"
+          },
+          "source_system_column": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Source System Column",
+            "description": "Name of the System Code audit column of Staging Tables.",
+            "default": "source_system"
           }
         },
         "type": "object",
@@ -18160,6 +18949,25 @@
         ],
         "title": "ResetPasswordRequest"
       },
+      "ReviewFlag": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ReviewFlag"
+      },
       "RoutineChange": {
         "properties": {
           "id": {
@@ -18626,7 +19434,9 @@
               "case_style": "lower",
               "dimension_prefix": "dim_",
               "fact_prefix": "fact_",
-              "bridge_prefix": "bridge_"
+              "bridge_prefix": "bridge_",
+              "load_ts_column": "load_ts",
+              "source_system_column": "source_system"
             }
           },
           "date_dimension": {
@@ -18668,6 +19478,34 @@
           "password"
         ],
         "title": "SignInRequest"
+      },
+      "SkippedItem": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Item Id"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "stale",
+              "depends_on_skipped"
+            ],
+            "title": "Reason"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "reason",
+          "detail"
+        ],
+        "title": "SkippedItem"
       },
       "SmtpSettingsIn": {
         "properties": {
@@ -19576,6 +20414,18 @@
             "title": "Scd Hint",
             "description": "Set only in the Source Schema."
           },
+          "include_view_in_staging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include View In Staging",
+            "description": "Whether a view gets a Staging Table; set only in the Source Schema."
+          },
           "version": {
             "anyOf": [
               {
@@ -20040,6 +20890,83 @@
         ],
         "title": "StageProgress"
       },
+      "StagingFlag": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Name",
+            "description": "Null for a flag on the table itself."
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "column_name",
+          "code",
+          "message"
+        ],
+        "title": "StagingFlag"
+      },
+      "StagingResult": {
+        "properties": {
+          "tables_created": {
+            "type": "integer",
+            "title": "Tables Created"
+          },
+          "columns_created": {
+            "type": "integer",
+            "title": "Columns Created",
+            "description": "Including the audit columns."
+          },
+          "tables_existing": {
+            "type": "integer",
+            "title": "Tables Existing",
+            "description": "Source tables that already had a Staging Table; left as they are."
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/StagingFlag"
+            },
+            "type": "array",
+            "title": "Flags",
+            "description": "What to review, for the tables just created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables_created",
+          "columns_created",
+          "tables_existing",
+          "flags"
+        ],
+        "title": "StagingResult"
+      },
       "StartProfilingRequest": {
         "properties": {
           "table_ids": {
@@ -20285,6 +21212,10 @@
             ],
             "title": "Scd Hint"
           },
+          "include_view_in_staging": {
+            "type": "boolean",
+            "title": "Include View In Staging"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -20298,6 +21229,7 @@
           "is_sensitive",
           "classification",
           "scd_hint",
+          "include_view_in_staging",
           "version"
         ],
         "title": "TableEnhancements"
@@ -21599,6 +22531,18 @@
             ],
             "title": "Scd Hint",
             "description": "E.g. \"changes slowly, history matters\". Send null to clear it."
+          },
+          "include_view_in_staging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include View In Staging",
+            "description": "Give this view a Staging Table (views only; base tables always get one)."
           }
         },
         "type": "object",

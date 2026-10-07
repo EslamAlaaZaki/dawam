@@ -687,6 +687,14 @@ ROWS: list[Row] = [
         setup=ensure_data_warehouse,
         json=lambda roles: {"kind": "date"},
     ),
+    # Staging generation (spec §6.7).
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate",
+        "Edit KPIs, DW Schema, mappings (generate the Staging Layer)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+    ),
     # Column mappings and lineage (stories 99, 100, 104).
     Row(
         "GET",
@@ -820,6 +828,33 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}",
         "Edit KPIs (delete one)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Change Sets (stories 147, 148; §4.3 "Accept / reject Change Set items").
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/change-sets",
+        "Open Workspace content (list Change Sets)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}",
+        "Open Workspace content (a Change Set as a diff)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/accept",
+        "Accept / reject Change Set items (accept)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}/reject",
+        "Accept / reject Change Set items (reject)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {},
     ),
     # Comments and mentions (stories 107, 125, 126; §4.3 "Comment": viewers too, admins not).
     Row(
