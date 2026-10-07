@@ -147,8 +147,9 @@ class ValidationService:
                 .join(DataWarehouseRecord, sa.and_(*warehouse_id))
                 .outerjoin(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
             ).all()
-            branches: dict[uuid.UUID, int] = dict(
-                db.execute(
+            branches: dict[uuid.UUID, int] = {
+                table_id: count
+                for table_id, count in db.execute(
                     sa.select(TableMappingRecord.dw_table_id, sa.func.count(MappingBranchRecord.id))
                     .join(
                         MappingBranchRecord,
@@ -157,8 +158,8 @@ class ValidationService:
                     .group_by(TableMappingRecord.dw_table_id)
                     .join(DwTableRecord, DwTableRecord.id == TableMappingRecord.dw_table_id)
                     .join(DataWarehouseRecord, sa.and_(*warehouse_id))
-                ).tuples()
-            )
+                )
+            }
             mapped = db.execute(
                 sa.select(
                     ColumnMappingRecord.dw_column_id,
