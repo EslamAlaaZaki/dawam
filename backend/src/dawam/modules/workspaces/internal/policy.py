@@ -72,6 +72,10 @@ class Action(StrEnum):
     data-sharing level (owners only; spec §4.3, stories 160, 161)."""
     CHANGE_DW_PLATFORM = "data_warehouse.change_platform"
     """Change the Data Warehouse's target platform after setup (owners only; spec §4.3)."""
+    EDIT_DW_SCHEMA = "dw_schema.edit"
+    """Create, edit and delete the DW Schema's Core and Mart tables and columns (owners and
+    editors; spec §4.3 "Edit KPIs, DW Schema, mappings", stories 89-93a). Reading the model
+    needs only ``VIEW_WORKSPACE``."""
     CREATE_SOURCE_SYSTEM = "source_system.create"
     """Add a Source System to the Workspace (owners and editors; spec story 39)."""
     EDIT_SOURCE_SYSTEM = "source_system.edit"
@@ -92,6 +96,9 @@ class Action(StrEnum):
     REVIEW_PII = "pii.review"
     """List PII findings and confirm or dismiss them in the review queue (owners and
     editors; spec §4.3 "Review PII findings", stories 133-135)."""
+    MANAGE_PII_RULES = "pii.manage_rules"
+    """List, add, edit and delete the Workspace's custom PII rules and switch built-in rules
+    on or off (owners only; spec §6.12, story 136)."""
     CANCEL_OWN_JOB = "job.cancel_own"
     """Cancel a background job the user started (any member who started one)."""
     CANCEL_ANY_JOB = "job.cancel_any"
@@ -181,6 +188,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_AI_SETTINGS: _WorkspaceRule(min_role="owner"),
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
+    Action.EDIT_DW_SCHEMA: _WorkspaceRule(min_role="editor"),
     Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_SYSTEM_CODE: _WorkspaceRule(min_role="owner"),
@@ -196,6 +204,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.RUN_PROFILING: _WorkspaceRule(min_role="editor"),
     Action.ENABLE_TOP_N: _WorkspaceRule(min_role="owner"),
     Action.REVIEW_PII: _WorkspaceRule(min_role="editor"),
+    Action.MANAGE_PII_RULES: _WorkspaceRule(min_role="owner"),
     Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),

@@ -1,0 +1,12 @@
+{
+  "status": 429,
+  "headers": {
+    "Retry-After": "7"
+  },
+  "body": {
+    "error": {
+      "message": "Rate limit reached.",
+      "type": "rate_limit_error"
+    }
+  }
+}

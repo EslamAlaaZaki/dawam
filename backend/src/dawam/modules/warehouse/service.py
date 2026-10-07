@@ -117,6 +117,11 @@ def _validate(settings: _Settings) -> None:
         seen[name.lower()] = layer
 
     rules = settings.naming_rules
+    if rules.case_style not in ("lower", "upper"):
+        raise _invalid(
+            "naming_rules.case_style",
+            f"Unknown case style {rules.case_style!r}; use lower or upper.",
+        )
     prefixes = {
         "dimension_prefix": rules.dimension_prefix,
         "fact_prefix": rules.fact_prefix,

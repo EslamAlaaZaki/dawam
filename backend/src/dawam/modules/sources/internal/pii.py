@@ -13,6 +13,7 @@ exports all ask here, never re-derive it.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterable
 from datetime import datetime
@@ -20,8 +21,21 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from ..tables import PiiFindingRecord, SrcColumnRecord
-from .pii_rules import NAME_CONFIDENCE_FLOOR, match_name
+from ..tables import (
+    PiiCustomRuleRecord,
+    PiiDisabledRuleRecord,
+    PiiFindingRecord,
+    SrcColumnRecord,
+)
+from .pii_rules import (
+    DEFAULT_RULES,
+    NAME_CONFIDENCE_FLOOR,
+    RuleSet,
+    compile_custom_rule,
+    match_name,
+)
+
+logger = logging.getLogger(__name__)
 
 PROTECTING_STATUSES = ("suggested", "confirmed")
 
@@ -47,17 +61,51 @@ def protected_column_ids(db: Session, column_ids: Iterable[uuid.UUID]) -> set[uu
     return set(db.scalars(sensitive)) | set(db.scalars(found))
 
 
+def load_rule_set(db: Session, workspace_id: uuid.UUID) -> RuleSet:
+    """The Workspace's PII rules in force: its custom rules and its disabled built-ins."""
+    disabled = frozenset(
+        db.scalars(
+            sa.select(PiiDisabledRuleRecord.rule).where(
+                PiiDisabledRuleRecord.workspace_id == workspace_id
+            )
+        )
+    )
+    custom = []
+    for record in db.scalars(
+        sa.select(PiiCustomRuleRecord)
+        .where(PiiCustomRuleRecord.workspace_id == workspace_id)
+        .order_by(PiiCustomRuleRecord.name)
+    ):
+        try:
+            custom.append(
+                compile_custom_rule(
+                    record.name,
+                    keywords=list(record.keywords),
+                    pattern=record.pattern,
+                    category=record.category,
+                    confidence=record.confidence,
+                )
+            )
+        except ValueError:  # validated on the way in; a stale row must not stop a scan
+            logger.warning(
+                "The stored custom PII rule %s no longer compiles; skipped.", record.name
+            )
+    return RuleSet(disabled=disabled, custom=tuple(custom))
+
+
 def scan_columns(
     db: Session,
     *,
     snapshot_id: uuid.UUID,
     columns: Iterable[tuple[uuid.UUID, str]],
     at: datetime,
+    rules: RuleSet = DEFAULT_RULES,
 ) -> int:
     """Name-scan ``columns`` (id and name pairs) of a new Snapshot; return how many new
     findings were recorded. A column that already has a finding for a rule keeps it,
-    whatever its status, so a decision is never undone by a later Snapshot."""
-    matches = [(cid, m) for cid, name in columns if (m := match_name(name)) is not None]
+    whatever its status, so a decision is never undone by a later Snapshot. ``rules`` are
+    the Workspace's (``load_rule_set``)."""
+    matches = [(cid, m) for cid, name in columns if (m := match_name(name, rules)) is not None]
     if not matches:
         return 0
     known: set[tuple[uuid.UUID, str]] = set()

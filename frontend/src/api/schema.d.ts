@@ -627,6 +627,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tables
+         * @description The DW Schema's tables, optionally of one Layer (any member). Empty before the
+         *     Data Warehouse is set up.
+         */
+        get: operations["listDwTables"];
+        put?: never;
+        /**
+         * Create Table
+         * @description Create a Core or Mart fact, dimension or bridge (editors and owners). A fact needs a
+         *     grain and a fact type. A dimension gets a surrogate key and an unknown member (key -1);
+         *     an SCD2 dimension gets the housekeeping columns; a bridge gets its group key. 422
+         *     `invalid_model`; 409 `name_taken`; 404 `not_set_up`.
+         */
+        post: operations["createDwTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table
+         * @description A table with its columns (any member).
+         */
+        get: operations["getDwTable"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Table
+         * @description Delete a table and its columns (editors and owners). 409 `table_referenced` while
+         *     another table's foreign key points at it.
+         */
+        delete: operations["deleteDwTable"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Table
+         * @description Change a table (editors and owners); fields left out stay as they are. 409
+         *     `version_conflict` if `version` is stale; 422 `invalid_model`.
+         */
+        patch: operations["updateDwTable"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Column
+         * @description Add a column (editors and owners). A measure sits on a fact and may declare its
+         *     additivity; a foreign key references a dimension, with an optional role name. 422
+         *     `invalid_model`; 409 `name_taken`.
+         */
+        post: operations["createDwColumn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Column
+         * @description Delete a column (editors and owners); not an SCD2 housekeeping one.
+         */
+        delete: operations["deleteDwColumn"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Column
+         * @description Change a column (editors and owners); fields left out stay as they are, null
+         *     clears an optional one. 409 `version_conflict` if `version` is stale; 422
+         *     `system_column` for an SCD2 housekeeping column.
+         */
+        patch: operations["updateDwColumn"];
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -1063,6 +1169,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationship-inference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Relationship Inference
+         * @description Infer undeclared relationships from the latest Snapshot, as a background job (owners
+         *     and editors). Name, type, uniqueness and JOIN conditions in views and routines always
+         *     count; value overlap only with a live Connection and profiled columns. 409
+         *     `no_snapshot` before the first Snapshot; 422 for a bad threshold or sample size.
+         */
+        post: operations["startRelationshipInference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Relationships
+         * @description The Source System's inferred relationships with their evidence (any member). Only
+         *     candidates at or above `min_confidence` (default 0.6) are shown.
+         */
+        get: operations["listRelationships"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Relationship
+         * @description Accept a relationship (owners and editors): the Source Schema treats it as real.
+         *     Audited.
+         */
+        post: operations["acceptRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Relationship
+         * @description Reject a relationship (owners and editors); later runs do not propose it again.
+         *     Audited.
+         */
+        post: operations["rejectRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
         parameters: {
             query?: never;
@@ -1337,6 +1529,75 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pii Rules
+         * @description Built-in rules with their on/off state, and the custom rules (owners).
+         */
+        get: operations["listPiiRules"];
+        put?: never;
+        /**
+         * Create Pii Rule
+         * @description Add a custom PII rule (owners). It applies to later name and value scans. Audited.
+         */
+        post: operations["createPiiRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch Built In Pii Rule
+         * @description Switch a built-in rule on or off for this Workspace (owners). Built-in rules are
+         *     never edited. Audited.
+         */
+        patch: operations["switchBuiltInPiiRule"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pii Rule
+         * @description Delete a custom PII rule (owners). Findings it made stay. Audited.
+         */
+        delete: operations["deletePiiRule"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Pii Rule
+         * @description Edit a custom PII rule (owners); a field left out stays. Audited.
+         */
+        patch: operations["updatePiiRule"];
         trace?: never;
     };
     "/api/v1/notifications": {
@@ -2356,7 +2617,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2655,6 +2916,31 @@ export interface components {
              */
             files: string[];
         };
+        /** BuiltInPiiRule */
+        BuiltInPiiRule: {
+            /**
+             * Id
+             * @description E.g. `national_id`.
+             */
+            id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /** Confidence */
+            confidence: number;
+            /**
+             * Enabled
+             * @description Off means this Workspace's scans skip the rule.
+             */
+            enabled: boolean;
+        };
+        /** BuiltInSwitch */
+        BuiltInSwitch: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -2782,6 +3068,25 @@ export interface components {
             is_protected: boolean;
             /** @description Null until the column is profiled. */
             profile: components["schemas"]["ColumnProfile"] | null;
+        };
+        /** ColumnRef */
+        ColumnRef: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /** Column */
+            column: string;
         };
         /** Connection */
         Connection: {
@@ -2918,6 +3223,80 @@ export interface components {
              */
             missing_schemas: string[];
         };
+        /** CreateDwColumnRequest */
+        CreateDwColumnRequest: {
+            /** Name */
+            name: string;
+            data_type: components["schemas"]["DwDataType"];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash";
+            /** Is Nullable */
+            is_nullable?: boolean | null;
+            /**
+             * Additivity
+             * @description For a measure.
+             */
+            additivity?: ("additive" | "semi_additive" | "non_additive") | null;
+            /**
+             * Scd Type Override
+             * @description For a dimension attribute.
+             */
+            scd_type_override?: number | null;
+            /**
+             * References Table Id
+             * @description Required for a foreign key.
+             */
+            references_table_id?: string | null;
+            /**
+             * Role Name
+             * @description For a role-playing foreign key.
+             */
+            role_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Semantic Type */
+            semantic_type?: string | null;
+        };
+        /** CreateDwTableRequest */
+        CreateDwTableRequest: {
+            /**
+             * Layer
+             * @description `core` or `mart`.
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "fact" | "dimension" | "bridge";
+            /**
+             * Grain
+             * @description Required for a fact: what one row stands for.
+             */
+            grain?: string | null;
+            /**
+             * Fact Type
+             * @description Required for a fact.
+             */
+            fact_type?: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Is Aggregate */
+            is_aggregate?: boolean | null;
+            /**
+             * Scd Type
+             * @description A dimension's SCD type; default 1.
+             */
+            scd_type?: number | null;
+            /** Is Conformed */
+            is_conformed?: boolean | null;
+            /** Description */
+            description?: string | null;
+        };
         /** CreateKpiRequest */
         CreateKpiRequest: {
             /** Name */
@@ -3036,6 +3415,53 @@ export interface components {
              * @default
              */
             domain: string;
+        };
+        /** CustomPiiRule */
+        CustomPiiRule: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Unique per Workspace; a finding's rule is `custom:<name>`.
+             */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Keywords
+             * @description Matched, once normalised, inside a normalised column name.
+             */
+            keywords: string[];
+            /**
+             * Pattern
+             * @description A regex a sampled value must match in full.
+             */
+            pattern: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0.5 to 1; what a name match alone is worth.
+             */
+            confidence: number;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * DataSharingLevel
@@ -3163,6 +3589,189 @@ export interface components {
         DocumentSearchResults: {
             /** Items */
             items: components["schemas"]["DocumentPassage"][];
+        };
+        /** DwColumn */
+        DwColumn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            data_type: components["schemas"]["DwDataType"];
+            /** Is Nullable */
+            is_nullable: boolean;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash";
+            /** Additivity */
+            additivity: ("additive" | "semi_additive" | "non_additive") | null;
+            /** Scd Type Override */
+            scd_type_override: number | null;
+            /** References Table Id */
+            references_table_id: string | null;
+            /** Role Name */
+            role_name: string | null;
+            /** Description */
+            description: string;
+            /** Semantic Type */
+            semantic_type: string | null;
+            /**
+             * Is System
+             * @description DAWAM maintains it (SCD2 housekeeping).
+             */
+            is_system: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Naming Violations
+             * @description The Data Warehouse's naming rules this name breaks (a warning, not an error).
+             */
+            naming_violations: components["schemas"]["NamingViolation"][];
+        };
+        /**
+         * DwDataType
+         * @description A neutral data type, translated to the target platform only when DDL is produced.
+         */
+        DwDataType: {
+            /**
+             * Type
+             * @description E.g. integer, bigint, decimal, string, date, timestamp.
+             */
+            type: string;
+            /**
+             * Length
+             * @description For char, string and binary.
+             */
+            length?: number | null;
+            /**
+             * Precision
+             * @description For decimal.
+             */
+            precision?: number | null;
+            /**
+             * Scale
+             * @description For decimal.
+             */
+            scale?: number | null;
+        };
+        /** DwTable */
+        DwTable: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Fact Type */
+            fact_type: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Grain */
+            grain: string | null;
+            /** Is Aggregate */
+            is_aggregate: boolean;
+            /**
+             * Scd Type
+             * @description A dimension's SCD type (0, 1 or 2).
+             */
+            scd_type: number | null;
+            /** Is Conformed */
+            is_conformed: boolean;
+            /** @description Dimensions only. */
+            unknown_member: components["schemas"]["DwUnknownMember"] | null;
+            /** Description */
+            description: string;
+            /** Columns */
+            columns: components["schemas"]["DwColumn"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Naming Violations */
+            naming_violations: components["schemas"]["NamingViolation"][];
+        };
+        /** DwTableList */
+        DwTableList: {
+            /** Items */
+            items: components["schemas"]["DwTableSummary"][];
+        };
+        /** DwTableSummary */
+        DwTableSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Fact Type */
+            fact_type: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Grain */
+            grain: string | null;
+            /** Is Aggregate */
+            is_aggregate: boolean;
+            /** Scd Type */
+            scd_type: number | null;
+            /** Is Conformed */
+            is_conformed: boolean;
+            /** Description */
+            description: string;
+            /** Column Count */
+            column_count: number;
+            /** Version */
+            version: number;
+            /**
+             * Naming Violation Count
+             * @description How many naming rules the table's own name breaks.
+             */
+            naming_violation_count: number;
+        };
+        /** DwUnknownMember */
+        DwUnknownMember: {
+            /**
+             * Surrogate Key
+             * @description Always -1.
+             */
+            surrogate_key: number;
+            /**
+             * Defaults
+             * @description Column name to its value in the unknown-member row.
+             */
+            defaults: {
+                [key: string]: string | number | boolean | null;
+            };
         };
         /** ErrorBody */
         ErrorBody: {
@@ -3321,6 +3930,35 @@ export interface components {
             imported: boolean;
             /** Disabled Features */
             disabled_features: string[];
+        };
+        /** InferenceRequest */
+        InferenceRequest: {
+            /**
+             * Threshold
+             * @description Only candidates at or above this confidence (above 0, at most 1) are kept.
+             * @default 0.6
+             */
+            threshold: number;
+            /**
+             * Sample Size
+             * @description Rows sampled per table for value overlap (1 to 100000); used only with a live Connection and profiled columns.
+             * @default 5000
+             */
+            sample_size: number;
+        };
+        /** InferenceStarted */
+        InferenceStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `infer_relationships` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** InvitationLinkOut */
         InvitationLinkOut: {
@@ -3669,11 +4307,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
-            /**
-             * Adapter
-             * @enum {string}
-             */
-            adapter: "openai_compatible" | "anthropic";
+            /** Adapter */
+            adapter: string;
             /** Base Url */
             base_url: string;
             /**
@@ -3712,10 +4347,10 @@ export interface components {
             name: string;
             /**
              * Adapter
+             * @description `openai_compatible`, `anthropic`, `azure_openai` or a plugin kind.
              * @default openai_compatible
-             * @enum {string}
              */
-            adapter: "openai_compatible" | "anthropic";
+            adapter: string;
             /**
              * Base Url
              * @description Including the version prefix, e.g. `http://vllm:8000/v1` or `https://api.anthropic.com/v1`.
@@ -3998,6 +4633,21 @@ export interface components {
              */
             bridge_prefix: string;
         };
+        /** NamingViolation */
+        NamingViolation: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "case_style" | "prefix";
+            /** Message */
+            message: string;
+            /**
+             * Expected
+             * @description The prefix, or the case style, the name should follow.
+             */
+            expected: string;
+        };
         /** Notification */
         Notification: {
             /**
@@ -4142,6 +4792,63 @@ export interface components {
              */
             items: components["schemas"]["PiiFinding"][];
         };
+        /** PiiRuleCreate */
+        PiiRuleCreate: {
+            /**
+             * Name
+             * @description 1 to 40 lower-case letters, digits and underscores, starting with a letter.
+             */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Keywords
+             * @description Name keywords, e.g. `emp_no`; separators and case are ignored.
+             */
+            keywords?: string[];
+            /**
+             * Pattern
+             * @description A regex tested on whole sampled values in value scans. At least one of keywords and pattern is required.
+             */
+            pattern?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0.5 to 1.
+             * @default 0.8
+             */
+            confidence: number;
+        };
+        /** PiiRuleList */
+        PiiRuleList: {
+            /** Built In */
+            built_in: components["schemas"]["BuiltInPiiRule"][];
+            /** Custom */
+            custom: components["schemas"]["CustomPiiRule"][];
+        };
+        /** PiiRuleUpdate */
+        PiiRuleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /**
+             * Pattern
+             * @description An empty string removes it.
+             */
+            pattern?: string | null;
+            /** Category */
+            category?: ("direct_identifier" | "quasi_identifier" | "sensitive" | "financial") | null;
+            /** Confidence */
+            confidence?: number | null;
+        };
         /** PiiScanRequest */
         PiiScanRequest: {
             /**
@@ -4264,6 +4971,60 @@ export interface components {
             job_id: string;
             /** Status */
             status: string;
+        };
+        /** Relationship */
+        Relationship: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description The referencing column. */
+            from_column: components["schemas"]["ColumnRef"];
+            /** @description The referenced (unique) column. */
+            to_column: components["schemas"]["ColumnRef"];
+            /**
+             * Origin
+             * @description `routine` when a view or routine joins the two columns, else `inferred`.
+             * @enum {string}
+             */
+            origin: "inferred" | "routine";
+            /**
+             * Confidence
+             * @description 0 to 1, from the signals in `evidence`.
+             */
+            confidence: number;
+            /**
+             * Evidence
+             * @description Each signal that fired with its score and detail: `name`, `type`, `unique`, `join` (the views and routines) and `overlap` (a ratio, with a live Connection and profiling). Names and ratios only, never a data value.
+             */
+            evidence: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "accepted" | "rejected";
+            /** Version */
+            version: number;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** RelationshipPage */
+        RelationshipPage: {
+            /**
+             * Items
+             * @description Most confident first.
+             */
+            items: components["schemas"]["Relationship"][];
         };
         /** RemovedColumn */
         RemovedColumn: {
@@ -5380,6 +6141,65 @@ export interface components {
             tags?: string[] | null;
             /** Is Sensitive */
             is_sensitive?: boolean | null;
+        };
+        /** UpdateDwColumnRequest */
+        UpdateDwColumnRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /** Name */
+            name?: string | null;
+            data_type?: components["schemas"]["DwDataType"] | null;
+            /** Role */
+            role?: ("sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash") | null;
+            /** Is Nullable */
+            is_nullable?: boolean | null;
+            /** Additivity */
+            additivity?: ("additive" | "semi_additive" | "non_additive") | null;
+            /** Scd Type Override */
+            scd_type_override?: number | null;
+            /** References Table Id */
+            references_table_id?: string | null;
+            /** Role Name */
+            role_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Semantic Type */
+            semantic_type?: string | null;
+        };
+        /** UpdateDwTableRequest */
+        UpdateDwTableRequest: {
+            /**
+             * Version
+             * @description The `version` you last saw.
+             */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Grain */
+            grain?: string | null;
+            /** Fact Type */
+            fact_type?: ("transactional" | "periodic_snapshot" | "accumulating_snapshot" | "factless") | null;
+            /** Is Aggregate */
+            is_aggregate?: boolean | null;
+            /**
+             * Scd Type
+             * @description Making it 2 adds the SCD2 housekeeping columns.
+             */
+            scd_type?: number | null;
+            /** Is Conformed */
+            is_conformed?: boolean | null;
+            /**
+             * Unknown Member Defaults
+             * @description Replaces the unknown member's default values (dimensions).
+             */
+            unknown_member_defaults?: {
+                [key: string]: string | number | boolean | null;
+            } | null;
         };
         /** UpdateKpiRequest */
         UpdateKpiRequest: {
@@ -7118,6 +7938,348 @@ export interface operations {
             };
         };
     };
+    listDwTables: {
+        parameters: {
+            query?: {
+                layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTableList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDwTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDwTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDwColumn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDwColumnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwColumn"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDwColumn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDwColumn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDwColumnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwColumn"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listDataWarehousePlatforms: {
         parameters: {
             query?: never;
@@ -8150,6 +9312,181 @@ export interface operations {
             };
         };
     };
+    startRelationshipInference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InferenceRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InferenceStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listRelationships: {
+        parameters: {
+            query?: {
+                /** @description Only relationships in this state. */
+                status?: ("suggested" | "accepted" | "rejected") | null;
+                /** @description Hide candidates below this confidence. */
+                min_confidence?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     downloadSchemaImportTemplate: {
         parameters: {
             query?: never;
@@ -8685,6 +10022,219 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableProfile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPiiRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiRuleList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPiiRule"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    switchBuiltInPiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuiltInSwitch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltInPiiRule"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deletePiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updatePiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPiiRule"];
                 };
             };
             /** @description Validation error */

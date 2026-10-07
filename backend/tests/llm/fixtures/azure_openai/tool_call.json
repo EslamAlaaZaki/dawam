@@ -1,0 +1,34 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "model": "test-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_abc",
+              "type": "function",
+              "function": {
+                "name": "echo",
+                "arguments": "{\"text\": \"ping\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 40,
+      "completion_tokens": 9,
+      "total_tokens": 49
+    }
+  }
+}
