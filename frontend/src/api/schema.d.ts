@@ -1017,6 +1017,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Pii Scan
+         * @description Scan the selected tables' sampled values for PII, as a background job (owners and
+         *     editors; live Connection only). Values are tested in memory and discarded: only the
+         *     match ratio is kept, as the evidence of a `suggested` finding. 409
+         *     `connection_missing` without a Connection; 422 for no tables or a bad sample size.
+         */
+        post: operations["startPiiScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
         parameters: {
             query?: never;
@@ -3612,6 +3635,34 @@ export interface components {
              * @description Most confident first.
              */
             items: components["schemas"]["PiiFinding"][];
+        };
+        /** PiiScanRequest */
+        PiiScanRequest: {
+            /**
+             * Table Ids
+             * @description The Source Tables to scan.
+             */
+            table_ids: string[];
+            /**
+             * Sample Size
+             * @description Rows sampled per table (1 to 10000); a column is tested on at most this many values.
+             * @default 1000
+             */
+            sample_size: number;
+        };
+        /** PiiScanStarted */
+        PiiScanStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `pii_scan` job: follow its status, progress and log at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** Platform */
         Platform: {
@@ -7367,6 +7418,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PiiFinding"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startPiiScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiScanStarted"];
                 };
             };
             /** @description Validation error */
