@@ -1,7 +1,7 @@
 """add the assistant's conversations, messages and runs.
 
 Revision ID: 3c8e5f1a7d92
-Revises: 9a4e1c7b3f58
+Revises: c27e5a91d4b6
 Create Date: 2026-10-07 12:00:00.000000
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "3c8e5f1a7d92"
-down_revision: str | Sequence[str] | None = "9a4e1c7b3f58"
+down_revision: str | Sequence[str] | None = "c27e5a91d4b6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
