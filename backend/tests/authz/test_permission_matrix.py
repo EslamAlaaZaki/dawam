@@ -529,6 +529,20 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"user_id": str(colleague_id(roles))},
     ),
+    # AI settings of a Workspace (stories 160, 161).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/ai-settings",
+        "Open Workspace content (read the AI settings)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/ai-settings",
+        "Choose the Workspace's model, data-sharing level and internal-only restriction",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"internal_only": False, "data_sharing_level": "profiles"},
+    ),
     # Data Warehouse.
     Row(
         "GET",

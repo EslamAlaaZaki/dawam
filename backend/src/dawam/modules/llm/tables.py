@@ -98,6 +98,32 @@ class WorkspaceBudgetRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
+class WorkspaceAiSettingsRecord(Base):
+    """What an owner chose for a Workspace's AI (spec §6.18, stories 160, 161). No column
+    has a database default: the composition root fills the row in when the Workspace is
+    created, deciding ``internal_only`` in code from the installation's models."""
+
+    __tablename__ = "llm_workspace_settings"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "data_sharing_level IN ('metadata', 'profiles', 'documents', 'samples')",
+            name="data_sharing_level",
+        ),
+    )
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    internal_only: Mapped[bool]
+    """True: the gateway refuses every external provider for every model role."""
+    data_sharing_level: Mapped[str] = mapped_column(sa.String(16))
+    agent_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    """The Workspace's own agent model; null: the installation's."""
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
 class UsageRecord(Base):
     """Tokens one model call used, with who and what it was for."""
 
