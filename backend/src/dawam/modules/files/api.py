@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
 from dawam.modules.sources import DataDictionaryServiceDep, SourceSystemService
-from dawam.modules.warehouse import DataWarehouseService
+from dawam.modules.warehouse import DataWarehouseService, DdlLayer, DdlServiceDep
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
@@ -131,6 +131,23 @@ def save_data_dictionary(
     export = dictionaries.export(user, workspace_id, system_id)
     return _out(
         files.save_generated(user, workspace_id, system_id, name=export.name, data=export.data)
+    )
+
+
+@router.post("/data-warehouse/files/ddl", operation_id="saveDdl", status_code=201)
+def save_ddl(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    files: FileServiceDep,
+    ddl: DdlServiceDep,
+    layer: DdlLayer = None,
+) -> WorkspaceFile:
+    """Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`
+    (or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous
+    one (owners and editors). 404 before the Data Warehouse is set up."""
+    package = ddl.export(user, workspace_id, layer=layer)
+    return _out(
+        files.save_generated_to_warehouse(user, workspace_id, name=package.name, data=package.data)
     )
 
 

@@ -2497,6 +2497,80 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/ddl": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Download Ddl",
+        "description": "The DW Schema's DDL in the target platform's dialect (any member): each Layer's\nphysical schema, its tables, foreign keys and one unknown-member `INSERT` per\ndimension. `layer` limits it to one Layer. 404 before the Data Warehouse is set up.\nTo keep a copy, save it to the file area with `POST .../files/ddl`.",
+        "operationId": "downloadDdl",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "staging",
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One Layer's package; omit for the whole Data Warehouse.",
+              "title": "Layer"
+            },
+            "description": "One Layer's package; omit for the whole Data Warehouse."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The DDL package.",
+            "content": {
+              "application/sql": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/data-warehouse/platforms": {
       "get": {
         "tags": [
@@ -7610,6 +7684,83 @@
               "format": "uuid",
               "title": "System Id"
             }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/ddl": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Ddl",
+        "description": "Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`\n(or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous\none (owners and editors). 404 before the Data Warehouse is set up.",
+        "operationId": "saveDdl",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "staging",
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One Layer's package; omit for the whole Data Warehouse.",
+              "title": "Layer"
+            },
+            "description": "One Layer's package; omit for the whole Data Warehouse."
           }
         ],
         "responses": {

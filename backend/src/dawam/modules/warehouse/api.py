@@ -18,12 +18,14 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 
 from . import service as svc
+from .ddl_api import router as ddl_router
 from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .service import CaseStyle, DataWarehouseService, Weekday
 
 router = APIRouter(tags=["data-warehouse"])
 router.include_router(model_router)
+router.include_router(ddl_router)
 
 
 def data_warehouse_service(request: Request) -> DataWarehouseService:
