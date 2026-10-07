@@ -18,9 +18,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from dawam.modules.auth import CurrentUser
+from dawam.modules.changesets import ChangeSetService
 from dawam.modules.files import FileService
 from dawam.modules.kpis import KpiService
 from dawam.modules.llm import ProviderService, RoleService, WorkspaceAiService
+from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
     PiiService,
     ProfilingService,
@@ -44,6 +46,7 @@ from .service import (
     RunView,
     Started,
     StreamEvent,
+    readable_conversations,
 )
 from .tables import MESSAGE_MAX_LENGTH, TITLE_MAX_LENGTH
 
@@ -67,6 +70,14 @@ def assistant_service(request: Request) -> AssistantService:
         workspaces,
         ToolServices(
             kpis=KpiService(engine, workspaces=workspaces, systems=systems, clock=clock),
+            change_sets=ChangeSetService(
+                engine,
+                workspaces=workspaces,
+                handlers=state.change_set_handlers,
+                notifications=NotificationService(engine, clock=clock),
+                clock=clock,
+                conversations=readable_conversations(engine),
+            ),
             files=FileService(
                 engine,
                 workspaces=workspaces,

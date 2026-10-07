@@ -343,7 +343,7 @@ class AssistantService:
             record.updated_at = now
             history = self._history(db, conversation_id)
             started = Started(run.id, message.id)
-        return self._stream(user, workspace_id, started, history, context)
+        return self._stream(user, workspace_id, conversation_id, started, history, context)
 
     def stop(self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
         """Ask the conversation's running response to stop (by the member who started it).
@@ -363,6 +363,7 @@ class AssistantService:
         self,
         user: User,
         workspace_id: uuid.UUID,
+        conversation_id: uuid.UUID,
         started: Started,
         history: Sequence[Message],
         context: PageContext | None,
@@ -377,7 +378,9 @@ class AssistantService:
                 gateway = self._roles.gateway_for_role(
                     "agent", workspace_id=workspace_id, user_id=user.id
                 )
-                tools = self._tools.bind(user, workspace_id, self._ai.policy(workspace_id))
+                tools = self._tools.bind(
+                    user, workspace_id, self._ai.policy(workspace_id), conversation_id
+                )
                 for event in run_agent(
                     gateway,
                     tools,
@@ -574,3 +577,24 @@ def _system_prompt(context: PageContext | None) -> str:
     described = {"type": context.type, "id": context.id, "name": context.label}
     page = quote_data("page context", json.dumps(described, ensure_ascii=False))
     return f"{SYSTEM_PROMPT}\n\nThe member is looking at this object right now:\n{page}"
+
+
+def readable_conversations(engine: sa.Engine) -> Callable[..., set[uuid.UUID]]:
+    """The ``ReadableConversations`` port: which of some conversations a member may read."""
+
+    def readable(
+        user_id: uuid.UUID, workspace_id: uuid.UUID, conversation_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        with Session(engine) as db:
+            return set(
+                db.scalars(
+                    sa.select(ConversationRecord.id).where(
+                        ConversationRecord.workspace_id == workspace_id,
+                        ConversationRecord.id.in_(conversation_ids),
+                        (ConversationRecord.user_id == user_id)
+                        | ConversationRecord.shared_with_workspace.is_(True),
+                    )
+                )
+            )
+
+    return readable
