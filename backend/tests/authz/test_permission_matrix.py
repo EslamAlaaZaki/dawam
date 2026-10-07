@@ -8,6 +8,7 @@ route has none. Adding an endpoint means adding its row here: copy the matching
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter
 
 import pytest
@@ -960,6 +961,45 @@ ROWS: list[Row] = [
         "Review PII findings (start a value-based scan)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"table_ids": [table_id(roles)]},
+    ),
+    # Workspace PII rules (story 136; §6.12): owners only.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/pii-rules",
+        "Manage PII rules (list)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/pii-rules",
+        "Manage PII rules (add a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {
+            "name": f"r_{uuid.uuid4().hex[:12]}",
+            "keywords": ["emp_no"],
+            "category": "direct_identifier",
+        },
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}",
+        "Manage PII rules (edit a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"confidence": 0.9},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}",
+        "Manage PII rules (delete a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}",
+        "Manage PII rules (switch a built-in rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"enabled": False},
+        path_params={"rule_id": lambda roles: "email"},
     ),
 ]
 

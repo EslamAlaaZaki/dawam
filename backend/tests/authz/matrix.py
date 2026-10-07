@@ -371,6 +371,20 @@ def pii_finding_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/pii-findings").json()["items"][0]["id"]
 
 
+def pii_rule_id(roles: RoleClients) -> str:
+    """A fresh custom PII rule (so deleting one does not affect the next request)."""
+    response = roles.client("owner").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/pii-rules",
+        json={
+            "name": f"r_{uuid.uuid4().hex[:12]}",
+            "keywords": ["emp_no"],
+            "category": "direct_identifier",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
 def rename_pair(roles: RoleClients) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     """A rename candidate and its removed and added column, written straight into the
     stand-in table (fresh per request, so confirming one does not affect the next):
@@ -417,6 +431,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "table_id": table_id,
     "column_id": column_id,
     "finding_id": pii_finding_id,
+    "rule_id": pii_rule_id,
     "provider_id": provider_id,
     "model_id": model_id,
 }

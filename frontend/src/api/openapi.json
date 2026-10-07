@@ -4599,6 +4599,324 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/pii-rules": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "List Pii Rules",
+        "description": "Built-in rules with their on/off state, and the custom rules (owners).",
+        "operationId": "listPiiRules",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiRuleList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Create Pii Rule",
+        "description": "Add a custom PII rule (owners). It applies to later name and value scans. Audited.",
+        "operationId": "createPiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiRuleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPiiRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}": {
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Switch Built In Pii Rule",
+        "description": "Switch a built-in rule on or off for this Workspace (owners). Built-in rules are\nnever edited. Audited.",
+        "operationId": "switchBuiltInPiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuiltInSwitch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltInPiiRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}": {
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Update Pii Rule",
+        "description": "Edit a custom PII rule (owners); a field left out stays. Audited.",
+        "operationId": "updatePiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiRuleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPiiRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Delete Pii Rule",
+        "description": "Delete a custom PII rule (owners). Findings it made stay. Audited.",
+        "operationId": "deletePiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -8336,6 +8654,7 @@
           "source_system.profile",
           "source_table.top_n",
           "pii.review",
+          "pii.manage_rules",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -8939,6 +9258,56 @@
           "files"
         ],
         "title": "Body_validateSchemaImport"
+      },
+      "BuiltInPiiRule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "E.g. `national_id`."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Off means this Workspace's scans skip the rule."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "confidence",
+          "enabled"
+        ],
+        "title": "BuiltInPiiRule"
+      },
+      "BuiltInSwitch": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "BuiltInSwitch"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -9738,6 +10107,95 @@
           "name"
         ],
         "title": "CreateWorkspaceRequest"
+      },
+      "CustomPiiRule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique per Workspace; a finding's rule is `custom:<name>`."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords",
+            "description": "Matched, once normalised, inside a normalised column name."
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "A regex a sampled value must match in full."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0.5 to 1; what a name match alone is worth."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "keywords",
+          "pattern",
+          "category",
+          "confidence",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CustomPiiRule"
       },
       "DataWarehouse": {
         "properties": {
@@ -11783,6 +12241,164 @@
           "items"
         ],
         "title": "PiiFindingPage"
+      },
+      "PiiRuleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Name",
+            "description": "1 to 40 lower-case letters, digits and underscores, starting with a letter."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "keywords": {
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Keywords",
+            "description": "Name keywords, e.g. `emp_no`; separators and case are ignored."
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "A regex tested on whole sampled values in value scans. At least one of keywords and pattern is required."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0.5 to 1.",
+            "default": 0.8
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "category"
+        ],
+        "title": "PiiRuleCreate"
+      },
+      "PiiRuleList": {
+        "properties": {
+          "built_in": {
+            "items": {
+              "$ref": "#/components/schemas/BuiltInPiiRule"
+            },
+            "type": "array",
+            "title": "Built In"
+          },
+          "custom": {
+            "items": {
+              "$ref": "#/components/schemas/CustomPiiRule"
+            },
+            "type": "array",
+            "title": "Custom"
+          }
+        },
+        "type": "object",
+        "required": [
+          "built_in",
+          "custom"
+        ],
+        "title": "PiiRuleList"
+      },
+      "PiiRuleUpdate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "An empty string removes it."
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "direct_identifier",
+                  "quasi_identifier",
+                  "sensitive",
+                  "financial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "title": "PiiRuleUpdate"
       },
       "PiiScanRequest": {
         "properties": {

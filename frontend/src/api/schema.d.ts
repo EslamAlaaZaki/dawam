@@ -1339,6 +1339,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/pii-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pii Rules
+         * @description Built-in rules with their on/off state, and the custom rules (owners).
+         */
+        get: operations["listPiiRules"];
+        put?: never;
+        /**
+         * Create Pii Rule
+         * @description Add a custom PII rule (owners). It applies to later name and value scans. Audited.
+         */
+        post: operations["createPiiRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch Built In Pii Rule
+         * @description Switch a built-in rule on or off for this Workspace (owners). Built-in rules are
+         *     never edited. Audited.
+         */
+        patch: operations["switchBuiltInPiiRule"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pii Rule
+         * @description Delete a custom PII rule (owners). Findings it made stay. Audited.
+         */
+        delete: operations["deletePiiRule"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Pii Rule
+         * @description Edit a custom PII rule (owners); a field left out stays. Audited.
+         */
+        patch: operations["updatePiiRule"];
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -2217,7 +2286,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2498,6 +2567,31 @@ export interface components {
              * @description The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...).
              */
             files: string[];
+        };
+        /** BuiltInPiiRule */
+        BuiltInPiiRule: {
+            /**
+             * Id
+             * @description E.g. `national_id`.
+             */
+            id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /** Confidence */
+            confidence: number;
+            /**
+             * Enabled
+             * @description Off means this Workspace's scans skip the rule.
+             */
+            enabled: boolean;
+        };
+        /** BuiltInSwitch */
+        BuiltInSwitch: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
@@ -2880,6 +2974,53 @@ export interface components {
              * @default
              */
             domain: string;
+        };
+        /** CustomPiiRule */
+        CustomPiiRule: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Unique per Workspace; a finding's rule is `custom:<name>`.
+             */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Keywords
+             * @description Matched, once normalised, inside a normalised column name.
+             */
+            keywords: string[];
+            /**
+             * Pattern
+             * @description A regex a sampled value must match in full.
+             */
+            pattern: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0.5 to 1; what a name match alone is worth.
+             */
+            confidence: number;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** DataWarehouse */
         DataWarehouse: {
@@ -3843,6 +3984,63 @@ export interface components {
              * @description Most confident first.
              */
             items: components["schemas"]["PiiFinding"][];
+        };
+        /** PiiRuleCreate */
+        PiiRuleCreate: {
+            /**
+             * Name
+             * @description 1 to 40 lower-case letters, digits and underscores, starting with a letter.
+             */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Keywords
+             * @description Name keywords, e.g. `emp_no`; separators and case are ignored.
+             */
+            keywords?: string[];
+            /**
+             * Pattern
+             * @description A regex tested on whole sampled values in value scans. At least one of keywords and pattern is required.
+             */
+            pattern?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0.5 to 1.
+             * @default 0.8
+             */
+            confidence: number;
+        };
+        /** PiiRuleList */
+        PiiRuleList: {
+            /** Built In */
+            built_in: components["schemas"]["BuiltInPiiRule"][];
+            /** Custom */
+            custom: components["schemas"]["CustomPiiRule"][];
+        };
+        /** PiiRuleUpdate */
+        PiiRuleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /**
+             * Pattern
+             * @description An empty string removes it.
+             */
+            pattern?: string | null;
+            /** Category */
+            category?: ("direct_identifier" | "quasi_identifier" | "sensitive" | "financial") | null;
+            /** Confidence */
+            confidence?: number | null;
         };
         /** PiiScanRequest */
         PiiScanRequest: {
@@ -8341,6 +8539,219 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableProfile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPiiRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiRuleList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPiiRule"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    switchBuiltInPiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuiltInSwitch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltInPiiRule"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deletePiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updatePiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPiiRule"];
                 };
             };
             /** @description Validation error */
