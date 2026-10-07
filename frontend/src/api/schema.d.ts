@@ -2268,6 +2268,72 @@ export interface paths {
         patch: operations["updateKpi"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comments
+         * @description The comment threads on one object, with their replies (any member).
+         */
+        get: operations["listComments"];
+        put?: never;
+        /**
+         * Add Comment
+         * @description Comment on an object, or reply to a thread (any member, viewers included).
+         *     Mentioned members get an in-app `mention` notification. 422 `invalid_comment`,
+         *     `invalid_mention`.
+         */
+        post: operations["addComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/comments/{comment_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Comment
+         * @description Resolve a thread (any member). 422 for a reply: resolve its thread's first comment.
+         */
+        post: operations["resolveComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/comments/{comment_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Comment
+         * @description Reopen a resolved thread (any member).
+         */
+        post: operations["reopenComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files": {
         parameters: {
             query?: never;
@@ -3026,7 +3092,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -3088,6 +3154,32 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** AddCommentRequest */
+        AddCommentRequest: {
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "source_table" | "source_column" | "dw_table" | "dw_column" | "kpi" | "mapping";
+            /**
+             * Object Id
+             * Format: uuid
+             * @description The commented object's id.
+             */
+            object_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Parent Id
+             * @description Reply to this thread's first comment.
+             */
+            parent_id?: string | null;
+            /**
+             * Mentions
+             * @description Workspace members to notify.
+             */
+            mentions?: string[];
         };
         /** AddMemberRequest */
         AddMemberRequest: {
@@ -3612,7 +3704,7 @@ export interface components {
              * Mapping Type
              * @enum {string}
              */
-            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
+            mapping_type: "direct" | "derived" | "constant" | "lookup" | "system" | "unmapped" | "not_in_branch";
             /**
              * Rule Text
              * @description The transformation rule, in plain language.
@@ -3634,6 +3726,8 @@ export interface components {
              */
             uses: components["schemas"]["MappingInput"][];
             validation: components["schemas"]["MappingValidation"];
+            /** @description A `lookup` mapping's spec; its `sql_expression` is then derived. */
+            lookup?: components["schemas"]["LookupSpec"] | null;
             /**
              * Version
              * @description 0 until first saved.
@@ -3737,6 +3831,76 @@ export interface components {
             table: string;
             /** Column */
             column: string;
+        };
+        /** Comment */
+        Comment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "source_table" | "source_column" | "dw_table" | "dw_column" | "kpi" | "mapping";
+            /**
+             * Object Id
+             * Format: uuid
+             */
+            object_id: string;
+            /**
+             * Parent Id
+             * @description Null for the first comment of a thread.
+             */
+            parent_id: string | null;
+            /** @description Null once the author's account is gone. */
+            author: components["schemas"]["Person"] | null;
+            /** Body */
+            body: string;
+            /**
+             * Mentions
+             * @description The members the comment @mentions.
+             */
+            mentions: string[];
+            /**
+             * Resolved At
+             * @description Set on a resolved thread's first comment.
+             */
+            resolved_at: string | null;
+            resolved_by: components["schemas"]["Person"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** CommentThreadOut */
+        CommentThreadOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            comment: components["schemas"]["Comment"];
+            /**
+             * Replies
+             * @description Oldest first.
+             */
+            replies: components["schemas"]["Comment"][];
+        };
+        /** CommentThreads */
+        CommentThreads: {
+            /**
+             * Items
+             * @description The object's threads, oldest first.
+             */
+            items: components["schemas"]["CommentThreadOut"][];
         };
         /** Connection */
         Connection: {
@@ -5270,6 +5434,32 @@ export interface components {
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
         };
+        /** LookupSpec */
+        LookupSpec: {
+            /**
+             * Nk Inputs
+             * @description One `table.column` of the Layer below per natural-key column of the dimension, in order.
+             */
+            nk_inputs: string[];
+            /**
+             * As Of Input
+             * @description The date column an SCD2 dimension is looked up as of.
+             */
+            as_of_input?: string | null;
+            /**
+             * Unknown Key
+             * @description The key used when no dimension row matches.
+             */
+            unknown_key: number;
+            /**
+             * Dimension Id
+             * Format: uuid
+             * @description The FK's referenced table; derived, never set.
+             */
+            dimension_id: string;
+            /** Dimension Name */
+            dimension_name: string;
+        };
         /** MappingBranch */
         MappingBranch: {
             /**
@@ -5594,6 +5784,16 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** Person */
+        Person: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
         };
         /** PiiFinding */
         PiiFinding: {
@@ -6103,7 +6303,7 @@ export interface components {
              * @description `not_in_branch` (NULL) only inside a branch.
              * @enum {string}
              */
-            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
+            mapping_type: "direct" | "derived" | "constant" | "lookup" | "system" | "unmapped" | "not_in_branch";
             /**
              * Rule Text
              * @default
@@ -6114,6 +6314,13 @@ export interface components {
              * @default
              */
             sql_expression: string;
+            /**
+             * Lookup
+             * @description For `lookup` only: `nk_inputs` (`table.column` of the Layer below, one per natural-key column of the dimension), `as_of_input` (required for an SCD2 dimension) and `unknown_key` (default: the dimension's unknown member).
+             */
+            lookup?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Version
              * @description The mapping's version; 0 to create it.
@@ -13039,6 +13246,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Kpi"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listComments: {
+        parameters: {
+            query: {
+                object_type: "source_table" | "source_column" | "dw_table" | "dw_column" | "kpi" | "mapping";
+                object_id: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreads"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resolveComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reopenComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
                 };
             };
             /** @description Validation error */

@@ -118,6 +118,10 @@ class Action(StrEnum):
     EDIT_KPI = "kpi.edit"
     """Create, edit and delete KPIs, and move them between statuses (owners and editors;
     spec §4.3, stories 73, 74, 80)."""
+    COMMENT = "comment.create"
+    """Comment on tables, columns, DW objects, KPIs and mappings, @mention members, and
+    resolve or reopen threads (owners, editors and viewers; spec §4.3 "Comment", stories
+    107, 125, 126). Reading comments needs only ``VIEW_WORKSPACE``."""
     UPLOAD_FILE = "file.upload"
     """Upload a file or document to a Source System's file area (owners and editors;
     spec §4.3 "Upload, edit, delete Workspace files", story 64). Listing and downloading
@@ -221,6 +225,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
+    Action.COMMENT: _WorkspaceRule(min_role="viewer"),
     Action.UPLOAD_FILE: _WorkspaceRule(min_role="editor"),
     Action.VIEW_CONNECTION: _WorkspaceRule(min_role="owner", state="any"),
     Action.MANAGE_CONNECTION: _WorkspaceRule(min_role="owner"),

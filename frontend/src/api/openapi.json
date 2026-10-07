@@ -8583,6 +8583,277 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/comments": {
+      "get": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "List Comments",
+        "description": "The comment threads on one object, with their replies (any member).",
+        "operationId": "listComments",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "object_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "source_table",
+                "source_column",
+                "dw_table",
+                "dw_column",
+                "kpi",
+                "mapping"
+              ],
+              "type": "string",
+              "title": "Object Type"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Object Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentThreads"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "Add Comment",
+        "description": "Comment on an object, or reply to a thread (any member, viewers included).\nMentioned members get an in-app `mention` notification. 422 `invalid_comment`,\n`invalid_mention`.",
+        "operationId": "addComment",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCommentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/comments/{comment_id}/resolve": {
+      "post": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "Resolve Comment",
+        "description": "Resolve a thread (any member). 422 for a reply: resolve its thread's first comment.",
+        "operationId": "resolveComment",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/comments/{comment_id}/reopen": {
+      "post": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "Reopen Comment",
+        "description": "Reopen a resolved thread (any member).",
+        "operationId": "reopenComment",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files": {
       "get": {
         "tags": [
@@ -11660,6 +11931,7 @@
           "job.cancel_any",
           "installation.list_workspaces",
           "kpi.edit",
+          "comment.create",
           "file.upload",
           "connection.view",
           "connection.manage",
@@ -11795,6 +12067,63 @@
           "next_cursor"
         ],
         "title": "ActivityPage"
+      },
+      "AddCommentRequest": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "source_table",
+              "source_column",
+              "dw_table",
+              "dw_column",
+              "kpi",
+              "mapping"
+            ],
+            "title": "Object Type"
+          },
+          "object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Object Id",
+            "description": "The commented object's id."
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Body"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id",
+            "description": "Reply to this thread's first comment."
+          },
+          "mentions": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Mentions",
+            "description": "Workspace members to notify."
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_type",
+          "object_id",
+          "body"
+        ],
+        "title": "AddCommentRequest"
       },
       "AddMemberRequest": {
         "properties": {
@@ -12945,6 +13274,8 @@
               "direct",
               "derived",
               "constant",
+              "lookup",
+              "system",
               "unmapped",
               "not_in_branch"
             ],
@@ -12978,6 +13309,17 @@
           },
           "validation": {
             "$ref": "#/components/schemas/MappingValidation"
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LookupSpec"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A `lookup` mapping's spec; its `sql_expression` is then derived."
           },
           "version": {
             "type": "integer",
@@ -13210,6 +13552,161 @@
           "column"
         ],
         "title": "ColumnRef"
+      },
+      "Comment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "source_table",
+              "source_column",
+              "dw_table",
+              "dw_column",
+              "kpi",
+              "mapping"
+            ],
+            "title": "Object Type"
+          },
+          "object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Object Id"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id",
+            "description": "Null for the first comment of a thread."
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null once the author's account is gone."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "mentions": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Mentions",
+            "description": "The members the comment @mentions."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At",
+            "description": "Set on a resolved thread's first comment."
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "object_type",
+          "object_id",
+          "parent_id",
+          "author",
+          "body",
+          "mentions",
+          "resolved_at",
+          "resolved_by",
+          "created_at"
+        ],
+        "title": "Comment"
+      },
+      "CommentThreadOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "comment": {
+            "$ref": "#/components/schemas/Comment"
+          },
+          "replies": {
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            },
+            "type": "array",
+            "title": "Replies",
+            "description": "Oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "comment",
+          "replies"
+        ],
+        "title": "CommentThreadOut"
+      },
+      "CommentThreads": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentThreadOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The object's threads, oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CommentThreads"
       },
       "Connection": {
         "properties": {
@@ -16731,6 +17228,53 @@
         ],
         "title": "LlmWorkspaceUsage"
       },
+      "LookupSpec": {
+        "properties": {
+          "nk_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Nk Inputs",
+            "description": "One `table.column` of the Layer below per natural-key column of the dimension, in order."
+          },
+          "as_of_input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Input",
+            "description": "The date column an SCD2 dimension is looked up as of."
+          },
+          "unknown_key": {
+            "type": "integer",
+            "title": "Unknown Key",
+            "description": "The key used when no dimension row matches."
+          },
+          "dimension_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dimension Id",
+            "description": "The FK's referenced table; derived, never set."
+          },
+          "dimension_name": {
+            "type": "string",
+            "title": "Dimension Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nk_inputs",
+          "unknown_key",
+          "dimension_id",
+          "dimension_name"
+        ],
+        "title": "LookupSpec"
+      },
       "MappingBranch": {
         "properties": {
           "id": {
@@ -17383,6 +17927,25 @@
           "next_cursor"
         ],
         "title": "PendingInvitationPage"
+      },
+      "Person": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name"
+        ],
+        "title": "Person"
       },
       "PiiFinding": {
         "properties": {
@@ -18420,6 +18983,8 @@
               "direct",
               "derived",
               "constant",
+              "lookup",
+              "system",
               "unmapped",
               "not_in_branch"
             ],
@@ -18435,6 +19000,19 @@
             "type": "string",
             "title": "Sql Expression",
             "default": ""
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lookup",
+            "description": "For `lookup` only: `nk_inputs` (`table.column` of the Layer below, one per natural-key column of the dimension), `as_of_input` (required for an SCD2 dimension) and `unknown_key` (default: the dimension's unknown member)."
           },
           "version": {
             "type": "integer",

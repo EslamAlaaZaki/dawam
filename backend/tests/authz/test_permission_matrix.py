@@ -179,6 +179,12 @@ def invitation_token(roles: RoleClients) -> str:
     return catcher.url.rsplit("token=", 1)[1]
 
 
+def member_user(roles: RoleClients, role: Role):
+    """The role's user, who becomes a member of the Workspace once its client exists."""
+    roles.client(role)
+    return roles.user(role)
+
+
 ROWS: list[Row] = [
     # Probes, API docs and version: no data, open to all.
     Row("GET", "/healthz", "liveness probe", public()),
@@ -841,6 +847,38 @@ ROWS: list[Row] = [
         "Accept / reject Change Set items (reject)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {},
+    ),
+    # Comments and mentions (stories 107, 125, 126; §4.3 "Comment": viewers too, admins not).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/comments",
+        "Open Workspace content (list an object's comment threads)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        query={"object_type": "kpi", "object_id": "00000000-0000-0000-0000-000000000001"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/comments",
+        "Comment (add a comment or reply)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        json=lambda roles: {
+            "object_type": "kpi",
+            "object_id": "00000000-0000-0000-0000-000000000001",
+            "body": "Is this net of fees?",
+            "mentions": [str(member_user(roles, "editor").id)],
+        },
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/comments/{comment_id}/resolve",
+        "Comment (resolve a thread)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/comments/{comment_id}/reopen",
+        "Comment (reopen a thread)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
     # Files and documents (stories 64, 67): viewers download, editors upload.
     Row(
