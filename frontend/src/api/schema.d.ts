@@ -911,6 +911,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/data-dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Data Dictionary
+         * @description The Source System's data dictionary as an Excel workbook (any member): a `Tables`
+         *     and a `Columns` sheet with types, descriptions, tags, classifications and PII
+         *     categories, never values. 404 before the first Snapshot. To keep a copy, save it to the
+         *     file area with `POST .../files/data-dictionary`.
+         */
+        get: operations["downloadDataDictionary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
         parameters: {
             query?: never;
@@ -1631,6 +1654,28 @@ export interface paths {
          *     422 `invalid_file_name`.
          */
         post: operations["uploadSourceSystemFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Data Dictionary
+         * @description Export the Source System's data dictionary into its file area as
+         *     `data-dictionary-<code>.xlsx` (owners and editors), overwriting the previous one.
+         *     404 before the first Snapshot.
+         */
+        post: operations["saveDataDictionary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7219,6 +7264,47 @@ export interface operations {
             };
         };
     };
+    downloadDataDictionary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The data dictionary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     updateTableEnhancements: {
         parameters: {
             query?: never;
@@ -8933,6 +9019,47 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_uploadSourceSystemFile"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveDataDictionary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {

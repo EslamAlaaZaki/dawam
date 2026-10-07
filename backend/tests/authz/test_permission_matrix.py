@@ -597,6 +597,13 @@ ROWS: list[Row] = [
         files=lambda roles: {"file": ("notes.md", b"# Notes", "text/markdown")},
     ),
     Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary",
+        "Upload, edit, delete Workspace files (save the data dictionary)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+    ),
+    Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
         "Open Workspace content (download a file)",
@@ -809,6 +816,13 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/connection-requests",
         "Run extraction / Schema Import / profiling (ask for a Connection)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/data-dictionary",
+        "Open Workspace content (the data dictionary as XLSX)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
     ),
     Row(
         "GET",
