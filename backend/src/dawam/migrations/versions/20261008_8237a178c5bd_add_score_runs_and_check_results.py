@@ -1,7 +1,7 @@
 """add score runs and check results.
 
 Revision ID: 8237a178c5bd
-Revises: 5d2a8f1c7e36
+Revises: b94e07d3a1c8
 Create Date: 2026-10-08 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "8237a178c5bd"
-down_revision: str | Sequence[str] | None = "5d2a8f1c7e36"
+down_revision: str | Sequence[str] | None = "b94e07d3a1c8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
