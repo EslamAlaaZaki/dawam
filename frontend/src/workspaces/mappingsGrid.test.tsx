@@ -89,6 +89,10 @@ function mappingOf(version: number, sql: string, unparsed = false): TableMapping
         version,
       },
     ],
+    is_aggregate: false,
+    branches: [],
+    coverage: [],
+    sql: null,
   };
 }
 

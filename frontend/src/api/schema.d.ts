@@ -783,6 +783,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Branch
+         * @description Add a branch (editors and owners): one row-set of the table, combined with the
+         *     others by UNION ALL. Its SQL parts must name tables of the Layer directly below.
+         *     422 `invalid_mapping`.
+         */
+        post: operations["createMappingBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Branch
+         * @description Remove a branch with its column mappings and lineage edges (editors and owners).
+         */
+        delete: operations["deleteMappingBranch"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Branch
+         * @description Change a branch (editors and owners); fields left out stay. 409 `version_conflict`.
+         */
+        patch: operations["updateMappingBranch"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Branch Column Mapping
+         * @description Save a column's mapping within a branch (editors and owners), as for the table
+         *     level. `not_in_branch` marks the column NULL in this branch. System columns are
+         *     table-level only. 422 `invalid_mapping`; 409 `version_conflict`.
+         */
+        put: operations["saveBranchColumnMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}": {
         parameters: {
             query?: never;
@@ -3053,6 +3121,44 @@ export interface components {
              */
             files: string[];
         };
+        /** BranchError */
+        BranchError: {
+            /**
+             * Code
+             * @constant
+             */
+            code: "not_in_group_by";
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /** Message */
+            message: string;
+        };
+        /** BranchRequest */
+        BranchRequest: {
+            /** Name */
+            name: string;
+            /** Driving Input */
+            driving_input: string;
+            /**
+             * Joins
+             * @default
+             */
+            joins: string;
+            /**
+             * Filters
+             * @default
+             */
+            filters: string;
+            /** Group By */
+            group_by?: string | null;
+            /** Having */
+            having?: string | null;
+        };
         /** BuiltInPiiRule */
         BuiltInPiiRule: {
             /**
@@ -3111,6 +3217,28 @@ export interface components {
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
         };
+        /** ColumnCoverage */
+        ColumnCoverage: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /**
+             * System
+             * @description DAWAM-generated: mapped at table level, always covered.
+             */
+            system: boolean;
+            /**
+             * Covered
+             * @description Mapped or `not_in_branch` in every branch.
+             */
+            covered: boolean;
+            /** Missing Branch Ids */
+            missing_branch_ids: string[];
+        };
         /** ColumnEnhancements */
         ColumnEnhancements: {
             /**
@@ -3145,7 +3273,7 @@ export interface components {
              * Mapping Type
              * @enum {string}
              */
-            mapping_type: "direct" | "derived" | "constant" | "unmapped";
+            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
             /**
              * Rule Text
              * @description The transformation rule, in plain language.
@@ -4729,6 +4857,52 @@ export interface components {
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
         };
+        /** MappingBranch */
+        MappingBranch: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Ordinal
+             * @description 1-based; branches are combined in this order.
+             */
+            ordinal: number;
+            /** Name */
+            name: string;
+            /**
+             * Driving Input
+             * @description The branch's driving table, in the target dialect.
+             */
+            driving_input: string;
+            /**
+             * Joins
+             * @description JOIN clauses, in the target dialect.
+             */
+            joins: string;
+            /**
+             * Filters
+             * @description The WHERE condition, in the target dialect.
+             */
+            filters: string;
+            /** Group By */
+            group_by: string | null;
+            /** Having */
+            having: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Columns
+             * @description The branch's mapping of every non-system column; `unmapped` until saved.
+             */
+            columns: components["schemas"]["ColumnMapping"][];
+            /**
+             * Errors
+             * @description For an aggregate table, each plain output the GROUP BY does not cover.
+             */
+            errors: components["schemas"]["BranchError"][];
+        };
         /** MappingInput */
         MappingInput: {
             /**
@@ -5448,9 +5622,10 @@ export interface components {
         SaveColumnMappingRequest: {
             /**
              * Mapping Type
+             * @description `not_in_branch` (NULL) only inside a branch.
              * @enum {string}
              */
-            mapping_type: "direct" | "derived" | "constant" | "unmapped";
+            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
             /**
              * Rule Text
              * @default
@@ -6363,9 +6538,23 @@ export interface components {
             version: number;
             /**
              * Columns
-             * @description Every column of the table, by ordinal.
+             * @description Every column of the table with its table-level mapping, by ordinal.
              */
             columns: components["schemas"]["ColumnMapping"][];
+            /** Is Aggregate */
+            is_aggregate: boolean;
+            /** Branches */
+            branches: components["schemas"]["MappingBranch"][];
+            /**
+             * Coverage
+             * @description Branch coverage, per column.
+             */
+            coverage: components["schemas"]["ColumnCoverage"][];
+            /**
+             * Sql
+             * @description The branches' queries combined with UNION ALL; null without branches.
+             */
+            sql: string | null;
         };
         /** TableProfile */
         TableProfile: {
@@ -6508,6 +6697,23 @@ export interface components {
              * @description All your unread notifications.
              */
             unread_count: number;
+        };
+        /** UpdateBranchRequest */
+        UpdateBranchRequest: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Driving Input */
+            driving_input?: string | null;
+            /** Joins */
+            joins?: string | null;
+            /** Filters */
+            filters?: string | null;
+            /** Group By */
+            group_by?: string | null;
+            /** Having */
+            having?: string | null;
         };
         /** UpdateColumnEnhancements */
         UpdateColumnEnhancements: {
@@ -8775,6 +8981,184 @@ export interface operations {
             path: {
                 workspace_id: string;
                 dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveColumnMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createMappingBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMappingBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                branch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateMappingBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                branch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveBranchColumnMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                branch_id: string;
                 dw_column_id: string;
             };
             cookie?: never;

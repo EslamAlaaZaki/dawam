@@ -15,7 +15,16 @@ export const MAPPING_TYPE_LABELS: Record<MappingType, string> = {
   derived: "Derived",
   constant: "Constant",
   unmapped: "Unmapped",
+  not_in_branch: "Not in this branch (NULL)",
 };
+
+/** The types a table-level mapping offers; `not_in_branch` only applies inside a branch. */
+export const TABLE_LEVEL_MAPPING_TYPES: MappingType[] = [
+  "direct",
+  "derived",
+  "constant",
+  "unmapped",
+];
 
 const key = (workspaceId: string, tableId: string) =>
   ["workspace", workspaceId, "dw-mapping", tableId] as const;

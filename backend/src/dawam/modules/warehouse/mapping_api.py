@@ -41,7 +41,7 @@ def mapping_service(request: Request) -> MappingService:
 
 MappingServiceDep = Annotated[MappingService, Depends(mapping_service)]
 
-MappingType = Literal["direct", "derived", "constant", "unmapped"]
+MappingType = Literal["direct", "derived", "constant", "unmapped", "not_in_branch"]
 
 
 class MappingInput(BaseModel):
@@ -80,6 +80,45 @@ class ColumnMapping(BaseModel):
     version: int = Field(description="0 until first saved.")
 
 
+class BranchError(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: Literal["not_in_group_by"]
+    column_id: uuid.UUID
+    column_name: str
+    message: str
+
+
+class MappingBranch(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    ordinal: int = Field(description="1-based; branches are combined in this order.")
+    name: str
+    driving_input: str = Field(description="The branch's driving table, in the target dialect.")
+    joins: str = Field(description="JOIN clauses, in the target dialect.")
+    filters: str = Field(description="The WHERE condition, in the target dialect.")
+    group_by: str | None
+    having: str | None
+    version: int
+    columns: list[ColumnMapping] = Field(
+        description="The branch's mapping of every non-system column; `unmapped` until saved."
+    )
+    errors: list[BranchError] = Field(
+        description="For an aggregate table, each plain output the GROUP BY does not cover."
+    )
+
+
+class ColumnCoverage(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_id: uuid.UUID
+    column_name: str
+    system: bool = Field(description="DAWAM-generated: mapped at table level, always covered.")
+    covered: bool = Field(description="Mapped or `not_in_branch` in every branch.")
+    missing_branch_ids: list[uuid.UUID]
+
+
 class TableMapping(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,11 +130,38 @@ class TableMapping(BaseModel):
     match_keys: list[str]
     notes: str
     version: int = Field(description="0 until first saved.")
-    columns: list[ColumnMapping] = Field(description="Every column of the table, by ordinal.")
+    columns: list[ColumnMapping] = Field(
+        description="Every column of the table with its table-level mapping, by ordinal."
+    )
+    is_aggregate: bool
+    branches: list[MappingBranch]
+    coverage: list[ColumnCoverage] = Field(description="Branch coverage, per column.")
+    sql: str | None = Field(
+        description="The branches' queries combined with UNION ALL; null without branches."
+    )
+
+
+class BranchRequest(BaseModel):
+    name: str
+    driving_input: str
+    joins: str = ""
+    filters: str = ""
+    group_by: str | None = None
+    having: str | None = None
+
+
+class UpdateBranchRequest(BaseModel):
+    version: int
+    name: str | None = None
+    driving_input: str | None = None
+    joins: str | None = None
+    filters: str | None = None
+    group_by: str | None = None
+    having: str | None = None
 
 
 class SaveColumnMappingRequest(BaseModel):
-    mapping_type: MappingType
+    mapping_type: MappingType = Field(description="`not_in_branch` (NULL) only inside a branch.")
     rule_text: str = ""
     sql_expression: str = ""
     version: int = Field(0, description="The mapping's version; 0 to create it.")
@@ -178,6 +244,80 @@ def save_column_mapping(
             dw_column_id,
             version=body.version,
             fields=body.model_dump(exclude={"version"}),
+        )
+    )
+
+
+@router.post("/branches", operation_id="createMappingBranch", status_code=201)
+def create_branch(
+    workspace_id: uuid.UUID,
+    dw_table_id: uuid.UUID,
+    body: BranchRequest,
+    user: CurrentUser,
+    mappings: MappingServiceDep,
+) -> TableMapping:
+    """Add a branch (editors and owners): one row-set of the table, combined with the
+    others by UNION ALL. Its SQL parts must name tables of the Layer directly below.
+    422 `invalid_mapping`."""
+    return _table(mappings.create_branch(user, workspace_id, dw_table_id, fields=body.model_dump()))
+
+
+@router.patch("/branches/{branch_id}", operation_id="updateMappingBranch")
+def update_branch(
+    workspace_id: uuid.UUID,
+    dw_table_id: uuid.UUID,
+    branch_id: uuid.UUID,
+    body: UpdateBranchRequest,
+    user: CurrentUser,
+    mappings: MappingServiceDep,
+) -> TableMapping:
+    """Change a branch (editors and owners); fields left out stay. 409 `version_conflict`."""
+    return _table(
+        mappings.update_branch(
+            user,
+            workspace_id,
+            dw_table_id,
+            branch_id,
+            version=body.version,
+            changes=body.model_dump(exclude_unset=True, exclude={"version"}),
+        )
+    )
+
+
+@router.delete("/branches/{branch_id}", operation_id="deleteMappingBranch", status_code=204)
+def delete_branch(
+    workspace_id: uuid.UUID,
+    dw_table_id: uuid.UUID,
+    branch_id: uuid.UUID,
+    user: CurrentUser,
+    mappings: MappingServiceDep,
+) -> None:
+    """Remove a branch with its column mappings and lineage edges (editors and owners)."""
+    mappings.delete_branch(user, workspace_id, dw_table_id, branch_id)
+
+
+@router.put("/branches/{branch_id}/columns/{dw_column_id}", operation_id="saveBranchColumnMapping")
+def save_branch_column_mapping(
+    workspace_id: uuid.UUID,
+    dw_table_id: uuid.UUID,
+    branch_id: uuid.UUID,
+    dw_column_id: uuid.UUID,
+    body: SaveColumnMappingRequest,
+    user: CurrentUser,
+    mappings: MappingServiceDep,
+) -> ColumnMapping:
+    """Save a column's mapping within a branch (editors and owners), as for the table
+    level. `not_in_branch` marks the column NULL in this branch. System columns are
+    table-level only. 422 `invalid_mapping`; 409 `version_conflict`."""
+    return ColumnMapping.model_validate(
+        mappings.save_column_mapping(
+            user,
+            workspace_id,
+            dw_table_id,
+            dw_column_id,
+            version=body.version,
+            fields=body.model_dump(exclude={"version"}),
+            branch_id=branch_id,
         )
     )
 

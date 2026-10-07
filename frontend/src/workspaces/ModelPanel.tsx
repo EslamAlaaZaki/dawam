@@ -23,8 +23,8 @@ import {
   type DwTableSummary,
 } from "../api/dwModel";
 import { allows, type Workspace } from "../api/workspaces";
-import { MappingsGrid } from "./MappingsGrid";
 import { StarPanel } from "../diagrams/StarPanel";
+import { MappingsGrid } from "./MappingsGrid";
 
 const LAYER_LABELS: Record<DwLayer, string> = {
   staging: "Staging",

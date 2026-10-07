@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   MAPPING_TYPE_LABELS,
+  TABLE_LEVEL_MAPPING_TYPES,
   useSaveColumnMapping,
   useTableMapping,
   type ColumnMapping,
@@ -98,7 +99,7 @@ function MappingRow({
               value={type}
               onChange={(e) => setType(e.target.value as MappingType)}
             >
-              {(Object.keys(MAPPING_TYPE_LABELS) as MappingType[]).map((t) => (
+              {TABLE_LEVEL_MAPPING_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {MAPPING_TYPE_LABELS[t]}
                 </option>
