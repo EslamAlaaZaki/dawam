@@ -199,7 +199,9 @@ class ValidationService:
         with Session(self._engine) as db:
             columns = {
                 c.id: c
-                for c in db.scalars(sa.select(DwColumnRecord).where(DwColumnRecord.id.in_(column_ids)))
+                for c in db.scalars(
+                    sa.select(DwColumnRecord).where(DwColumnRecord.id.in_(column_ids))
+                )
             }
         problems: list[Problem] = []
         for view in views:
@@ -232,14 +234,21 @@ class ValidationService:
                         branch_name=branch.name,
                     )
                 )
-        groups = [(None, view.columns)] if not view.branches else [(b, b.columns) for b in view.branches]
+        groups = (
+            [(None, view.columns)] if not view.branches else [(b, b.columns) for b in view.branches]
+        )
         for branch, mapped in groups:
             where = {"branch_id": branch.id, "branch_name": branch.name} if branch else {}
             for column in mapped:
                 at = {"column_id": column.column_id, "column_name": column.column_name} | where
                 if column.validation.get("unparsed"):
                     found.append(
-                        problem("error", "unparsed_sql", _first_message(column) or "Unparsable SQL.", **at)
+                        problem(
+                            "error",
+                            "unparsed_sql",
+                            _first_message(column) or "Unparsable SQL.",
+                            **at,
+                        )
                     )
                 else:
                     found.extend(

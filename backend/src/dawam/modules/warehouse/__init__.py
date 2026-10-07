@@ -36,6 +36,7 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .mapping_service import MappingService
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -45,7 +46,6 @@ from .platforms import (
     max_identifier_length,
     platform_profile,
 )
-from .mapping_service import MappingService
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .validation_service import ValidationReport, ValidationService
 

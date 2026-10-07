@@ -73,16 +73,28 @@ def test_validation_needs_a_data_warehouse(roles):
 
 
 def test_a_direct_mapping_that_may_truncate_gets_a_warning(warehouse, model):
-    put(warehouse, model["mart"]["id"], model["name"], mapping_type="direct",
-        sql_expression="customer.name")
-    put(warehouse, model["mart"]["id"], model["total"], mapping_type="direct",
-        sql_expression="customer.total")
+    put(
+        warehouse,
+        model["mart"]["id"],
+        model["name"],
+        mapping_type="direct",
+        sql_expression="customer.name",
+    )
+    put(
+        warehouse,
+        model["mart"]["id"],
+        model["total"],
+        mapping_type="direct",
+        sql_expression="customer.total",
+    )
 
     report = validation(warehouse)
 
     truncations = [p for p in report["problems"] if p["code"] == "may_truncate"]
     assert {p["column_name"] for p in truncations} == {"name", "total"}
-    assert all(p["severity"] == "warning" and p["table_name"] == "dim_customer" for p in truncations)
+    assert all(
+        p["severity"] == "warning" and p["table_name"] == "dim_customer" for p in truncations
+    )
     assert report["error_count"] == 0
 
 
@@ -90,14 +102,17 @@ def test_a_fitting_mapping_has_no_type_warning(warehouse, model):
     mart_id = model["mart"]["id"]
     # string(200) into string(20) warns; a derived expression's type is unknown, so no warning
     put(warehouse, mart_id, model["code"], mapping_type="direct", sql_expression="customer.name")
-    put(warehouse, mart_id, model["name"], mapping_type="derived",
-        sql_expression="upper(customer.name)")
+    put(
+        warehouse,
+        mart_id,
+        model["name"],
+        mapping_type="derived",
+        sql_expression="upper(customer.name)",
+    )
 
     report = validation(warehouse)
 
-    assert [p["column_name"] for p in report["problems"] if p["code"] == "may_truncate"] == [
-        "code"
-    ]
+    assert [p["column_name"] for p in report["problems"] if p["code"] == "may_truncate"] == ["code"]
 
 
 def test_a_nullable_input_into_a_required_column_warns(warehouse, model):
@@ -111,8 +126,13 @@ def test_a_nullable_input_into_a_required_column_warns(warehouse, model):
 
 
 def test_unparsable_sql_is_an_error(warehouse, model):
-    put(warehouse, model["mart"]["id"], model["name"], mapping_type="derived",
-        sql_expression="upper((customer.name")
+    put(
+        warehouse,
+        model["mart"]["id"],
+        model["name"],
+        mapping_type="derived",
+        sql_expression="upper((customer.name",
+    )
 
     report = validation(warehouse)
 
@@ -140,8 +160,13 @@ def test_unmapped_columns_are_warnings_and_a_branchy_table_needs_an_integration_
 
 
 def test_coverage_is_counted_per_table_layer_and_warehouse(warehouse, model):
-    put(warehouse, model["mart"]["id"], model["name"], mapping_type="direct",
-        sql_expression="customer.name")
+    put(
+        warehouse,
+        model["mart"]["id"],
+        model["name"],
+        mapping_type="direct",
+        sql_expression="customer.name",
+    )
 
     report = coverage(warehouse)
 
@@ -186,8 +211,13 @@ def test_a_layer_with_everything_covered_completes_dw_modeling_progress(warehous
         ("total", "customer.total"),
         ("code", "customer.name"),
     ):
-        put(warehouse, model["mart"]["id"], model[target], mapping_type="derived",
-            sql_expression=f"cast({expression} as text)")
+        put(
+            warehouse,
+            model["mart"]["id"],
+            model[target],
+            mapping_type="derived",
+            sql_expression=f"cast({expression} as text)",
+        )
 
     assert status("mart") == "complete"
 
