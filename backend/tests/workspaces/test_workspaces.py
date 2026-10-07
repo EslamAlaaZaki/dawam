@@ -53,6 +53,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
             "source_system.extract",
             "source_system.profile",
             "source_table.top_n",
+            "workspace.ai_settings",
             "workspace.archive",
             "workspace.delete",
             "workspace.edit",

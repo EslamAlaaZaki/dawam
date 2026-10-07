@@ -67,6 +67,9 @@ class Action(StrEnum):
     SET_UP_DATA_WAREHOUSE = "data_warehouse.set_up"
     """Set up the Data Warehouse and edit its Layer schema names, naming rules and date
     dimension settings (spec §4.3, story 87)."""
+    CHANGE_AI_SETTINGS = "workspace.ai_settings"
+    """Choose the Workspace's agent model, its internal-only restriction and its
+    data-sharing level (owners only; spec §4.3, stories 160, 161)."""
     CHANGE_DW_PLATFORM = "data_warehouse.change_platform"
     """Change the Data Warehouse's target platform after setup (owners only; spec §4.3)."""
     CREATE_SOURCE_SYSTEM = "source_system.create"
@@ -176,6 +179,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),
     Action.TRANSFER_OWNERSHIP: _WorkspaceRule(min_role="owner"),
     Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
+    Action.CHANGE_AI_SETTINGS: _WorkspaceRule(min_role="owner"),
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
     Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),

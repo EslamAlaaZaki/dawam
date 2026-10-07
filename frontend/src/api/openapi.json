@@ -8641,6 +8641,122 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/ai-settings": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Ai Settings",
+        "description": "The Workspace's AI settings and the models an owner may choose from (any member).",
+        "operationId": "getWorkspaceAiSettings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Ai Settings",
+        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model; 422 `no_internal_model` when internal-only has\nno internal agent model to use.",
+        "operationId": "setWorkspaceAiSettings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceAiSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8685,6 +8801,7 @@
           "workspace.reassign_ownership",
           "workspace.leave",
           "data_warehouse.set_up",
+          "workspace.ai_settings",
           "data_warehouse.change_platform",
           "source_system.create",
           "source_system.edit",
@@ -9081,6 +9198,36 @@
           "next_cursor"
         ],
         "title": "AdminWorkspacePage"
+      },
+      "ApprovedAgentModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "True when the provider is inside your infrastructure."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "provider_name",
+          "internal"
+        ],
+        "title": "ApprovedAgentModel"
       },
       "AuditEntry": {
         "properties": {
@@ -10096,6 +10243,17 @@
           "name"
         ],
         "title": "CreateWorkspaceRequest"
+      },
+      "DataSharingLevel": {
+        "type": "string",
+        "enum": [
+          "metadata",
+          "profiles",
+          "documents",
+          "samples"
+        ],
+        "title": "DataSharingLevel",
+        "description": "What the AI may see, cumulative: each level includes every one before it."
       },
       "DataWarehouse": {
         "properties": {
@@ -15926,6 +16084,104 @@
           "updated_at"
         ],
         "title": "Workspace"
+      },
+      "WorkspaceAiSettings": {
+        "properties": {
+          "internal_only": {
+            "type": "boolean",
+            "title": "Internal Only",
+            "description": "Every model role (agent, light, embedding) is refused an external provider."
+          },
+          "data_sharing_level": {
+            "$ref": "#/components/schemas/DataSharingLevel",
+            "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
+          },
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "The Workspace's own agent model; null: the installation's."
+          },
+          "effective_agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Agent Model Id",
+            "description": "The agent model in use: the Workspace's, else the installation's."
+          },
+          "approved_models": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovedAgentModel"
+            },
+            "type": "array",
+            "title": "Approved Models",
+            "description": "The admin-approved agent models an owner may choose from."
+          },
+          "internal_agent_available": {
+            "type": "boolean",
+            "title": "Internal Agent Available",
+            "description": "The installation has an agent model on an internal provider."
+          },
+          "banner": {
+            "type": "boolean",
+            "title": "Banner",
+            "description": "Show a banner: the Workspace is not internal-only and the installation has no internal agent model."
+          }
+        },
+        "type": "object",
+        "required": [
+          "internal_only",
+          "data_sharing_level",
+          "agent_model_id",
+          "effective_agent_model_id",
+          "approved_models",
+          "internal_agent_available",
+          "banner"
+        ],
+        "title": "WorkspaceAiSettings"
+      },
+      "WorkspaceAiSettingsRequest": {
+        "properties": {
+          "internal_only": {
+            "type": "boolean",
+            "title": "Internal Only"
+          },
+          "data_sharing_level": {
+            "$ref": "#/components/schemas/DataSharingLevel"
+          },
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "An approved agent model; null: use the installation's."
+          }
+        },
+        "type": "object",
+        "required": [
+          "internal_only",
+          "data_sharing_level"
+        ],
+        "title": "WorkspaceAiSettingsRequest"
       },
       "WorkspaceFile": {
         "properties": {
