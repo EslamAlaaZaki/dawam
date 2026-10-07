@@ -1,7 +1,7 @@
 """add per-Workspace AI settings (model, internal-only, data-sharing level).
 
 Revision ID: 9a4e1c7b3f58
-Revises: d6e3f9a4c725
+Revises: 7f3a91c0d2b8
 Create Date: 2026-10-07 11:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "9a4e1c7b3f58"
-down_revision: str | Sequence[str] | None = "d6e3f9a4c725"
+down_revision: str | Sequence[str] | None = "7f3a91c0d2b8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
