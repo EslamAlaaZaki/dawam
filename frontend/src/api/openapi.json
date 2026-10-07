@@ -11817,6 +11817,8 @@
               "direct",
               "derived",
               "constant",
+              "lookup",
+              "system",
               "unmapped",
               "not_in_branch"
             ],
@@ -11850,6 +11852,17 @@
           },
           "validation": {
             "$ref": "#/components/schemas/MappingValidation"
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LookupSpec"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A `lookup` mapping's spec; its `sql_expression` is then derived."
           },
           "version": {
             "type": "integer",
@@ -15459,6 +15472,53 @@
         ],
         "title": "LlmWorkspaceUsage"
       },
+      "LookupSpec": {
+        "properties": {
+          "nk_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Nk Inputs",
+            "description": "One `table.column` of the Layer below per natural-key column of the dimension, in order."
+          },
+          "as_of_input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Input",
+            "description": "The date column an SCD2 dimension is looked up as of."
+          },
+          "unknown_key": {
+            "type": "integer",
+            "title": "Unknown Key",
+            "description": "The key used when no dimension row matches."
+          },
+          "dimension_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dimension Id",
+            "description": "The FK's referenced table; derived, never set."
+          },
+          "dimension_name": {
+            "type": "string",
+            "title": "Dimension Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nk_inputs",
+          "unknown_key",
+          "dimension_id",
+          "dimension_name"
+        ],
+        "title": "LookupSpec"
+      },
       "MappingBranch": {
         "properties": {
           "id": {
@@ -16996,6 +17056,8 @@
               "direct",
               "derived",
               "constant",
+              "lookup",
+              "system",
               "unmapped",
               "not_in_branch"
             ],
@@ -17011,6 +17073,19 @@
             "type": "string",
             "title": "Sql Expression",
             "default": ""
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lookup",
+            "description": "For `lookup` only: `nk_inputs` (`table.column` of the Layer below, one per natural-key column of the dimension), `as_of_input` (required for an SCD2 dimension) and `unknown_key` (default: the dimension's unknown member)."
           },
           "version": {
             "type": "integer",
