@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "name": "models/test-model",
+    "displayName": "Test Model",
+    "inputTokenLimit": 32768,
+    "outputTokenLimit": 8192
+  }
+}

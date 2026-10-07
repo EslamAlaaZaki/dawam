@@ -1,0 +1,13 @@
+{
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "code": 400,
+      "message": "The input token count (1100000) exceeds the maximum number of tokens allowed (1048576).",
+      "status": "INVALID_ARGUMENT"
+    }
+  }
+}

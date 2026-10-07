@@ -217,6 +217,93 @@ class PiiFindingRecord(Base):
     decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
+RELATIONSHIP_STATUSES = ("suggested", "accepted", "rejected")
+
+
+class RelationshipRecord(Base):
+    """A relationship between two Source Columns that the source does not declare as a
+    foreign key (spec §6.6, §7): inferred from names, types, overlap and JOINs, then
+    accepted or rejected by an editor. It attaches to the stable Source Columns, so a
+    decision survives Snapshots. ``evidence`` holds names and ratios, never a value."""
+
+    __tablename__ = "relationships"
+    __table_args__ = (
+        sa.UniqueConstraint("from_column_id", "to_column_id"),
+        sa.CheckConstraint(
+            "origin IN ('declared', 'inferred', 'routine', 'ai', 'manual')", name="origin"
+        ),
+        sa.CheckConstraint("status IN ('suggested', 'accepted', 'rejected')", name="status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    from_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
+    )
+    to_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
+    )
+    origin: Mapped[str] = mapped_column(sa.String(16))
+    """``inferred`` (rules) or ``routine`` (a JOIN in a view or routine); later ``declared``,
+    ``ai`` and ``manual``."""
+    confidence: Mapped[float] = mapped_column()
+    evidence: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    status: Mapped[str] = mapped_column(sa.String(16))
+    version: Mapped[int] = mapped_column()
+    """Goes up by one on every decision (optimistic concurrency, spec §8.3)."""
+    detected_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+
+
+class PiiCustomRuleRecord(Base):
+    """A Workspace's own PII rule (spec §6.12, story 136): name keywords and/or a regex for
+    sampled values, with the category and confidence a finding of it gets."""
+
+    __tablename__ = "pii_custom_rules"
+    __table_args__ = (
+        sa.UniqueConstraint("workspace_id", "name"),
+        sa.CheckConstraint(
+            "category IN ('direct_identifier', 'quasi_identifier', 'sensitive', 'financial')",
+            name="category",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(sa.String(40))
+    """Identifier-safe and unique per Workspace; a finding's rule is ``custom:<name>``."""
+    description: Mapped[str] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH), default="")
+    keywords: Mapped[list[str]] = mapped_column(sa.ARRAY(sa.String(64)), default=list)
+    """As the Owner typed them; matched after normalisation."""
+    pattern: Mapped[str | None] = mapped_column(sa.String(200))
+    category: Mapped[str] = mapped_column(sa.String(32))
+    confidence: Mapped[float] = mapped_column()
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class PiiDisabledRuleRecord(Base):
+    """A built-in PII rule an Owner switched off for one Workspace. No row: enabled."""
+
+    __tablename__ = "pii_disabled_rules"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    rule: Mapped[str] = mapped_column(sa.String(48), primary_key=True)
+    disabled_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    disabled_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
 class ColumnProfileRecord(Base):
     """The latest profile of a Source Column (spec §7): aggregates over a sample of the
     table. ``min``, ``max`` and ``top_values`` are real data, so they stay ``NULL`` for

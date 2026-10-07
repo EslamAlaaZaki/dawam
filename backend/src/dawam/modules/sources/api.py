@@ -24,10 +24,12 @@ from .import_api import router as import_router
 from .pii_api import router as pii_router
 from .pii_scan_api import router as pii_scan_router
 from .profiling_api import router as profiling_router
+from .relationship_api import router as relationship_router
 from .rename_api import router as rename_router
 from .service import SourceSystem as SourceSystemView
 from .service import SourceSystemService
 from .snapshot_api import router as snapshot_router
+from .summary_api import router as summary_router
 from .tables import CODE_MAX_LENGTH, DESCRIPTION_MAX_LENGTH, NAME_MAX_LENGTH, OWNER_MAX_LENGTH
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/systems", tags=["sources"])
@@ -178,6 +180,8 @@ router.include_router(dictionary_router, prefix="/{system_id}")
 router.include_router(enhancement_router, prefix="/{system_id}")
 router.include_router(pii_router, prefix="/{system_id}")
 router.include_router(pii_scan_router, prefix="/{system_id}")
+router.include_router(relationship_router, prefix="/{system_id}")
 router.include_router(import_router, prefix="/{system_id}/import")
 router.include_router(rename_router, prefix="/{system_id}")
 router.include_router(profiling_router, prefix="/{system_id}")
+router.include_router(summary_router, prefix="/{system_id}")

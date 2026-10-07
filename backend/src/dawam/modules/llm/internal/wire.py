@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from ..gateway import (
@@ -26,6 +27,8 @@ _CONTEXT_MARKERS = (
     "too many tokens",
     "prompt is too long",
     "reduce the length",
+    "exceeds the maximum number of tokens",  # Gemini
+    "too long for requested model",  # Bedrock
 )
 
 
@@ -36,16 +39,19 @@ def json_body(response: HttpResponse) -> Any:
         raise LlmError(INVALID_RESPONSE, "The provider's reply was not valid JSON.") from None
 
 
-def detail(payload: Any) -> str:
-    """The provider's own explanation, trimmed (it never holds our API key)."""
+def detail(payload: Any, redact: Callable[[str], str] | None = None) -> str:
+    """The provider's own explanation, trimmed. ``redact`` strips our secrets from it
+    first, so a secret cut by the trimming cannot leave a fragment behind."""
     error = payload.get("error") if isinstance(payload, dict) else None
     message = error.get("message") if isinstance(error, dict) else error
     if not isinstance(message, str) and isinstance(payload, dict):
         message = payload.get("message") or payload.get("detail")
-    return message[:MAX_DETAIL_CHARS] if isinstance(message, str) else ""
+    if not isinstance(message, str):
+        return ""
+    return (redact(message) if redact else message)[:MAX_DETAIL_CHARS]
 
 
-def error_for(response: HttpResponse) -> LlmError:
+def error_for(response: HttpResponse, redact: Callable[[str], str] | None = None) -> LlmError:
     try:
         raw = response.read().decode("utf-8", "replace")
     except OSError:
@@ -54,7 +60,7 @@ def error_for(response: HttpResponse) -> LlmError:
         payload: Any = json.loads(raw)
     except ValueError:
         payload = None
-    explanation = detail(payload)
+    explanation = detail(payload, redact)
     suffix = f" ({explanation})" if explanation else ""
     status = response.status
     if status in (401, 403):

@@ -31,6 +31,20 @@ Public interface. Other modules import only what is re-exported here:
   is its handler, which ``dawam.job_handlers`` registers). Sampled values are tested in memory
   against ``dawam.platform.pii_validators`` and discarded; only the match ratio is stored, as
   the evidence of a ``suggested`` finding (confidence at least 0.5).
+- ``RelationshipService``: owners and editors infer undeclared relationships of a Source System
+  (``start_inference`` queues an ``infer_relationships`` job; ``run_inference`` is its handler,
+  which ``dawam.job_handlers`` registers). Candidates are scored from name similarity, type
+  compatibility, target uniqueness, JOIN conditions parsed with sqlglot from view and routine
+  text, and (live Connection and profiling only) value overlap; those at or above the
+  threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
+  Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
+- ``SourceSummaryService``: any member reads a Source System's dashboard (``SourceSummary``: table
+  count, documented %, profiled %, relationships and PII found, computed on read) at
+  ``GET .../systems/{system_id}/summary``; ``source_analysis`` fills the stage-progress port.
+- ``PiiRuleService``: owners add, edit and delete the Workspace's custom PII rules (name
+  keywords and/or a regex, a category and a confidence) and switch built-in rules off or on;
+  built-in rules are never edited. ``internal.pii.load_rule_set`` feeds them to the name scan
+  of every new Snapshot and to value scans; changes are audited (``pii_rule`` entity).
 - ``check_query``: the AI source query guard (ADR 0002). Given SQL, the engine and a
   ``GuardCatalog`` of the latest Snapshot (``load_guard_catalog`` builds one), it returns
   ``Rejected(reason)`` or a ``SafeQuery``: fully qualified SQL regenerated from the verified
@@ -49,6 +63,11 @@ Public interface. Other modules import only what is re-exported here:
   ``GET .../systems/{system_id}/pii-findings``,
   ``POST .../systems/{system_id}/pii-findings/{finding_id}/confirm|dismiss``,
   ``POST .../systems/{system_id}/pii-scans``,
+  ``POST .../systems/{system_id}/relationship-inference``,
+  ``GET .../systems/{system_id}/relationships``,
+  ``POST .../systems/{system_id}/relationships/{relationship_id}/accept|reject``,
+  ``GET|POST /workspaces/{workspace_id}/pii-rules``, ``PATCH|DELETE .../pii-rules/{rule_id}``,
+  ``PATCH .../pii-rules/built-in/{rule_id}``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
 
@@ -60,7 +79,9 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 ``workspaces``.
 """
 
-from .api import router
+from fastapi import APIRouter
+
+from .api import router as _systems_router
 from .connection_service import Connection, ConnectionService
 from .dictionary_api import DataDictionaryServiceDep
 from .dictionary_service import DataDictionary, DataDictionaryService
@@ -79,9 +100,12 @@ from .internal.query_guard import (
     untraceable_views,
 )
 from .internal.query_guard_catalog import load_guard_catalog
+from .pii_rule_api import router as _pii_rules_router
+from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
+from .relationship_service import INFER_JOB, Relationship, RelationshipService
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
@@ -92,9 +116,15 @@ from .snapshot_service import (
     SnapshotSummary,
     SourceSchema,
 )
+from .summary_service import SourceSummary, SourceSummaryService
+
+router = APIRouter()
+router.include_router(_systems_router)
+router.include_router(_pii_rules_router)
 
 __all__ = [
     "EXTRACT_JOB",
+    "INFER_JOB",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
     "Connection",
@@ -110,10 +140,13 @@ __all__ = [
     "ImportStatus",
     "OutputColumn",
     "PiiFinding",
+    "PiiRuleService",
     "PiiScanService",
     "PiiService",
     "ProfilingService",
     "Rejected",
+    "Relationship",
+    "RelationshipService",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
@@ -124,6 +157,8 @@ __all__ = [
     "SnapshotService",
     "SnapshotSummary",
     "SourceSchema",
+    "SourceSummary",
+    "SourceSummaryService",
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",

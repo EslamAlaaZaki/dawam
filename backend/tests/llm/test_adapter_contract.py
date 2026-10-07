@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +30,11 @@ from dawam.modules.llm import (
 )
 from dawam.modules.llm.internal.anthropic import AnthropicAdapter
 from dawam.modules.llm.internal.azure_openai import AzureOpenAIAdapter
+from dawam.modules.llm.internal.bedrock import BedrockAdapter
+from dawam.modules.llm.internal.gemini import GeminiAdapter
 from dawam.modules.llm.internal.openai_compatible import OpenAICompatibleAdapter
 from dawam.modules.llm.internal.transport import Transport, TransportError
-from tests.llm.replay import ReplayTransport, load
+from tests.llm.replay import Recorded, ReplayTransport, load
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -46,9 +49,20 @@ class AdapterCase:
     """The names of the tools a recorded chat request offered."""
     round_trip: Callable[[Any], None]
     """Asserts the wire shape of the tool-call round trip request."""
-    context_window: int = 32768
+    context_window: int | None = 32768
     """What the recorded ``models`` fixture reports for ``test-model``."""
     embeds: bool = True
+    auth_is_prefix: bool = False
+    """The auth header is signed per request, so only its start is fixed."""
+    is_stream: Callable[[Recorded], bool] = lambda request: request.json["stream"] is True
+    """Whether a recorded chat request asked for a stream."""
+    embed_request: Callable[[Any], None] = lambda body: _openai_embed_request(body)
+    """Asserts the wire shape of the embeddings request."""
+
+    def auth_matches(self, headers: Any) -> bool:
+        name, value = self.auth_header
+        sent = headers[name]
+        return sent.startswith(value) if self.auth_is_prefix else sent == value
 
     def replay(self, *names: str | TransportError) -> tuple[Adapter, ReplayTransport]:
         transport = ReplayTransport(
@@ -81,6 +95,45 @@ def _anthropic_round_trip(body: Any) -> None:
         {"type": "tool_result", "tool_use_id": "call_abc", "content": "ping"}
     ]
 
+
+def _openai_embed_request(body: Any) -> None:
+    assert body == {"model": "embed-model", "input": ["a", "b"]}
+
+
+def _gemini_round_trip(body: Any) -> None:
+    assert body["systemInstruction"] == {"parts": [{"text": "Be brief."}]}
+    sent = body["contents"]
+    assert [m["role"] for m in sent] == ["user", "model", "user"]
+    assert sent[1]["parts"] == [
+        {"functionCall": {"id": "call_abc", "name": "echo", "args": {"text": "ping"}}}
+    ]
+    assert sent[2]["parts"] == [
+        {"functionResponse": {"id": "call_abc", "name": "echo", "response": {"result": "ping"}}}
+    ]
+
+
+def _gemini_embed_request(body: Any) -> None:
+    assert body == {
+        "requests": [
+            {"model": "models/embed-model", "content": {"parts": [{"text": text}]}}
+            for text in ("a", "b")
+        ]
+    }
+
+
+def _bedrock_round_trip(body: Any) -> None:
+    assert body["system"] == [{"text": "Be brief."}]
+    sent = body["messages"]
+    assert [m["role"] for m in sent] == ["user", "assistant", "user"]
+    assert sent[1]["content"] == [
+        {"toolUse": {"toolUseId": "call_abc", "name": "echo", "input": {"text": "ping"}}}
+    ]
+    assert sent[2]["content"] == [
+        {"toolResult": {"toolUseId": "call_abc", "content": [{"text": "ping"}]}}
+    ]
+
+
+FIXED_NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 
 ADAPTERS = [
     AdapterCase(
@@ -125,6 +178,44 @@ ADAPTERS = [
         tool_names=lambda body: [t["function"]["name"] for t in body["tools"]],
         round_trip=_openai_round_trip,
     ),
+    AdapterCase(
+        "gemini",
+        lambda transport: GeminiAdapter(
+            base_url="http://llm.test/v1beta",
+            api_key="sk-secret",
+            timeout_seconds=9,
+            transport=transport,
+        ),
+        chat_url="http://llm.test/v1beta/models/test-model:generateContent",
+        auth_header=("x-goog-api-key", "sk-secret"),
+        tool_names=lambda body: [
+            d["name"] for t in body["tools"] for d in t["functionDeclarations"]
+        ],
+        round_trip=_gemini_round_trip,
+        is_stream=lambda request: request.url.endswith(":streamGenerateContent?alt=sse"),
+        embed_request=_gemini_embed_request,
+    ),
+    AdapterCase(
+        "bedrock",
+        lambda transport: BedrockAdapter(
+            base_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+            api_key="AKIDEXAMPLE:sk-secret",
+            timeout_seconds=9,
+            transport=transport,
+            now=lambda: FIXED_NOW,
+        ),
+        chat_url="https://bedrock-runtime.us-east-1.amazonaws.com/model/test-model/converse",
+        auth_header=(
+            "Authorization",
+            "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20260102/us-east-1/bedrock/aws4_request",
+        ),
+        auth_is_prefix=True,
+        tool_names=lambda body: [t["toolSpec"]["name"] for t in body["toolConfig"]["tools"]],
+        round_trip=_bedrock_round_trip,
+        context_window=None,
+        embeds=False,
+        is_stream=lambda request: request.url.endswith("/converse-stream"),
+    ),
 ]
 
 
@@ -164,7 +255,7 @@ def test_a_stream_yields_text_deltas_then_done_with_usage(case):
 
     assert [e.text for e in events if isinstance(e, TextDelta)] == ["Hello", " there."]
     assert events[-1] == Done(Usage(12, 3), "stop")
-    assert transport.requests[0].json["stream"] is True
+    assert case.is_stream(transport.requests[0])
 
 
 def test_a_stream_without_usage_ends_with_done_and_no_usage(case):
@@ -265,7 +356,7 @@ def test_embeddings_come_back_one_per_text_in_order(case):
     vectors = adapter.embed("embed-model", ["a", "b"])
 
     assert vectors == [[1.0, 0.0, 0.25], [0.0, 1.0, 0.5]]
-    assert transport.requests[0].json == {"model": "embed-model", "input": ["a", "b"]}
+    case.embed_request(transport.requests[0].json)
 
 
 def test_requests_carry_the_key_and_the_provider_timeout(case):
@@ -275,8 +366,7 @@ def test_requests_carry_the_key_and_the_provider_timeout(case):
 
     request = transport.requests[0]
     assert request.url == case.chat_url
-    name, value = case.auth_header
-    assert request.headers[name] == value
+    assert case.auth_matches(request.headers)
     assert request.timeout == 9
 
 

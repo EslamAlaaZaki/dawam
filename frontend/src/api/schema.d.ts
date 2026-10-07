@@ -757,6 +757,145 @@ export interface paths {
         patch: operations["updateDwColumn"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mapping
+         * @description A Core or Mart table's mapping from the Layer below, one entry per column (any
+         *     member); a column is `unmapped` until saved. 422 `invalid_mapping` for a Staging Table.
+         */
+        get: operations["getTableMapping"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Mapping
+         * @description Change the table's integration rule, match keys or notes (editors and owners);
+         *     fields left out stay as they are. 409 `version_conflict`.
+         */
+        patch: operations["updateTableMapping"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Column Mapping
+         * @description Save a column's mapping (editors and owners). The SQL is the master: its inputs
+         *     must be `table.column` of the Layer directly below, and lineage edges are derived from
+         *     it, replacing the previous ones. SQL that does not parse is saved with
+         *     `validation.unparsed` and an error, and produces no edges. 422 `invalid_mapping`;
+         *     409 `version_conflict`.
+         */
+        put: operations["saveColumnMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Branch
+         * @description Add a branch (editors and owners): one row-set of the table, combined with the
+         *     others by UNION ALL. Its SQL parts must name tables of the Layer directly below.
+         *     422 `invalid_mapping`.
+         */
+        post: operations["createMappingBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Branch
+         * @description Remove a branch with its column mappings and lineage edges (editors and owners).
+         */
+        delete: operations["deleteMappingBranch"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Branch
+         * @description Change a branch (editors and owners); fields left out stay. 409 `version_conflict`.
+         */
+        patch: operations["updateMappingBranch"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Branch Column Mapping
+         * @description Save a column's mapping within a branch (editors and owners), as for the table
+         *     level. `not_in_branch` marks the column NULL in this branch. System columns are
+         *     table-level only. 422 `invalid_mapping`; 409 `version_conflict`.
+         */
+        put: operations["saveBranchColumnMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Lineage
+         * @description Every lineage edge on a path to (`upstream`) or from (`downstream`) a DW column
+         *     (any member). `uses` edges point at the table they steer.
+         */
+        get: operations["getColumnLineage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/ddl": {
         parameters: {
             query?: never;
@@ -1216,6 +1355,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationship-inference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Relationship Inference
+         * @description Infer undeclared relationships from the latest Snapshot, as a background job (owners
+         *     and editors). Name, type, uniqueness and JOIN conditions in views and routines always
+         *     count; value overlap only with a live Connection and profiled columns. 409
+         *     `no_snapshot` before the first Snapshot; 422 for a bad threshold or sample size.
+         */
+        post: operations["startRelationshipInference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Relationships
+         * @description The Source System's inferred relationships with their evidence (any member). Only
+         *     candidates at or above `min_confidence` (default 0.6) are shown.
+         */
+        get: operations["listRelationships"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Relationship
+         * @description Accept a relationship (owners and editors): the Source Schema treats it as real.
+         *     Audited.
+         */
+        post: operations["acceptRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Relationship
+         * @description Reject a relationship (owners and editors); later runs do not propose it again.
+         *     Audited.
+         */
+        post: operations["rejectRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
         parameters: {
             query?: never;
@@ -1490,6 +1715,96 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source Summary
+         * @description The Source System dashboard: counts computed from the Source Schema, profiles,
+         *     relationships and PII findings (any member; never a value).
+         */
+        get: operations["getSourceSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pii Rules
+         * @description Built-in rules with their on/off state, and the custom rules (owners).
+         */
+        get: operations["listPiiRules"];
+        put?: never;
+        /**
+         * Create Pii Rule
+         * @description Add a custom PII rule (owners). It applies to later name and value scans. Audited.
+         */
+        post: operations["createPiiRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch Built In Pii Rule
+         * @description Switch a built-in rule on or off for this Workspace (owners). Built-in rules are
+         *     never edited. Audited.
+         */
+        patch: operations["switchBuiltInPiiRule"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pii Rule
+         * @description Delete a custom PII rule (owners). Findings it made stay. Audited.
+         */
+        delete: operations["deletePiiRule"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Pii Rule
+         * @description Edit a custom PII rule (owners); a field left out stays. Audited.
+         */
+        patch: operations["updatePiiRule"];
         trace?: never;
     };
     "/api/v1/notifications": {
@@ -2489,6 +2804,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/ai-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Settings
+         * @description The Workspace's AI settings and the models an owner may choose from (any member).
+         */
+        get: operations["getWorkspaceAiSettings"];
+        /**
+         * Set Ai Settings
+         * @description Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
+         *     that is not an approved agent model; 422 `no_internal_model` when internal-only has
+         *     no internal agent model to use.
+         */
+        put: operations["setWorkspaceAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2507,7 +2848,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2683,6 +3024,23 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** ApprovedAgentModel */
+        ApprovedAgentModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider Name */
+            provider_name: string;
+            /**
+             * Internal
+             * @description True when the provider is inside your infrastructure.
+             */
+            internal: boolean;
+        };
         /** AuditEntry */
         AuditEntry: {
             /**
@@ -2789,6 +3147,69 @@ export interface components {
              */
             files: string[];
         };
+        /** BranchError */
+        BranchError: {
+            /**
+             * Code
+             * @constant
+             */
+            code: "not_in_group_by";
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /** Message */
+            message: string;
+        };
+        /** BranchRequest */
+        BranchRequest: {
+            /** Name */
+            name: string;
+            /** Driving Input */
+            driving_input: string;
+            /**
+             * Joins
+             * @default
+             */
+            joins: string;
+            /**
+             * Filters
+             * @default
+             */
+            filters: string;
+            /** Group By */
+            group_by?: string | null;
+            /** Having */
+            having?: string | null;
+        };
+        /** BuiltInPiiRule */
+        BuiltInPiiRule: {
+            /**
+             * Id
+             * @description E.g. `national_id`.
+             */
+            id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /** Confidence */
+            confidence: number;
+            /**
+             * Enabled
+             * @description Off means this Workspace's scans skip the rule.
+             */
+            enabled: boolean;
+        };
+        /** BuiltInSwitch */
+        BuiltInSwitch: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -2822,6 +3243,28 @@ export interface components {
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
         };
+        /** ColumnCoverage */
+        ColumnCoverage: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /**
+             * System
+             * @description DAWAM-generated: mapped at table level, always covered.
+             */
+            system: boolean;
+            /**
+             * Covered
+             * @description Mapped or `not_in_branch` in every branch.
+             */
+            covered: boolean;
+            /** Missing Branch Ids */
+            missing_branch_ids: string[];
+        };
         /** ColumnEnhancements */
         ColumnEnhancements: {
             /**
@@ -2836,6 +3279,52 @@ export interface components {
             /** Is Sensitive */
             is_sensitive: boolean;
             /** Version */
+            version: number;
+        };
+        /** ColumnMapping */
+        ColumnMapping: {
+            /**
+             * Id
+             * @description Null until the column's mapping is first saved.
+             */
+            id: string | null;
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /**
+             * Mapping Type
+             * @enum {string}
+             */
+            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
+            /**
+             * Rule Text
+             * @description The transformation rule, in plain language.
+             */
+            rule_text: string;
+            /**
+             * Sql Expression
+             * @description SQL in the target dialect, reading `table.column` of the Layer below.
+             */
+            sql_expression: string;
+            /**
+             * Inputs
+             * @description Columns the SQL reads into the result; derived from the SQL, never set.
+             */
+            inputs: components["schemas"]["MappingInput"][];
+            /**
+             * Uses
+             * @description Columns that only steer the result (conditions); derived from the SQL.
+             */
+            uses: components["schemas"]["MappingInput"][];
+            validation: components["schemas"]["MappingValidation"];
+            /**
+             * Version
+             * @description 0 until first saved.
+             */
             version: number;
         };
         /** ColumnProfile */
@@ -2916,6 +3405,25 @@ export interface components {
             is_protected: boolean;
             /** @description Null until the column is profiled. */
             profile: components["schemas"]["ColumnProfile"] | null;
+        };
+        /** ColumnRef */
+        ColumnRef: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /** Column */
+            column: string;
         };
         /** Connection */
         Connection: {
@@ -3261,6 +3769,59 @@ export interface components {
              */
             domain: string;
         };
+        /** CustomPiiRule */
+        CustomPiiRule: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Unique per Workspace; a finding's rule is `custom:<name>`.
+             */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Keywords
+             * @description Matched, once normalised, inside a normalised column name.
+             */
+            keywords: string[];
+            /**
+             * Pattern
+             * @description A regex a sampled value must match in full.
+             */
+            pattern: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0.5 to 1; what a name match alone is worth.
+             */
+            confidence: number;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DataSharingLevel
+         * @description What the AI may see, cumulative: each level includes every one before it.
+         * @enum {string}
+         */
+        DataSharingLevel: "metadata" | "profiles" | "documents" | "samples";
         /** DataWarehouse */
         DataWarehouse: {
             /**
@@ -3723,6 +4284,35 @@ export interface components {
             /** Disabled Features */
             disabled_features: string[];
         };
+        /** InferenceRequest */
+        InferenceRequest: {
+            /**
+             * Threshold
+             * @description Only candidates at or above this confidence (above 0, at most 1) are kept.
+             * @default 0.6
+             */
+            threshold: number;
+            /**
+             * Sample Size
+             * @description Rows sampled per table for value overlap (1 to 100000); used only with a live Connection and profiled columns.
+             * @default 5000
+             */
+            sample_size: number;
+        };
+        /** InferenceStarted */
+        InferenceStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `infer_relationships` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
         /** InvitationLinkOut */
         InvitationLinkOut: {
             /**
@@ -3945,6 +4535,45 @@ export interface components {
              * @default mart
              */
             mart: string;
+        };
+        /** LineageEdge */
+        LineageEdge: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "value" | "uses" | "lookup" | "kpi";
+            /** From Type */
+            from_type: string;
+            /**
+             * From Id
+             * Format: uuid
+             */
+            from_id: string;
+            /**
+             * From Label
+             * @description `table.column` for a column, else the name.
+             */
+            from_label: string;
+            /** To Type */
+            to_type: string;
+            /**
+             * To Id
+             * Format: uuid
+             */
+            to_id: string;
+            /** To Label */
+            to_label: string;
+        };
+        /** LineageGraph */
+        LineageGraph: {
+            /** Edges */
+            edges: components["schemas"]["LineageEdge"][];
         };
         /** LinkDocumentRequest */
         LinkDocumentRequest: {
@@ -4270,6 +4899,89 @@ export interface components {
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
         };
+        /** MappingBranch */
+        MappingBranch: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Ordinal
+             * @description 1-based; branches are combined in this order.
+             */
+            ordinal: number;
+            /** Name */
+            name: string;
+            /**
+             * Driving Input
+             * @description The branch's driving table, in the target dialect.
+             */
+            driving_input: string;
+            /**
+             * Joins
+             * @description JOIN clauses, in the target dialect.
+             */
+            joins: string;
+            /**
+             * Filters
+             * @description The WHERE condition, in the target dialect.
+             */
+            filters: string;
+            /** Group By */
+            group_by: string | null;
+            /** Having */
+            having: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Columns
+             * @description The branch's mapping of every non-system column; `unmapped` until saved.
+             */
+            columns: components["schemas"]["ColumnMapping"][];
+            /**
+             * Errors
+             * @description For an aggregate table, each plain output the GROUP BY does not cover.
+             */
+            errors: components["schemas"]["BranchError"][];
+        };
+        /** MappingInput */
+        MappingInput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "value" | "uses";
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+        };
+        /** MappingValidation */
+        MappingValidation: {
+            /**
+             * Unparsed
+             * @description The SQL could not be parsed; it produces no edges.
+             */
+            unparsed: boolean;
+            /**
+             * Errors
+             * @description Each error's `code` and `message`.
+             */
+            errors: {
+                [key: string]: string;
+            }[];
+        };
         /** Me */
         Me: {
             /**
@@ -4555,6 +5267,63 @@ export interface components {
              */
             items: components["schemas"]["PiiFinding"][];
         };
+        /** PiiRuleCreate */
+        PiiRuleCreate: {
+            /**
+             * Name
+             * @description 1 to 40 lower-case letters, digits and underscores, starting with a letter.
+             */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Keywords
+             * @description Name keywords, e.g. `emp_no`; separators and case are ignored.
+             */
+            keywords?: string[];
+            /**
+             * Pattern
+             * @description A regex tested on whole sampled values in value scans. At least one of keywords and pattern is required.
+             */
+            pattern?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
+            /**
+             * Confidence
+             * @description 0.5 to 1.
+             * @default 0.8
+             */
+            confidence: number;
+        };
+        /** PiiRuleList */
+        PiiRuleList: {
+            /** Built In */
+            built_in: components["schemas"]["BuiltInPiiRule"][];
+            /** Custom */
+            custom: components["schemas"]["CustomPiiRule"][];
+        };
+        /** PiiRuleUpdate */
+        PiiRuleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /**
+             * Pattern
+             * @description An empty string removes it.
+             */
+            pattern?: string | null;
+            /** Category */
+            category?: ("direct_identifier" | "quasi_identifier" | "sensitive" | "financial") | null;
+            /** Confidence */
+            confidence?: number | null;
+        };
         /** PiiScanRequest */
         PiiScanRequest: {
             /**
@@ -4677,6 +5446,60 @@ export interface components {
             job_id: string;
             /** Status */
             status: string;
+        };
+        /** Relationship */
+        Relationship: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description The referencing column. */
+            from_column: components["schemas"]["ColumnRef"];
+            /** @description The referenced (unique) column. */
+            to_column: components["schemas"]["ColumnRef"];
+            /**
+             * Origin
+             * @description `routine` when a view or routine joins the two columns, else `inferred`.
+             * @enum {string}
+             */
+            origin: "inferred" | "routine";
+            /**
+             * Confidence
+             * @description 0 to 1, from the signals in `evidence`.
+             */
+            confidence: number;
+            /**
+             * Evidence
+             * @description Each signal that fired with its score and detail: `name`, `type`, `unique`, `join` (the views and routines) and `overlap` (a ratio, with a live Connection and profiling). Names and ratios only, never a data value.
+             */
+            evidence: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "accepted" | "rejected";
+            /** Version */
+            version: number;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** RelationshipPage */
+        RelationshipPage: {
+            /**
+             * Items
+             * @description Most confident first.
+             */
+            items: components["schemas"]["Relationship"][];
         };
         /** RemovedColumn */
         RemovedColumn: {
@@ -4836,6 +5659,31 @@ export interface components {
             change: "added" | "removed" | "changed";
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
+        };
+        /** SaveColumnMappingRequest */
+        SaveColumnMappingRequest: {
+            /**
+             * Mapping Type
+             * @description `not_in_branch` (NULL) only inside a branch.
+             * @enum {string}
+             */
+            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
+            /**
+             * Rule Text
+             * @default
+             */
+            rule_text: string;
+            /**
+             * Sql Expression
+             * @default
+             */
+            sql_expression: string;
+            /**
+             * Version
+             * @description The mapping's version; 0 to create it.
+             * @default 0
+             */
+            version: number;
         };
         /** SearchHit */
         SearchHit: {
@@ -5450,6 +6298,74 @@ export interface components {
              */
             removed_columns: components["schemas"]["RemovedColumn"][];
         };
+        /** SourceSummary */
+        SourceSummary: {
+            /**
+             * System Id
+             * Format: uuid
+             */
+            system_id: string;
+            /**
+             * Has Snapshot
+             * @description False until the first Snapshot (extraction or import).
+             */
+            has_snapshot: boolean;
+            /**
+             * Table Count
+             * @description Tables and views in the latest Snapshot.
+             */
+            table_count: number;
+            /**
+             * Documented Tables
+             * @description Of them, those with a description.
+             */
+            documented_tables: number;
+            /**
+             * Documented Pct
+             * @description 0 to 100; 0 when there are no tables.
+             */
+            documented_pct: number;
+            /**
+             * Profiled Tables
+             * @description Of them, those with at least one column profile.
+             */
+            profiled_tables: number;
+            /**
+             * Profiled Pct
+             * @description 0 to 100; 0 when there are no tables.
+             */
+            profiled_pct: number;
+            /**
+             * Relationships Found
+             * @description Suggested and accepted relationships.
+             */
+            relationships_found: number;
+            /** Relationships Accepted */
+            relationships_accepted: number;
+            /**
+             * Relationships To Review
+             * @description Suggested ones waiting for a decision.
+             */
+            relationships_to_review: number;
+            /**
+             * Pii Found
+             * @description Columns with a suggested or confirmed PII finding.
+             */
+            pii_found: number;
+            /** Pii Confirmed */
+            pii_confirmed: number;
+            /**
+             * Pii To Review
+             * @description Columns whose finding is still suggested.
+             */
+            pii_to_review: number;
+            /**
+             * Status
+             * @description Source Analysis: `complete` once every table is documented and profiled and no PII finding or relationship waits for review.
+             * @enum {string}
+             */
+            status: "not_started" | "in_progress" | "complete";
+        };
         /** SourceSystem */
         SourceSystem: {
             /**
@@ -5632,6 +6548,56 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** TableMapping */
+        TableMapping: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /**
+             * Source Layer
+             * @enum {string}
+             */
+            source_layer: "staging" | "core";
+            /** Integration Rule */
+            integration_rule: string | null;
+            /** Match Keys */
+            match_keys: string[];
+            /** Notes */
+            notes: string;
+            /**
+             * Version
+             * @description 0 until first saved.
+             */
+            version: number;
+            /**
+             * Columns
+             * @description Every column of the table with its table-level mapping, by ordinal.
+             */
+            columns: components["schemas"]["ColumnMapping"][];
+            /** Is Aggregate */
+            is_aggregate: boolean;
+            /** Branches */
+            branches: components["schemas"]["MappingBranch"][];
+            /**
+             * Coverage
+             * @description Branch coverage, per column.
+             */
+            coverage: components["schemas"]["ColumnCoverage"][];
+            /**
+             * Sql
+             * @description The branches' queries combined with UNION ALL; null without branches.
+             */
+            sql: string | null;
+        };
         /** TableProfile */
         TableProfile: {
             /**
@@ -5773,6 +6739,23 @@ export interface components {
              * @description All your unread notifications.
              */
             unread_count: number;
+        };
+        /** UpdateBranchRequest */
+        UpdateBranchRequest: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Driving Input */
+            driving_input?: string | null;
+            /** Joins */
+            joins?: string | null;
+            /** Filters */
+            filters?: string | null;
+            /** Group By */
+            group_by?: string | null;
+            /** Having */
+            having?: string | null;
         };
         /** UpdateColumnEnhancements */
         UpdateColumnEnhancements: {
@@ -5967,6 +6950,21 @@ export interface components {
              */
             scd_hint?: string | null;
         };
+        /** UpdateTableMappingRequest */
+        UpdateTableMappingRequest: {
+            /**
+             * Version
+             * @description The table mapping's version; 0 before its first save.
+             * @default 0
+             */
+            version: number;
+            /** Integration Rule */
+            integration_rule?: string | null;
+            /** Match Keys */
+            match_keys?: string[] | null;
+            /** Notes */
+            notes?: string | null;
+        };
         /**
          * UpdateUserRequest
          * @description The changes to make; a field left out stays as it is.
@@ -6054,6 +7052,52 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** WorkspaceAiSettings */
+        WorkspaceAiSettings: {
+            /**
+             * Internal Only
+             * @description Every model role (agent, light, embedding) is refused an external provider.
+             */
+            internal_only: boolean;
+            /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
+            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Agent Model Id
+             * @description The Workspace's own agent model; null: the installation's.
+             */
+            agent_model_id: string | null;
+            /**
+             * Effective Agent Model Id
+             * @description The agent model in use: the Workspace's, else the installation's.
+             */
+            effective_agent_model_id: string | null;
+            /**
+             * Approved Models
+             * @description The admin-approved agent models an owner may choose from.
+             */
+            approved_models: components["schemas"]["ApprovedAgentModel"][];
+            /**
+             * Internal Agent Available
+             * @description The installation has an agent model on an internal provider.
+             */
+            internal_agent_available: boolean;
+            /**
+             * Banner
+             * @description Show a banner: the Workspace is not internal-only and the installation has no internal agent model.
+             */
+            banner: boolean;
+        };
+        /** WorkspaceAiSettingsRequest */
+        WorkspaceAiSettingsRequest: {
+            /** Internal Only */
+            internal_only: boolean;
+            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Agent Model Id
+             * @description An approved agent model; null: use the installation's.
+             */
+            agent_model_id?: string | null;
         };
         /** WorkspaceFile */
         WorkspaceFile: {
@@ -7930,6 +8974,359 @@ export interface operations {
             };
         };
     };
+    getTableMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateTableMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTableMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveColumnMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveColumnMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createMappingBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMappingBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                branch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateMappingBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                branch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveBranchColumnMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                branch_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveColumnMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getColumnLineage: {
+        parameters: {
+            query?: {
+                direction?: "upstream" | "downstream";
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineageGraph"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     downloadDdl: {
         parameters: {
             query?: {
@@ -9005,6 +10402,181 @@ export interface operations {
             };
         };
     };
+    startRelationshipInference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InferenceRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InferenceStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listRelationships: {
+        parameters: {
+            query?: {
+                /** @description Only relationships in this state. */
+                status?: ("suggested" | "accepted" | "rejected") | null;
+                /** @description Hide candidates below this confidence. */
+                min_confidence?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     downloadSchemaImportTemplate: {
         parameters: {
             query?: never;
@@ -9540,6 +11112,260 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableProfile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSummary"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPiiRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiRuleList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPiiRule"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    switchBuiltInPiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuiltInSwitch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltInPiiRule"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deletePiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updatePiiRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPiiRule"];
                 };
             };
             /** @description Validation error */
@@ -12196,6 +14022,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmUsage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getWorkspaceAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setWorkspaceAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceAiSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAiSettings"];
                 };
             };
             /** @description Validation error */

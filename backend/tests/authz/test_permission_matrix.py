@@ -8,6 +8,7 @@ route has none. Adding an endpoint means adding its row here: copy the matching
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter
 
 import pytest
@@ -32,6 +33,7 @@ from tests.authz.matrix import (
     signed_in,
     snapshot_id,
     source_table_id,
+    staging_table_name,
     system_id,
     table_id,
     tested_model_id,
@@ -528,6 +530,20 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"user_id": str(colleague_id(roles))},
     ),
+    # AI settings of a Workspace (stories 160, 161).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/ai-settings",
+        "Open Workspace content (read the AI settings)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/ai-settings",
+        "Choose the Workspace's model, data-sharing level and internal-only restriction",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"internal_only": False, "data_sharing_level": "profiles"},
+    ),
     # Data Warehouse.
     Row(
         "GET",
@@ -622,6 +638,60 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=ensure_data_warehouse,
         json=lambda roles: {"kind": "date"},
+    ),
+    # Column mappings and lineage (stories 99, 100, 104).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping",
+        "Open Workspace content (a table's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping",
+        "Edit KPIs, DW Schema, mappings (edit a table's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 0},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (save a column mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"mapping_type": "unmapped", "rule_text": "Not in the source"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches",
+        "Edit KPIs, DW Schema, mappings (add a mapping branch)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"name": "CRM", "driving_input": staging_table_name(roles)},
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}",
+        "Edit KPIs, DW Schema, mappings (edit a mapping branch)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}",
+        "Edit KPIs, DW Schema, mappings (delete a mapping branch)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (save a branch column mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"mapping_type": "not_in_branch"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}",
+        "Open Workspace content (a column's lineage)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
     # DDL export (story 97).
     Row(
@@ -1081,6 +1151,79 @@ ROWS: list[Row] = [
         "Review PII findings (start a value-based scan)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"table_ids": [table_id(roles)]},
+    ),
+    # Relationship inference (stories 58, 59): owners and editors run it (needs a Snapshot)
+    # and decide; every member reads the relationships.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationship-inference",
+        "Run extraction / Schema Import / profiling (infer relationships)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships",
+        "Open Workspace content (the inferred relationships)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    # The Source System dashboard (story 63): every member reads the counts.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/summary",
+        "Open Workspace content (the Source System dashboard)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept",
+        "Edit Source Schema enhancements & documents (accept a relationship)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject",
+        "Edit Source Schema enhancements & documents (reject a relationship)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Workspace PII rules (story 136; §6.12): owners only.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/pii-rules",
+        "Manage PII rules (list)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/pii-rules",
+        "Manage PII rules (add a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {
+            "name": f"r_{uuid.uuid4().hex[:12]}",
+            "keywords": ["emp_no"],
+            "category": "direct_identifier",
+        },
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}",
+        "Manage PII rules (edit a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"confidence": 0.9},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}",
+        "Manage PII rules (delete a custom rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}",
+        "Manage PII rules (switch a built-in rule)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"enabled": False},
+        path_params={"rule_id": lambda roles: "email"},
     ),
 ]
 

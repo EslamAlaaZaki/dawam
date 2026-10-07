@@ -1,0 +1,10 @@
+{
+  "status": 403,
+  "headers": {
+    "Content-Type": "application/json",
+    "x-amzn-errortype": "UnrecognizedClientException"
+  },
+  "body": {
+    "message": "The security token included in the request is invalid."
+  }
+}

@@ -27,6 +27,7 @@ dependencies = [
     "openpyxl>=3.1",
     "sqlglot>=30,<31",
     "hijridate>=2.3",
+    "regex>=2024.11",
 ]
 
 [project.optional-dependencies]

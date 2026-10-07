@@ -43,6 +43,7 @@ from .tables import (
     UsageRecord,
     WorkspaceBudgetRecord,
 )
+from .workspace_ai import load_settings, model_is_internal
 
 MAX_BUDGET = 10**15
 
@@ -164,8 +165,10 @@ class MeteredGateway:
         model_name: str,
         workspace_id: uuid.UUID | None,
         user_id: uuid.UUID | None,
+        refuse_external: bool = False,
     ) -> None:
         self._gateway = gateway
+        self._refuse_external = refuse_external
         self._service = service
         self._role = role
         self._model_name = model_name
@@ -190,7 +193,7 @@ class MeteredGateway:
     ) -> Iterator[ChatEvent]:
         """Like ``Gateway.chat``, but raises 429 ``token_budget_exhausted`` before the
         call when a budget is used up, and records the usage when the reply is done."""
-        self._service.ensure_within_budget(self._workspace_id)
+        self._ensure_allowed()
         prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
         produced: list[str] = []
         reported: Usage | None = None
@@ -211,11 +214,24 @@ class MeteredGateway:
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Like ``Gateway.embed``; embeddings report no usage, so the tokens are estimated."""
-        self._service.ensure_within_budget(self._workspace_id)
+        self._ensure_allowed()
         try:
             return self._gateway.embed(texts)
         finally:
             self._record(Usage(sum(estimate_tokens(t) for t in texts), 0, estimated=True))
+
+    def _ensure_allowed(self) -> None:
+        """Refuse an external provider for an internal-only Workspace, whatever the role,
+        then check the budgets."""
+        if self._refuse_external:
+            raise ApiError(
+                409,
+                "external_provider_refused",
+                "This Workspace is internal-only, and the model for this task runs on an "
+                "external provider. An owner can change the Workspace's AI settings.",
+                {"role": self._role, "model": self._model_name},
+            )
+        self._service.ensure_within_budget(self._workspace_id)
 
     def _record(self, usage: Usage) -> None:
         self._service.record_usage(
@@ -313,7 +329,23 @@ class RoleService:
         user_id: uuid.UUID | None = None,
         light_allowed: bool = True,
     ) -> MeteredGateway:
+        """The gateway a feature calls for ``role``. With a Workspace, its settings apply:
+        its own agent model (when it chose one), and for an internal-only Workspace the
+        ``light`` role falls back to the agent model unless the light model is internal.
+        Whatever the role, an external model is refused when the call is made."""
+        override: uuid.UUID | None = None
+        if workspace_id is not None:
+            with Session(self._engine) as db:
+                workspace = load_settings(db, workspace_id)
+                override = workspace.agent_model_id
+                if role == "light" and workspace.internal_only:
+                    light = self._settings(db).light_model_id
+                    light_allowed = (
+                        light_allowed and light is not None and model_is_internal(db, light)
+                    )
         model_id, role = self.model_for_role(role, light_allowed=light_allowed)
+        if role == "agent" and override is not None:
+            model_id = override
         return self.metered_gateway(model_id, role, workspace_id=workspace_id, user_id=user_id)
 
     def metered_gateway(
@@ -324,9 +356,15 @@ class RoleService:
         workspace_id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
     ) -> MeteredGateway:
-        """A metered gateway for a specific registered model, used under ``role``."""
+        """A metered gateway for a specific registered model, used under ``role``. For an
+        internal-only Workspace its calls are refused when the model's provider is external."""
         with Session(self._engine) as db:
             name = db.scalar(sa.select(ModelRecord.name).where(ModelRecord.id == model_id))
+            refuse = (
+                workspace_id is not None
+                and load_settings(db, workspace_id).internal_only
+                and not model_is_internal(db, model_id)
+            )
         return MeteredGateway(
             self._providers.gateway_for(model_id),
             self,
@@ -334,6 +372,7 @@ class RoleService:
             model_name=name or "",
             workspace_id=workspace_id,
             user_id=user_id,
+            refuse_external=refuse,
         )
 
     # -- budgets ---------------------------------------------------------------------

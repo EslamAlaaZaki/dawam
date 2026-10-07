@@ -146,3 +146,117 @@ class DwColumnRecord(Base):
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
+
+
+MAPPING_TYPES = ("direct", "derived", "constant", "not_in_branch", "unmapped")
+BRANCH_NAME_MAX_LENGTH = 128
+EDGE_KINDS = ("value", "uses", "lookup", "kpi")
+EDGE_NODE_TYPES = ("src_column", "dw_column", "dw_table", "branch", "kpi")
+MAPPING_TEXT_MAX_LENGTH = 4000
+
+
+class TableMappingRecord(Base):
+    """How a Core or Mart table is filled from the Layer below (spec §6.14 ``TableMapping``)."""
+
+    __tablename__ = "table_mappings"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    dw_table_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("dw_tables.id", ondelete="CASCADE"), unique=True
+    )
+    integration_rule: Mapped[str | None] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH))
+    match_keys: Mapped[list[str]] = mapped_column(sa.JSON)
+    notes: Mapped[str] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH), default="")
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    version: Mapped[int] = mapped_column()
+
+
+class MappingBranchRecord(Base):
+    """One row-set of a table, combined with the others by UNION ALL (spec §6.14)."""
+
+    __tablename__ = "mapping_branches"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    table_mapping_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("table_mappings.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column()
+    name: Mapped[str] = mapped_column(sa.String(BRANCH_NAME_MAX_LENGTH))
+    driving_input: Mapped[str] = mapped_column(sa.Text)
+    """The branch's driving table, in the target dialect (a table of the Layer below)."""
+    joins: Mapped[str] = mapped_column(sa.Text, default="")
+    filters: Mapped[str] = mapped_column(sa.Text, default="")
+    group_by: Mapped[str | None] = mapped_column(sa.Text)
+    having: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    version: Mapped[int] = mapped_column()
+
+
+COLUMN_MAPPING_UNIQUE = "uq_column_mappings_column_branch"
+TABLE_LEVEL_MAPPING_UNIQUE = "uq_column_mappings_table_level"
+
+
+class ColumnMappingRecord(Base):
+    """One target column's mapping from the Layer below (spec §6.14 ``ColumnMapping``);
+    per branch, or table-level when ``branch_id`` is null."""
+
+    __tablename__ = "column_mappings"
+    __table_args__ = (
+        sa.CheckConstraint(f"mapping_type IN ({_in(MAPPING_TYPES)})", name="mapping_type"),
+        sa.Index(COLUMN_MAPPING_UNIQUE, "dw_column_id", "branch_id", unique=True),
+        sa.Index(
+            TABLE_LEVEL_MAPPING_UNIQUE,
+            "dw_column_id",
+            unique=True,
+            postgresql_where=sa.text("branch_id IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    table_mapping_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("table_mappings.id", ondelete="CASCADE"), index=True
+    )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("mapping_branches.id", ondelete="CASCADE"), index=True
+    )
+    dw_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("dw_columns.id", ondelete="CASCADE")
+    )
+    mapping_type: Mapped[str] = mapped_column(sa.String(16))
+    rule_text: Mapped[str] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH), default="")
+    sql_expression: Mapped[str] = mapped_column(sa.Text, default="")
+    """In the target platform's dialect; the master of the mapping's inputs."""
+    validation: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    """``{"unparsed": bool, "errors": [{"code", "message"}]}``."""
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    version: Mapped[int] = mapped_column()
+
+
+class LineageEdgeRecord(Base):
+    """An edge of the lineage graph, derived from a mapping's SQL on every save (§6.14)."""
+
+    __tablename__ = "lineage_edges"
+    __table_args__ = (
+        sa.CheckConstraint(f"kind IN ({_in(EDGE_KINDS)})", name="kind"),
+        sa.CheckConstraint(f"from_type IN ({_in(EDGE_NODE_TYPES)})", name="from_type"),
+        sa.CheckConstraint(f"to_type IN ({_in(EDGE_NODE_TYPES)})", name="to_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(sa.String(8))
+    from_type: Mapped[str] = mapped_column(sa.String(16))
+    from_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    to_type: Mapped[str] = mapped_column(sa.String(16))
+    to_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    mapping_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("column_mappings.id", ondelete="CASCADE"), index=True
+    )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("mapping_branches.id", ondelete="CASCADE"), index=True
+    )
+    """Set on the ``uses`` edges of a branch's own joins, filters, GROUP BY and HAVING."""

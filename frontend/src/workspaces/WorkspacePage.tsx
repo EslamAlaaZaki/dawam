@@ -23,7 +23,9 @@ import { JobsPanel } from "./JobsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
+import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
+import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
@@ -93,6 +95,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // `systems/<id>/source-schema`: a Source System's extracted Snapshots.
   const schemaSystem = systemList.find(
     (system) => folder.id === `systems/${system.id}/source-schema`,
+  );
+
+  // `systems/<id>/er-diagram`: a Source System's tables and relationships.
+  const erSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/er-diagram`,
   );
 
   // `systems/<id>/documents`: a Source System's uploaded documents.
@@ -187,11 +194,14 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               ownerName="the Data Warehouse"
             />
           ) : openSystem ? (
-            <SystemDetails
-              workspace={workspace.data}
-              system={openSystem}
-              reload={() => systems.refetch()}
-            />
+            <>
+              <SourceSummaryPanel workspaceId={workspaceId} system={openSystem} />
+              <SystemDetails
+                workspace={workspace.data}
+                system={openSystem}
+                reload={() => systems.refetch()}
+              />
+            </>
           ) : connectionSystem ? (
             <ConnectionPanel
               workspace={workspace.data}
@@ -201,6 +211,12 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             <SourceSchemaPanel
               workspace={workspace.data}
               system={schemaSystem}
+            />
+          ) : erSystem ? (
+            <SourceErDiagram
+              key={folder.id}
+              workspace={workspace.data}
+              system={erSystem}
             />
           ) : (
             <section aria-labelledby="folder-title">
