@@ -52,6 +52,10 @@ DEFAULT_TITLE = "New conversation"
 HISTORY_MESSAGES = 30
 """The most recent turns sent to the model with a new message."""
 LIST_LIMIT = 100
+STOP_POLL_SECONDS = 1.0
+"""How often the stop flag is read while text streams."""
+MAX_SAVED_ARGUMENT = 500
+"""Characters of a text argument kept on the saved run."""
 STALE_RUN = timedelta(minutes=15)
 """A run that has shown no end for this long (e.g. the server restarted) no longer blocks
 the conversation."""
@@ -360,12 +364,12 @@ class AssistantService:
         history: Sequence[Message],
         context: PageContext | None,
     ) -> Iterator[StreamEvent]:
-        yield started
         began = self._timer()
         text: list[str] = []
         calls: list[ToolCallRecord] = []
         saved = False
         try:
+            yield started
             try:
                 gateway = self._roles.gateway_for_role(
                     "agent", workspace_id=workspace_id, user_id=user.id
@@ -379,6 +383,7 @@ class AssistantService:
                     max_tool_calls=self._max_tool_calls,
                     is_cancelled=lambda: self._cancel_requested(started.run_id),
                     timer=self._timer,
+                    delta_poll_seconds=STOP_POLL_SECONDS,
                 ):
                     if isinstance(event, Finished):
                         finished = event
@@ -447,7 +452,7 @@ class AssistantService:
             run.tool_calls = [
                 {
                     "name": c.name,
-                    "arguments": c.arguments,
+                    "arguments": _shortened(c.arguments),
                     "status": c.status,
                     "duration_ms": c.duration_ms,
                 }
@@ -543,6 +548,16 @@ class AssistantService:
             Message("user" if m.role == "user" else "assistant", m.content)
             for m in reversed(list(recent))
         ]
+
+
+def _shortened(arguments: dict[str, Any]) -> dict[str, Any]:
+    """The arguments as saved on the run: long text (a generated file's content) is cut."""
+    return {
+        key: value[:MAX_SAVED_ARGUMENT] + "..."
+        if isinstance(value, str) and len(value) > MAX_SAVED_ARGUMENT
+        else value
+        for key, value in arguments.items()
+    }
 
 
 def _clean_title(title: str | None) -> str:

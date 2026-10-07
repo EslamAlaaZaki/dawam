@@ -7,6 +7,8 @@ data. Quoting cannot be escaped: a closing ``</data`` inside the text is defused
 
 from __future__ import annotations
 
+import re
+
 SYSTEM_PROMPT = """\
 You are DAWAM's assistant, working alongside a data-warehouse analysis team inside one \
 Workspace. You help members understand the Workspace's source systems, data warehouse, \
@@ -27,8 +29,14 @@ tool instead of guessing. Never ask for or repeat connection credentials.\
 """
 
 
+_BLANK = r"[\s​-‏⁠﻿]*"
+_TAG = re.compile(rf"<{_BLANK}(/?){_BLANK}data", re.IGNORECASE)
+"""An opening or closing ``data`` tag, in any case and with any spacing or invisible
+characters between its parts."""
+
+
 def quote_data(source: str, text: str) -> str:
     """``text`` as a quoted data block that names its ``source``."""
-    safe = text.replace("</data", "<\\/data")
-    label = source.replace('"', "'")
+    safe = _TAG.sub(lambda m: f"<\\{m.group(1)}data", text)
+    label = _TAG.sub("", source).replace('"', "'").replace("<", "").replace(">", "")
     return f'<data source="{label}">\n{safe}\n</data>'

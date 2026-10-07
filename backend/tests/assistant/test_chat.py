@@ -502,6 +502,42 @@ def test_history_goes_back_to_the_model_with_the_next_message(roles, model, fake
     ]
 
 
+def test_a_client_that_drops_after_the_first_frame_does_not_leave_the_run_running(
+    roles, model, fake_llm, app
+):
+    from types import SimpleNamespace
+
+    from dawam.modules.assistant.api import assistant_service
+
+    service = assistant_service(SimpleNamespace(app=app))
+    owner = roles.user("owner")
+    roles.client("owner")
+    created = service.create_conversation(owner, roles.workspace_id)
+
+    events = service.send_message(owner, roles.workspace_id, created.id, "hello")
+    next(events)  # the `started` frame
+    events.close()  # the browser went away
+
+    detail = service.get_conversation(owner, roles.workspace_id, created.id)
+    assert detail.messages[0].run is not None and detail.messages[0].run.status == "cancelled"
+    fake_llm.script(Reply(text="again"))
+    assert list(service.send_message(owner, roles.workspace_id, created.id, "retry"))
+
+
+def test_long_tool_arguments_are_cut_on_the_saved_run(roles, model, fake_llm):
+    system = add_system(roles)
+    generate = tool("generate_file", system_id=system, name="big.md", content="x" * 5000)
+    fake_llm.script(Reply(tool_calls=(generate,)), Reply(text="done"))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    ask(owner, roles, cid, "Write it")
+
+    saved = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    [run] = [m["run"] for m in saved["messages"] if m["run"]]
+    assert len(run["tool_calls"][0]["arguments"]["content"]) < 600
+
+
 def test_a_stray_conversation_id_is_a_404(roles, model):
     owner = roles.client("owner")
 

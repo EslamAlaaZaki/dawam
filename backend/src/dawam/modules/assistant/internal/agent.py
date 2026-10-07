@@ -128,6 +128,7 @@ def run_agent(
     max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
     is_cancelled: Callable[[], bool] = lambda: False,
     timer: Callable[[], float] = time.monotonic,
+    delta_poll_seconds: float = 0.0,
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer."""
     run = _Run()
@@ -136,6 +137,8 @@ def run_agent(
     stream = capabilities.streaming is not False
     tools_usable = capabilities.tool_calling is not False
     limit_hit = False
+    known_tools = {spec.name for spec in tools.specs()}
+    last_poll = timer()
     try:
         while True:
             if is_cancelled():
@@ -144,11 +147,15 @@ def run_agent(
             offered = tools.specs() if tools_usable and len(run.calls) < max_tool_calls else ()
             pending: list[ToolCall] = []
             answer: list[str] = []
+            last_poll = float("-inf")  # always look at the flag when a model call begins
             with closing(gateway.chat(messages, offered, stream)) as events:
                 for event in events:
-                    if is_cancelled():
-                        yield run.finish("cancelled")
-                        return
+                    # Reading the stop flag is a query: while text streams, not on every delta.
+                    if timer() - last_poll >= delta_poll_seconds:
+                        last_poll = timer()
+                        if is_cancelled():
+                            yield run.finish("cancelled")
+                            return
                     if isinstance(event, TextDelta):
                         answer.append(event.text)
                         run.text.append(event.text)
@@ -184,7 +191,10 @@ def run_agent(
                 messages.append(
                     Message(
                         "tool",
-                        quote_data(f"tool:{call.name}", outcome.content),
+                        quote_data(
+                            f"tool:{call.name if call.name in known_tools else 'unknown'}",
+                            outcome.content,
+                        ),
                         tool_call_id=call.id,
                     )
                 )
