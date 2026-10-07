@@ -26,6 +26,7 @@ from dawam.modules.llm import Message, RoleService, WorkspaceAiService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.pii_validators import redact_json, redact_text
 
 from .internal.agent import (
     DEFAULT_MAX_TOOL_CALLS,
@@ -80,6 +81,8 @@ class ToolCallView:
     arguments: dict[str, Any]
     status: str
     duration_ms: int
+    result: dict[str, Any] | None = None
+    """What a tool kept of its result: a source query's column names, row count and duration."""
 
 
 @dataclass(frozen=True)
@@ -144,7 +147,7 @@ def _run_view(record: RunRecord) -> RunView:
         id=record.id,
         status=record.status,
         tool_calls=[
-            ToolCallView(c["name"], c["arguments"], c["status"], c["duration_ms"])
+            ToolCallView(c["name"], c["arguments"], c["status"], c["duration_ms"], c.get("result"))
             for c in record.tool_calls
         ],
         input_tokens=record.input_tokens,
@@ -443,7 +446,7 @@ class AssistantService:
                         conversation_id=run.conversation_id,
                         position=self._next_position(db, run.conversation_id),
                         role="assistant",
-                        content=finished.text,
+                        content=redact_text(finished.text),
                         created_at=now,
                     )
                 )
@@ -452,9 +455,10 @@ class AssistantService:
             run.tool_calls = [
                 {
                     "name": c.name,
-                    "arguments": _shortened(c.arguments),
+                    "arguments": redact_json(_shortened(c.arguments)),
                     "status": c.status,
                     "duration_ms": c.duration_ms,
+                    "result": c.result,
                 }
                 for c in finished.tool_calls
             ]
@@ -462,7 +466,7 @@ class AssistantService:
             run.output_tokens = finished.completion_tokens
             run.duration_ms = duration_ms
             run.error_code = finished.error_code
-            run.error_message = (finished.error_message or "")[:ERROR_MAX_LENGTH] or None
+            run.error_message = redact_text(finished.error_message or "")[:ERROR_MAX_LENGTH] or None
             run.answer_message_id = answer_id
             run.finished_at = now
             view = _run_view(run)

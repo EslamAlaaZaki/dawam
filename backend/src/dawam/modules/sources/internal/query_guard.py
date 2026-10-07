@@ -178,6 +178,9 @@ class GuardCatalog:
 class OutputColumn:
     name: str
     masked: bool
+    sources: tuple[str, ...] = ()
+    """The base columns (``schema.table.column``, sorted) the value derives from, views
+    traced through; empty for a constant. Where a value-at-query finding lands."""
 
 
 @dataclass(frozen=True)
@@ -517,7 +520,10 @@ class _Analysis:
                 )
         out_sql = tree.sql(dialect=self.dialect, identify=True, comments=False)
         self._verify_output(out_sql, resolver)
-        masked = tuple(OutputColumn(c.name, bool(c.prot or c.src & tainted)) for c in cols)
+        masked = tuple(
+            OutputColumn(c.name, bool(c.prot or c.src & tainted), tuple(sorted(c.src)))
+            for c in cols
+        )
         return SafeQuery(out_sql, masked)
 
     def _verify_output(self, sql: str, resolver: _Resolver) -> None:
