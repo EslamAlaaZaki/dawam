@@ -31,7 +31,9 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
+from .naming import NamingViolation, check_column_name, check_table_name
 from .platforms import SAFE_IDENTIFIER, is_reserved_word, max_identifier_length
+from .service import NamingRules
 from .tables import (
     ADDITIVITIES,
     COLUMN_NAME_UNIQUE,
@@ -131,6 +133,7 @@ class ModelColumn:
     semantic_type: str | None
     is_system: bool
     version: int
+    naming_violations: list[NamingViolation]
 
 
 @dataclass(frozen=True)
@@ -147,6 +150,7 @@ class ModelTableSummary:
     description: str
     column_count: int
     version: int
+    naming_violation_count: int
 
 
 @dataclass(frozen=True)
@@ -166,6 +170,7 @@ class ModelTable:
     created_at: datetime
     updated_at: datetime
     version: int
+    naming_violations: list[NamingViolation]
 
 
 def _invalid(field: str, message: str) -> ApiError:
@@ -254,7 +259,11 @@ def _plain(value: Any) -> Any:
     return value
 
 
-def _column_view(record: DwColumnRecord) -> ModelColumn:
+def _rules(warehouse: DataWarehouseRecord) -> NamingRules:
+    return NamingRules(**warehouse.naming_rules)
+
+
+def _column_view(record: DwColumnRecord, layer: str, rules: NamingRules) -> ModelColumn:
     return ModelColumn(
         id=record.id,
         table_id=record.table_id,
@@ -271,10 +280,15 @@ def _column_view(record: DwColumnRecord) -> ModelColumn:
         semantic_type=record.semantic_type,
         is_system=record.is_system,
         version=record.version,
+        naming_violations=check_column_name(
+            rules, layer=layer, name=record.name, is_system=record.is_system
+        ),
     )
 
 
-def _table_view(record: DwTableRecord, columns: list[DwColumnRecord]) -> ModelTable:
+def _table_view(
+    record: DwTableRecord, columns: list[DwColumnRecord], rules: NamingRules
+) -> ModelTable:
     return ModelTable(
         id=record.id,
         layer=record.layer,
@@ -287,10 +301,15 @@ def _table_view(record: DwTableRecord, columns: list[DwColumnRecord]) -> ModelTa
         is_conformed=record.is_conformed,
         unknown_member=_plain(record.unknown_member) if record.unknown_member else None,
         description=record.description,
-        columns=[_column_view(c) for c in sorted(columns, key=lambda c: c.ordinal)],
+        columns=[
+            _column_view(c, record.layer, rules) for c in sorted(columns, key=lambda c: c.ordinal)
+        ],
         created_at=record.created_at,
         updated_at=record.updated_at,
         version=record.version,
+        naming_violations=check_table_name(
+            rules, layer=record.layer, kind=record.kind, name=record.name
+        ),
     )
 
 
@@ -330,6 +349,7 @@ class ModelService:
             if layer is not None:
                 query = query.where(DwTableRecord.layer == layer)
             rows = db.execute(query).all()
+        rules = _rules(warehouse)
         summaries = [
             ModelTableSummary(
                 id=t.id,
@@ -344,6 +364,9 @@ class ModelService:
                 description=t.description,
                 column_count=n,
                 version=t.version,
+                naming_violation_count=len(
+                    check_table_name(rules, layer=t.layer, kind=t.kind, name=t.name)
+                ),
             )
             for t, n in rows
         ]
@@ -358,7 +381,7 @@ class ModelService:
             if warehouse is None:
                 raise _not_found("Table")
             table = self._table(db, warehouse, table_id)
-            return _table_view(table, self._columns(db, table.id))
+            return _table_view(table, self._columns(db, table.id), _rules(warehouse))
 
     # --- tables ----------------------------------------------------------------------
 
@@ -407,7 +430,7 @@ class ModelService:
                         scaffold=True,
                     )
                 self._sync_scd2(db, user, workspace_id, table, now)
-                return _table_view(table, self._columns(db, table.id))
+                return _table_view(table, self._columns(db, table.id), _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
 
@@ -439,7 +462,7 @@ class ModelService:
                 db.flush()
                 self._sync_scd2(db, user, workspace_id, table, now)
                 self._finish_table_edit(db, user, workspace_id, table, before, now)
-                return _table_view(table, self._columns(db, table.id))
+                return _table_view(table, self._columns(db, table.id), _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
 
@@ -502,7 +525,7 @@ class ModelService:
                 now = self._clock()
                 column = self._add_column(db, user, workspace_id, table, fields, now)
                 self._sync_scd2(db, user, workspace_id, table, now)
-                return _column_view(column)
+                return _column_view(column, table.layer, _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
 
@@ -570,7 +593,7 @@ class ModelService:
                     )
                     self._sync_scd2(db, user, workspace_id, table, now)
                     self._finish_table_edit(db, user, workspace_id, table, before_table, now)
-                return _column_view(column)
+                return _column_view(column, table.layer, _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
 
