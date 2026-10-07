@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
@@ -26,7 +26,7 @@ from dawam.platform.errors import ApiError
 
 from .gateway import Capabilities, Gateway, ProbeResult, probe
 from .internal import reindex
-from .internal.adapters import ADAPTER_KINDS, AdapterConfig, AdapterFactory, adapter_for
+from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, adapter_kinds
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
     NAME_MAX_LENGTH,
@@ -128,12 +128,17 @@ def _text(value: str, field: str, label: str, max_length: int) -> str:
     return cleaned
 
 
-def _clean_url(value: str) -> str:
+def _clean_url(value: str, adapter: str = "") -> str:
     url = _text(value, "base_url", "base URL", URL_MAX_LENGTH).rstrip("/")
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise _invalid("The base URL must start with http:// or https://.", "base_url")
-    if parts.username or parts.password or parts.query or parts.fragment:
+    # Azure OpenAI carries its API version as the one allowed query parameter.
+    query_ok = not parts.query or (
+        adapter == "azure_openai"
+        and [key for key, _ in parse_qsl(parts.query, keep_blank_values=True)] == ["api-version"]
+    )
+    if parts.username or parts.password or not query_ok or parts.fragment:
         raise _invalid("The base URL must not hold credentials, a query or a fragment.", "base_url")
     return url
 
@@ -439,8 +444,9 @@ class ProviderService:
 
     @staticmethod
     def _clean(data: ProviderInput) -> ProviderInput:
-        if data.adapter not in ADAPTER_KINDS:
-            raise _invalid(f"The adapter must be one of: {', '.join(ADAPTER_KINDS)}.", "adapter")
+        kinds = adapter_kinds()
+        if data.adapter not in kinds:
+            raise _invalid(f"The adapter must be one of: {', '.join(kinds)}.", "adapter")
         if not 1 <= data.timeout_seconds <= MAX_TIMEOUT_SECONDS:
             raise _invalid(
                 f"The timeout must be between 1 and {MAX_TIMEOUT_SECONDS} seconds.",
@@ -452,7 +458,7 @@ class ProviderService:
             )
         return ProviderInput(
             name=_text(data.name, "name", "name", NAME_MAX_LENGTH),
-            base_url=_clean_url(data.base_url),
+            base_url=_clean_url(data.base_url, data.adapter),
             is_internal=data.is_internal,
             adapter=data.adapter,
             api_key=data.api_key,

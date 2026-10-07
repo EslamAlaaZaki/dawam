@@ -32,7 +32,10 @@ function workspace(role: WorkspaceRole): Workspace {
     description: "",
     domain: "",
     role,
-    permissions: role === "viewer" ? ["workspace.view"] : ["dw_schema.edit", "workspace.view"],
+    permissions:
+      role === "viewer"
+        ? ["workspace.view"]
+        : ["dw_schema.edit", "workspace.view"],
     status: "active",
     archived_at: null,
     version: 1,
@@ -57,6 +60,7 @@ const KEY: DwColumn = {
   semantic_type: null,
   is_system: false,
   version: 1,
+  naming_violations: [],
 };
 
 const HASH: DwColumn = {
@@ -85,6 +89,7 @@ const CUSTOMER: DwTable = {
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
   version: 1,
+  naming_violations: [],
 };
 
 const SALES: DwTable = {
@@ -101,11 +106,22 @@ const SALES: DwTable = {
 };
 
 function summary(table: DwTable): DwTableSummary {
-  const { columns, unknown_member, created_at, updated_at, ...rest } = table;
+  const {
+    columns,
+    unknown_member,
+    created_at,
+    updated_at,
+    naming_violations,
+    ...rest
+  } = table;
   void unknown_member;
   void created_at;
   void updated_at;
-  return { ...rest, column_count: columns.length } as DwTableSummary;
+  return {
+    ...rest,
+    column_count: columns.length,
+    naming_violation_count: naming_violations.length,
+  } as DwTableSummary;
 }
 
 function backend(
@@ -121,7 +137,11 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
         return json(workspace(role));
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
         return json({ items: [] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/data-warehouse`:
@@ -152,7 +172,10 @@ afterEach(() => clearCookie());
 
 describe("the model folders", () => {
   it("lists a Layer's tables read-only for a viewer", async () => {
-    renderApp(backend("viewer", [CUSTOMER, SALES]), `${PATH}?folder=dw/core/model`);
+    renderApp(
+      backend("viewer", [CUSTOMER, SALES]),
+      `${PATH}?folder=dw/core/model`,
+    );
 
     const fact = await screen.findByRole("row", { name: /fact_sales/ });
     expect(fact).toHaveTextContent("Fact");
@@ -171,29 +194,85 @@ describe("the model folders", () => {
       `${PATH}?folder=dw/mart/model`,
     );
 
-    expect(await screen.findByRole("row", { name: /fact_sales/ })).toBeInTheDocument();
-    expect(requests.some((r) => r.path === TABLES && r.query.layer === "mart")).toBe(true);
+    expect(
+      await screen.findByRole("row", { name: /fact_sales/ }),
+    ).toBeInTheDocument();
+    expect(
+      requests.some((r) => r.path === TABLES && r.query.layer === "mart"),
+    ).toBe(true);
   });
 
   it("shows an empty state", async () => {
     renderApp(backend("viewer", []), `${PATH}?folder=dw/core/model`);
 
-    expect(await screen.findByText(/No tables in the Core Layer yet/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/No tables in the Core Layer yet/),
+    ).toBeInTheDocument();
   });
 
   it("shows a table's columns, marking the ones DAWAM maintains", async () => {
     renderApp(backend("viewer", [CUSTOMER]), `${PATH}?folder=dw/core/model`);
 
-    fireEvent.click(await screen.findByRole("button", { name: "dim_customer" }));
-
-    const details = await screen.findByRole("region", { name: "Table dim_customer" });
-    expect(within(details).getByText(/Unknown member/)).toHaveTextContent("-1");
-    expect(within(details).getByRole("row", { name: /dim_customer_key/ })).toHaveTextContent(
-      "Surrogate key",
+    fireEvent.click(
+      await screen.findByRole("button", { name: "dim_customer" }),
     );
+
+    const details = await screen.findByRole("region", {
+      name: "Table dim_customer",
+    });
+    expect(within(details).getByText(/Unknown member/)).toHaveTextContent("-1");
+    expect(
+      within(details).getByRole("row", { name: /dim_customer_key/ }),
+    ).toHaveTextContent("Surrogate key");
     const hash = within(details).getByRole("row", { name: /row_hash/ });
     expect(hash).toHaveTextContent("DAWAM");
-    expect(within(hash).queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
+    expect(
+      within(hash).queryByRole("button", { name: /Delete/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("naming violations", () => {
+  const VIOLATION = {
+    code: "prefix",
+    message: "A fact name should start with 'fact_'.",
+    expected: "fact_",
+  } as const;
+
+  it("flags a table in the list and its violations on the table and its columns", async () => {
+    const bad: DwTable = {
+      ...CUSTOMER,
+      name: "customer",
+      naming_violations: [VIOLATION],
+      columns: [
+        {
+          ...KEY,
+          name: "CustomerKey",
+          naming_violations: [
+            {
+              code: "case_style",
+              message: "The name should be in lower case.",
+              expected: "lower",
+            },
+          ],
+        },
+      ],
+    };
+    renderApp(backend("viewer", [bad]), `${PATH}?folder=dw/core/model`);
+
+    expect(
+      await screen.findByRole("row", { name: /customer/ }),
+    ).toHaveTextContent("Naming: 1 to fix");
+    fireEvent.click(screen.getByRole("button", { name: "customer" }));
+    const details = await screen.findByRole("region", {
+      name: "Table customer",
+    });
+    expect(
+      within(details).getByRole("list", { name: "Naming violations" }),
+    ).toHaveTextContent("should start with 'fact_'");
+    expect(
+      within(details).getByRole("row", { name: /CustomerKey/ }),
+    ).toHaveTextContent("lower case");
   });
 });
 
@@ -211,8 +290,12 @@ describe("adding a table", () => {
     );
 
     const form = await screen.findByRole("form", { name: "Add table" });
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "fact_sales" } });
-    fireEvent.change(within(form).getByLabelText("Kind"), { target: { value: "fact" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "fact_sales" },
+    });
+    fireEvent.change(within(form).getByLabelText("Kind"), {
+      target: { value: "fact" },
+    });
     fireEvent.change(within(form).getByLabelText("Grain"), {
       target: { value: "One row per order line" },
     });
@@ -234,20 +317,30 @@ describe("adding a table", () => {
   it("adds a dimension with an SCD type, conformed", async () => {
     const requests = renderApp(
       backend("editor", [], (r) =>
-        r.method === "POST" && r.path === TABLES ? json(CUSTOMER, 201) : undefined,
+        r.method === "POST" && r.path === TABLES
+          ? json(CUSTOMER, 201)
+          : undefined,
       ),
       `${PATH}?folder=dw/core/model`,
     );
 
     const form = await screen.findByRole("form", { name: "Add table" });
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "dim_customer" } });
-    fireEvent.change(within(form).getByLabelText("Kind"), { target: { value: "dimension" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "dim_customer" },
+    });
+    fireEvent.change(within(form).getByLabelText("Kind"), {
+      target: { value: "dimension" },
+    });
     expect(within(form).queryByLabelText("Grain")).not.toBeInTheDocument();
-    fireEvent.change(within(form).getByLabelText("SCD type"), { target: { value: "2" } });
+    fireEvent.change(within(form).getByLabelText("SCD type"), {
+      target: { value: "2" },
+    });
     fireEvent.click(within(form).getByLabelText("Conformed dimension"));
     fireEvent.click(within(form).getByRole("button", { name: "Add table" }));
 
-    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "POST")).toBe(true),
+    );
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       layer: "core",
       name: "dim_customer",
@@ -261,18 +354,28 @@ describe("adding a table", () => {
     renderApp(
       backend("editor", [], (r) =>
         r.method === "POST" && r.path === TABLES
-          ? apiError(409, "name_taken", "Another table in this Layer already has this name.")
+          ? apiError(
+              409,
+              "name_taken",
+              "Another table in this Layer already has this name.",
+            )
           : undefined,
       ),
       `${PATH}?folder=dw/core/model`,
     );
 
     const form = await screen.findByRole("form", { name: "Add table" });
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "dim_customer" } });
-    fireEvent.change(within(form).getByLabelText("Kind"), { target: { value: "dimension" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "dim_customer" },
+    });
+    fireEvent.change(within(form).getByLabelText("Kind"), {
+      target: { value: "dimension" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Add table" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent("already has this name");
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "already has this name",
+    );
   });
 });
 
@@ -289,17 +392,29 @@ describe("editing a table", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "fact_sales" }));
     const form = await screen.findByRole("form", { name: "Add column" });
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "amount" } });
-    fireEvent.change(within(form).getByLabelText("Data type"), { target: { value: "decimal" } });
-    fireEvent.change(within(form).getByLabelText("Precision"), { target: { value: "18" } });
-    fireEvent.change(within(form).getByLabelText("Scale"), { target: { value: "2" } });
-    fireEvent.change(within(form).getByLabelText("Role"), { target: { value: "measure" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "amount" },
+    });
+    fireEvent.change(within(form).getByLabelText("Data type"), {
+      target: { value: "decimal" },
+    });
+    fireEvent.change(within(form).getByLabelText("Precision"), {
+      target: { value: "18" },
+    });
+    fireEvent.change(within(form).getByLabelText("Scale"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(within(form).getByLabelText("Role"), {
+      target: { value: "measure" },
+    });
     fireEvent.change(within(form).getByLabelText("Additivity"), {
       target: { value: "additive" },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Add column" }));
 
-    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "POST")).toBe(true),
+    );
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       name: "amount",
       data_type: { type: "decimal", precision: 18, scale: 2 },
@@ -321,15 +436,23 @@ describe("editing a table", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "fact_sales" }));
     const form = await screen.findByRole("form", { name: "Add column" });
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "order_date_key" } });
-    fireEvent.change(within(form).getByLabelText("Role"), { target: { value: "fk" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "order_date_key" },
+    });
+    fireEvent.change(within(form).getByLabelText("Role"), {
+      target: { value: "fk" },
+    });
     fireEvent.change(within(form).getByLabelText("References"), {
       target: { value: CUSTOMER.id },
     });
-    fireEvent.change(within(form).getByLabelText("Role name"), { target: { value: "order_date" } });
+    fireEvent.change(within(form).getByLabelText("Role name"), {
+      target: { value: "order_date" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Add column" }));
 
-    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "POST")).toBe(true),
+    );
     expect(requests.find((r) => r.method === "POST")?.body).toMatchObject({
       name: "order_date_key",
       role: "fk",
@@ -346,34 +469,46 @@ describe("editing a table", () => {
       `${PATH}?folder=dw/core/model`,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "dim_customer" }));
-    const details = await screen.findByRole("region", { name: "Table dim_customer" });
-    fireEvent.click(within(details).getByRole("button", { name: "Delete dim_customer_key" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "dim_customer" }),
+    );
+    const details = await screen.findByRole("region", {
+      name: "Table dim_customer",
+    });
+    fireEvent.click(
+      within(details).getByRole("button", { name: "Delete dim_customer_key" }),
+    );
     await waitFor(() =>
       expect(requests.find((r) => r.method === "DELETE")?.path).toBe(
         `${TABLES}/${CUSTOMER.id}/columns/${KEY.id}`,
       ),
     );
 
-    fireEvent.click(within(details).getByRole("button", { name: "Delete table" }));
+    fireEvent.click(
+      within(details).getByRole("button", { name: "Delete table" }),
+    );
     await waitFor(() =>
-      expect(requests.filter((r) => r.method === "DELETE").map((r) => r.path)).toContain(
-        `${TABLES}/${CUSTOMER.id}`,
-      ),
+      expect(
+        requests.filter((r) => r.method === "DELETE").map((r) => r.path),
+      ).toContain(`${TABLES}/${CUSTOMER.id}`),
     );
   });
 
   it("saves a table's changes with its version", async () => {
     const requests = renderApp(
       backend("editor", [SALES], (r) =>
-        r.method === "PATCH" ? json({ ...SALES, description: "Sales", version: 2 }) : undefined,
+        r.method === "PATCH"
+          ? json({ ...SALES, description: "Sales", version: 2 })
+          : undefined,
       ),
       `${PATH}?folder=dw/core/model`,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "fact_sales" }));
     const form = await screen.findByRole("form", { name: "Edit fact_sales" });
-    fireEvent.change(within(form).getByLabelText("Description"), { target: { value: "Sales" } });
+    fireEvent.change(within(form).getByLabelText("Description"), {
+      target: { value: "Sales" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
@@ -403,7 +538,11 @@ describe("editing a table", () => {
     const form = await screen.findByRole("form", { name: "Edit fact_sales" });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent("Someone else changed");
-    expect(within(form).getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Someone else changed",
+    );
+    expect(
+      within(form).getByRole("button", { name: "Reload" }),
+    ).toBeInTheDocument();
   });
 });

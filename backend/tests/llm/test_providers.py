@@ -87,6 +87,36 @@ def test_an_admin_registers_claude_through_the_anthropic_adapter(admin_client, f
     assert tested.status_code == 200, tested.text
 
 
+def test_an_azure_provider_keeps_its_api_version_and_the_adapter_receives_it(
+    admin_client, fake_llm, services
+):
+    seen = []
+
+    def adapters(kind, config):
+        seen.append((kind, config.base_url))
+        return fake_llm
+
+    services.llm_adapters = adapters
+    url = "https://res.openai.azure.com?api-version=2025-01-01-preview"
+    created = add_provider(admin_client, adapter="azure_openai", base_url=url, internal=False)
+    model = add_model(admin_client, created, name="my-deployment")
+
+    assert created["base_url"] == url
+    assert admin_client.post(f"{BASE}/models/{model['id']}/test").status_code == 200
+    assert ("azure_openai", url) in seen
+
+
+def test_only_azure_may_carry_an_api_version_and_nothing_else_in_the_query(admin_client):
+    url = "https://res.openai.azure.com?api-version=2025-01-01-preview"
+    for overrides in (
+        {"adapter": "openai_compatible", "base_url": url},
+        {"adapter": "azure_openai", "base_url": url + "&x=1"},
+        {"adapter": "azure_openai", "base_url": "https://res.openai.azure.com?foo=1"},
+    ):
+        response = admin_client.post(f"{BASE}/providers", json=provider_body(**overrides))
+        assert response.status_code == 422, (overrides, response.text)
+
+
 def test_a_provider_without_a_key_reports_no_key(admin_client):
     created = add_provider(admin_client, api_key=None, name="Ollama")
 

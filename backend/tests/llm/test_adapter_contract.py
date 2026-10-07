@@ -28,6 +28,7 @@ from dawam.modules.llm import (
     Usage,
 )
 from dawam.modules.llm.internal.anthropic import AnthropicAdapter
+from dawam.modules.llm.internal.azure_openai import AzureOpenAIAdapter
 from dawam.modules.llm.internal.openai_compatible import OpenAICompatibleAdapter
 from dawam.modules.llm.internal.transport import Transport, TransportError
 from tests.llm.replay import ReplayTransport, load
@@ -109,6 +110,20 @@ ADAPTERS = [
         round_trip=_anthropic_round_trip,
         context_window=200000,
         embeds=False,
+    ),
+    AdapterCase(
+        "azure_openai",
+        lambda transport: AzureOpenAIAdapter(
+            base_url="http://llm.test",
+            api_key="sk-secret",
+            timeout_seconds=9,
+            transport=transport,
+        ),
+        chat_url="http://llm.test/openai/deployments/test-model/chat/completions"
+        "?api-version=2024-10-21",
+        auth_header=("api-key", "sk-secret"),
+        tool_names=lambda body: [t["function"]["name"] for t in body["tools"]],
+        round_trip=_openai_round_trip,
     ),
 ]
 
