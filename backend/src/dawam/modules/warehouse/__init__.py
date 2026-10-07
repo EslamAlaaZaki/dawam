@@ -14,6 +14,11 @@ Public interface. Other modules import only what is re-exported here:
   inserts and the seed rows of generated tables; ``files`` saves it, plus ``seed_files``
   (CSV and ``INSERT`` script per generated table), to the file area. ``GET
   .../data-warehouse/ddl`` downloads it.
+- ``StagingService``: owners and editors ``generate`` the Staging Layer from the Source Schema
+  (software only): one Staging Table per source base table (and per opted-in view), named
+  ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
+  mappings and lineage; ``StagingResult`` lists what was flagged for review.
+  ``POST .../data-warehouse/staging/generate``.
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
@@ -40,6 +45,7 @@ from .platforms import (
     platform_profile,
 )
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
+from .staging_service import StagingFlag, StagingResult, StagingService
 
 __all__ = [
     "PLATFORM_PROFILES",
@@ -54,6 +60,9 @@ __all__ = [
     "LayerSchemas",
     "NamingRules",
     "PlatformProfile",
+    "StagingFlag",
+    "StagingResult",
+    "StagingService",
     "TargetPlatform",
     "is_reserved_word",
     "max_identifier_length",

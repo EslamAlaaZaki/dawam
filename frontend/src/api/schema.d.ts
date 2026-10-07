@@ -1003,6 +1003,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Staging
+         * @description Generate the Staging Layer from the Source Schema (owners and editors; software,
+         *     no AI): one Staging Table per source base table (and per view opted in), named
+         *     `stg_<system code>_<database schema>_<table>`, with translated column types, the audit
+         *     columns, and `direct` mappings and lineage from the source. Names and types that needed
+         *     a placeholder, a hash suffix or a lossy translation are flagged for review. Running it
+         *     again adds only what is new. 404 `not_set_up` before the Data Warehouse is set up.
+         */
+        post: operations["generateStaging"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -4526,6 +4551,11 @@ export interface components {
              * @description The Data Warehouse's naming rules this name breaks (a warning, not an error).
              */
             naming_violations: components["schemas"]["NamingViolation"][];
+            /**
+             * Review Flags
+             * @description What staging generation flagged on a staging column (empty otherwise).
+             */
+            review_flags: components["schemas"]["ReviewFlag"][];
         };
         /**
          * DwDataType
@@ -4602,6 +4632,11 @@ export interface components {
             version: number;
             /** Naming Violations */
             naming_violations: components["schemas"]["NamingViolation"][];
+            /**
+             * Review Flags
+             * @description What staging generation flagged on a Staging Table (empty otherwise).
+             */
+            review_flags: components["schemas"]["ReviewFlag"][];
         };
         /** DwTableList */
         DwTableList: {
@@ -5687,6 +5722,18 @@ export interface components {
              * @default bridge_
              */
             bridge_prefix: string;
+            /**
+             * Load Ts Column
+             * @description Name of the load-timestamp audit column of Staging Tables.
+             * @default load_ts
+             */
+            load_ts_column: string;
+            /**
+             * Source System Column
+             * @description Name of the System Code audit column of Staging Tables.
+             * @default source_system
+             */
+            source_system_column: string;
         };
         /** NamingViolation */
         NamingViolation: {
@@ -6238,6 +6285,16 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** ReviewFlag */
+        ReviewFlag: {
+            /**
+             * Code
+             * @description `placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+        };
         /** RoutineChange */
         RoutineChange: {
             /**
@@ -6456,7 +6513,9 @@ export interface components {
              *       "case_style": "lower",
              *       "dimension_prefix": "dim_",
              *       "fact_prefix": "fact_",
-             *       "bridge_prefix": "bridge_"
+             *       "bridge_prefix": "bridge_",
+             *       "load_ts_column": "load_ts",
+             *       "source_system_column": "source_system"
              *     }
              */
             naming_rules: components["schemas"]["NamingRules"];
@@ -6855,6 +6914,11 @@ export interface components {
              */
             scd_hint?: string | null;
             /**
+             * Include View In Staging
+             * @description Whether a view gets a Staging Table; set only in the Source Schema.
+             */
+            include_view_in_staging?: boolean | null;
+            /**
              * Version
              * @description Send it back when editing the enhancements; set only in the Source Schema.
              */
@@ -7099,6 +7163,48 @@ export interface components {
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
         };
+        /** StagingFlag */
+        StagingFlag: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Name
+             * @description Null for a flag on the table itself.
+             */
+            column_name: string | null;
+            /**
+             * Code
+             * @description `placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** StagingResult */
+        StagingResult: {
+            /** Tables Created */
+            tables_created: number;
+            /**
+             * Columns Created
+             * @description Including the audit columns.
+             */
+            columns_created: number;
+            /**
+             * Tables Existing
+             * @description Source tables that already had a Staging Table; left as they are.
+             */
+            tables_existing: number;
+            /**
+             * Flags
+             * @description What to review, for the tables just created.
+             */
+            flags: components["schemas"]["StagingFlag"][];
+        };
         /** StartProfilingRequest */
         StartProfilingRequest: {
             /**
@@ -7213,6 +7319,8 @@ export interface components {
             classification: ("master" | "transactional" | "reference" | "log" | "landing") | null;
             /** Scd Hint */
             scd_hint: string | null;
+            /** Include View In Staging */
+            include_view_in_staging: boolean;
             /** Version */
             version: number;
         };
@@ -7643,6 +7751,11 @@ export interface components {
              * @description E.g. "changes slowly, history matters". Send null to clear it.
              */
             scd_hint?: string | null;
+            /**
+             * Include View In Staging
+             * @description Give this view a Staging Table (views only; base tables always get one).
+             */
+            include_view_in_staging?: boolean | null;
         };
         /** UpdateTableMappingRequest */
         UpdateTableMappingRequest: {
@@ -10222,6 +10335,46 @@ export interface operations {
                 };
                 content: {
                     "application/sql": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    generateStaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagingResult"];
                 };
             };
             /** @description Validation error */
