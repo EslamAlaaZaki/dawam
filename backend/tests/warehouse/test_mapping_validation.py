@@ -222,6 +222,39 @@ def test_a_layer_with_everything_covered_completes_dw_modeling_progress(warehous
     assert status("mart") == "complete"
 
 
+def test_coverage_percent_rounds_down(warehouse):
+    from dawam.modules.warehouse.validation_service import _coverage
+
+    assert _coverage(200, 199).percent == 99
+
+
+def test_modeling_progress_needs_mappable_columns_and_no_unparsable_mapping(warehouse):
+    progress_path = f"/api/v1/workspaces/{warehouse.workspace_id}/progress"
+
+    def status(layer: str) -> str:
+        items = warehouse.client("viewer").get(progress_path).json()["dw_modeling"]
+        return next(i["status"] for i in items if i["layer"] == layer)
+
+    core = table(warehouse, "customer", "core")
+    mart = table(warehouse, "dim_customer", "mart")
+    # Only system columns: nothing to map, so the Layer is not complete.
+    assert (status("core"), status("mart")) == ("in_progress", "in_progress")
+    src = col(warehouse, core["id"], "name")
+    target = col(warehouse, mart["id"], "name")
+    put(warehouse, mart["id"], target, mapping_type="direct", sql_expression="customer.name")
+    assert status("mart") == "complete"
+    put(
+        warehouse,
+        mart["id"],
+        target,
+        version=1,
+        mapping_type="derived",
+        sql_expression="upper((customer.name",
+    )
+    assert status("mart") == "in_progress"
+    assert src["name"] == "name"
+
+
 def test_the_validation_report_is_open_to_every_member(warehouse, model):
     for role in ("owner", "editor", "viewer"):
         assert validation(warehouse, role)["coverage"]["coverage"]["total"] == 5

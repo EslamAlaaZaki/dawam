@@ -24,8 +24,15 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.hooks import ModelingProgress
 
-from .mapping_service import MappingService, TableMappingView
-from .tables import DataWarehouseRecord, DwColumnRecord, DwTableRecord
+from .mapping_service import SYSTEM_ROLES, MappingService, TableMappingView
+from .tables import (
+    ColumnMappingRecord,
+    DataWarehouseRecord,
+    DwColumnRecord,
+    DwTableRecord,
+    MappingBranchRecord,
+    TableMappingRecord,
+)
 from .type_compat import check_types
 
 Severity = Literal["error", "warning"]
@@ -84,7 +91,7 @@ class ValidationReport:
 
 
 def _coverage(total: int, covered: int) -> Coverage:
-    return Coverage(total, covered, round(100 * covered / total) if total else 0)
+    return Coverage(total, covered, 100 * covered // total if total else 0)
 
 
 class ValidationService:
@@ -101,7 +108,7 @@ class ValidationService:
         """Problems of every Core and Mart mapping, errors first, with the coverage. 404
         ``not_set_up`` before the Data Warehouse exists."""
         views = self._views(user, workspace_id)
-        problems = self._problems(views)
+        problems = self._problems(workspace_id, views)
         problems.sort(key=lambda p: (p.severity != "error", p.layer, p.table_name))
         return ValidationReport(
             problems=problems,
@@ -119,33 +126,87 @@ class ValidationService:
         the stage-progress endpoint of ``workspaces`` has.
 
         Staging is generated, so it is complete once it has tables. A mapped Layer is
-        ``complete`` when every mappable column is covered and nothing is in error, and
-        ``in_progress`` once it has tables."""
-        views = self._mappings.table_views(workspace_id)
+        ``complete`` when it has mappable columns, every one is covered and no saved mapping
+        is unparsable or has errors, and ``in_progress`` once it has tables. It runs on every
+        stage-progress read, so it is three plain queries: no SQL is composed or validated."""
+        warehouse_id = (
+            DataWarehouseRecord.workspace_id == workspace_id,
+            DwTableRecord.data_warehouse_id == DataWarehouseRecord.id,
+        )
         with Session(self._engine) as db:
-            staging = db.scalar(
-                sa.select(sa.func.count())
+            columns = db.execute(
+                sa.select(
+                    DwTableRecord.layer,
+                    DwTableRecord.id,
+                    DwColumnRecord.id,
+                    DwColumnRecord.is_system,
+                    DwColumnRecord.role,
+                    DwTableRecord.kind,
+                )
                 .select_from(DwTableRecord)
-                .join(
-                    DataWarehouseRecord, DataWarehouseRecord.id == DwTableRecord.data_warehouse_id
-                )
-                .where(
-                    DataWarehouseRecord.workspace_id == workspace_id,
-                    DwTableRecord.layer == "staging",
-                )
+                .join(DataWarehouseRecord, sa.and_(*warehouse_id))
+                .outerjoin(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
+            ).all()
+            branches: dict[uuid.UUID, int] = dict(
+                db.execute(
+                    sa.select(TableMappingRecord.dw_table_id, sa.func.count(MappingBranchRecord.id))
+                    .join(
+                        MappingBranchRecord,
+                        MappingBranchRecord.table_mapping_id == TableMappingRecord.id,
+                    )
+                    .group_by(TableMappingRecord.dw_table_id)
+                    .join(DwTableRecord, DwTableRecord.id == TableMappingRecord.dw_table_id)
+                    .join(DataWarehouseRecord, sa.and_(*warehouse_id))
+                ).tuples()
             )
-        result = [ModelingProgress("staging", "complete" if staging else "not_started")]
-        errored = {p.layer for p in self._problems(views) if p.severity == "error"}
-        for layer_report in self._report(views).layers:
-            if not layer_report.tables:
+            mapped = db.execute(
+                sa.select(
+                    ColumnMappingRecord.dw_column_id,
+                    ColumnMappingRecord.branch_id,
+                    ColumnMappingRecord.validation,
+                    DwTableRecord.layer,
+                )
+                .join(DwColumnRecord, DwColumnRecord.id == ColumnMappingRecord.dw_column_id)
+                .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+                .join(DataWarehouseRecord, sa.and_(*warehouse_id))
+                .where(ColumnMappingRecord.mapping_type != "unmapped")
+            ).all()
+        done: dict[tuple[uuid.UUID, bool], int] = {}
+        errored: set[str] = set()
+        for column_id, branch_id, validation, layer in mapped:
+            key = (column_id, branch_id is None)
+            done[key] = done.get(key, 0) + 1
+            if validation.get("unparsed") or validation.get("errors"):
+                errored.add(layer)
+        layers: dict[str, set[uuid.UUID]] = {}
+        total: dict[str, int] = {}
+        covered: dict[str, int] = {}
+        for layer, table_id, column_id, is_system, role, kind in columns:
+            layers.setdefault(layer, set()).add(table_id)
+            if column_id is None or kind == "generated" or is_system or role in SYSTEM_ROLES:
+                continue
+            total[layer] = total.get(layer, 0) + 1
+            # Branch-aware: every branch maps it (a table-level mapping when it has none).
+            count = branches.get(table_id, 0)
+            if (
+                done.get((column_id, False), 0) >= count
+                if count
+                else done.get((column_id, True), 0) >= 1
+            ):
+                covered[layer] = covered.get(layer, 0) + 1
+        result = [ModelingProgress("staging", "complete" if "staging" in layers else "not_started")]
+        for layer in ("core", "mart"):
+            if layer not in layers:
                 status = "not_started"
-            elif layer_report.coverage.covered == layer_report.coverage.total and (
-                layer_report.layer not in errored
+            elif (
+                total.get(layer, 0) > 0
+                and covered.get(layer, 0) == total[layer]
+                and layer not in errored
             ):
                 status = "complete"
             else:
                 status = "in_progress"
-            result.append(ModelingProgress(layer_report.layer, status))
+            result.append(ModelingProgress(layer, status))
         return result
 
     # -- internals ----------------------------------------------------------------------
@@ -193,14 +254,22 @@ class ValidationService:
         mappable = [c for c in view.coverage if not c.system]
         return len(mappable), sum(c.covered for c in mappable)
 
-    def _problems(self, views: list[TableMappingView]) -> list[Problem]:
-        column_ids = {c.column_id for v in views for c in _mapped_columns(v)}
-        column_ids |= {i.column_id for v in views for c in _mapped_columns(v) for i in c.inputs}
+    def _problems(self, workspace_id: uuid.UUID, views: list[TableMappingView]) -> list[Problem]:
+        if not views:
+            return []
         with Session(self._engine) as db:
+            # Every column of the Workspace's Data Warehouse, by a join: an IN list with one
+            # bind parameter per column would hit the database's parameter limit.
             columns = {
                 c.id: c
                 for c in db.scalars(
-                    sa.select(DwColumnRecord).where(DwColumnRecord.id.in_(column_ids))
+                    sa.select(DwColumnRecord)
+                    .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+                    .join(
+                        DataWarehouseRecord,
+                        DataWarehouseRecord.id == DwTableRecord.data_warehouse_id,
+                    )
+                    .where(DataWarehouseRecord.workspace_id == workspace_id)
                 )
             }
         problems: list[Problem] = []

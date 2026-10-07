@@ -70,8 +70,15 @@ def test_unrelated_types_may_fail_to_convert(source, target):
     assert codes(source, target) == ["may_fail_conversion"]
 
 
-def test_timestamp_with_and_without_zone_differ():
-    assert codes({"type": "timestamp"}, {"type": "timestamptz"}) == ["may_fail_conversion"]
+def test_timestamp_with_and_without_zone():
+    assert codes({"type": "timestamp"}, {"type": "timestamptz"}) == []
+    assert codes({"type": "timestamptz"}, {"type": "timestamp"}) == ["may_truncate"]
+
+
+def test_decimal_and_small_integers_into_text_and_float():
+    assert codes(dec(10, 2), {"type": "string", "length": 8}) == ["may_truncate"]
+    assert codes(dec(10, 2), {"type": "string", "length": 12}) == []
+    assert codes({"type": "smallint"}, {"type": "float"}) == []
 
 
 def test_a_nullable_input_into_a_required_column_warns():

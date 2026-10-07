@@ -95,6 +95,8 @@ def _type_warning(source: dict[str, Any], target: dict[str, Any]) -> TypeWarning
         return _text_to_text(source, target)
     if t in _TEXT:
         width, limit = _TEXT_WIDTH.get(s), target.get("length")
+        if s == "decimal" and source.get("precision"):
+            width = source["precision"] + 2  # digits, sign and decimal point
         if width and limit and limit < width:
             return _truncate(source, target, f"the text form takes up to {width} characters")
         return None
@@ -113,6 +115,10 @@ def _type_warning(source: dict[str, Any], target: dict[str, Any]) -> TypeWarning
             return _precision(source, target, "its fraction or digits")
     if s == "date" and t in ("timestamp", "timestamptz"):
         return None
+    if s == "timestamp" and t == "timestamptz":
+        return None
+    if s == "timestamptz" and t == "timestamp":
+        return _truncate(source, target, "the time zone is dropped")
     if s in ("timestamp", "timestamptz") and t == "date":
         return _truncate(source, target, "the time of day is dropped")
     return _fails(source, target)
@@ -142,6 +148,8 @@ def _from_integer(source: dict[str, Any], target: dict[str, Any]) -> TypeWarning
             return _truncate(source, target, "the value may overflow")
         return None
     if t == "float":
+        if s == "smallint":
+            return None  # exact in single precision
         return _precision(source, target, "precision for large values")
     if t == "double":
         return _precision(source, target, "precision for large values") if s == "bigint" else None
