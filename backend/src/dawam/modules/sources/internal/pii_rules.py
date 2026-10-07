@@ -19,6 +19,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+import regex
+
 CATEGORIES = ("direct_identifier", "quasi_identifier", "sensitive", "financial")
 """Direct identifier, quasi-identifier, sensitive/special category, financial."""
 
@@ -204,7 +206,8 @@ class CustomRule:
     confidence: float
     keywords: tuple[str, ...]
     """Normalised (``normalise``), matched as substrings of a normalised column name."""
-    pattern: re.Pattern[str] | None
+    pattern: regex.Pattern[str] | None
+    """Compiled with the ``regex`` package so a match can be given a time limit."""
 
     @property
     def id(self) -> str:
@@ -222,7 +225,7 @@ class RuleSet:
 DEFAULT_RULES = RuleSet()
 
 
-def check_pattern(pattern: str) -> re.Pattern[str]:
+def check_pattern(pattern: str) -> regex.Pattern[str]:
     """Compile a custom rule's regex; ``ValueError`` if it is too long, invalid or has a
     nested quantifier (which can take exponential time on a long value)."""
     if len(pattern) > MAX_PATTERN_LENGTH:
@@ -230,8 +233,8 @@ def check_pattern(pattern: str) -> re.Pattern[str]:
     if _NESTED_QUANTIFIER.search(pattern):
         raise ValueError("The pattern has a nested quantifier such as (a+)+, which is not allowed.")
     try:
-        return re.compile(pattern)
-    except re.error as exc:
+        return regex.compile(pattern)
+    except regex.error as exc:
         raise ValueError(f"The pattern is not a valid regular expression: {exc}.") from None
 
 

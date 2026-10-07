@@ -13,6 +13,7 @@ exports all ask here, never re-derive it.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterable
 from datetime import datetime
@@ -33,6 +34,8 @@ from .pii_rules import (
     compile_custom_rule,
     match_name,
 )
+
+logger = logging.getLogger(__name__)
 
 PROTECTING_STATUSES = ("suggested", "confirmed")
 
@@ -84,7 +87,9 @@ def load_rule_set(db: Session, workspace_id: uuid.UUID) -> RuleSet:
                 )
             )
         except ValueError:  # validated on the way in; a stale row must not stop a scan
-            continue
+            logger.warning(
+                "The stored custom PII rule %s no longer compiles; skipped.", record.name
+            )
     return RuleSet(disabled=disabled, custom=tuple(custom))
 
 

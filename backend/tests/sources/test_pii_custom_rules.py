@@ -7,11 +7,13 @@ value scans are driven through the HTTP API.
 from __future__ import annotations
 
 import pytest
+import regex
 from fastapi import FastAPI
 
 from dawam.modules.audit import AuditService
 from dawam.modules.sources.internal.pii_rules import (
     RULES,
+    CustomRule,
     RuleSet,
     compile_custom_rule,
     match_name,
@@ -306,3 +308,32 @@ def test_custom_rules_run_in_value_scans(roles: RoleClients, scratch_source):
     assert found[("staff", "ref")]["rule"] == "custom:employee_number"
     assert "match ratio 100%" in found[("staff", "ref")]["evidence"]
     assert not any(n in found[("staff", "ref")]["evidence"] for n in NUMBERS)
+
+
+# -- runaway regexes ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("pattern", ["(a|aa)+", "(a|a)*", "((a+))+", "(a+b?)+"])
+def test_a_catastrophic_pattern_times_out_instead_of_hanging(pattern, caplog):
+    import logging
+    import time
+
+    # Built directly: the save-time check catches some of these, the time limit all of them.
+    rules = RuleSet(
+        custom=(
+            CustomRule(
+                "employee_number", "direct_identifier", 0.8, (), regex.compile(pattern + "$")
+            ),
+        )
+    )
+    values = ["a" * 250 + "!"] * 5
+
+    started = time.monotonic()
+    with caplog.at_level(logging.WARNING):
+        found = score_column("ref", values, rules=rules)
+
+    assert time.monotonic() - started < 2
+    assert found is None
+    # The engine may rule some of them out without backtracking; a timeout logs the name only.
+    assert "a" * 20 not in caplog.text
+    assert not caplog.text or "employee_number" in caplog.text

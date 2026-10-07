@@ -17,6 +17,7 @@ matched at least ``MIN_MATCH_RATIO`` of a column's values counts, and a finding 
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
@@ -24,8 +25,12 @@ from typing import Any
 
 from dawam.platform.pii_validators import VALIDATORS, match_ratio
 
-from .pii_rules import DEFAULT_RULES, NAME_CONFIDENCE_FLOOR, RuleSet, match_name
+from .pii_rules import DEFAULT_RULES, NAME_CONFIDENCE_FLOOR, CustomRule, RuleSet, match_name
 
+logger = logging.getLogger(__name__)
+
+PATTERN_TIMEOUT_SECONDS = 0.05
+"""The most one value may take a custom regex; a timeout counts as no match."""
 DEFAULT_SAMPLE_SIZE = 1000
 MAX_SAMPLE_SIZE = 10_000
 MIN_SAMPLED_VALUES = 3
@@ -56,6 +61,26 @@ def combine(name_confidence: float, value_confidence: float) -> float:
     return 1 - (1 - name_confidence) * (1 - value_confidence)
 
 
+def _count_matches(custom: CustomRule, sampled: list[Any]) -> int:
+    """How many ``sampled`` values the custom rule's regex matches in full. A value that
+    makes it run past the time limit is no match; the warning names the rule only."""
+    assert custom.pattern is not None
+    matched = 0
+    timed_out = False
+    for value in sampled:
+        try:
+            if custom.pattern.fullmatch(
+                str(value)[:MAX_VALUE_LENGTH], timeout=PATTERN_TIMEOUT_SECONDS
+            ):
+                matched += 1
+        except TimeoutError:
+            timed_out = True
+            break  # one runaway value is enough; do not spend the time limit on every value
+    if timed_out:
+        logger.warning("The custom PII rule %s timed out on some sampled values.", custom.name)
+    return matched
+
+
 def score_column(
     column: str,
     values: Iterable[Any],
@@ -82,9 +107,7 @@ def score_column(
             )
     for custom in rules.custom:
         if custom.pattern is not None:
-            matched = sum(
-                custom.pattern.fullmatch(str(v)[:MAX_VALUE_LENGTH]) is not None for v in sampled
-            )
+            matched = _count_matches(custom, sampled)
             candidates.append(
                 (custom.id, custom.category, CUSTOM_PATTERN_WEIGHT, matched, len(sampled))
             )

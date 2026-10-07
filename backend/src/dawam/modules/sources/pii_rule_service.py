@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from dawam.modules.activity import record_activity
@@ -156,6 +157,30 @@ class PiiRuleService:
         )
         self._check_description(description)
         now = self._clock()
+        try:
+            return self._insert(
+                user, workspace_id, name, description, keywords, pattern, category, confidence, now
+            )
+        except IntegrityError:  # a concurrent create of the same name
+            raise self._exists(name) from None
+
+    def _exists(self, name: str) -> ApiError:
+        return ApiError(
+            409, "pii_rule_exists", f'The Workspace already has a PII rule named "{name}".'
+        )
+
+    def _insert(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        name: str,
+        description: str,
+        keywords: list[str],
+        pattern: str | None,
+        category: str,
+        confidence: float,
+        now: datetime,
+    ) -> CustomPiiRule:
         with Session(self._engine) as db, db.begin():
             taken = db.scalar(
                 sa.select(PiiCustomRuleRecord.id).where(
@@ -164,9 +189,7 @@ class PiiRuleService:
                 )
             )
             if taken is not None:
-                raise ApiError(
-                    409, "pii_rule_exists", f'The Workspace already has a PII rule named "{name}".'
-                )
+                raise self._exists(name)
             record = PiiCustomRuleRecord(
                 id=uuid.uuid4(),
                 workspace_id=workspace_id,
