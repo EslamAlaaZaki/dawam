@@ -17,6 +17,7 @@ import { useSourceSystems } from "../api/systems";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
+import { AssistantPanel } from "./AssistantPanel";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { FolderTree } from "./FolderTree";
 import { JobsPanel } from "./JobsPanel";
@@ -226,6 +227,14 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           )}
           <StageProgressPanel workspaceId={workspaceId} />
           <JobsPanel workspace={workspace.data} />
+          <AssistantPanel
+            workspace={workspace.data}
+            context={
+              openSystem
+                ? { type: "source_system", id: openSystem.id, label: openSystem.name }
+                : { type: "folder", id: folder.id || "workspace", label: folder.label }
+            }
+          />
         </div>
       </div>
     </section>

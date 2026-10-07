@@ -161,6 +161,11 @@ class CreateDwTableRequest(BaseModel):
     description: str | None = None
 
 
+class CreateGeneratedDwTableRequest(BaseModel):
+    kind: Literal["date", "time"] = Field(description="The built-in dimension to add.")
+    layer: Layer = Field("core", description="`core` (default) or `mart`.")
+
+
 class UpdateDwTableRequest(BaseModel):
     version: int = Field(description="The `version` you last saw.")
     name: str | None = None
@@ -263,6 +268,23 @@ def create_table(
     an SCD2 dimension gets the housekeeping columns; a bridge gets its group key. 422
     `invalid_model`; 409 `name_taken`; 404 `not_set_up`."""
     return _table(model.create_table(user, workspace_id, fields=_fields(body)))
+
+
+@router.post("/generated", operation_id="createGeneratedDwTable", status_code=201)
+def create_generated_table(
+    workspace_id: uuid.UUID,
+    body: CreateGeneratedDwTableRequest,
+    user: CurrentUser,
+    model: ModelServiceDep,
+) -> DwTable:
+    """Add the built-in date or time dimension (editors and owners): a `generated`, conformed
+    table that needs no mapping. The date dimension's columns follow the Data Warehouse's
+    date-dimension settings (Gregorian attributes, optional Hijri and fiscal ones; the
+    weekend flag and range apply to the seed rows). Its seed file is delivered with the DDL
+    package. 409 `name_taken` when it already exists; 404 `not_set_up`."""
+    return _table(
+        model.create_generated_table(user, workspace_id, which=body.kind, layer=body.layer)
+    )
 
 
 @router.get("/{dw_table_id}", operation_id="getDwTable")
