@@ -1,7 +1,7 @@
 """add comments.
 
 Revision ID: 5d2a8f1c7e36
-Revises: c27e5a91d4b6
+Revises: 5f2b9d8e4a17
 Create Date: 2026-10-08 09:00:00.000000
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "5d2a8f1c7e36"
-down_revision: str | Sequence[str] | None = "c27e5a91d4b6"
+down_revision: str | Sequence[str] | None = "5f2b9d8e4a17"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
