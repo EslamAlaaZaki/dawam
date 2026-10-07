@@ -1,7 +1,7 @@
 """add custom PII rules and per-Workspace disabled built-in rules.
 
 Revision ID: 8f3a1c7e52b9
-Revises: d6e3f9a4b725
+Revises: e7a1c4d9f2b8
 Create Date: 2026-10-07 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "8f3a1c7e52b9"
-down_revision: str | Sequence[str] | None = "d6e3f9a4b725"
+down_revision: str | Sequence[str] | None = "e7a1c4d9f2b8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
