@@ -1,7 +1,7 @@
 """add lookup and system mapping types and a column mapping's lookup spec.
 
 Revision ID: 5f2b9d8e4a17
-Revises: c27e5a91d4b6
+Revises: 3c8e5f1a7d92
 Create Date: 2026-10-07 14:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "5f2b9d8e4a17"
-down_revision: str | Sequence[str] | None = "c27e5a91d4b6"
+down_revision: str | Sequence[str] | None = "3c8e5f1a7d92"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
