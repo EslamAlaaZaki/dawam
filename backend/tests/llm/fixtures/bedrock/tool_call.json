@@ -1,0 +1,33 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "output": {
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "toolUse": {
+              "toolUseId": "call_abc",
+              "name": "echo",
+              "input": {
+                "text": "ping"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "stopReason": "tool_use",
+    "metrics": {
+      "latencyMs": 420
+    },
+    "usage": {
+      "inputTokens": 40,
+      "outputTokens": 9,
+      "totalTokens": 49
+    }
+  }
+}

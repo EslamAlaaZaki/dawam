@@ -18,6 +18,7 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 
 from . import service as svc
+from .ddl_api import router as ddl_router
 from .mapping_api import lineage_router
 from .mapping_api import router as mapping_router
 from .model_api import router as model_router
@@ -28,6 +29,7 @@ router = APIRouter(tags=["data-warehouse"])
 router.include_router(model_router)
 router.include_router(mapping_router)
 router.include_router(lineage_router)
+router.include_router(ddl_router)
 
 
 def data_warehouse_service(request: Request) -> DataWarehouseService:

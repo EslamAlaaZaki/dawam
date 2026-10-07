@@ -1,0 +1,11 @@
+{
+  "status": 429,
+  "headers": {
+    "Content-Type": "application/json",
+    "x-amzn-errortype": "ThrottlingException",
+    "retry-after": "7"
+  },
+  "body": {
+    "message": "Too many requests, please wait before trying again."
+  }
+}

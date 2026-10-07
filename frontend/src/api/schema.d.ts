@@ -872,6 +872,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/ddl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Ddl
+         * @description The DW Schema's DDL in the target platform's dialect (any member): each Layer's
+         *     physical schema, its tables, foreign keys and one unknown-member `INSERT` per
+         *     dimension. `layer` limits it to one Layer. 404 before the Data Warehouse is set up.
+         *     To keep a copy, save it to the file area with `POST .../files/ddl`.
+         */
+        get: operations["downloadDdl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -2160,6 +2183,28 @@ export interface paths {
          *     404 before the first Snapshot.
          */
         post: operations["saveDataDictionary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/ddl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Ddl
+         * @description Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`
+         *     (or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous
+         *     one (owners and editors). 404 before the Data Warehouse is set up.
+         */
+        post: operations["saveDdl"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9107,6 +9152,49 @@ export interface operations {
             };
         };
     };
+    downloadDdl: {
+        parameters: {
+            query?: {
+                /** @description One Layer's package; omit for the whole Data Warehouse. */
+                layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The DDL package. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/sql": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listDataWarehousePlatforms: {
         parameters: {
             query?: never;
@@ -12188,6 +12276,49 @@ export interface operations {
             path: {
                 workspace_id: string;
                 system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveDdl: {
+        parameters: {
+            query?: {
+                /** @description One Layer's package; omit for the whole Data Warehouse. */
+                layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
             };
             cookie?: never;
         };

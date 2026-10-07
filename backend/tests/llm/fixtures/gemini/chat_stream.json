@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "text/event-stream"
+  },
+  "body_lines": [
+    "data: {\"candidates\": [{\"content\": {\"role\": \"model\", \"parts\": [{\"text\": \"Hello\"}]}, \"index\": 0}], \"usageMetadata\": {\"promptTokenCount\": 12, \"totalTokenCount\": 12}}",
+    "",
+    "data: {\"candidates\": [{\"content\": {\"role\": \"model\", \"parts\": [{\"text\": \" there.\"}]}, \"index\": 0, \"finishReason\": \"STOP\"}], \"usageMetadata\": {\"promptTokenCount\": 12, \"candidatesTokenCount\": 3, \"totalTokenCount\": 15}}",
+    ""
+  ]
+}
