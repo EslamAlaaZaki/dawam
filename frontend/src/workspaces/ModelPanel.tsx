@@ -23,6 +23,7 @@ import {
   type DwTableSummary,
 } from "../api/dwModel";
 import { allows, type Workspace } from "../api/workspaces";
+import { StarPanel } from "../diagrams/StarPanel";
 import { MappingsGrid } from "./MappingsGrid";
 
 const LAYER_LABELS: Record<DwLayer, string> = {
@@ -156,6 +157,7 @@ export function ModelPanel({
           </tbody>
         </table>
       )}
+      {layer !== "staging" && <StarPanel workspaceId={workspace.id} layer={layer} />}
       {openId && (
         <TableDetails
           // Another table starts with fresh forms.

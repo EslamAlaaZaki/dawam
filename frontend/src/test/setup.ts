@@ -6,6 +6,16 @@ import { afterEach, vi } from "vitest";
 vi.mock("next/navigation", () => import("./navigation"));
 vi.mock("next/link", () => import("./link"));
 
+// React Flow (the diagrams) measures its canvas, which jsdom cannot.
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+globalThis.DOMMatrixReadOnly = class {
+  m22 = 1;
+} as unknown as typeof DOMMatrixReadOnly;
+
 afterEach(() => {
   cleanup();
 });
