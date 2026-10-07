@@ -245,12 +245,22 @@ def test_a_viewer_can_still_use_read_tools(roles, model, fake_llm):
     events = ask(viewer, roles, conversation(viewer, roles), "Look")
 
     assert [d["status"] for n, d in events if n == "tool"] == ["ok"]
-    assert tool_names(fake_llm) == {"get_object", "list_files"}
+    assert tool_names(fake_llm) == {
+        "get_object",
+        "list_files",
+        "search_catalog",
+        "get_snapshot_diff",
+    }
 
 
 def test_a_tool_the_model_invents_or_misuses_is_reported_not_run(roles, model, fake_llm):
     fake_llm.script(
-        Reply(tool_calls=(tool("drop_everything"), tool("get_object", "c2", kind="table"))),
+        Reply(
+            tool_calls=(
+                tool("drop_everything"),
+                tool("get_object", "c2", kind="table", id="not-an-id"),
+            )
+        ),
         Reply(text="Sorry"),
     )
     owner = roles.client("owner")
