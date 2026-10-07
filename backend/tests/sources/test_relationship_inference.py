@@ -257,3 +257,48 @@ def test_inference_needs_a_snapshot(roles: RoleClients):
     response = infer(roles, system)
 
     assert response.status_code == 409 and response.json()["error"]["code"] == "no_snapshot"
+
+
+def profiled_scratch(roles: RoleClients, scratch_source) -> tuple[str, dict]:
+    scratch_source["run"](SOURCE)
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
+    extract(roles, system)
+    tables = {t["name"]: t for t in schema(roles, system)["tables"]}
+    ids = [tables[n]["id"] for n in ("customers", "orders", "invoices", "products")]
+    assert profile_tables(roles, system, ids).status_code == 202
+    return system, tables
+
+
+def test_a_target_larger_than_the_sample_leaves_overlap_unmeasured(
+    roles: RoleClients, scratch_source
+):
+    system, _ = profiled_scratch(roles, scratch_source)
+
+    run(roles, system, sample_size=5)  # customers has 10 rows
+
+    found = by_link(listed(roles, system))
+    good = found["public.orders.customer_id", "public.customers.id"]
+    assert "overlap" not in good["evidence"]["signals"]
+    assert good["confidence"] == 0.75, "scored with the no-overlap weights, not dropped"
+    # products has exactly 5 rows, so the sample covers it and it is measured.
+    assert "overlap" in found["public.orders.sku", "public.products.sku"]["evidence"]["signals"]
+
+
+def test_protected_columns_take_no_part_in_value_overlap(roles: RoleClients, scratch_source):
+    system, tables = profiled_scratch(roles, scratch_source)
+    customers = tables["customers"]
+    [key] = [c for c in customers["columns"] if c["name"] == "id"]
+    flagged = roles.client("editor").patch(
+        f"{system}/tables/{customers['id']}/columns/{key['id']}",
+        json={"version": key["version"], "is_sensitive": True},
+    )
+    assert flagged.status_code == 200, flagged.text
+
+    run(roles, system)
+
+    found = by_link(listed(roles, system))
+    protected = found["public.orders.customer_id", "public.customers.id"]
+    assert "overlap" not in protected["evidence"]["signals"]
+    assert protected["confidence"] == 0.75
+    assert "overlap" in found["public.orders.sku", "public.products.sku"]["evidence"]["signals"]

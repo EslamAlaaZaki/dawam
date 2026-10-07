@@ -42,6 +42,7 @@ from .internal.inference import (
     find_candidates,
     routine_joins,
 )
+from .internal.pii import protected_column_ids
 from .tables import (
     RELATIONSHIP_STATUSES,
     ColumnProfileRecord,
@@ -328,7 +329,8 @@ class RelationshipService:
                 if row_count > 0 and null_pct == 0 and distinct == row_count:
                     via = "profiled: distinct = rows"
             columns_out.append(Col(column_id, table_id, schema, table, name, data_type, via))
-        return columns_out, set(profiles)
+        # A Protected Column never takes part in value overlap (the one policy, as profiling).
+        return columns_out, set(profiles) - protected_column_ids(db, ids)
 
     def _declared(
         self, db: Session, snapshot_id: uuid.UUID, columns: list[Col]
@@ -416,7 +418,9 @@ class RelationshipService:
         ctx: JobContext,
     ) -> int:
         """Set ``overlap`` on each candidate whose two columns are profiled: the share of
-        the source column's distinct sampled values found in the target column's sample.
+        the source column's distinct sampled values found in the target column. Measured
+        only when the sample holds the whole target table; protected columns are not in
+        ``profiled``.
         Values live only in this call's locals."""
         eligible = [c for c in candidates if c.from_col.id in profiled and c.to_col.id in profiled]
         wanted: dict[uuid.UUID, dict[str, Col]] = {}
@@ -427,27 +431,31 @@ class RelationshipService:
                 tables[col.table_id] = col
         values: dict[uuid.UUID, set[Any]] = {}
         rows_sampled: dict[uuid.UUID, int] = {}
+        complete: dict[uuid.UUID, bool] = {}
         for table_id, named in wanted.items():
             ctx.raise_if_cancelled()
             anchor = tables[table_id]
             try:
-                sample = connector.sample(anchor.schema, anchor.table, limit=sample_size)
+                sample = connector.sample(anchor.schema, anchor.table, limit=sample_size + 1)
             except ConnectorError as exc:
                 ctx.log(f"{anchor.schema}.{anchor.table}: no sample ({exc.message}).")
                 continue
+            complete[table_id] = len(sample.rows) <= sample_size
+            rows = sample.rows[:sample_size]
             positions = {name: i for i, name in enumerate(sample.columns)}
             for name, col in named.items():
                 position = positions.get(name)
                 if position is None:
                     continue
                 values[col.id] = {
-                    _normalised(row[position]) for row in sample.rows if row[position] is not None
+                    _normalised(row[position]) for row in rows if row[position] is not None
                 }
-                rows_sampled[col.id] = len(sample.rows)
+                rows_sampled[col.id] = len(rows)
         measured = 0
         for c in eligible:
             source, target = values.get(c.from_col.id), values.get(c.to_col.id)
-            if not source or target is None:
+            # A sample of a larger target would miss true references: leave it unmeasured.
+            if not source or target is None or not complete.get(c.to_col.table_id, False):
                 continue
             c.overlap = len(source & target) / len(source)
             c.overlap_sample = (len(source), rows_sampled[c.to_col.id])
@@ -478,6 +486,10 @@ class RelationshipService:
                 key = (c.from_col.id, c.to_col.id)
                 seen.add(key)
                 record = existing.get(key)
+                reverse = existing.get((c.to_col.id, c.from_col.id))
+                if record is None and reverse is not None and reverse.status == "rejected":
+                    seen.add(key)
+                    continue  # a rejected x -> y also suppresses y -> x
                 if record is None:
                     db.add(
                         RelationshipRecord(
