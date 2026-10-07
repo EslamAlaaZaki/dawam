@@ -1,0 +1,19 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "object": "list",
+    "data": [
+      {
+        "id": "other-model",
+        "object": "model",
+        "max_model_len": 2048
+      },
+      {
+        "id": "test-model",
+        "object": "model",
+        "max_model_len": 32768
+      }
+    ]
+  }
+}

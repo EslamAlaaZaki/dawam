@@ -68,7 +68,7 @@ function ProviderForm() {
     create.mutate(
       {
         name: String(data.get("name") ?? "").trim(),
-        adapter: data.get("adapter") === "anthropic" ? "anthropic" : "openai_compatible",
+        adapter: String(data.get("adapter") ?? "openai_compatible"),
         base_url: String(data.get("base_url") ?? "").trim(),
         api_key: apiKey || undefined,
         internal: data.get("internal") === "true",
@@ -90,6 +90,7 @@ function ProviderForm() {
         <select name="adapter" defaultValue="openai_compatible">
           <option value="openai_compatible">OpenAI-compatible (vLLM, Ollama, OpenAI, ...)</option>
           <option value="anthropic">Anthropic (Claude)</option>
+          <option value="azure_openai">Azure OpenAI</option>
         </select>
       </label>
       <label>

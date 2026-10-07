@@ -3971,11 +3971,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
-            /**
-             * Adapter
-             * @enum {string}
-             */
-            adapter: "openai_compatible" | "anthropic";
+            /** Adapter */
+            adapter: string;
             /** Base Url */
             base_url: string;
             /**
@@ -4014,10 +4011,10 @@ export interface components {
             name: string;
             /**
              * Adapter
+             * @description `openai_compatible`, `anthropic`, `azure_openai` or a plugin kind.
              * @default openai_compatible
-             * @enum {string}
              */
-            adapter: "openai_compatible" | "anthropic";
+            adapter: string;
             /**
              * Base Url
              * @description Including the version prefix, e.g. `http://vllm:8000/v1` or `https://api.anthropic.com/v1`.

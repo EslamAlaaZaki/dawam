@@ -131,13 +131,19 @@ class OpenAICompatibleAdapter:
                 response.close()
         return response
 
-    def _send(self, method: str, path: str, body: bytes | None) -> HttpResponse:
+    def _url(self, path: str) -> str:
+        return self._base_url + path
+
+    def _headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
+
+    def _send(self, method: str, path: str, body: bytes | None) -> HttpResponse:
         try:
             return self._transport.request(
-                method, self._base_url + path, headers=headers, body=body, timeout=self._timeout
+                method, self._url(path), headers=self._headers(), body=body, timeout=self._timeout
             )
         except TransportError as exc:
             raise LlmError(UNAVAILABLE, str(exc)) from None
