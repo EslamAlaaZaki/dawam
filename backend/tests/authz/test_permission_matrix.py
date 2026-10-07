@@ -22,6 +22,7 @@ from tests.authz.matrix import (
     colleague_id,
     credentials_of,
     describe,
+    ensure_data_warehouse,
     linked_file_id,
     outcome_of,
     public,
@@ -33,6 +34,7 @@ from tests.authz.matrix import (
     source_table_id,
     system_id,
     table_id,
+    tested_model_id,
     use_fake_llm,
     workspace,
 )
@@ -264,6 +266,43 @@ ROWS: list[Row] = [
         setup=use_fake_llm,
     ),
     Row("GET", "/api/v1/admin/llm/setup", "AI setup status (story 158)", admin_only()),
+    # Model roles, token budgets and AI usage (stories 157, 159, 162).
+    Row("GET", "/api/v1/admin/llm/roles", "see the model roles (story 157)", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/roles",
+        "assign models to roles (story 157)",
+        admin_only(),
+        json=lambda roles: {"agent_model_id": str(tested_model_id(roles))},
+        setup=use_fake_llm,
+    ),
+    Row("GET", "/api/v1/admin/llm/budgets", "see the token budgets (story 159)", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/installation",
+        "set the installation's token budget (story 159)",
+        admin_only(),
+        json=lambda roles: {"monthly_token_budget": 1000},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}",
+        "set a Workspace's token budget (story 159)",
+        admin_only(),
+        json=lambda roles: {"monthly_token_budget": 1000},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}",
+        "remove a Workspace's token budget (story 159)",
+        admin_only(),
+    ),
+    Row(
+        "GET",
+        "/api/v1/admin/llm/usage",
+        "AI usage per Workspace and user (story 162)",
+        admin_only(),
+    ),
     # User management (stories 14-19, 15a) and the security-event log (story 23).
     Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
     Row(
@@ -516,6 +555,65 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=_set_up_data_warehouse,
         json=lambda roles: {"version": 1, "naming_rules": {"case_style": "upper"}},
+    ),
+    # Core and Mart model editor (stories 89-93a; §4.3 "Edit KPIs, DW Schema, mappings").
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables",
+        "Open Workspace content (list the DW Schema's tables)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables",
+        "Edit KPIs, DW Schema, mappings (create a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+        json=lambda roles: {"layer": "core", "name": "dim_customer", "kind": "dimension"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
+        "Open Workspace content (a table and its columns)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
+        "Edit KPIs, DW Schema, mappings (edit a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "description": "Sales facts"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
+        "Edit KPIs, DW Schema, mappings (delete a table)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns",
+        "Edit KPIs, DW Schema, mappings (add a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {
+            "name": "quantity",
+            "data_type": {"type": "integer"},
+            "role": "measure",
+            "additivity": "additive",
+        },
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (edit a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "additivity": "additive"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (delete a column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
     # Source Systems (story 39). Changing a System Code is owner-only: the PATCH row
     # sends no code; tests/sources/test_source_systems.py covers the code change.

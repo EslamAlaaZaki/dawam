@@ -19,6 +19,7 @@ export function AdminNav() {
         <a href="/admin/email">Email settings</a>
         <a href="/admin/email/links">Links to share</a>
         <a href="/admin/llm">Language models</a>
+        <a href="/admin/llm/settings">AI roles, budgets &amp; usage</a>
       </nav>
       <LlmSetupBanner />
     </>

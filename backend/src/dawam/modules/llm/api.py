@@ -1,6 +1,6 @@
-"""``/api/v1/admin/llm``: LLM providers, their models and setup status, admins only
-(spec §6.18, stories 155, 156, 158). No response ever carries an API key: it reports
-``has_api_key``."""
+"""``/api/v1/admin/llm``: LLM providers, their models, setup status, model roles, token
+budgets and usage, admins only (spec §6.18, stories 155-159, 162). No response ever carries an
+API key: it reports ``has_api_key``."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from dawam.modules.auth import CurrentUser, User
-from dawam.modules.workspaces import INSTALLATION, Action, can
+from dawam.modules.auth import AuthService, CurrentUser, User
+from dawam.modules.workspaces import INSTALLATION, Action, WorkspaceService, can
 from dawam.platform.errors import ApiError
 
+from .role_service import MAX_BUDGET, RoleService, UsageTotals
 from .service import (
     API_KEY_MAX_LENGTH,
     DEFAULT_TIMEOUT_SECONDS,
@@ -292,4 +293,259 @@ def get_setup(_admin: LlmAdmin, providers: ProviderServiceDep) -> LlmSetupStatus
         has_agent_model=status.has_agent_model,
         has_tested_agent_model=status.has_tested_agent_model,
         has_internal_agent_model=status.has_internal_agent_model,
+    )
+
+
+# -- model roles, budgets and usage -----------------------------------------------------
+
+
+def role_service(request: Request, providers: ProviderServiceDep) -> RoleService:
+    state = request.app.state
+    return RoleService(state.engine, providers=providers, clock=state.services.clock)
+
+
+RoleServiceDep = Annotated[RoleService, Depends(role_service)]
+
+
+def workspace_names(request: Request) -> WorkspaceService:
+    state = request.app.state
+    return WorkspaceService(state.engine, clock=state.services.clock)
+
+
+WorkspaceNamesDep = Annotated[WorkspaceService, Depends(workspace_names)]
+
+
+def auth_users(request: Request) -> AuthService:
+    state = request.app.state
+    return AuthService(state.engine, state.settings, clock=state.services.clock)
+
+
+AuthUsersDep = Annotated[AuthService, Depends(auth_users)]
+
+
+class LlmRoles(BaseModel):
+    agent_model_id: uuid.UUID | None = Field(
+        description="Required for AI to work; null only until an admin assigns one."
+    )
+    light_model_id: uuid.UUID | None = Field(
+        description="Null: light tasks (titles, short summaries) use the agent model."
+    )
+    embedding_model_id: uuid.UUID | None
+    reindex_needed: bool = Field(
+        description="True after the embedding model or its vector dimension changed: "
+        "documents must be indexed again."
+    )
+    reindex_reason: Literal["embedding_model_changed", "embedding_dimension_changed"] | None
+    reindex_flagged_at: datetime | None
+
+
+class LlmRolesRequest(BaseModel):
+    agent_model_id: uuid.UUID
+    light_model_id: uuid.UUID | None = None
+    embedding_model_id: uuid.UUID | None = None
+
+
+class LlmWorkspaceBudget(BaseModel):
+    workspace_id: uuid.UUID
+    workspace_name: str | None = Field(description="Null if the Workspace no longer exists.")
+    monthly_token_budget: int
+
+
+class LlmBudgets(BaseModel):
+    installation_monthly_token_budget: int | None = Field(description="Null: unlimited.")
+    workspaces: list[LlmWorkspaceBudget]
+
+
+class LlmBudgetRequest(BaseModel):
+    monthly_token_budget: int | None = Field(
+        ge=0,
+        le=MAX_BUDGET,
+        description="Tokens per calendar month (UTC). Null removes the installation's limit.",
+    )
+
+
+class LlmWorkspaceBudgetRequest(BaseModel):
+    monthly_token_budget: int = Field(ge=0, le=MAX_BUDGET)
+
+
+class LlmUsageTotals(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    calls: int
+    estimated_calls: int = Field(description="Calls whose tokens DAWAM estimated.")
+
+
+class LlmWorkspaceUsage(BaseModel):
+    workspace_id: uuid.UUID | None = Field(
+        description="Null: calls made for no Workspace, or one since deleted."
+    )
+    workspace_name: str | None
+    totals: LlmUsageTotals
+    tokens_by_role: dict[str, int]
+    monthly_token_budget: int | None
+
+
+class LlmUserUsage(BaseModel):
+    user_id: uuid.UUID | None
+    email: str | None
+    display_name: str | None
+    totals: LlmUsageTotals
+    tokens_by_role: dict[str, int]
+
+
+class LlmUsage(BaseModel):
+    month: str = Field(description="`YYYY-MM` (UTC).")
+    totals: LlmUsageTotals
+    installation_monthly_token_budget: int | None
+    workspaces: list[LlmWorkspaceUsage]
+    users: list[LlmUserUsage]
+
+
+def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
+    return LlmUsageTotals(
+        prompt_tokens=totals.prompt_tokens,
+        completion_tokens=totals.completion_tokens,
+        total_tokens=totals.total_tokens,
+        calls=totals.calls,
+        estimated_calls=totals.estimated_calls,
+    )
+
+
+def _roles_out(roles: RoleService) -> LlmRoles:
+    view = roles.assignments()
+    return LlmRoles(
+        agent_model_id=view.agent_model_id,
+        light_model_id=view.light_model_id,
+        embedding_model_id=view.embedding_model_id,
+        reindex_needed=view.reindex_needed,
+        reindex_reason=view.reindex_reason,  # type: ignore[arg-type]
+        reindex_flagged_at=view.reindex_flagged_at,
+    )
+
+
+def _budgets_out(roles: RoleService, workspaces: WorkspaceService) -> LlmBudgets:
+    budgets = roles.budgets()
+    names = workspaces.names_by_id(b.workspace_id for b in budgets.workspaces)
+    return LlmBudgets(
+        installation_monthly_token_budget=budgets.installation,
+        workspaces=[
+            LlmWorkspaceBudget(
+                workspace_id=b.workspace_id,
+                workspace_name=names.get(b.workspace_id),
+                monthly_token_budget=b.monthly_token_budget,
+            )
+            for b in budgets.workspaces
+        ],
+    )
+
+
+@router.get("/roles", operation_id="getLlmRoles")
+def get_roles(_admin: LlmAdmin, roles: RoleServiceDep) -> LlmRoles:
+    """Which model fills each role, and whether re-indexing is needed (admins only)."""
+    return _roles_out(roles)
+
+
+@router.put("/roles", operation_id="setLlmRoles")
+def set_roles(body: LlmRolesRequest, _admin: LlmAdmin, roles: RoleServiceDep) -> LlmRoles:
+    """Assign models to the roles (admins only). The agent role is required; every model
+    must be registered and have passed "Test connection". Switching the embedding model
+    sets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`."""
+    roles.assign_roles(
+        agent_model_id=body.agent_model_id,
+        light_model_id=body.light_model_id,
+        embedding_model_id=body.embedding_model_id,
+    )
+    return _roles_out(roles)
+
+
+@router.get("/budgets", operation_id="getLlmBudgets")
+def get_budgets(
+    _admin: LlmAdmin, roles: RoleServiceDep, workspaces: WorkspaceNamesDep
+) -> LlmBudgets:
+    """The installation's monthly token budget and every Workspace's own (admins only)."""
+    return _budgets_out(roles, workspaces)
+
+
+@router.put("/budgets/installation", operation_id="setLlmInstallationBudget")
+def set_installation_budget(
+    body: LlmBudgetRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> LlmBudgets:
+    """Set (or, with null, remove) the installation's monthly token budget (admins
+    only). Once it is used up, AI calls fail with 429 `token_budget_exhausted`; the rest
+    of DAWAM keeps working."""
+    roles.set_installation_budget(body.monthly_token_budget)
+    return _budgets_out(roles, workspaces)
+
+
+@router.put("/budgets/workspaces/{workspace_id}", operation_id="setLlmWorkspaceBudget")
+def set_workspace_budget(
+    workspace_id: uuid.UUID,
+    body: LlmWorkspaceBudgetRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> LlmBudgets:
+    """Set a Workspace's own monthly token budget (admins only). 404 `workspace_not_found`."""
+    if workspace_id not in workspaces.names_by_id([workspace_id]):
+        raise ApiError(404, "workspace_not_found", "Workspace not found.")
+    roles.set_workspace_budget(workspace_id, body.monthly_token_budget)
+    return _budgets_out(roles, workspaces)
+
+
+@router.delete(
+    "/budgets/workspaces/{workspace_id}", operation_id="clearLlmWorkspaceBudget", status_code=204
+)
+def clear_workspace_budget(
+    workspace_id: uuid.UUID, _admin: LlmAdmin, roles: RoleServiceDep
+) -> Response:
+    """Remove a Workspace's own budget (admins only): only the installation's applies."""
+    roles.clear_workspace_budget(workspace_id)
+    return Response(status_code=204)
+
+
+@router.get("/usage", operation_id="getLlmUsage")
+def get_usage(
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+    users: AuthUsersDep,
+    month: Annotated[
+        str | None,
+        Query(pattern=r"^\d{4}-\d{2}$", description="`YYYY-MM` (UTC); default: this month."),
+    ] = None,
+) -> LlmUsage:
+    """AI usage in a month, in total, per Workspace and per user, with tokens per model
+    role (admins only)."""
+    report = roles.usage_report(month)
+    budgets = {b.workspace_id: b.monthly_token_budget for b in roles.budgets().workspaces}
+    names = workspaces.names_by_id(w.workspace_id for w in report.workspaces if w.workspace_id)
+    people = users.users_by_id(u.user_id for u in report.users if u.user_id)
+    return LlmUsage(
+        month=report.month,
+        totals=_totals_out(report.totals),
+        installation_monthly_token_budget=report.installation_budget,
+        workspaces=[
+            LlmWorkspaceUsage(
+                workspace_id=w.workspace_id,
+                workspace_name=names.get(w.workspace_id) if w.workspace_id else None,
+                totals=_totals_out(w.totals),
+                tokens_by_role=w.by_role,
+                monthly_token_budget=budgets.get(w.workspace_id) if w.workspace_id else None,
+            )
+            for w in report.workspaces
+        ],
+        users=[
+            LlmUserUsage(
+                user_id=u.user_id,
+                email=people[u.user_id].email if u.user_id in people else None,
+                display_name=people[u.user_id].display_name if u.user_id in people else None,
+                totals=_totals_out(u.totals),
+                tokens_by_role=u.by_role,
+            )
+            for u in report.users
+        ],
     )

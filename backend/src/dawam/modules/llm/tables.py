@@ -57,3 +57,64 @@ class ModelRecord(Base):
     last_tested_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class SettingsRecord(Base):
+    """The installation's one row of AI settings (spec §6.18): which model fills each
+    role, the monthly token budget and whether the embedding index is stale."""
+
+    __tablename__ = "llm_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    """Always 1: there is one row."""
+    agent_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    light_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    embedding_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    embedding_dimension: Mapped[int | None]
+    """The vector dimension of the assigned embedding model's index."""
+    monthly_token_budget: Mapped[int | None] = mapped_column(sa.BigInteger)
+    """Tokens per calendar month (UTC) for the whole installation; null: unlimited."""
+    reindex_needed: Mapped[bool]
+    reindex_reason: Mapped[str | None] = mapped_column(sa.String(64))
+    reindex_flagged_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class WorkspaceBudgetRecord(Base):
+    """A Workspace's own monthly token budget, on top of the installation's."""
+
+    __tablename__ = "llm_workspace_budgets"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    monthly_token_budget: Mapped[int] = mapped_column(sa.BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class UsageRecord(Base):
+    """Tokens one model call used, with who and what it was for."""
+
+    __tablename__ = "llm_usage"
+    __table_args__ = (sa.Index("ix_llm_usage_created_at", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    role: Mapped[str] = mapped_column(sa.String(16))
+    model_name: Mapped[str] = mapped_column(sa.String(MODEL_NAME_MAX_LENGTH))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="SET NULL")
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    prompt_tokens: Mapped[int]
+    completion_tokens: Mapped[int]
+    estimated: Mapped[bool]
+    """True when DAWAM counted (roughly) because the provider reported nothing."""
