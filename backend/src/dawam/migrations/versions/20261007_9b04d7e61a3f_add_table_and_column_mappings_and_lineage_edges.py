@@ -1,7 +1,7 @@
 """add table mappings, column mappings and lineage edges.
 
 Revision ID: 9b04d7e61a3f
-Revises: e7a1c4d9f2b8
+Revises: 9a4e1c7b3f58
 Create Date: 2026-10-07 11:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "9b04d7e61a3f"
-down_revision: str | Sequence[str] | None = "e7a1c4d9f2b8"
+down_revision: str | Sequence[str] | None = "9a4e1c7b3f58"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
