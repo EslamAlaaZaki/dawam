@@ -185,8 +185,10 @@ def no_fact_to_fact_fk(column: DesignColumn, table: DesignTable, design: Design)
 
 
 def _is_date_dimension(table: DesignTable) -> bool:
-    return any(c.name == DATE_KEY for c in table.columns) or (
-        table.kind == "dimension" and "date" in table.name.lower()
+    return (
+        table.kind == "generated"
+        or table.name.lower() == "dim_date"
+        or any(c.name == DATE_KEY for c in table.columns)
     )
 
 
