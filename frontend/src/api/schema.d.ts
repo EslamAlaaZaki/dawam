@@ -2199,6 +2199,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Roles
+         * @description Which model fills each role, and whether re-indexing is needed (admins only).
+         */
+        get: operations["getLlmRoles"];
+        /**
+         * Set Roles
+         * @description Assign models to the roles (admins only). The agent role is required; every model
+         *     must be registered and have passed "Test connection". Switching the embedding model
+         *     sets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`.
+         */
+        put: operations["setLlmRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Budgets
+         * @description The installation's monthly token budget and every Workspace's own (admins only).
+         */
+        get: operations["getLlmBudgets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Installation Budget
+         * @description Set (or, with null, remove) the installation's monthly token budget (admins
+         *     only). Once it is used up, AI calls fail with 429 `token_budget_exhausted`; the rest
+         *     of DAWAM keeps working.
+         */
+        put: operations["setLlmInstallationBudget"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Workspace Budget
+         * @description Set a Workspace's own monthly token budget (admins only). 404 `workspace_not_found`.
+         */
+        put: operations["setLlmWorkspaceBudget"];
+        post?: never;
+        /**
+         * Clear Workspace Budget
+         * @description Remove a Workspace's own budget (admins only): only the installation's applies.
+         */
+        delete: operations["clearLlmWorkspaceBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description AI usage in a month, in total, per Workspace and per user, with tokens per model
+         *     role (admins only).
+         */
+        get: operations["getLlmUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3397,6 +3510,24 @@ export interface components {
              */
             object_id: string;
         };
+        /** LlmBudgetRequest */
+        LlmBudgetRequest: {
+            /**
+             * Monthly Token Budget
+             * @description Tokens per calendar month (UTC). Null removes the installation's limit.
+             */
+            monthly_token_budget: number | null;
+        };
+        /** LlmBudgets */
+        LlmBudgets: {
+            /**
+             * Installation Monthly Token Budget
+             * @description Null: unlimited.
+             */
+            installation_monthly_token_budget: number | null;
+            /** Workspaces */
+            workspaces: components["schemas"]["LlmWorkspaceBudget"][];
+        };
         /** LlmModel */
         LlmModel: {
             /**
@@ -3557,6 +3688,42 @@ export interface components {
              */
             timeout_seconds: number;
         };
+        /** LlmRoles */
+        LlmRoles: {
+            /**
+             * Agent Model Id
+             * @description Required for AI to work; null only until an admin assigns one.
+             */
+            agent_model_id: string | null;
+            /**
+             * Light Model Id
+             * @description Null: light tasks (titles, short summaries) use the agent model.
+             */
+            light_model_id: string | null;
+            /** Embedding Model Id */
+            embedding_model_id: string | null;
+            /**
+             * Reindex Needed
+             * @description True after the embedding model or its vector dimension changed: documents must be indexed again.
+             */
+            reindex_needed: boolean;
+            /** Reindex Reason */
+            reindex_reason: ("embedding_model_changed" | "embedding_dimension_changed") | null;
+            /** Reindex Flagged At */
+            reindex_flagged_at: string | null;
+        };
+        /** LlmRolesRequest */
+        LlmRolesRequest: {
+            /**
+             * Agent Model Id
+             * Format: uuid
+             */
+            agent_model_id: string;
+            /** Light Model Id */
+            light_model_id?: string | null;
+            /** Embedding Model Id */
+            embedding_model_id?: string | null;
+        };
         /** LlmSetupStatus */
         LlmSetupStatus: {
             /**
@@ -3573,6 +3740,88 @@ export interface components {
              * @description False: new Workspaces will default to not internal-only.
              */
             has_internal_agent_model: boolean;
+        };
+        /** LlmUsage */
+        LlmUsage: {
+            /**
+             * Month
+             * @description `YYYY-MM` (UTC).
+             */
+            month: string;
+            totals: components["schemas"]["LlmUsageTotals"];
+            /** Installation Monthly Token Budget */
+            installation_monthly_token_budget: number | null;
+            /** Workspaces */
+            workspaces: components["schemas"]["LlmWorkspaceUsage"][];
+            /** Users */
+            users: components["schemas"]["LlmUserUsage"][];
+        };
+        /** LlmUsageTotals */
+        LlmUsageTotals: {
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Calls */
+            calls: number;
+            /**
+             * Estimated Calls
+             * @description Calls whose tokens DAWAM estimated.
+             */
+            estimated_calls: number;
+        };
+        /** LlmUserUsage */
+        LlmUserUsage: {
+            /** User Id */
+            user_id: string | null;
+            /** Email */
+            email: string | null;
+            /** Display Name */
+            display_name: string | null;
+            totals: components["schemas"]["LlmUsageTotals"];
+            /** Tokens By Role */
+            tokens_by_role: {
+                [key: string]: number;
+            };
+        };
+        /** LlmWorkspaceBudget */
+        LlmWorkspaceBudget: {
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Workspace Name
+             * @description Null if the Workspace no longer exists.
+             */
+            workspace_name: string | null;
+            /** Monthly Token Budget */
+            monthly_token_budget: number;
+        };
+        /** LlmWorkspaceBudgetRequest */
+        LlmWorkspaceBudgetRequest: {
+            /** Monthly Token Budget */
+            monthly_token_budget: number;
+        };
+        /** LlmWorkspaceUsage */
+        LlmWorkspaceUsage: {
+            /**
+             * Workspace Id
+             * @description Null: calls made for no Workspace, or one since deleted.
+             */
+            workspace_id: string | null;
+            /** Workspace Name */
+            workspace_name: string | null;
+            totals: components["schemas"]["LlmUsageTotals"];
+            /** Tokens By Role */
+            tokens_by_role: {
+                [key: string]: number;
+            };
+            /** Monthly Token Budget */
+            monthly_token_budget: number | null;
         };
         /** Me */
         Me: {
@@ -10671,6 +10920,289 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmSetupStatus"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmRoles"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmRolesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmRoles"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmBudgets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmInstallationBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmWorkspaceBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmWorkspaceBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmWorkspaceBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmUsage: {
+        parameters: {
+            query?: {
+                /** @description `YYYY-MM` (UTC); default: this month. */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmUsage"];
                 };
             };
             /** @description Validation error */
