@@ -24,9 +24,11 @@ import ResetPasswordPage from "../app/reset-password/page";
 import NotFound from "../app/not-found";
 import SignUpPage from "../app/signup/page";
 import { Shell } from "../shell/Shell";
+import { ChangeSetPage } from "../workspaces/ChangeSetReview";
 import { WorkspacePage } from "../workspaces/WorkspacePage";
 
 const WORKSPACE_PATH = /^\/workspaces\/([^/]+)$/;
+const CHANGE_SET_PATH = /^\/workspaces\/([^/]+)\/change-sets\/([^/]+)$/;
 
 function Page({ pathname }: { pathname: string }) {
   switch (pathname) {
@@ -124,6 +126,17 @@ function Page({ pathname }: { pathname: string }) {
           <NewWorkspace />
         </SignedInLayout>
       );
+  }
+  const [, changeSetWorkspaceId, changeSetId] = CHANGE_SET_PATH.exec(pathname) ?? [];
+  if (changeSetWorkspaceId !== undefined && changeSetId !== undefined) {
+    return (
+      <SignedInLayout>
+        <ChangeSetPage
+          workspaceId={decodeURIComponent(changeSetWorkspaceId)}
+          changeSetId={decodeURIComponent(changeSetId)}
+        />
+      </SignedInLayout>
+    );
   }
   const workspaceId = WORKSPACE_PATH.exec(pathname)?.[1];
   if (workspaceId !== undefined) {

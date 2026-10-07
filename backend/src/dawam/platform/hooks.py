@@ -56,3 +56,13 @@ class WorkspaceCreatedHook(Protocol):
         """Called inside the transaction that creates the Workspace (after its row and its
         owner exist), so what the hook adds is kept only if the Workspace is."""
         ...
+
+
+class ReadableConversations(Protocol):
+    def __call__(
+        self, user_id: uuid.UUID, workspace_id: uuid.UUID, conversation_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Of ``conversation_ids``, those ``user_id`` may read (their own, or shared with the
+        Workspace). ``assistant`` imports ``changesets``, so ``changesets`` asks through this
+        port."""
+        ...

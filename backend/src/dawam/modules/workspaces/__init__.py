@@ -10,6 +10,8 @@ Public interface. Other modules import only what is re-exported here:
   ``authorize(user, action, workspace_id)``, which a module with Workspace-scoped
   resources calls with the ``workspace_id`` it read from its own resource (never one
   from client input), getting 404 for non-members and 403 for too low a role.
+- ``required_role(action)``: the lowest role that may perform an action, which a Change
+  Set item carries as its required role.
 - ``Workspace``, ``WorkspacePage``, ``WorkspaceRole``: what the service returns.
 - ``MembershipService``: list members (``Member``), add someone by email or invite
   them into the Workspace (``MemberAdded`` / ``MemberInvited``), change roles, remove
@@ -55,6 +57,7 @@ from .internal.policy import (
     WorkspaceRole,
     WorkspaceScope,
     can,
+    required_role,
 )
 from .service import Workspace, WorkspacePage, WorkspaceService
 
@@ -78,5 +81,6 @@ __all__ = [
     "WorkspaceScope",
     "WorkspaceService",
     "can",
+    "required_role",
     "router",
 ]
