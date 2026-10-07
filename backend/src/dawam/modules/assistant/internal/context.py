@@ -47,6 +47,8 @@ def shorten_result(text: str, window: int | None) -> str:
 
 
 def _is_tool_result(message: Message) -> bool:
+    """Only meaningful for messages after the member's latest one, which the agent wrote:
+    a tool message, or (limited mode) a user message carrying a quoted result."""
     return message.role == "tool" or (message.content or "").startswith(_TOOL_SOURCE)
 
 
@@ -89,7 +91,10 @@ def fit_messages(
 
     # 2. Replace the oldest tool results of the current run, keeping the newest.
     placeholder = "[... the result was left out to fit the model's context window]"
-    last = max((i for i, m in enumerate(result) if _is_tool_result(m)), default=-1)
+    last = max(
+        (i for i in range(protect_from + 1, len(result)) if _is_tool_result(result[i])),
+        default=-1,
+    )
     for i in range(protect_from + 1, last):
         if used <= budget:
             break

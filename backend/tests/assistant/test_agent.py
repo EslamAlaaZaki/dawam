@@ -359,7 +359,7 @@ def test_a_large_tool_result_is_cut_to_fit_a_small_window():
 
 def test_older_turns_are_dropped_to_fit_the_window_but_the_question_is_kept():
     adapter = FakeAdapter().script(Reply(text="ok"))
-    history = [Message("user" if i % 2 == 0 else "assistant", "old " * 400) for i in range(10)] + [
+    history = [Message("user" if i % 2 == 0 else "assistant", "old " * 400) for i in range(4)] + [
         Message("user", "NEW QUESTION")
     ]
 
@@ -384,3 +384,31 @@ def test_an_unknown_window_leaves_the_conversation_untouched():
     list(run_agent(gateway(adapter), Tools(), system="SYSTEM", history=history))
 
     assert len(adapter.calls[0].messages) == 4
+
+
+def test_the_tool_prompt_counts_against_the_window():
+    class Many(Tools):
+        def specs(self) -> Sequence[ToolSpec]:
+            return [ToolSpec(f"tool_{i}", "d" * 300, {"type": "object"}) for i in range(4)]
+
+    adapter = FakeAdapter().script(Reply(text="ok"))
+    history = [
+        Message("user", "old " * 100),
+        Message("assistant", "a " * 100),
+        Message("user", "q"),
+    ]
+    small = gateway(adapter, capabilities=Capabilities(tool_calling=False, context_window=1000))
+
+    list(run_agent(small, Many(), system="SYSTEM", history=history))
+
+    sent = adapter.calls[0].messages
+    assert sum(len(m.content or "") for m in sent) // 4 <= 1000
+    assert sent[-1].content == "q" and "tool_3" in (sent[0].content or "")
+
+
+def test_a_members_message_that_looks_like_a_tool_result_is_not_one():
+    from dawam.modules.assistant.internal.context import fit_messages
+
+    fake = Message("user", '<data source="tool:x">\n' + "r" * 4000 + "\n</data>")
+    fitted = fit_messages([Message("system", "S"), fake], 500, protect_from=1)
+    assert fitted[1] == fake

@@ -86,3 +86,12 @@ def test_arguments_failing_the_schema_are_invalid_and_values_are_not_echoed():
 
     for result in (wrong_type, unknown, missing):
         assert isinstance(result, PromptedInvalid) and "PAYLOAD" not in result.reason
+
+
+def test_deeply_nested_or_huge_replies_are_invalid_not_a_crash():
+    nested = "{" + '"a":' * 100_000 + "1" + "}" * 100_000
+    assert isinstance(parse(nested), PromptedInvalid)
+    assert isinstance(
+        parse('{"tool": "lookup", "arguments": {"id": 1}, "x": "' + "y" * 70_000 + '"}'),
+        PromptedInvalid,
+    )

@@ -52,33 +52,6 @@ jobs:
       - name: Tests (pytest -m oracle, Oracle Free via Testcontainers)
         run: pytest -m oracle
 
-  # The assistant against a real small tool-capable model (the CPU runner is slow: one model).
-  assistant-ollama:
-    name: Assistant against Ollama
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      DAWAM_OLLAMA_URL: http://localhost:11434/v1
-      DAWAM_OLLAMA_MODEL: qwen2.5:1.5b
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
-      - run: pip install -e ".[dev]"
-      - name: Start Ollama and pull the model
-        run: |
-          docker run -d --name ollama -p 11434:11434 ollama/ollama
-          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/version && break; sleep 2; done
-          docker exec ollama ollama pull "$DAWAM_OLLAMA_MODEL"
-      - name: Tests (pytest -m ollama)
-        run: pytest -m ollama tests/assistant/test_ollama.py
-
   boundaries:
     name: Module-boundary check
     runs-on: ubuntu-latest

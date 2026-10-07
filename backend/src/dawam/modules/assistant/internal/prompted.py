@@ -21,6 +21,8 @@ from dawam.modules.llm import ToolSpec
 
 from .json_schema import validate
 
+MAX_REPLY_CHARS = 64 * 1024
+"""A longer reply is never parsed as a call (deeply nested JSON can exhaust the stack)."""
 MAX_RETRIES = 2
 """How many times an invalid call is sent back to the model before the run fails."""
 
@@ -69,9 +71,11 @@ def parse_reply(text: str, tools: Mapping[str, ToolSpec]) -> PromptedCall | Prom
         body = fenced.group(1).strip()
     if not body.startswith("{"):
         return None
+    if len(body) > MAX_REPLY_CHARS:
+        return PromptedInvalid("the reply is too long for a tool call")
     try:
         parsed, end = json.JSONDecoder().raw_decode(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         return PromptedInvalid("the JSON could not be parsed")
     if body[end:].strip():
         return PromptedInvalid("there is text after the JSON object")
