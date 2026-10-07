@@ -38,6 +38,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
         "role": "owner",
         "permissions": [
             "assistant.ask",
+            "change_set.review",
             "comment.create",
             "connection.manage",
             "connection.view",
@@ -243,6 +244,7 @@ def test_editors_and_viewers_open_a_workspace_but_cannot_edit_it(roles: RoleClie
     permissions = {
         "editor": [
             "assistant.ask",
+            "change_set.review",
             "comment.create",
             "data_warehouse.set_up",
             "dw_schema.edit",
