@@ -224,9 +224,10 @@ class AssumedRole:
 
 def _parse_credential(credential: str | None) -> tuple[AwsCredentials, str | None]:
     """``(credentials, role ARN or None)`` from ``AKID:SECRET[:TOKEN][;role=ARN]``."""
-    text, _, role = (credential or "").partition(ROLE_SUFFIX)
-    fields = text.split(":", 2)
-    if len(fields) < 2 or not fields[0] or not fields[1]:
+    text, found, role = (credential or "").strip().partition(ROLE_SUFFIX)
+    role = role.strip()
+    fields = [field.strip() for field in text.split(":", 2)]
+    if len(fields) < 2 or not fields[0] or not fields[1] or (found and not role):
         raise LlmError(
             AUTH, "The credential must be <access key id>:<secret access key>[:<session token>]."
         )
@@ -303,12 +304,12 @@ class BedrockAdapter:
         response = self._send("POST", path, json.dumps(body).encode("utf-8"))
         if response.status >= 400:
             try:
-                raise error_for(response)
+                raise error_for(response, self._redact)
             finally:
                 response.close()
         try:
             if stream:
-                yield from _stream_events(response)
+                yield from _stream_events(response, self._redact)
             else:
                 yield from _reply_events(json_body(response))
         except OSError:
@@ -323,6 +324,16 @@ class BedrockAdapter:
         return None
 
     # -- HTTP ------------------------------------------------------------------------
+
+    def _redact(self, text: str) -> str:
+        """``text`` without the secret key or session tokens (a provider may echo them)."""
+        held = (self._static, self._role._credentials if self._role else None)
+        for credentials in held:
+            if credentials is not None:
+                for secret in (credentials.secret_key, credentials.session_token):
+                    if secret:
+                        text = text.replace(secret, "[redacted]")
+        return text
 
     def _credentials(self) -> AwsCredentials:
         if self._static is None:
@@ -516,8 +527,8 @@ def _frames(response: HttpResponse) -> Iterator[tuple[dict[str, str], bytes]]:
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.") from None
 
 
-def _stream_error(kind: str, payload: Any) -> LlmError:
-    message = detail(payload)
+def _stream_error(kind: str, payload: Any, redact: Callable[[str], str]) -> LlmError:
+    message = detail(payload, redact)
     suffix = f" ({message})" if message else ""
     lowered = kind.lower()
     if "throttl" in lowered:
@@ -529,7 +540,7 @@ def _stream_error(kind: str, payload: Any) -> LlmError:
     return LlmError(UNAVAILABLE, "The provider failed mid-stream." + suffix)
 
 
-def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
+def _stream_events(response: HttpResponse, redact: Callable[[str], str]) -> Iterator[ChatEvent]:
     tools: dict[int, dict[str, Any]] = {}
     usage: Usage | None = None
     finish: str | None = None
@@ -540,7 +551,7 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
         except ValueError:
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.") from None
         if headers.get(":message-type") == "exception":
-            raise _stream_error(headers.get(":exception-type", ""), payload)
+            raise _stream_error(headers.get(":exception-type", ""), payload, redact)
         if not isinstance(payload, dict):
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.")
         kind = headers.get(":event-type")

@@ -168,8 +168,10 @@ def _service_account(
         ):
             raise ValueError
         token_uri = key.get("token_uri")
-        if token_uri is not None and urlsplit(str(token_uri)).scheme != "https":
-            raise ValueError
+        if token_uri is not None:
+            parts = urlsplit(str(token_uri))
+            if parts.scheme != "https" or not (parts.hostname or "").endswith(".googleapis.com"):
+                raise ValueError
     except ValueError:
         return _malformed_credential
     return ServiceAccountTokenSource(key, transport=transport, timeout_seconds=timeout, clock=clock)
@@ -193,7 +195,8 @@ class GeminiAdapter:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self._transport = transport
-        if api_key and api_key.lstrip().startswith("{") and token_provider is None:
+        api_key = api_key.strip() if api_key else api_key
+        if api_key and api_key.startswith("{") and token_provider is None:
             token_provider = _service_account(api_key, transport, timeout_seconds, clock)
             api_key = None
         self._api_key = api_key
@@ -237,7 +240,7 @@ class GeminiAdapter:
             raise self._error(response)
         try:
             if stream:
-                yield from _stream_events(response)
+                yield from _stream_events(response, self._redact)
             else:
                 yield from _reply_events(json_body(response))
         except OSError:
@@ -246,6 +249,8 @@ class GeminiAdapter:
             response.close()
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        if "aiplatform.googleapis.com" in self._base_url:
+            raise LlmError(BAD_REQUEST, "Embeddings are not supported on Vertex AI here.")
         name = _model_path(model)
         body = {
             "requests": [
@@ -324,16 +329,19 @@ class GeminiAdapter:
         finally:
             response.close()
         buffered = HttpResponse(response.status, response.headers, io.BytesIO(raw))
-        error = error_for(buffered)
-        source = self._token_provider
-        if isinstance(source, ServiceAccountTokenSource):
-            return LlmError(error.code, source.redact(error.message), retry_after=error.retry_after)
         lowered = raw.lower()
         if response.status == 400 and (
             b"api_key_invalid" in lowered or b"api key not valid" in lowered
         ):
             return LlmError(AUTH, "The provider rejected the API key.")
-        return error
+        return error_for(buffered, self._redact)
+
+    def _redact(self, text: str) -> str:
+        """``text`` without the API key, the private key or the token (a provider may echo them)."""
+        if self._api_key:
+            text = text.replace(self._api_key, "[redacted]")
+        source = self._token_provider
+        return source.redact(text) if isinstance(source, ServiceAccountTokenSource) else text
 
 
 def _model_path(model: str) -> str:
@@ -460,7 +468,7 @@ def _reply_events(data: Any) -> Iterator[ChatEvent]:
     yield Done(_usage(data.get("usageMetadata")), _finish(reason, called))
 
 
-def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
+def _stream_events(response: HttpResponse, redact: Callable[[str], str]) -> Iterator[ChatEvent]:
     usage: Usage | None = None
     reason: Any = None
     called = False
@@ -473,7 +481,7 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
         except ValueError:
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.") from None
         if isinstance(chunk, dict) and "error" in chunk:
-            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(chunk))
+            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(chunk, redact))
         parts, finish = _candidate_parts(chunk)
         for event in _part_events(parts):
             called = called or isinstance(event, ToolCallEvent)

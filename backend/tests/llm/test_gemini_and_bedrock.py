@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 from datetime import UTC, datetime
@@ -187,7 +188,7 @@ def service_account():
             "type": "service_account",
             "client_email": "bot@proj.iam.gserviceaccount.com",
             "private_key": pem,
-            "token_uri": "https://oauth2.test/token",
+            "token_uri": "https://oauth2.googleapis.com/token",
         }
     )
     return credential, key.public_key(), pem
@@ -202,7 +203,7 @@ def test_a_service_account_signs_a_jwt_trades_it_for_a_token_and_caches_it(servi
     ok = {"candidates": [{"content": {"parts": [{"text": "x"}]}, "finishReason": "STOP"}]}
     transport = Queue(
         **{
-            "oauth2.test": [reply(200, {"access_token": "tok-1", "expires_in": 3600})],
+            "oauth2.googleapis": [reply(200, {"access_token": "tok-1", "expires_in": 3600})],
             "g.test": [reply(200, ok), reply(200, ok)],
         }
     )
@@ -220,7 +221,7 @@ def test_a_service_account_signs_a_jwt_trades_it_for_a_token_and_caches_it(servi
     assert json.loads(_b64d(header)) == {"alg": "RS256", "typ": "JWT"}
     claims = json.loads(_b64d(claims))
     assert claims["iss"] == "bot@proj.iam.gserviceaccount.com"
-    assert claims["aud"] == "https://oauth2.test/token"
+    assert claims["aud"] == "https://oauth2.googleapis.com/token"
     assert claims["exp"] - claims["iat"] == 3600
     public_key.verify(
         _b64d(signature),
@@ -238,7 +239,7 @@ def test_a_service_account_token_is_renewed_after_a_401_and_never_leaks(service_
     ok = {"candidates": [{"content": {"parts": [{"text": "x"}]}, "finishReason": "STOP"}]}
     transport = Queue(
         **{
-            "oauth2.test": [
+            "oauth2.googleapis": [
                 reply(200, {"access_token": "tok-1", "expires_in": 3600}),
                 reply(200, {"access_token": "tok-2", "expires_in": 3600}),
             ],
@@ -254,7 +255,7 @@ def test_a_service_account_token_is_renewed_after_a_401_and_never_leaks(service_
 
     failing = Queue(
         **{
-            "oauth2.test": [
+            "oauth2.googleapis": [
                 reply(200, {"access_token": "tok-1", "expires_in": 3600}) for _ in range(2)
             ],
             "g.test": [reply(401, {"error": {"message": "bad tok-1"}}) for _ in range(2)],
@@ -282,7 +283,7 @@ def test_a_malformed_service_account_key_is_an_auth_error(credential):
 
 def test_a_rejected_service_account_is_an_auth_error(service_account):
     credential, _, _ = service_account
-    transport = Queue(**{"oauth2.test": [reply(400, {"error": "invalid_grant"})]})
+    transport = Queue(**{"oauth2.googleapis": [reply(400, {"error": "invalid_grant"})]})
     adapter = GeminiAdapter(
         base_url="https://g.test", api_key=credential, timeout_seconds=9, transport=transport
     )
@@ -490,3 +491,124 @@ def test_bedrock_counts_cached_input_as_prompt_tokens():
     events = chat(_bedrock(ReplayTransport(reply(200, body))))
 
     assert (events[-1].usage.prompt_tokens, events[-1].usage.completion_tokens) == (28, 2)
+
+
+# -- secrets echoed across the detail cut-off ----------------------------------------------
+
+
+def _secret(seed: str, length: int = 128) -> str:
+    return (hashlib.sha256(seed.encode()).hexdigest() * 4)[:length]
+
+
+def _no_fragment(secret: str, text: str, size: int = 8) -> bool:
+    return not any(secret[i : i + size] in text for i in range(len(secret) - size + 1))
+
+
+def _echo(secret: str) -> str:
+    return "x" * 260 + secret  # the secret straddles the 300-character cut
+
+
+def test_gemini_never_leaks_a_fragment_of_a_token_echoed_across_the_cut(service_account):
+    credential, _, _ = service_account
+    token = _secret("token")
+    transport = Queue(
+        **{
+            "oauth2.googleapis": [reply(200, {"access_token": token, "expires_in": 3600})],
+            "g.test": [reply(500, {"error": {"message": _echo(token)}})],
+        }
+    )
+    adapter = GeminiAdapter(
+        base_url="https://g.test", api_key=credential, timeout_seconds=9, transport=transport
+    )
+
+    with pytest.raises(LlmError) as raised:
+        chat(adapter)
+
+    assert _no_fragment(token, raised.value.message)
+
+
+def test_gemini_never_leaks_an_api_key_echoed_across_the_cut_or_mid_stream():
+    key = _secret("key")
+    failing = Queue(**{"g.test": [reply(500, {"error": {"message": _echo(key)}})]})
+    adapter = GeminiAdapter(
+        base_url="https://g.test", api_key=key, timeout_seconds=9, transport=failing
+    )
+    with pytest.raises(LlmError) as raised:
+        chat(adapter)
+    assert _no_fragment(key, raised.value.message)
+
+    event = "data: " + json.dumps({"error": {"message": _echo(key)}}) + "\n"
+    stream = Queue(**{"g.test": [reply(200, event.encode())]})
+    adapter = GeminiAdapter(
+        base_url="https://g.test", api_key=key, timeout_seconds=9, transport=stream
+    )
+    with pytest.raises(LlmError) as raised:
+        chat(adapter, stream=True)
+    assert _no_fragment(key, raised.value.message)
+
+
+def test_bedrock_never_leaks_the_secret_or_session_token_echoed_across_the_cut():
+    secret, session = _secret("secret", 64), _secret("session", 100)
+    adapter = _bedrock(
+        Queue(**{"bedrock-runtime": [reply(400, {"message": _echo(secret + session)})]}),
+        f"AKID:{secret}:{session}",
+    )
+    with pytest.raises(LlmError) as raised:
+        chat(adapter)
+    assert _no_fragment(secret, raised.value.message)
+    assert _no_fragment(session, raised.value.message)
+
+    frame = eventstream_frame("internalServerException", {"message": _echo(secret)}, "exception")
+    adapter = _bedrock(ReplayTransport(_stream(frame)), f"AKID:{secret}")
+    with pytest.raises(LlmError) as raised:
+        chat(adapter, stream=True)
+    assert _no_fragment(secret, raised.value.message)
+
+
+# -- credential hygiene --------------------------------------------------------------------
+
+
+def test_bedrock_trims_the_credential_and_rejects_an_empty_role():
+    ok = json.loads((FIXTURES / "bedrock" / "chat_text.json").read_text())["body"]
+    transport = Queue(**{"bedrock-runtime": [reply(200, ok)]})
+    chat(_bedrock(transport, "  AKID:SECRET \n"))
+    assert "Credential=AKID/" in transport.calls[0][1]["Authorization"]
+
+    with pytest.raises(LlmError) as raised:
+        chat(_bedrock(ReplayTransport(), "AKID:SECRET;role= "))
+    assert raised.value.code == "auth"
+
+
+@pytest.mark.parametrize(
+    "token_uri",
+    [
+        "https://evil.test/token",
+        "https://googleapis.com.evil.test/t",
+        "http://oauth2.googleapis.com/t",
+    ],
+)
+def test_a_service_account_token_uri_must_be_https_on_googleapis(service_account, token_uri):
+    credential, _, _ = service_account
+    key = {**json.loads(credential), "token_uri": token_uri}
+    adapter = GeminiAdapter(
+        base_url="https://g.test", api_key=json.dumps(key), timeout_seconds=9, transport=Queue()
+    )
+
+    with pytest.raises(LlmError) as raised:
+        chat(adapter)
+
+    assert raised.value.code == "auth"
+
+
+def test_embeddings_are_refused_on_vertex_ai():
+    base = (
+        "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/l/publishers/google"
+    )
+    adapter = GeminiAdapter(
+        base_url=base, api_key="k", timeout_seconds=9, transport=ReplayTransport()
+    )
+
+    with pytest.raises(LlmError) as raised:
+        adapter.embed("m", ["a"])
+
+    assert raised.value.code == "bad_request" and "Vertex" in raised.value.message
