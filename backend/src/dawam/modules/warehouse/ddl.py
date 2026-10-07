@@ -17,6 +17,7 @@ import hashlib
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 from .platforms import (
@@ -48,6 +49,18 @@ class DdlTable:
     columns: Sequence[DdlColumn] = field(default_factory=tuple)
     unknown_member: Mapping[str, Any] | None = None
     """``{"surrogate_key": -1, "defaults": {column: value}}`` for a dimension."""
+
+
+@dataclass(frozen=True)
+class SeedData:
+    """Rows to load into a generated table: the columns to fill, in order, and the rows."""
+
+    columns: Sequence[str]
+    rows: Sequence[Mapping[str, Any]]
+
+
+SEED_BATCH = 500
+"""Rows per ``INSERT``; SQL Server takes at most 1000 in one ``VALUES``."""
 
 
 # --- identifiers ----------------------------------------------------------------------
@@ -433,6 +446,41 @@ def _unknown_insert(platform: TargetPlatform, schemas: Mapping[str, str], table:
     return f"{target}\nVALUES ({values});"
 
 
+def _seed_value(platform: TargetPlatform, column: DdlColumn, value: Any) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return _boolean(platform, value)
+    if isinstance(value, date):
+        return _temporal(platform, "date", value.isoformat())
+    if isinstance(value, int | float):
+        return repr(value)
+    return _string(platform, str(value))
+
+
+def seed_statements(
+    platform: TargetPlatform, schemas: Mapping[str, str], table: DdlTable, seed: SeedData
+) -> list[str]:
+    """``INSERT`` statements of ``seed``, in batches (Oracle: ``INSERT ALL``)."""
+    by_name = {c.name: c for c in table.columns}
+    columns = [by_name[name] for name in seed.columns]
+    target = _qualified(platform, schemas, table)
+    names = ", ".join(ident(platform, c.name) for c in columns)
+    out = []
+    for start in range(0, len(seed.rows), SEED_BATCH):
+        tuples = [
+            "(" + ", ".join(_seed_value(platform, c, row[c.name]) for c in columns) + ")"
+            for row in seed.rows[start : start + SEED_BATCH]
+        ]
+        if platform == "oracle":
+            body = "\n".join(f"    INTO {target} ({names}) VALUES {t}" for t in tuples)
+            out.append(f"INSERT ALL\n{body}\nSELECT 1 FROM DUAL;")
+        else:
+            rows = ",\n    ".join(tuples)
+            out.append(f"INSERT INTO {target} ({names})\nVALUES\n    {rows};")
+    return out
+
+
 def _section(title: str, statements: Sequence[str]) -> str:
     return "\n\n".join([f"-- {title}", *statements]) if statements else ""
 
@@ -443,8 +491,10 @@ def generate_ddl(
     tables: Sequence[DdlTable],
     *,
     layers: Sequence[str] | None = None,
+    seeds: Mapping[Any, SeedData] | None = None,
 ) -> str:
-    """The DDL package of ``layers`` (default: every Layer that has tables).
+    """The DDL package of ``layers`` (default: every Layer that has tables). ``seeds`` maps a
+    generated table's id to its rows, loaded after the unknown members.
 
     ``schemas`` maps each Layer to its physical schema (dataset) name. Output is
     deterministic: Layers in pipeline order, tables by name.
@@ -462,11 +512,18 @@ def generate_ddl(
         for t in package
         if t.kind == "dimension" and t.unknown_member is not None
     ]
+    seed_sql = [
+        stmt
+        for t in package
+        if t.id in (seeds or {})
+        for stmt in seed_statements(platform, schemas, t, (seeds or {})[t.id])
+    ]
     sections = [
         _section("Schemas", [_create_schema(platform, schemas[layer]) for layer in used]),
         _section("Tables", [_create_table(platform, schemas, t) for t in package]),
         _section("Foreign keys", foreign_keys),
         _section("Unknown members", inserts),
+        _section("Seed data", seed_sql),
     ]
     header = f"-- DAWAM DDL for {platform}; layers: {', '.join(used) or 'none'}"
     return "\n\n".join([header, *[s for s in sections if s]]) + "\n"

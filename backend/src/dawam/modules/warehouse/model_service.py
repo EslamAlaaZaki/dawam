@@ -31,6 +31,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
+from .calendar import date_columns, date_dimension_of, time_columns
 from .naming import NamingViolation, check_column_name, check_table_name
 from .platforms import SAFE_IDENTIFIER, is_reserved_word, max_identifier_length
 from .service import NamingRules
@@ -50,6 +51,8 @@ from .tables import (
 MODEL_LAYERS = ("core", "mart")
 """The Layers edited by hand; Staging Tables come from the Source Schema."""
 MODEL_KINDS = ("fact", "dimension", "bridge")
+GENERATED_TABLES = ("date", "time")
+"""The built-in generated dimensions (story 90b)."""
 SCD_TYPES = (0, 1, 2)
 UNKNOWN_MEMBER_KEY = -1
 
@@ -431,6 +434,82 @@ class ModelService:
                     )
                 self._sync_scd2(db, user, workspace_id, table, now)
                 return _table_view(table, self._columns(db, table.id), _rules(warehouse))
+        except IntegrityError as exc:
+            raise self._integrity(exc) from None
+
+    def create_generated_table(
+        self, user: User, workspace_id: uuid.UUID, *, which: str, layer: str = "core"
+    ) -> ModelTable:
+        """Add the built-in ``date`` or ``time`` dimension (spec story 90b): a ``generated``
+        table, conformed, whose columns follow the Data Warehouse's date-dimension settings
+        (optional Hijri and fiscal columns). It needs no mapping. 422 ``invalid_model``;
+        409 ``name_taken``; 404 ``not_set_up``."""
+        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        if which not in GENERATED_TABLES:
+            raise _invalid("kind", f"The generated table is one of {', '.join(GENERATED_TABLES)}.")
+        if layer not in MODEL_LAYERS:
+            raise _invalid("layer", "Core and Mart tables are modelled here; pick core or mart.")
+        try:
+            with Session(self._engine) as db, db.begin():
+                warehouse = self._warehouse(db, workspace_id)
+                assert warehouse is not None
+                rules = _rules(warehouse)
+                settings = date_dimension_of(warehouse.date_dim_settings)
+                columns = date_columns(settings) if which == "date" else time_columns()
+                name = (
+                    f"{rules.dimension_prefix}{which}" if rules.dimension_prefix else f"{which}_dim"
+                )
+                if rules.case_style == "upper":
+                    name = name.upper()
+                self._ensure_table_name_free(db, warehouse, layer, name, None)
+                now = self._clock()
+                table = DwTableRecord(
+                    id=uuid.uuid4(),
+                    data_warehouse_id=warehouse.id,
+                    layer=layer,
+                    name=name,
+                    kind="generated",
+                    fact_type=None,
+                    grain=None,
+                    is_aggregate=False,
+                    scd_type=None,
+                    is_conformed=True,
+                    unknown_member=None,
+                    description=f"Generated {which} dimension; needs no mapping.",
+                    created_by=user.id,
+                    created_at=now,
+                    updated_at=now,
+                    version=1,
+                )
+                db.add(table)
+                db.flush()
+                record_audit(
+                    db,
+                    workspace_id=workspace_id,
+                    actor_id=user.id,
+                    entity_type="dw_table",
+                    entity_id=table.id,
+                    old=None,
+                    new=_table_snapshot(table),
+                    at=now,
+                )
+                self._activity(db, user, workspace_id, "dw_table.created", table)
+                for column in columns:
+                    self._add_column(
+                        db,
+                        user,
+                        workspace_id,
+                        table,
+                        {
+                            "name": column.name,
+                            "data_type": dict(column.data_type),
+                            "is_nullable": column.is_nullable,
+                            "role": column.role,
+                        },
+                        now,
+                        scaffold=True,
+                    )
+                return _table_view(table, self._columns(db, table.id), rules)
         except IntegrityError as exc:
             raise self._integrity(exc) from None
 

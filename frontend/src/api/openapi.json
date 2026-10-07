@@ -2077,6 +2077,71 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/generated": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Create Generated Table",
+        "description": "Add the built-in date or time dimension (editors and owners): a `generated`, conformed\ntable that needs no mapping. The date dimension's columns follow the Data Warehouse's\ndate-dimension settings (Gregorian attributes, optional Hijri and fiscal ones; the\nweekend flag and range apply to the seed rows). Its seed file is delivered with the DDL\npackage. 409 `name_taken` when it already exists; 404 `not_set_up`.",
+        "operationId": "createGeneratedDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGeneratedDwTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}": {
       "get": {
         "tags": [
@@ -7074,7 +7139,7 @@
           "files"
         ],
         "summary": "Save Ddl",
-        "description": "Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`\n(or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous\none (owners and editors). 404 before the Data Warehouse is set up.",
+        "description": "Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`\n(or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous\none (owners and editors). Generated date and time dimensions are seeded in the package;\ntheir seed files (`seed-<table>.csv` and `seed-<table>.sql`) are saved beside it.\n404 before the Data Warehouse is set up.",
         "operationId": "saveDdl",
         "parameters": [
           {
@@ -10814,6 +10879,35 @@
           "kind"
         ],
         "title": "CreateDwTableRequest"
+      },
+      "CreateGeneratedDwTableRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "date",
+              "time"
+            ],
+            "title": "Kind",
+            "description": "The built-in dimension to add."
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer",
+            "description": "`core` (default) or `mart`.",
+            "default": "core"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "CreateGeneratedDwTableRequest"
       },
       "CreateKpiRequest": {
         "properties": {

@@ -11,7 +11,12 @@ Public interface. Other modules import only what is re-exported here:
   for generating valid names.
 - ``DdlService``: any member exports the DW Schema as a SQL package in the target platform's
   dialect (``DdlPackage``), for one Layer or the whole Data Warehouse, with unknown-member
-  inserts; ``files`` saves it to the file area. ``GET .../data-warehouse/ddl`` downloads it.
+  inserts and the seed rows of generated tables; ``files`` saves it, plus ``seed_files``
+  (CSV and ``INSERT`` script per generated table), to the file area. ``GET
+  .../data-warehouse/ddl`` downloads it.
+- ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
+  fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
+  adds them as ``generated`` tables.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns).

@@ -615,6 +615,14 @@ ROWS: list[Row] = [
         "Edit KPIs, DW Schema, mappings (delete a column)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/generated",
+        "Edit KPIs, DW Schema, mappings (add the generated date dimension)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+        json=lambda roles: {"kind": "date"},
+    ),
     # DDL export (story 97).
     Row(
         "GET",
