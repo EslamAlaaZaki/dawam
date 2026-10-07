@@ -398,6 +398,28 @@ def rename_pair(roles: RoleClients) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     return candidate, removed, added
 
 
+def relationship_id(roles: RoleClients) -> str:
+    """A suggested relationship between the stand-in table's two columns, written straight
+    into the table (reset to ``suggested`` on every request)."""
+    snapshot_id(roles)
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    columns = roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"]
+    ids = {c["name"]: c["id"] for c in columns}
+    with roles.app.state.engine.begin() as conn:
+        return str(
+            conn.execute(
+                sa.text(
+                    "INSERT INTO relationships (id, from_column_id, to_column_id, origin, "
+                    "confidence, evidence, status, version, detected_at) VALUES (:id, :f, :t, "
+                    "'inferred', 0.8, '{}', 'suggested', 1, now()) "
+                    "ON CONFLICT (from_column_id, to_column_id) DO UPDATE SET status = 'suggested' "
+                    "RETURNING id"
+                ),
+                {"id": uuid.uuid4(), "f": ids["national_id"], "t": ids["id"]},
+            ).scalar_one()
+        )
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "candidate_id": lambda roles: rename_pair(roles)[0],
     "workspace_id": lambda roles: roles.workspace_id,
@@ -417,6 +439,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "table_id": table_id,
     "column_id": column_id,
     "finding_id": pii_finding_id,
+    "relationship_id": relationship_id,
     "provider_id": provider_id,
     "model_id": model_id,
 }

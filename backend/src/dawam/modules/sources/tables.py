@@ -217,6 +217,46 @@ class PiiFindingRecord(Base):
     decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
+RELATIONSHIP_STATUSES = ("suggested", "accepted", "rejected")
+
+
+class RelationshipRecord(Base):
+    """A relationship between two Source Columns that the source does not declare as a
+    foreign key (spec §6.6, §7): inferred from names, types, overlap and JOINs, then
+    accepted or rejected by an editor. It attaches to the stable Source Columns, so a
+    decision survives Snapshots. ``evidence`` holds names and ratios, never a value."""
+
+    __tablename__ = "relationships"
+    __table_args__ = (
+        sa.UniqueConstraint("from_column_id", "to_column_id"),
+        sa.CheckConstraint(
+            "origin IN ('declared', 'inferred', 'routine', 'ai', 'manual')", name="origin"
+        ),
+        sa.CheckConstraint("status IN ('suggested', 'accepted', 'rejected')", name="status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    from_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
+    )
+    to_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
+    )
+    origin: Mapped[str] = mapped_column(sa.String(16))
+    """``inferred`` (rules) or ``routine`` (a JOIN in a view or routine); later ``declared``,
+    ``ai`` and ``manual``."""
+    confidence: Mapped[float] = mapped_column()
+    evidence: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    status: Mapped[str] = mapped_column(sa.String(16))
+    version: Mapped[int] = mapped_column()
+    """Goes up by one on every decision (optimistic concurrency, spec §8.3)."""
+    detected_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+
+
 class ColumnProfileRecord(Base):
     """The latest profile of a Source Column (spec §7): aggregates over a sample of the
     table. ``min``, ``max`` and ``top_values`` are real data, so they stay ``NULL`` for

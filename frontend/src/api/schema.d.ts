@@ -1063,6 +1063,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationship-inference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Relationship Inference
+         * @description Infer undeclared relationships from the latest Snapshot, as a background job (owners
+         *     and editors). Name, type, uniqueness and JOIN conditions in views and routines always
+         *     count; value overlap only with a live Connection and profiled columns. 409
+         *     `no_snapshot` before the first Snapshot; 422 for a bad threshold or sample size.
+         */
+        post: operations["startRelationshipInference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Relationships
+         * @description The Source System's inferred relationships with their evidence (any member). Only
+         *     candidates at or above `min_confidence` (default 0.6) are shown.
+         */
+        get: operations["listRelationships"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Relationship
+         * @description Accept a relationship (owners and editors): the Source Schema treats it as real.
+         *     Audited.
+         */
+        post: operations["acceptRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Relationship
+         * @description Reject a relationship (owners and editors); later runs do not propose it again.
+         *     Audited.
+         */
+        post: operations["rejectRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
         parameters: {
             query?: never;
@@ -2627,6 +2713,25 @@ export interface components {
             /** @description Null until the column is profiled. */
             profile: components["schemas"]["ColumnProfile"] | null;
         };
+        /** ColumnRef */
+        ColumnRef: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /** Column */
+            column: string;
+        };
         /** Connection */
         Connection: {
             /**
@@ -3159,6 +3264,35 @@ export interface components {
             imported: boolean;
             /** Disabled Features */
             disabled_features: string[];
+        };
+        /** InferenceRequest */
+        InferenceRequest: {
+            /**
+             * Threshold
+             * @description Only candidates at or above this confidence (above 0, at most 1) are kept.
+             * @default 0.6
+             */
+            threshold: number;
+            /**
+             * Sample Size
+             * @description Rows sampled per table for value overlap (1 to 100000); used only with a live Connection and profiled columns.
+             * @default 5000
+             */
+            sample_size: number;
+        };
+        /** InferenceStarted */
+        InferenceStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `infer_relationships` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** InvitationLinkOut */
         InvitationLinkOut: {
@@ -3966,6 +4100,60 @@ export interface components {
             job_id: string;
             /** Status */
             status: string;
+        };
+        /** Relationship */
+        Relationship: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description The referencing column. */
+            from_column: components["schemas"]["ColumnRef"];
+            /** @description The referenced (unique) column. */
+            to_column: components["schemas"]["ColumnRef"];
+            /**
+             * Origin
+             * @description `routine` when a view or routine joins the two columns, else `inferred`.
+             * @enum {string}
+             */
+            origin: "inferred" | "routine";
+            /**
+             * Confidence
+             * @description 0 to 1, from the signals in `evidence`.
+             */
+            confidence: number;
+            /**
+             * Evidence
+             * @description Each signal that fired with its score and detail: `name`, `type`, `unique`, `join` (the views and routines) and `overlap` (a ratio, with a live Connection and profiling). Names and ratios only, never a data value.
+             */
+            evidence: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "accepted" | "rejected";
+            /** Version */
+            version: number;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** RelationshipPage */
+        RelationshipPage: {
+            /**
+             * Items
+             * @description Most confident first.
+             */
+            items: components["schemas"]["Relationship"][];
         };
         /** RemovedColumn */
         RemovedColumn: {
@@ -7784,6 +7972,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PiiScanStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startRelationshipInference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InferenceRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InferenceStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listRelationships: {
+        parameters: {
+            query?: {
+                /** @description Only relationships in this state. */
+                status?: ("suggested" | "accepted" | "rejected") | null;
+                /** @description Hide candidates below this confidence. */
+                min_confidence?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
                 };
             };
             /** @description Validation error */

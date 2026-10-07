@@ -31,6 +31,13 @@ Public interface. Other modules import only what is re-exported here:
   is its handler, which ``dawam.job_handlers`` registers). Sampled values are tested in memory
   against ``dawam.platform.pii_validators`` and discarded; only the match ratio is stored, as
   the evidence of a ``suggested`` finding (confidence at least 0.5).
+- ``RelationshipService``: owners and editors infer undeclared relationships of a Source System
+  (``start_inference`` queues an ``infer_relationships`` job; ``run_inference`` is its handler,
+  which ``dawam.job_handlers`` registers). Candidates are scored from name similarity, type
+  compatibility, target uniqueness, JOIN conditions parsed with sqlglot from view and routine
+  text, and (live Connection and profiling only) value overlap; those at or above the
+  threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
+  Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -44,6 +51,9 @@ Public interface. Other modules import only what is re-exported here:
   ``GET .../systems/{system_id}/pii-findings``,
   ``POST .../systems/{system_id}/pii-findings/{finding_id}/confirm|dismiss``,
   ``POST .../systems/{system_id}/pii-scans``,
+  ``POST .../systems/{system_id}/relationship-inference``,
+  ``GET .../systems/{system_id}/relationships``,
+  ``POST .../systems/{system_id}/relationships/{relationship_id}/accept|reject``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
 
@@ -65,6 +75,7 @@ from .internal.pii import is_protected
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
+from .relationship_service import INFER_JOB, Relationship, RelationshipService
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
 from .snapshot_service import (
@@ -78,6 +89,7 @@ from .snapshot_service import (
 
 __all__ = [
     "EXTRACT_JOB",
+    "INFER_JOB",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
     "Connection",
@@ -92,6 +104,8 @@ __all__ = [
     "PiiScanService",
     "PiiService",
     "ProfilingService",
+    "Relationship",
+    "RelationshipService",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",

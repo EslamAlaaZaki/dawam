@@ -961,6 +961,33 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"table_ids": [table_id(roles)]},
     ),
+    # Relationship inference (stories 58, 59): owners and editors run it (needs a Snapshot)
+    # and decide; every member reads the relationships.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationship-inference",
+        "Run extraction / Schema Import / profiling (infer relationships)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships",
+        "Open Workspace content (the inferred relationships)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept",
+        "Edit Source Schema enhancements & documents (accept a relationship)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject",
+        "Edit Source Schema enhancements & documents (reject a relationship)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
 ]
 
 
