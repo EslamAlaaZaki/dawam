@@ -1,0 +1,14 @@
+{
+  "status": 429,
+  "headers": {
+    "Content-Type": "application/json",
+    "retry-after": "7"
+  },
+  "body": {
+    "error": {
+      "code": 429,
+      "message": "Resource has been exhausted (e.g. check quota).",
+      "status": "RESOURCE_EXHAUSTED"
+    }
+  }
+}

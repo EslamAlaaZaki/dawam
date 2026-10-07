@@ -26,6 +26,8 @@ _CONTEXT_MARKERS = (
     "too many tokens",
     "prompt is too long",
     "reduce the length",
+    "exceeds the maximum number of tokens",  # Gemini
+    "too long for requested model",  # Bedrock
 )
 
 

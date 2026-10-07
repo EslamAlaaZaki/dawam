@@ -1,0 +1,13 @@
+{
+  "status": 403,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "code": 403,
+      "message": "Permission denied on resource project.",
+      "status": "PERMISSION_DENIED"
+    }
+  }
+}

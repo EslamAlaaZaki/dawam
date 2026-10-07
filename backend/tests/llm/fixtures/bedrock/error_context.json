@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json",
+    "x-amzn-errortype": "ValidationException"
+  },
+  "body": {
+    "message": "Input is too long for requested model."
+  }
+}

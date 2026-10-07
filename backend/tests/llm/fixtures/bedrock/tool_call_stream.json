@@ -1,0 +1,73 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/vnd.amazon.eventstream"
+  },
+  "body_events": [
+    {
+      "type": "messageStart",
+      "payload": {
+        "role": "assistant"
+      }
+    },
+    {
+      "type": "contentBlockStart",
+      "payload": {
+        "contentBlockIndex": 0,
+        "start": {
+          "toolUse": {
+            "toolUseId": "call_abc",
+            "name": "echo"
+          }
+        }
+      }
+    },
+    {
+      "type": "contentBlockDelta",
+      "payload": {
+        "contentBlockIndex": 0,
+        "delta": {
+          "toolUse": {
+            "input": "{\"text\""
+          }
+        }
+      }
+    },
+    {
+      "type": "contentBlockDelta",
+      "payload": {
+        "contentBlockIndex": 0,
+        "delta": {
+          "toolUse": {
+            "input": ": \"ping\"}"
+          }
+        }
+      }
+    },
+    {
+      "type": "contentBlockStop",
+      "payload": {
+        "contentBlockIndex": 0
+      }
+    },
+    {
+      "type": "messageStop",
+      "payload": {
+        "stopReason": "tool_use"
+      }
+    },
+    {
+      "type": "metadata",
+      "payload": {
+        "usage": {
+          "inputTokens": 40,
+          "outputTokens": 9,
+          "totalTokens": 49
+        },
+        "metrics": {
+          "latencyMs": 420
+        }
+      }
+    }
+  ]
+}
