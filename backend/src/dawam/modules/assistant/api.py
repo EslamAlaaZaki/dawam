@@ -21,7 +21,12 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.files import FileService
 from dawam.modules.kpis import KpiService
 from dawam.modules.llm import ProviderService, RoleService, WorkspaceAiService
-from dawam.modules.sources import SourceSystemService
+from dawam.modules.sources import (
+    PiiService,
+    ProfilingService,
+    SnapshotService,
+    SourceSystemService,
+)
 from dawam.modules.warehouse import DataWarehouseService
 from dawam.modules.workspaces import WorkspaceService
 
@@ -55,6 +60,7 @@ def assistant_service(request: Request) -> AssistantService:
         clock=clock,
         **({"adapters": state.services.llm_adapters} if state.services.llm_adapters else {}),
     )
+    encryption_key = state.settings.encryption_key.get_secret_value()
     tools = ToolRegistry(
         workspaces,
         ToolServices(
@@ -69,6 +75,22 @@ def assistant_service(request: Request) -> AssistantService:
                 clock=clock,
                 max_upload_bytes=state.settings.upload_max_bytes,
             ),
+            snapshots=SnapshotService(
+                engine,
+                workspaces=workspaces,
+                jobs=state.services.jobs,
+                encryption_key=encryption_key,
+                clock=clock,
+            ),
+            profiling=ProfilingService(
+                engine,
+                workspaces=workspaces,
+                jobs=state.services.jobs,
+                encryption_key=encryption_key,
+                clock=clock,
+            ),
+            pii=PiiService(engine, workspaces=workspaces, clock=clock),
+            documents=state.document_search,
         ),
     )
     return AssistantService(
