@@ -169,6 +169,9 @@ class Settings(DatabaseSettings):
     upload_max_mb: float = Field(default=25, gt=0)
     """Largest file an upload may carry, in megabytes (MiB)."""
     assistant_max_tool_calls: int = Field(default=25, ge=1)
+    score_debounce_seconds: float = Field(default=2.0, ge=0)
+    """How long after a design change the Data Warehouse score is recalculated, so a burst of
+    edits is scored once; 0 scores at once."""
     """Tool calls the assistant may make while answering one message (spec §6.16)."""
 
     @property

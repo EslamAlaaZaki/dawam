@@ -919,6 +919,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score
+         * @description The Data Warehouse score and grade (any member), a score per Layer ("not scored"
+         *     for a Layer with no tables) and per table, and the failed checks with severity, a link
+         *     to the object and a fix hint. It is recalculated after every design change. 404 before
+         *     the Data Warehouse is set up.
+         */
+        get: operations["getScore"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score History
+         * @description The score trend (any member): one summary per recalculation, oldest first, the
+         *     latest `limit` of them.
+         */
+        get: operations["getScoreHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -4472,6 +4516,51 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
+        /** FailedCheck */
+        FailedCheck: {
+            /** Check Code */
+            check_code: string;
+            /** Title */
+            title: string;
+            /** Category */
+            category: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "table" | "column";
+            /**
+             * Object Id
+             * Format: uuid
+             */
+            object_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Object Name */
+            object_name: string;
+            /** Message */
+            message: string;
+            /** Fix Hint */
+            fix_hint: string;
+            /**
+             * Link
+             * @description An app path to the object at fault.
+             */
+            link: string;
+        };
         /** FieldChange */
         FieldChange: {
             /** Field */
@@ -4843,6 +4932,25 @@ export interface components {
              * @default mart
              */
             mart: string;
+        };
+        /** LayerScore */
+        LayerScore: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /**
+             * Score
+             * @description 0-100; null: the Layer is not scored.
+             */
+            score: number | null;
+            /** Grade */
+            grade: ("A" | "B" | "C" | "D" | "F") | null;
+            /** Scored */
+            scored: boolean;
+            /** Table Count */
+            table_count: number;
         };
         /** LineageEdge */
         LineageEdge: {
@@ -6101,6 +6209,69 @@ export interface components {
              */
             version: number;
         };
+        /** Score */
+        Score: {
+            /**
+             * Score
+             * @description The Data Warehouse score (Core and Mart), 0-100; null: nothing to score.
+             */
+            score: number | null;
+            /** Grade */
+            grade: ("A" | "B" | "C" | "D" | "F") | null;
+            /**
+             * Capped
+             * @description An unresolved error holds the grade at C.
+             */
+            capped: boolean;
+            /**
+             * Calculated At
+             * Format: date-time
+             */
+            calculated_at: string;
+            /**
+             * Layers
+             * @description Staging is scored apart and is not part of the Data Warehouse score.
+             */
+            layers: components["schemas"]["LayerScore"][];
+            /** Tables */
+            tables: components["schemas"]["TableScore"][];
+            /**
+             * Failed Checks
+             * @description Errors first.
+             */
+            failed_checks: components["schemas"]["FailedCheck"][];
+            /** Checks Passed */
+            checks_passed: number;
+            /** Checks Failed */
+            checks_failed: number;
+        };
+        /** ScoreHistory */
+        ScoreHistory: {
+            /**
+             * Items
+             * @description Oldest first.
+             */
+            items: components["schemas"]["ScoreRun"][];
+        };
+        /** ScoreRun */
+        ScoreRun: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Score */
+            score: number | null;
+            /** Grade */
+            grade: ("A" | "B" | "C" | "D" | "F") | null;
+            /** Layers */
+            layers: components["schemas"]["LayerScore"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -7049,6 +7220,23 @@ export interface components {
             profiled_at: string | null;
             /** Columns */
             columns: components["schemas"]["ColumnProfileView"][];
+        };
+        /** TableScore */
+        TableScore: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /** Score */
+            score: number;
         };
         /** Target */
         Target: {
@@ -9800,6 +9988,88 @@ export interface operations {
                 };
                 content: {
                     "application/sql": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getScore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Score"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getScoreHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreHistory"];
                 };
             };
             /** @description Validation error */

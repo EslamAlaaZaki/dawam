@@ -465,7 +465,7 @@ def test_read_file_returns_the_document_text_at_the_documents_level(roles, model
 
 # -- every tool, every role, every level ---------------------------------------------------
 
-METADATA_TOOLS = {"search_catalog", "get_object", "get_snapshot_diff", "list_files"}
+METADATA_TOOLS = {"search_catalog", "get_object", "get_snapshot_diff", "list_files", "get_score"}
 LEVELS = [
     ("metadata", METADATA_TOOLS),
     ("profiles", METADATA_TOOLS | {"get_profile"}),

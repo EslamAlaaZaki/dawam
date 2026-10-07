@@ -23,6 +23,7 @@ from .mapping_api import lineage_router
 from .mapping_api import router as mapping_router
 from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
+from .score_api import router as score_router
 from .service import CaseStyle, DataWarehouseService, Weekday
 
 router = APIRouter(tags=["data-warehouse"])
@@ -30,6 +31,7 @@ router.include_router(model_router)
 router.include_router(mapping_router)
 router.include_router(lineage_router)
 router.include_router(ddl_router)
+router.include_router(score_router)
 
 
 def data_warehouse_service(request: Request) -> DataWarehouseService:

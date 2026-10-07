@@ -263,3 +263,43 @@ class LineageEdgeRecord(Base):
         sa.ForeignKey("mapping_branches.id", ondelete="CASCADE"), index=True
     )
     """Set on the ``uses`` edges of a branch's own joins, filters, GROUP BY and HAVING."""
+
+
+class ScoreRunRecord(Base):
+    """One summary row per scoring run, for the trend (spec §6.11 ``ScoreRun``)."""
+
+    __tablename__ = "score_runs"
+    __table_args__ = (sa.Index("ix_score_runs_dw_created_at", "data_warehouse_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE")
+    )
+    score: Mapped[float | None] = mapped_column(sa.Float)
+    """``None``: nothing in Core or Mart to score."""
+    grade: Mapped[str | None] = mapped_column(sa.String(1))
+    per_layer: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    """Layer -> ``{"score": float | None, "grade": str | None, "tables": int}``."""
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class ScoreCheckResultRecord(Base):
+    """The latest run's result of one check on one object; replaced on every run."""
+
+    __tablename__ = "score_check_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE"), index=True
+    )
+    check_code: Mapped[str] = mapped_column(sa.String(64))
+    severity: Mapped[str] = mapped_column(sa.String(8))
+    layer: Mapped[str] = mapped_column(sa.String(16))
+    object_type: Mapped[str] = mapped_column(sa.String(16))
+    """``table`` or ``column``."""
+    object_id: Mapped[uuid.UUID] = mapped_column()
+    table_id: Mapped[uuid.UUID] = mapped_column()
+    """The table the object is, or belongs to."""
+    object_name: Mapped[str] = mapped_column(sa.String(300))
+    passed: Mapped[bool] = mapped_column()
+    message: Mapped[str] = mapped_column(sa.String(1000), default="")

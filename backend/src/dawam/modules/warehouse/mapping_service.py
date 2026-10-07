@@ -44,6 +44,7 @@ from .lineage_sql import (
     parse_branch,
     parse_expression,
 )
+from .score_trigger import touch
 from .tables import (
     BRANCH_NAME_MAX_LENGTH,
     MAPPING_TEXT_MAX_LENGTH,
@@ -530,6 +531,7 @@ class MappingService:
             branch = self._branch(db, mapping, branch_id)
             old = {f: getattr(branch, f) for f in BRANCH_FIELDS}
             db.execute(sa.delete(MappingBranchRecord).where(MappingBranchRecord.id == branch.id))
+            touch(db, "table", table.id)  # a bulk delete is not seen as a flush
             db.execute(
                 sa.update(MappingBranchRecord)
                 .where(
