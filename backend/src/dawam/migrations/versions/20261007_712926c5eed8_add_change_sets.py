@@ -1,7 +1,7 @@
 """add change sets and their items.
 
 Revision ID: 712926c5eed8
-Revises: 3c8e5f1a7d92
+Revises: 5d2a8f1c7e36
 Create Date: 2026-10-07 18:00:00.000000
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "712926c5eed8"
-down_revision: str | Sequence[str] | None = "3c8e5f1a7d92"
+down_revision: str | Sequence[str] | None = "5d2a8f1c7e36"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
