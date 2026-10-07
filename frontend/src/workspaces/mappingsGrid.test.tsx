@@ -48,6 +48,7 @@ const MART: DwTable = {
   unknown_member: null,
   description: "",
   columns: [],
+  naming_violations: [],
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
   version: 1,
