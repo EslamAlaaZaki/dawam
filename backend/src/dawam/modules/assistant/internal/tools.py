@@ -143,9 +143,18 @@ class _GenerateFile(BaseModel):
 
 
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
+    """An app link, relative to the Workspace page: the system's Source Schema folder with
+    the object named in the query (the app has no page of its own for an object yet)."""
+    folder = f"?folder=systems/{system_id}/source-schema"
     if kind == "column":
-        return f"/systems/{system_id}/tables/{table_id}/columns/{id}"
-    return f"/systems/{system_id}/{kind}s/{id}"
+        return f"{folder}&table={table_id}&column={id}"
+    return f"{folder}&{kind}={id}"
+
+
+WITHHELD = (
+    "Withheld: view and routine definitions can embed literal values, so they are sent only "
+    "when the Workspace shares samples."
+)
 
 
 def _without_none(values: dict[str, Any]) -> dict[str, Any]:
@@ -185,7 +194,7 @@ def _column_view(system_id: uuid.UUID, table_id: uuid.UUID, column: Any) -> dict
     )
 
 
-def _table_view(system_id: uuid.UUID, table: Any) -> dict[str, Any]:
+def _table_view(system_id: uuid.UUID, table: Any, definitions: bool) -> dict[str, Any]:
     return _without_none(
         {
             "id": table.id,
@@ -199,7 +208,8 @@ def _table_view(system_id: uuid.UUID, table: Any) -> dict[str, Any]:
             "classification": table.classification,
             "scd_hint": table.scd_hint,
             "row_estimate": table.row_estimate,
-            "view_definition": table.view_definition,
+            "view_definition": table.view_definition if definitions else None,
+            "definition_note": WITHHELD if table.view_definition and not definitions else None,
             "link": _link(system_id, "table", table.id),
             "columns": [_column_view(system_id, table.id, c) for c in table.columns],
             "constraints": [dataclasses.asdict(c) for c in table.constraints],
@@ -225,9 +235,10 @@ def _get_object(ctx: ToolContext, args: _GetObject) -> Any:
     if args.kind == "table":
         for table in content.tables:
             if table.id == args.id:
-                return _table_view(system_id, table)
+                return _table_view(system_id, table, ctx.policy.allows(DataSharingLevel.SAMPLES))
         raise _not_found("Table")
     if args.kind == "routine":
+        definitions = ctx.policy.allows(DataSharingLevel.SAMPLES)
         for routine in content.routines:
             if routine.id == args.id:
                 return _without_none(
@@ -238,7 +249,10 @@ def _get_object(ctx: ToolContext, args: _GetObject) -> Any:
                         "kind": routine.kind,
                         "status": routine.status,
                         "signature": routine.signature,
-                        "definition": routine.definition,
+                        "definition": routine.definition if definitions else None,
+                        "definition_note": WITHHELD
+                        if routine.definition and not definitions
+                        else None,
                         "link": _link(system_id, "routine", routine.id),
                     }
                 )
@@ -365,11 +379,41 @@ def _get_snapshot_diff(ctx: ToolContext, args: _GetSnapshotDiff) -> Any:
     result = dataclasses.asdict(
         snapshots.diff(ctx.user, ctx.workspace_id, args.system_id, newer, older)
     )
+    # A column the newer Snapshot dropped is still protected: look in both Snapshots.
+    protected = snapshots.protected_columns(
+        ctx.user, ctx.workspace_id, args.system_id, [newer, older]
+    )
+    definitions = ctx.policy.allows(DataSharingLevel.SAMPLES)
     for table in result["tables"]:
         table["link"] = _link(args.system_id, "table", table["id"])
-        for column in table["columns"]:
-            column["link"] = _link(args.system_id, "column", column["id"], table["id"])
+        _withhold_definitions(table["fields"], definitions)
+        table["columns"] = [
+            _diff_column(args.system_id, table["id"], column, protected)
+            for column in table["columns"]
+        ]
+    for routine in result["routines"]:
+        _withhold_definitions(routine["fields"], definitions)
     return result
+
+
+def _diff_column(
+    system_id: uuid.UUID, table_id: uuid.UUID, column: dict[str, Any], protected: set[uuid.UUID]
+) -> dict[str, Any]:
+    """A changed column; a Protected Column only by name and kind of change (its comment and
+    default, before and after, can hold example values)."""
+    link = _link(system_id, "column", column["id"], table_id)
+    if column["id"] in protected:
+        return {key: column[key] for key in ("id", "name", "change")} | {"link": link}
+    return column | {"link": link}
+
+
+def _withhold_definitions(fields: list[dict[str, Any]], shown: bool) -> None:
+    if shown:
+        return
+    for change in fields:
+        if change["field"] in ("view_definition", "definition"):
+            change["before"] = change["after"] = None
+            change["note"] = WITHHELD
 
 
 def _get_pii_findings(ctx: ToolContext, args: _GetPiiFindings) -> Any:
@@ -405,7 +449,7 @@ def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
             "section": p.section,
             "text": p.text,
             "source_system_id": p.source_system_id,
-            "link": f"/files/{p.file_id}",
+            "link": f"?folder=systems/{p.source_system_id}/documents&file={p.file_id}",
         }
         for p in passages
     ]
@@ -517,13 +561,56 @@ TOOLS: tuple[Tool, ...] = (
 
 
 def _json(value: Any) -> str:
+    """The result as JSON of at most ``MAX_RESULT_CHARS``: too long, the longest lists lose
+    their tail (the list's owner says ``truncated: true``), so it is always valid JSON."""
+
     def plain(item: Any) -> Any:
         if dataclasses.is_dataclass(item) and not isinstance(item, type):
             return dataclasses.asdict(item)
         return str(item)
 
-    text = json.dumps(value, default=plain, ensure_ascii=False)
-    return text if len(text) <= MAX_RESULT_CHARS else text[:MAX_RESULT_CHARS] + " [truncated]"
+    def dump(data: Any) -> str:
+        return json.dumps(data, default=plain, ensure_ascii=False)
+
+    text = dump(value)
+    if len(text) <= MAX_RESULT_CHARS:
+        return text
+    data = json.loads(text)
+    if isinstance(data, list):
+        data = {"items": data}
+    while len(text) > MAX_RESULT_CHARS:
+        if not _shrink(data):
+            return dump({"truncated": True, "note": "The result is too large to show."})
+        text = dump(data)
+    return text
+
+
+def _shrink(data: Any) -> bool:
+    """Halve the biggest list, or cut the longest string; ``False`` if nothing can shrink."""
+    lists: list[tuple[Any, Any]] = []  # (holder, key) of every list with more than one item
+    strings: list[tuple[Any, Any]] = []
+    stack: list[Any] = [data]
+    while stack:
+        node = stack.pop()
+        pairs = node.items() if isinstance(node, dict) else enumerate(node)
+        for key, child in list(pairs):
+            if isinstance(child, list | dict):
+                stack.append(child)
+                if isinstance(child, list) and len(child) > 1:
+                    lists.append((node, key))
+            elif isinstance(child, str) and len(child) > 1_000:
+                strings.append((node, key))
+    if lists:
+        holder, key = max(lists, key=lambda p: len(json.dumps(p[0][p[1]], default=str)))
+        holder[key] = holder[key][: len(holder[key]) // 2]
+        if isinstance(holder, dict):
+            holder["truncated"] = True
+        return True
+    if strings:
+        holder, key = max(strings, key=lambda p: len(p[0][p[1]]))
+        holder[key] = holder[key][: len(holder[key]) // 2] + " [truncated]"
+        return True
+    return False
 
 
 class ToolRegistry:

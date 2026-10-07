@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -337,6 +337,28 @@ class SnapshotService:
             old, new = (self._content(db, record) for record in records)
             diff = diff_snapshots(old, new)
             return dataclasses.replace(diff, suspected_pii=self._new_pii(db, old, new))
+
+    def protected_columns(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        system_id: uuid.UUID,
+        snapshot_ids: Sequence[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        """The Protected Columns (by the one policy) among the columns of these Snapshots,
+        including columns a later Snapshot no longer has (any member)."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            self._load_system(db, workspace_id, system_id)
+            ids = db.scalars(
+                sa.select(SnapshotColumnRecord.src_column_id)
+                .join(SnapshotRecord, SnapshotRecord.id == SnapshotColumnRecord.snapshot_id)
+                .where(
+                    SnapshotColumnRecord.snapshot_id.in_(list(snapshot_ids)),
+                    SnapshotRecord.source_system_id == system_id,
+                )
+            )
+            return protected_column_ids(db, set(ids))
 
     def source_schema(
         self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID

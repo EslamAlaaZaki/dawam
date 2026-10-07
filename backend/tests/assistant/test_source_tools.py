@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from dawam.modules.assistant.internal.tools import MAX_RESULT_CHARS, _json
 from dawam.modules.llm import FakeAdapter, Reply
 from tests.assistant import test_chat
 from tests.assistant.test_chat import ask, conversation, tool, tool_names
@@ -299,6 +300,88 @@ def test_get_snapshot_diff_defaults_to_the_last_two_snapshots(
     tables = {t["name"]: t for t in payload(seen_diff)["tables"]}
     assert tables["fresh"]["change"] == "added" and tables["fresh"]["id"] in tables["fresh"]["link"]
     assert [c["name"] for c in tables["orders"]["columns"]] == ["placed_on"]
+
+
+def test_get_snapshot_diff_sends_a_protected_column_by_name_and_change_only(
+    roles, model, fake_llm, scratch_source
+):
+    scratch_source["run"](
+        "CREATE TABLE people (id integer PRIMARY KEY, email text DEFAULT 'old@secret.example',"
+        " phone text DEFAULT '+20 100 secret', city text DEFAULT 'Cairo');"
+        "COMMENT ON COLUMN people.email IS 'e.g. old@secret.example';"
+    )
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
+    extract(roles, system)
+    scratch_source["run"](
+        "ALTER TABLE people ALTER COLUMN email SET DEFAULT 'new@secret.example';"
+        "COMMENT ON COLUMN people.email IS 'e.g. new@secret.example';"
+        "ALTER TABLE people ALTER COLUMN city SET DEFAULT 'Giza';"
+        "ALTER TABLE people DROP COLUMN phone;"
+    )
+    extract(roles, system)
+
+    status, seen = use(roles, fake_llm, "get_snapshot_diff", system_id=system_id(system))
+
+    assert status == "ok"
+    assert "secret" not in everything_the_model_saw(fake_llm)
+    [people] = payload(seen)["tables"]
+    columns = {c["name"]: c for c in people["columns"]}
+    assert set(columns["email"]) == {"id", "name", "change", "link"}  # changed
+    assert set(columns["phone"]) == {"id", "name", "change", "link"}  # removed by the newer one
+    assert columns["phone"]["change"] == "removed"
+    assert columns["city"]["fields"] == [
+        {"field": "default", "before": "'Cairo'::text", "after": "'Giza'::text"}
+    ]
+
+
+def test_a_view_definition_is_withheld_below_the_samples_level(
+    roles, model, fake_llm, scratch_source
+):
+    scratch_source["run"](
+        "CREATE TABLE people (id integer PRIMARY KEY, email text);"
+        "CREATE VIEW leaky AS SELECT id FROM people WHERE email = 'x@secret.example';"
+    )
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
+    extract(roles, system)
+    [view] = [t for t in schema(roles, system)["tables"] if t["name"] == "leaky"]
+    ask_for = {"system_id": system_id(system), "id": view["id"], "kind": "table"}
+    level(roles, "documents")
+
+    _, withheld = use(roles, fake_llm, "get_object", **ask_for)
+    level(roles, "samples")
+    _, shown = use(roles, fake_llm, "get_object", **ask_for)
+
+    assert "secret.example" not in withheld and "Withheld" in payload(withheld)["definition_note"]
+    assert "view_definition" not in payload(withheld)
+    assert "secret.example" in payload(shown)["view_definition"]
+
+
+def test_a_routine_definition_is_withheld_below_the_samples_level(roles, model, fake_llm, source):
+    [routine] = [r for r in schema(roles, source)["routines"] if r["name"] == "account_turnover"]
+    ask_for = {"system_id": system_id(source), "id": routine["id"], "kind": "routine"}
+
+    _, withheld = use(roles, fake_llm, "get_object", **ask_for)
+    level(roles, "samples")
+    _, shown = use(roles, fake_llm, "get_object", **ask_for)
+
+    assert (
+        "definition" not in payload(withheld) and "Withheld" in payload(withheld)["definition_note"]
+    )
+    assert "transactions" in payload(shown)["definition"]
+
+
+def test_a_long_result_is_cut_by_whole_items_and_stays_valid_json():
+    rows = [{"name": f"column_{i}", "note": "x" * 200} for i in range(500)]
+
+    text = _json({"columns": rows, "name": "big"})
+
+    assert len(text) <= MAX_RESULT_CHARS
+    cut = json.loads(text)
+    assert cut["truncated"] is True and 0 < len(cut["columns"]) < 500
+    assert all(set(r) == {"name", "note"} for r in cut["columns"])
+    assert json.loads(_json(rows))["items"][0]["name"] == "column_0"
 
 
 # -- get_pii_findings ----------------------------------------------------------------------
