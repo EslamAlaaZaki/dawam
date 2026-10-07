@@ -32,6 +32,7 @@ from tests.authz.matrix import (
     snapshot_id,
     source_table_id,
     system_id,
+    table_id,
     use_fake_llm,
     workspace,
 )
@@ -923,6 +924,13 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss",
         "Review PII findings (dismiss)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-scans",
+        "Review PII findings (start a value-based scan)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"table_ids": [table_id(roles)]},
     ),
 ]
 
