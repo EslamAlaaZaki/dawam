@@ -42,6 +42,11 @@ Public interface. Other modules import only what is re-exported here:
   keywords and/or a regex, a category and a confidence) and switch built-in rules off or on;
   built-in rules are never edited. ``internal.pii.load_rule_set`` feeds them to the name scan
   of every new Snapshot and to value scans; changes are audited (``pii_rule`` entity).
+- ``check_query``: the AI source query guard (ADR 0002). Given SQL, the engine and a
+  ``GuardCatalog`` of the latest Snapshot (``load_guard_catalog`` builds one), it returns
+  ``Rejected(reason)`` or a ``SafeQuery``: fully qualified SQL regenerated from the verified
+  parse tree, plus which output columns to mask. Run ``SafeQuery.sql``, never the input.
+  ``untraceable_views`` lists the views the guard cannot trace (not queryable).
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -80,6 +85,18 @@ from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
+from .internal.query_guard import (
+    GuardCatalog,
+    GuardColumn,
+    GuardTable,
+    OutputColumn,
+    Rejected,
+    SafeQuery,
+    UntraceableView,
+    check_query,
+    untraceable_views,
+)
+from .internal.query_guard_catalog import load_guard_catalog
 from .pii_rule_api import router as _pii_rules_router
 from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
@@ -112,18 +129,24 @@ __all__ = [
     "DataDictionaryService",
     "DataDictionaryServiceDep",
     "EnhancementService",
+    "GuardCatalog",
+    "GuardColumn",
+    "GuardTable",
     "ImportResult",
     "ImportStatus",
+    "OutputColumn",
     "PiiFinding",
     "PiiRuleService",
     "PiiScanService",
     "PiiService",
     "ProfilingService",
+    "Rejected",
     "Relationship",
     "RelationshipService",
     "RenameCandidate",
     "RenameService",
     "RenamedObject",
+    "SafeQuery",
     "SchemaImportService",
     "SearchHit",
     "SnapshotContent",
@@ -134,6 +157,10 @@ __all__ = [
     "SourceSystemPage",
     "SourceSystemService",
     "TableProfile",
+    "UntraceableView",
+    "check_query",
     "is_protected",
+    "load_guard_catalog",
     "router",
+    "untraceable_views",
 ]
