@@ -387,3 +387,12 @@ def _staging_table(engine: sa.Engine, warehouse_id: uuid.UUID, name: str, column
                 {"id": uuid.uuid4(), "t": table_id, "name": column_name, "o": ordinal, "now": now},
             )
     return table_id
+
+
+def test_saving_the_same_mapping_again_changes_nothing(warehouse, model):
+    body = {"mapping_type": "direct", "sql_expression": "dim_customer.first_name"}
+    put(warehouse, model, "full", **body)
+
+    again = put(warehouse, model, "full", version=1, **body)
+
+    assert again.status_code == 200 and again.json()["version"] == 1
