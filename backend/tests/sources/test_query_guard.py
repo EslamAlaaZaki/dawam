@@ -75,6 +75,13 @@ SPEC = [
         "view",
         "SELECT c.cust_no, a.acct_no FROM (core.customers c JOIN core.accounts a ON ((a.cust_no = c.cust_no)))",
     ),
+    table(
+        "core",
+        "v_filtered",
+        ["v"],
+        "view",
+        "select branch_code as v from core.branches where branch_code = 'abc'",
+    ),
     table("core", "v_bad", ["x"], "view", "select from where"),
     table("core", "v_empty", ["x"], "view", None),
     table("core", "v_multi", ["x"], "view", "select 1 as x; select 2 as x"),
@@ -84,7 +91,7 @@ SPEC = [
     table("core", "v_cycle_b", ["x"], "view", "select * from core.v_cycle_a"),
     table("core", "v_fn", ["g"], "view", "select g from generate_series(1, 3) as g"),
 ]
-TRACEABLE = {"v_balances", "v_pii", "v_ids", "v_star", "v_chain", "v_paren"}
+TRACEABLE = {"v_filtered", "v_balances", "v_pii", "v_ids", "v_star", "v_chain", "v_paren"}
 UNTRACEABLE = {
     "v_bad",
     "v_empty",
@@ -230,10 +237,7 @@ ACCEPTED = [
     ("select cast(national_id as varchar(20)) as c from core.customers", ("c",)),
     ("select sum(salary) as s from core.customers", ("s",)),
     ("select avg(salary), count(*) from core.customers", ("col1",)),
-    ("select case when cust_no > 1 then salary else 0 end as s from core.customers", ("s",)),
-    ("select coalesce(email, 'none') as e from core.customers", ("e",)),
     ("select lower(email) as e, branch_code from core.customers", ("e",)),
-    ("select salary * 12 as yearly from core.customers", ("yearly",)),
     ("select upper(email) from core.customers", ("col1",)),
     ("select p from (select substring(national_id, 1, 3) as p from core.customers) t", ("p",)),
     ("with t as (select upper(email) as e from core.customers) select e from t", ("e",)),
@@ -257,6 +261,15 @@ ACCEPTED = [
     ),
     ("select prefix from core.v_chain", ("prefix",)),
     ("select * from core.v_ids", ("nid",)),
+    # a column joined to a protected one holds its values: returned masked, never compared
+    (
+        "select b.branch_code from core.customers a join core.branches b on a.national_id = b.branch_code",
+        ("branch_code",),
+    ),
+    (
+        "select b.branch_name, count(*) from core.customers a join core.branches b on a.national_id = b.branch_code group by b.branch_name",
+        (),
+    ),
     ("select * from (select * from core.customers) t", ("national_id", "email", "salary")),
 ]
 
@@ -522,7 +535,70 @@ PROTECTED_REJECTED = [
     "select substring(national_id, 1, 1) from core.customers except select '1'",
     "select count(prefix) from core.v_pii",
     "select count(*) from core.v_pii p join core.branches b on b.branch_code = p.prefix",
-    "select count(*) from core.customers where (select sum(case national_id when '1' then 1 end) from core.customers) > 0",  # ORDER BY, windows, DISTINCT-style leaks
+    "select count(*) from core.customers where (select sum(case national_id when '1' then 1 end) from core.customers) > 0",
+    # boolean oracle: a bare expression on a protected value as a condition, or inside CASE
+    "select count(*) from core.customers where ascii(substring(national_id, 1, 1)) - 65",
+    "select count(*) from core.customers where cast(ascii(substring(national_id, 1, 1)) - 65 as boolean)",
+    "select count(*) from core.customers where upper(national_id)",
+    "select count(*) from core.customers where national_id",
+    "select count(*) from core.customers where cust_no = 1 and substring(national_id, 1, 1)",
+    "select count(*) from core.customers where cust_no = 1 or national_id is null",
+    "select count(*) from core.customers where not (cust_no = 1 or national_id is null)",
+    "select case when ascii(substring(national_id, 1, 1)) > 65 then 1 end from core.customers",
+    "select case when cust_no > 1 then salary else 0 end as s from core.customers",
+    "select case when upper(national_id) is null then 1 end from core.customers",
+    "select coalesce(email, 'none') as e from core.customers",
+    # error oracle: arithmetic, casts to non-text types, any other function on a protected value
+    "select 1 / (ascii(substring(national_id, 1, 1)) - 65) from core.customers where cust_no = 5",
+    "select cast(national_id as int) from core.customers",
+    "select cast(national_id as bigint) from core.customers where cust_no = 5",
+    "select try_cast(national_id as int) from core.customers",
+    "select salary * 12 as yearly from core.customers",
+    "select -salary from core.customers",
+    "select salary + 1 from core.customers",
+    "select abs(salary) from core.customers",
+    "select sqrt(salary) from core.customers",
+    "select power(salary, 2) from core.customers",
+    "select round(salary) from core.customers",
+    "select length(email) from core.customers",
+    "select ascii(national_id) from core.customers",
+    "select replace(email, 'a', 'b') from core.customers",
+    "select sum(salary * 2) from core.customers",
+    "select sum(distinct salary) from core.customers",
+    "select avg(abs(salary)) from core.customers",
+    "select substring('abcdef', cast(national_id as varchar(5))) from core.customers",
+    "select substring(email, length(email) - 1) from core.customers",
+    "select concat(upper(national_id), ascii(email)) from core.customers",
+    # constants laundered through aggregates and window functions can pin a protected column
+    "select count(*) from core.customers a join (select count(1) + count(1) as x from core.accounts) b on a.national_id = b.x",
+    "select count(*) from core.customers a join (select count(*) as x from core.accounts) b on a.national_id = b.x",
+    "select count(*) from core.customers a join (select row_number() over (order by acct_no) as x from core.accounts) b on a.national_id = b.x",
+    "select count(*) from core.customers a join (select rank() over (order by acct_no) as x from core.accounts) b on a.salary = b.x",
+    "select count(*) from core.customers where national_id in (select count(*) from core.accounts)",
+    "select count(*) from core.customers where national_id = (select count(*) from core.accounts)",
+    # a literal filter inside a subquery, derived table, CTE or view pins the joined column
+    "select count(*) from core.customers where national_id in (select branch_code from core.branches where branch_code = 'abc')",
+    "select count(*) from core.customers a join (select branch_code as v from core.branches where branch_code = 'abc') d on a.national_id = d.v",
+    "select count(*) from core.customers a join (select branch_code as v from core.branches where branch_code like 'a%') d on a.national_id = d.v",
+    "select count(*) from core.customers a join (select branch_code as v from core.branches where branch_code in ('abc')) d on a.national_id = d.v",
+    "with d as (select branch_code as v from core.branches where branch_code = 'abc') select count(*) from core.customers a join d on a.national_id = d.v",
+    "select count(*) from core.customers a join core.v_filtered d on a.national_id = d.v",
+    "select count(*) from core.customers a join core.v_filtered d on a.email = d.v",
+    "select count(*) from core.customers where national_id in (select v from core.v_filtered)",
+    # transitivity: whatever is equated with a protected column is protected too
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code where b.branch_code = 'x'",
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code where b.branch_code in ('x', 'y')",
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code where b.branch_code like '1%'",
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code group by b.branch_code",
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code order by b.branch_code",
+    "select max(b.branch_code) from core.customers a join core.branches b on a.national_id = b.branch_code",
+    "select 1 / (ascii(b.branch_code) - 65) from core.customers a join core.branches b on a.national_id = b.branch_code",
+    "select upper(b.branch_code) from core.customers a join core.branches b on a.national_id = b.branch_code",
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code join core.notes n on n.body = b.branch_code where n.body = 'x'",
+    "select count(*) from core.customers a join core.branches b on a.national_id = b.branch_code where b.branch_code = a.branch_code and a.branch_code = 'x'",
+    "select count(*) from core.customers a, core.branches b where a.email = b.branch_name and b.branch_name = 'x'",
+    "select count(*) from core.customers a join (select branch_code as v from core.branches) d on a.national_id = d.v where d.v = 'x'",
+    "select count(*) from core.customers a join (select branch_code as v from core.branches) d on a.national_id = d.v where length(d.v) > 3",
     "select cust_no from core.customers order by national_id",
     "select cust_no from core.customers order by email desc limit 1",
     "select cust_no from core.customers order by salary",
@@ -696,6 +772,26 @@ def test_engine_specific_syntax_that_is_accepted(engine, sql, masked):
 @pytest.mark.parametrize(
     ("engine", "sql"),
     [
+        # protected-column oracles named in the security review
+        (
+            "mysql",
+            "select count(*) from core.customers where ascii(substring(national_id, 1, 1)) - 65",
+        ),
+        (
+            "mysql",
+            "select count(*) from core.customers where 1 / (ascii(substring(national_id, 1, 1)) - 65)",
+        ),
+        ("sqlserver", "select count(*) from core.customers where convert(int, national_id) = 1"),
+        ("sqlserver", "select convert(int, national_id) from core.customers"),
+        ("sqlserver", "select count(*) from core.customers where len(national_id) + 1"),
+        ("oracle", "select count(*) from core.customers where to_number(national_id) > 1"),
+        ("oracle", "select count(*) from core.customers where decode(national_id, '1', 1, 0) = 1"),
+        ("oracle", "select count(*) from core.customers where nvl2(national_id, 1, 0) = 1"),
+        ("mysql", "select count(*) from core.customers where ifnull(national_id, 'x') = 'x'"),
+        (
+            "postgresql",
+            "select count(*) from core.customers where cast(ascii(substring(national_id, 1, 1)) - 65 as boolean)",
+        ),
         # postgresql
         ("postgresql", "select pg_sleep(10)"),
         ("postgresql", "select pg_terminate_backend(123)"),
@@ -959,3 +1055,13 @@ def test_non_string_input_is_rejected(bad):
     assert isinstance(
         check_query(bad, engine="postgresql", catalog=catalog("postgresql")), Rejected
     )  # type: ignore[arg-type]
+
+
+def test_the_output_is_analysed_again_and_must_match():
+    # every accepted query's SQL passes the whole analysis a second time, unchanged
+    for engine in ENGINES:
+        for sql, _ in ACCEPTED:
+            if "*" in sql.replace("count(*)", ""):
+                continue
+            first = accepted(sql, engine)
+            assert accepted(first.sql, engine).sql == first.sql

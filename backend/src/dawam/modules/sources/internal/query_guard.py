@@ -22,7 +22,18 @@ The guard fails closed. It is a whitelist over the sqlglot tree, not a blacklist
   An output derived from a protected column any other way (``SUBSTR``, ``CONCAT``, ``CAST``,
   ``SUM``, a view column, ``SELECT *``) is returned as masked.
 
+A protected value may appear only in: ``COUNT(col)``, ``COUNT(DISTINCT col)``, ``col IS [NOT] NULL``
+and ``col = other_col`` / ``col IN (SELECT other_col ...)`` as top-level ``AND`` conjuncts, and, in
+the select list, inside UPPER, LOWER, TRIM, SUBSTR, CONCAT, ``||``, CAST to text, SUM and AVG.
+Arithmetic, CASE, other functions and boolean contexts are rejected (they would be an error or
+boolean oracle). A column equated with a protected one holds its values, so it is tainted for the
+whole query, views and derived tables included: returned masked, never compared to a value. The
+regenerated SQL is analysed a second time and must come out identical.
+
 Any unexpected error is a rejection too.
+
+The source database's error text can echo values (a failed CAST, say). The caller must scrub it
+before anything reaches the model; that is the query executor's job, not the guard's.
 """
 
 from __future__ import annotations
@@ -98,6 +109,23 @@ _FORBIDDEN = _classes(
     "Into Lock Command Insert Update Delete Merge Create Drop Alter Set Hint Pragma Parameter "
     "SessionParameter Placeholder"
 )
+_MASKING_ARGS = {
+    "substring": ("this",),
+    "trim": ("this",),
+    "upper": ("this",),
+    "lower": ("this",),
+    "concat": ("this", "expressions"),
+    "concatws": ("this", "expressions"),
+    "sum": ("this",),
+    "avg": ("this",),
+    "cast": ("this",),
+    "trycast": ("this",),
+}
+_TEXT_TYPES = {
+    getattr(exp.DType, n)
+    for n in _words("CHAR VARCHAR NCHAR NVARCHAR TEXT NAME BPCHAR")
+    if hasattr(exp.DType, n)
+}
 _BAD_TYPES = {exp.DType.USERDEFINED, exp.DType.UNKNOWN}
 _SAFE_VAR = re.compile(r"^[A-Za-z_]{1,32}$")
 
@@ -224,6 +252,8 @@ class _Col:
     literal: bool = False
     """The expression contains a literal, so it can smuggle a constant into a comparison."""
     from_star: bool = False
+    src: frozenset[str] = frozenset()
+    """Every base column (``schema.table.column``) the value derives from."""
 
 
 @dataclass(frozen=True)
@@ -233,15 +263,30 @@ class _Info:
     literal: bool = False
     name: str | None = None
     """Set for a bare column reference: the resolved column's name."""
+    src: frozenset[str] = frozenset()
 
 
 def _merge(infos: Iterable[_Info]) -> _Info:
     prot: frozenset[str] = frozenset()
+    src: frozenset[str] = frozenset()
     literal = False
     for i in infos:
         prot |= i.prot
+        src |= i.src
         literal = literal or i.literal
-    return _Info(prot=prot, literal=literal)
+    return _Info(prot=prot, literal=literal, src=src)
+
+
+def _derive(infos: Iterable[_Info]) -> _Info:
+    """The merged lineage of a computed value; with no column behind it, it is a constant."""
+    m = _merge(infos)
+    return replace(m, literal=m.literal or not m.src)
+
+
+def _const(info: _Info) -> bool:
+    """Not derived from a base-table column (a literal, a count, a row number): it can pin a
+    protected column to a value when equated with it."""
+    return info.literal or not info.src
 
 
 @dataclass
@@ -284,6 +329,10 @@ class _Analysis:
         self.pool = tuple(t for t in catalog.tables if self.name_in(t.schema, self.allowed))
         self.typed_functions = _TYPED_FUNCTIONS[engine]
         self.anonymous_functions = _ANONYMOUS_FUNCTIONS[engine]
+        self.prot_keys = frozenset(
+            f"{t.schema}.{t.name}.{c.name}" for t in self.pool for c in t.columns if c.protected
+        )
+        self.view_state: dict[tuple[str, str], tuple[frozenset[str], list[frozenset[str]]]] = {}
         self._views: dict[tuple[str, str], list[_Col] | _Reject] = {}
         self._tracing: list[tuple[str, str]] = []
 
@@ -362,8 +411,9 @@ class _Analysis:
     @staticmethod
     def base_col(table: GuardTable, c: GuardColumn) -> _Col:
         if c.protected:
-            return _Col(c.name, frozenset({f"{table.schema}.{table.name}.{c.name}"}), identity=True)
-        return _Col(c.name)
+            key = f"{table.schema}.{table.name}.{c.name}"
+            return _Col(c.name, frozenset({key}), identity=True, src=frozenset({key}))
+        return _Col(c.name, src=frozenset({f"{table.schema}.{table.name}.{c.name}"}))
 
     def trace_view(self, table: GuardTable) -> list[_Col]:
         key = (table.schema, table.name)
@@ -415,21 +465,31 @@ class _Analysis:
             tree = tree.args.get("expression")
         if tree is None:
             raise _Reject("its definition is not a query")
-        cols = _Resolver(self, strict=False, default_schema=table.schema).query(tree, None)
+        resolver = _Resolver(self, strict=False, default_schema=table.schema)
+        cols = resolver.query(tree, None)
         if len(cols) != len(table.columns):
             raise _Reject("its columns do not match its definition")
+        self.view_state[(table.schema, table.name)] = (frozenset(resolver.reveal), resolver.edges)
         out = []
         for traced, declared in zip(cols, table.columns, strict=True):
-            prot, identity = traced.prot, traced.identity
+            prot, identity, src = traced.prot, traced.identity, traced.src
             if declared.protected:
-                prot = prot | {f"{table.schema}.{table.name}.{declared.name}"}
-                identity = True
-            out.append(_Col(declared.name, prot, identity, traced.literal))
+                own = f"{table.schema}.{table.name}.{declared.name}"
+                prot, identity, src = prot | {own}, True, src | {own}
+            out.append(_Col(declared.name, prot, identity, traced.literal, src=src))
         return out
 
     # the query -------------------------------------------------------------------------------
 
     def check(self, sql: str) -> SafeQuery:
+        first = self._run(sql, verify=False)
+        # the SQL we hand out is analysed again, from scratch, and must match
+        second = self._run(first.sql, verify=True)
+        if second.sql != first.sql or second.columns != first.columns:
+            raise _Reject("The query could not be normalised safely.")
+        return first
+
+    def _run(self, sql: str, *, verify: bool) -> SafeQuery:
         if not isinstance(sql, str) or not sql.strip():
             raise _Reject("The query is empty.")
         if len(sql) > MAX_SQL_LENGTH:
@@ -448,15 +508,17 @@ class _Analysis:
         tree = statements[0]
         resolver = _Resolver(self, strict=True, default_schema=None)
         cols = resolver.query(tree, None)
+        tainted = resolver.finish()
         for c in cols:
-            if c.identity and not c.from_star:
+            if c.identity and not c.from_star and not verify:
                 raise _Reject(
                     f"The query returns the protected column {sorted(c.prot)[0]} as is. "
                     "Protected columns can be counted and joined on, not projected."
                 )
         out_sql = tree.sql(dialect=self.dialect, identify=True, comments=False)
         self._verify_output(out_sql, resolver)
-        return SafeQuery(out_sql, tuple(OutputColumn(c.name, bool(c.prot)) for c in cols))
+        masked = tuple(OutputColumn(c.name, bool(c.prot or c.src & tainted)) for c in cols)
+        return SafeQuery(out_sql, masked)
 
     def _verify_output(self, sql: str, resolver: _Resolver) -> None:
         """Re-parse what we are about to hand out and check it independently of the analysis."""
@@ -496,6 +558,10 @@ class _Resolver:
         self.ctes: list[dict[str, tuple[str, list[_Col]]]] = []
         self.cte_names: set[str] = set()
         self.tables_used: set[tuple[str, str]] = set()
+        self.reveal: set[str] = set()
+        """Base columns whose values a query condition, ordering, grouping or error could reveal."""
+        self.edges: list[frozenset[str]] = []
+        """Base columns equated with each other by a join, filter or IN."""
         self._n = 0
         self._budget = MAX_NODES
 
@@ -582,6 +648,7 @@ class _Resolver:
                     lc.identity or rc.identity,
                     lc.literal or rc.literal,
                     lc.from_star and rc.from_star,
+                    lc.src | rc.src,
                 )
                 for lc, rc in zip(left, right, strict=True)
             ]
@@ -613,16 +680,16 @@ class _Resolver:
             for j in joins:
                 on = j.args.get("on")
                 if on is not None:
-                    self.expr(on, scope, True)
+                    self.root(on, scope)
             cols = self.projections(node, scope)
             if distinct is not None:
                 self.rows_compared(cols, "SELECT DISTINCT")
             where = node.args.get("where")
             if where is not None:
-                self.expr(where.this, scope, True)
+                self.root(where.this, scope)
             having = node.args.get("having")
             if having is not None:
-                self.expr(having.this, scope, True)
+                self.root(having.this, scope)
             self.group(node, scope, cols)
             self.tail(node, scope, cols)
             return cols
@@ -667,7 +734,7 @@ class _Resolver:
                 for j in nested:
                     self.add_source(j.this, scope, outer)
                     if j.args.get("on") is not None:
-                        self.expr(j.args["on"], scope, True)
+                        self.root(j.args["on"], scope)
                 return
             self.table_source(node, scope)
         elif isinstance(node, exp.Subquery):
@@ -709,6 +776,10 @@ class _Resolver:
                 return
         table = self.a.resolve_table(name, db, catalog, self.default_schema)
         cols = self.a.table_columns(table)
+        if table.kind == "view":
+            revealed, edges = self.a.view_state[(table.schema, table.name)]
+            self.reveal |= revealed
+            self.edges.extend(edges)
         key = self.a.key(self.a.fold(alias.this) if alias is not None else table.name)
         self.tables_used.add((table.schema, table.name))
         node.set("this", self.ident(table.name))
@@ -774,7 +845,7 @@ class _Resolver:
             else:
                 name = f"col{len(cols) + 1}"
                 new.append(exp.Alias(this=p, alias=self.ident(name)))
-            cols.append(_Col(name, info.prot, info.identity, info.literal))
+            cols.append(_Col(name, info.prot, info.identity, info.literal, src=info.src))
         if not cols:
             raise _Reject("The query selects no columns.")
         node.set("expressions", new)
@@ -805,11 +876,12 @@ class _Resolver:
         self, e: exp.Expression, scope: _Scope, cols: list[_Col], kind: str, *, alias_first: bool
     ) -> None:
         prot: frozenset[str] = frozenset()
+        src: frozenset[str] = frozenset()
         if _is_int(e):
             idx = int(e.name) - 1
             if not 0 <= idx < len(cols):
                 raise _Reject(f"{kind} position {e.name} is out of range.")
-            prot = cols[idx].prot
+            prot, src = cols[idx].prot, cols[idx].src
         else:
             done = False
             if (
@@ -822,22 +894,26 @@ class _Resolver:
                 if hits and alias_first:
                     if len(hits) > 1 and len({h.prot for h in hits}) > 1:
                         raise _Reject(f"{kind} name {e.name!r} is ambiguous.")
-                    prot = hits[0].prot
+                    prot, src = hits[0].prot, hits[0].src
                     # engines differ on whether an input column can win over the alias
                     with contextlib.suppress(_Reject):
-                        prot |= self.expr(e.copy(), scope, False).prot
+                        i = self.expr(e.copy(), scope, False)
+                        prot, src = prot | i.prot, src | i.src
                     e.set("this", self.ident(hits[0].name))
                     done = True
                 elif hits:
                     # GROUP BY prefers the input column in some engines and the alias in others
                     try:
-                        prot = self.expr(e, scope, False).prot
+                        i = self.expr(e, scope, False)
+                        prot, src = i.prot, i.src
                     except _Reject:
-                        prot = hits[0].prot
-                    prot |= hits[0].prot
+                        pass
+                    prot, src = prot | hits[0].prot, src | hits[0].src
                     done = True
             if not done:
-                prot = self.expr(e, scope, False).prot
+                i = self.expr(e, scope, False)
+                prot, src = i.prot, i.src
+        self.reveal |= src
         if prot and self.strict:
             raise _Reject(f"{kind} on the protected column {sorted(prot)[0]} is not allowed.")
 
@@ -868,16 +944,60 @@ class _Resolver:
     # expressions -----------------------------------------------------------------------------
 
     def children(self, node: exp.Expression, scope: _Scope) -> list[_Info]:
+        return [info for _, info in self.keyed_children(node, scope)]
+
+    def keyed_children(self, node: exp.Expression, scope: _Scope) -> list[tuple[str, _Info]]:
         out = []
-        for v in node.args.values():
+        for key, v in node.args.items():
             for item in v if isinstance(v, list) else [v]:
                 if isinstance(item, exp.Expression):
-                    out.append(self.expr(item, scope, False))
+                    out.append((key, self.expr(item, scope, False)))
         return out
 
+    def root(self, node: exp.Expression, scope: _Scope) -> None:
+        """A WHERE, HAVING or ON condition: the forms that may touch a protected column return
+        no lineage, so anything left over is a bare expression used as a boolean."""
+        info = self.expr(node, scope, True)
+        if self.strict and info.prot:
+            raise _Reject(
+                f"The protected column {sorted(info.prot)[0]} cannot be used as a condition. "
+                "Only COUNT, COUNT(DISTINCT), IS [NOT] NULL and joins on it are allowed."
+            )
+        self.reveal |= info.src
+
+    def finish(self) -> frozenset[str]:
+        """Columns equated (by join, filter or IN) with a protected column hold its values, so they
+        are protected for the whole query: they may be returned only masked, and any use that
+        reveals a value (a literal comparison, GROUP BY, ORDER BY, a function that can fail on it)
+        is rejected. Returns those columns."""
+        parent: dict[str, str] = {}
+
+        def find(k: str) -> str:
+            parent.setdefault(k, k)
+            while parent[k] != k:
+                parent[k] = parent[parent[k]]
+                k = parent[k]
+            return k
+
+        for edge in self.edges:
+            keys = sorted(edge)
+            for k in keys:
+                find(k)
+            for k in keys[1:]:
+                parent[find(k)] = find(keys[0])
+        roots = {find(k) for k in list(parent) if k in self.a.prot_keys}
+        tainted = frozenset(k for k in list(parent) if find(k) in roots)
+        leaked = (tainted - self.a.prot_keys) & self.reveal
+        if self.strict and leaked:
+            raise _Reject(
+                f"The column {sorted(leaked)[0]} is joined to a protected column, so it holds its "
+                "values; it cannot be compared to a value, grouped, ordered or transformed."
+            )
+        return tainted
+
     def expr(self, node: exp.Expression, scope: _Scope, predicate: bool) -> _Info:
-        """The lineage of ``node``. ``predicate``: a position where a comparison of two columns
-        may involve a protected one (``ON``, ``WHERE``, ``HAVING``, through ``AND``/``OR``/``NOT``).
+        """The lineage of ``node``. ``predicate``: a position where the forms that may touch a
+        protected column are allowed (a top-level ``AND`` conjunct of ``ON``/``WHERE``/``HAVING``).
         """
         self.tick()
         if isinstance(node, exp.Column):
@@ -894,15 +1014,21 @@ class _Resolver:
         if isinstance(node, exp.Paren):
             inner = self.expr(node.this, scope, predicate)
             return replace(inner, name=None)
-        if isinstance(node, (exp.And, exp.Or)):
+        if isinstance(node, exp.And):
             return _merge(
                 [
                     self.expr(node.this, scope, predicate),
                     self.expr(node.expression, scope, predicate),
                 ]
             )
+        if isinstance(node, exp.Or):
+            return _merge(
+                [self.expr(node.this, scope, False), self.expr(node.expression, scope, False)]
+            )
         if isinstance(node, exp.Not):
-            return self.expr(node.this, scope, predicate)
+            return self.expr(
+                node.this, scope, predicate and isinstance(_unparen(node.this), exp.Is)
+            )
         if isinstance(node, exp.EQ):
             return self.equality(node, scope, predicate)
         if isinstance(node, exp.Is):
@@ -911,18 +1037,19 @@ class _Resolver:
             return self.in_(node, scope, predicate)
         if isinstance(node, exp.Exists):
             self.query(node.this, scope)
-            return _Info()
+            return _Info(literal=True)
         if isinstance(node, (exp.Subquery, exp.Select, exp.SetOperation)):
             cols = self.query(node, scope)
             if len(cols) != 1:
                 raise _Reject("A subquery used as a value must return one column.")
-            return _Info(prot=cols[0].prot, literal=cols[0].literal)
+            c = cols[0]
+            return _Info(prot=c.prot, src=c.src, literal=c.literal or not c.src)
         if isinstance(node, exp.Window):
             return self.window(node, scope)
         if isinstance(node, _COMPARISONS) and not isinstance(node, exp.Func):
             infos = self.children(node, scope)
             self.no_protected(infos, "compared to a value")
-            return _merge(infos)
+            return self.revealing(infos)
         if isinstance(node, exp.Func):
             return self.func(node, scope)
         if isinstance(node, exp.DataType):
@@ -934,10 +1061,22 @@ class _Resolver:
                 raise _Reject("Unsupported keyword.")
             return _Info()
         if isinstance(node, _PLAIN_NODES) or not self.strict:
-            if isinstance(node, exp.Identifier) and self.strict:
-                raise _Reject("Unsupported SQL (bare identifier).")
-            return _merge(self.children(node, scope))
+            infos = self.children(node, scope)
+            if isinstance(node, exp.DPipe):  # concatenation: masked, and cannot fail on a value
+                return _derive(infos)
+            self.no_protected(
+                infos,
+                "used in an expression outside UPPER, LOWER, TRIM, SUBSTR, CONCAT, CAST, SUM, AVG",
+            )
+            return self.revealing(infos)
         raise _Reject(f"Unsupported SQL ({type(node).__name__}).")
+
+    def revealing(self, infos: list[_Info]) -> _Info:
+        """The result depends on these values in a way a query can observe (a comparison, an
+        error): record them as revealed."""
+        out = _derive(infos)
+        self.reveal |= out.src
+        return out
 
     def no_protected(self, infos: Iterable[_Info], what: str) -> None:
         if not self.strict:
@@ -946,7 +1085,7 @@ class _Resolver:
             if i.prot:
                 raise _Reject(
                     f"The protected column {sorted(i.prot)[0]} cannot be {what}. "
-                    "Only COUNT, COUNT(DISTINCT) and joins on it are allowed."
+                    "Only COUNT, COUNT(DISTINCT), IS [NOT] NULL and joins on it are allowed."
                 )
 
     def column(self, node: exp.Column, scope: _Scope) -> _Info:
@@ -981,25 +1120,30 @@ class _Resolver:
         src, col = hits[0]
         node.set("this", self.ident(col.name))
         node.set("table", self.ident(src.out))
-        return _Info(col.prot, col.identity, col.literal, col.name)
+        return _Info(col.prot, col.identity, col.literal, col.name, col.src)
 
     def equality(self, node: exp.EQ, scope: _Scope, predicate: bool) -> _Info:
         left, right = self.expr(node.this, scope, False), self.expr(node.expression, scope, False)
-        if self.strict and (left.prot or right.prot):
-            both_columns = _plain_column(node.this, left) and _plain_column(node.expression, right)
-            if not (predicate and both_columns and not left.literal and not right.literal):
-                self.no_protected([left, right], "compared to a value")
-        return _merge([left, right])
+        if (
+            predicate
+            and _plain_column(node.this, left)
+            and _plain_column(node.expression, right)
+            and not _const(left)
+            and not _const(right)
+        ):
+            self.edges.append(
+                left.src | right.src
+            )  # a join: each side now holds the other's values
+            return _Info()
+        self.no_protected([left, right], "compared to a value")
+        return self.revealing([left, right])
 
     def is_null(self, node: exp.Is, scope: _Scope, predicate: bool) -> _Info:
         left, right = self.expr(node.this, scope, False), self.expr(node.expression, scope, False)
-        null_check = (
-            predicate and _plain_column(node.this, left) and isinstance(node.expression, exp.Null)
-        )
-        if not null_check:
-            self.no_protected([left], "compared to a value")
-        self.no_protected([right], "compared to a value")
-        return _merge([left, right])
+        if predicate and _plain_column(node.this, left) and isinstance(node.expression, exp.Null):
+            return _Info()
+        self.no_protected([left, right], "compared to a value")
+        return self.revealing([left, right])
 
     def in_(self, node: exp.In, scope: _Scope, predicate: bool) -> _Info:
         self.need(node, ("this", "expressions", "query"))
@@ -1009,21 +1153,26 @@ class _Resolver:
             cols = self.query(query, scope)
             if len(cols) != 1:
                 raise _Reject("IN (subquery) must return one column.")
-            right = cols[0]
-            if self.strict and (left.prot or right.prot):
-                ok = (
-                    predicate
-                    and _plain_column(node.this, left)
-                    and (not right.prot or right.identity)
-                    and not left.literal
-                    and not right.literal
-                )
-                if not ok:
-                    self.no_protected([left, _Info(prot=right.prot)], "compared to a value")
-            return _merge([left, _Info(prot=right.prot, literal=right.literal)])
+            right = _Info(
+                prot=cols[0].prot,
+                identity=cols[0].identity,
+                literal=cols[0].literal,
+                src=cols[0].src,
+            )
+            if (
+                predicate
+                and _plain_column(node.this, left)
+                and (not right.prot or right.identity)
+                and not _const(left)
+                and not _const(right)
+            ):
+                self.edges.append(left.src | right.src)
+                return _Info()
+            self.no_protected([left, right], "compared to a value")
+            return self.revealing([left, right])
         items = [self.expr(e, scope, False) for e in node.args.get("expressions") or []]
         self.no_protected([left, *items], "compared to a value")
-        return _merge([left, *items])
+        return self.revealing([left, *items])
 
     def window(self, node: exp.Window, scope: _Scope) -> _Info:
         self.need(node, ("this", "partition_by", "order", "spec", "over"))
@@ -1036,7 +1185,9 @@ class _Resolver:
                 self.need(o, ("this", "desc", "nulls_first"))
                 parts.append(self.expr(o.this, scope, False))
         self.no_protected(parts, "used to partition or order a window")
-        return _merge([info, *parts]) if not self.strict else _merge([info])
+        for p in parts:
+            self.reveal |= p.src
+        return _merge([info, *parts]) if not self.strict else info
 
     def func(self, node: exp.Func, scope: _Scope) -> _Info:
         a = self.a
@@ -1047,7 +1198,6 @@ class _Resolver:
         if isinstance(node, exp.Count):
             self.need(node, ("this", "expressions", "big_int"))
             arg = node.this
-            infos = []
             args: list[exp.Expression] = []
             if isinstance(arg, exp.Distinct):
                 self.need(arg, ("expressions",))
@@ -1061,10 +1211,29 @@ class _Resolver:
                 # column itself, its value unchanged, may be counted
                 if not _plain_column(e, i):
                     self.no_protected([i], "counted through an expression")
-            return _Info()
-        infos = self.children(node, scope)
-        if not isinstance(node, exp.Anonymous) and key in _VALUE_EMITTING:
-            self.no_protected(infos, f"returned by {key.upper()}")
-        if key in _REGEX_COMPARISONS:
-            self.no_protected(infos, "compared to a value")
-        return _merge(infos)
+                    self.reveal |= i.src
+            return _Info(literal=True)  # a number about the rows, not a column's values
+        keyed = self.keyed_children(node, scope)
+        if self.strict:
+            self.masking_use(node, keyed)
+        infos = [i for _, i in keyed]
+        bare_sum = key in ("sum", "avg") and isinstance(_unparen(node.this), exp.Column)
+        if bare_sum:
+            return _derive(infos)
+        return self.revealing(infos)
+
+    def masking_use(self, node: exp.Func, keyed: list[tuple[str, _Info]]) -> None:
+        """Protected lineage may flow only into functions whose result is masked and that cannot
+        fail on, or answer a question about, the value."""
+        if not any(i.prot for _, i in keyed):
+            return
+        allowed = None if isinstance(node, exp.Anonymous) else _MASKING_ARGS.get(node.key)
+        for k, i in keyed:
+            if i.prot and (allowed is None or k not in allowed):
+                self.no_protected([i], f"passed to {node.key.upper()}")
+        if node.key in ("sum", "avg") and not isinstance(_unparen(node.this), exp.Column):
+            self.no_protected([i for _, i in keyed], "aggregated through an expression")
+        if node.key in ("cast", "trycast"):
+            target = node.args.get("to")
+            if not isinstance(target, exp.DataType) or target.this not in _TEXT_TYPES:
+                self.no_protected([i for _, i in keyed], "cast to a non-text type")
