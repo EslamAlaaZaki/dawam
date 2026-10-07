@@ -2497,6 +2497,703 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Get Mapping",
+        "description": "A Core or Mart table's mapping from the Layer below, one entry per column (any\nmember); a column is `unmapped` until saved. 422 `invalid_mapping` for a Staging Table.",
+        "operationId": "getTableMapping",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Update Mapping",
+        "description": "Change the table's integration rule, match keys or notes (editors and owners);\nfields left out stay as they are. 409 `version_conflict`.",
+        "operationId": "updateTableMapping",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTableMappingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/columns/{dw_column_id}": {
+      "put": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Save Column Mapping",
+        "description": "Save a column's mapping (editors and owners). The SQL is the master: its inputs\nmust be `table.column` of the Layer directly below, and lineage edges are derived from\nit, replacing the previous ones. SQL that does not parse is saved with\n`validation.unparsed` and an error, and produces no edges. 422 `invalid_mapping`;\n409 `version_conflict`.",
+        "operationId": "saveColumnMapping",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          },
+          {
+            "name": "dw_column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveColumnMappingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Create Branch",
+        "description": "Add a branch (editors and owners): one row-set of the table, combined with the\nothers by UNION ALL. Its SQL parts must name tables of the Layer directly below.\n422 `invalid_mapping`.",
+        "operationId": "createMappingBranch",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}": {
+      "patch": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Update Branch",
+        "description": "Change a branch (editors and owners); fields left out stay. 409 `version_conflict`.",
+        "operationId": "updateMappingBranch",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          },
+          {
+            "name": "branch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Branch Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBranchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Delete Branch",
+        "description": "Remove a branch with its column mappings and lineage edges (editors and owners).",
+        "operationId": "deleteMappingBranch",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          },
+          {
+            "name": "branch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Branch Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}/columns/{dw_column_id}": {
+      "put": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Save Branch Column Mapping",
+        "description": "Save a column's mapping within a branch (editors and owners), as for the table\nlevel. `not_in_branch` marks the column NULL in this branch. System columns are\ntable-level only. 422 `invalid_mapping`; 409 `version_conflict`.",
+        "operationId": "saveBranchColumnMapping",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          },
+          {
+            "name": "branch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Branch Id"
+            }
+          },
+          {
+            "name": "dw_column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveColumnMappingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-mappings"
+        ],
+        "summary": "Get Lineage",
+        "description": "Every lineage edge on a path to (`upstream`) or from (`downstream`) a DW column\n(any member). `uses` edges point at the table they steer.",
+        "operationId": "getColumnLineage",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Column Id"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "upstream",
+                "downstream"
+              ],
+              "type": "string",
+              "default": "upstream",
+              "title": "Direction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineageGraph"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/ddl": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Download Ddl",
+        "description": "The DW Schema's DDL in the target platform's dialect (any member): each Layer's\nphysical schema, its tables, foreign keys and one unknown-member `INSERT` per\ndimension. `layer` limits it to one Layer. 404 before the Data Warehouse is set up.\nTo keep a copy, save it to the file area with `POST .../files/ddl`.",
+        "operationId": "downloadDdl",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "staging",
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One Layer's package; omit for the whole Data Warehouse.",
+              "title": "Layer"
+            },
+            "description": "One Layer's package; omit for the whole Data Warehouse."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The DDL package.",
+            "content": {
+              "application/sql": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/data-warehouse/platforms": {
       "get": {
         "tags": [
@@ -7646,6 +8343,83 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/ddl": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Ddl",
+        "description": "Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`\n(or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous\none (owners and editors). 404 before the Data Warehouse is set up.",
+        "operationId": "saveDdl",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "staging",
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One Layer's package; omit for the whole Data Warehouse.",
+              "title": "Layer"
+            },
+            "description": "One Layer's package; omit for the whole Data Warehouse."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/files/{file_id}/download": {
       "get": {
         "tags": [
@@ -11042,6 +11816,86 @@
         ],
         "title": "Body_validateSchemaImport"
       },
+      "BranchError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "const": "not_in_group_by",
+            "title": "Code"
+          },
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "column_id",
+          "column_name",
+          "message"
+        ],
+        "title": "BranchError"
+      },
+      "BranchRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "driving_input": {
+            "type": "string",
+            "title": "Driving Input"
+          },
+          "joins": {
+            "type": "string",
+            "title": "Joins",
+            "default": ""
+          },
+          "filters": {
+            "type": "string",
+            "title": "Filters",
+            "default": ""
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group By"
+          },
+          "having": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Having"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "driving_input"
+        ],
+        "title": "BranchRequest"
+      },
       "BuiltInPiiRule": {
         "properties": {
           "id": {
@@ -11168,6 +12022,46 @@
         ],
         "title": "ColumnChange"
       },
+      "ColumnCoverage": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "system": {
+            "type": "boolean",
+            "title": "System",
+            "description": "DAWAM-generated: mapped at table level, always covered."
+          },
+          "covered": {
+            "type": "boolean",
+            "title": "Covered",
+            "description": "Mapped or `not_in_branch` in every branch."
+          },
+          "missing_branch_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Missing Branch Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "column_name",
+          "system",
+          "covered",
+          "missing_branch_ids"
+        ],
+        "title": "ColumnCoverage"
+      },
       "ColumnEnhancements": {
         "properties": {
           "id": {
@@ -11211,6 +12105,91 @@
           "version"
         ],
         "title": "ColumnEnhancements"
+      },
+      "ColumnMapping": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Null until the column's mapping is first saved."
+          },
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "mapping_type": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "derived",
+              "constant",
+              "unmapped",
+              "not_in_branch"
+            ],
+            "title": "Mapping Type"
+          },
+          "rule_text": {
+            "type": "string",
+            "title": "Rule Text",
+            "description": "The transformation rule, in plain language."
+          },
+          "sql_expression": {
+            "type": "string",
+            "title": "Sql Expression",
+            "description": "SQL in the target dialect, reading `table.column` of the Layer below."
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/MappingInput"
+            },
+            "type": "array",
+            "title": "Inputs",
+            "description": "Columns the SQL reads into the result; derived from the SQL, never set."
+          },
+          "uses": {
+            "items": {
+              "$ref": "#/components/schemas/MappingInput"
+            },
+            "type": "array",
+            "title": "Uses",
+            "description": "Columns that only steer the result (conditions); derived from the SQL."
+          },
+          "validation": {
+            "$ref": "#/components/schemas/MappingValidation"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "0 until first saved."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "column_id",
+          "column_name",
+          "mapping_type",
+          "rule_text",
+          "sql_expression",
+          "inputs",
+          "uses",
+          "validation",
+          "version"
+        ],
+        "title": "ColumnMapping"
       },
       "ColumnProfile": {
         "properties": {
@@ -13998,6 +14977,80 @@
         "type": "object",
         "title": "LayerSchemas"
       },
+      "LineageEdge": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "value",
+              "uses",
+              "lookup",
+              "kpi"
+            ],
+            "title": "Kind"
+          },
+          "from_type": {
+            "type": "string",
+            "title": "From Type"
+          },
+          "from_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Id"
+          },
+          "from_label": {
+            "type": "string",
+            "title": "From Label",
+            "description": "`table.column` for a column, else the name."
+          },
+          "to_type": {
+            "type": "string",
+            "title": "To Type"
+          },
+          "to_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Id"
+          },
+          "to_label": {
+            "type": "string",
+            "title": "To Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "from_type",
+          "from_id",
+          "from_label",
+          "to_type",
+          "to_id",
+          "to_label"
+        ],
+        "title": "LineageEdge"
+      },
+      "LineageGraph": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/LineageEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "edges"
+        ],
+        "title": "LineageGraph"
+      },
       "LinkDocumentRequest": {
         "properties": {
           "object_type": {
@@ -14816,6 +15869,161 @@
           "monthly_token_budget"
         ],
         "title": "LlmWorkspaceUsage"
+      },
+      "MappingBranch": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal",
+            "description": "1-based; branches are combined in this order."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "driving_input": {
+            "type": "string",
+            "title": "Driving Input",
+            "description": "The branch's driving table, in the target dialect."
+          },
+          "joins": {
+            "type": "string",
+            "title": "Joins",
+            "description": "JOIN clauses, in the target dialect."
+          },
+          "filters": {
+            "type": "string",
+            "title": "Filters",
+            "description": "The WHERE condition, in the target dialect."
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group By"
+          },
+          "having": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Having"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            },
+            "type": "array",
+            "title": "Columns",
+            "description": "The branch's mapping of every non-system column; `unmapped` until saved."
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/BranchError"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "For an aggregate table, each plain output the GROUP BY does not cover."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ordinal",
+          "name",
+          "driving_input",
+          "joins",
+          "filters",
+          "group_by",
+          "having",
+          "version",
+          "columns",
+          "errors"
+        ],
+        "title": "MappingBranch"
+      },
+      "MappingInput": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "value",
+              "uses"
+            ],
+            "title": "Kind"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "table_id",
+          "table_name",
+          "column_id",
+          "column_name"
+        ],
+        "title": "MappingInput"
+      },
+      "MappingValidation": {
+        "properties": {
+          "unparsed": {
+            "type": "boolean",
+            "title": "Unparsed",
+            "description": "The SQL could not be parsed; it produces no edges."
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Each error's `code` and `message`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "unparsed",
+          "errors"
+        ],
+        "title": "MappingValidation"
       },
       "Me": {
         "properties": {
@@ -16342,6 +17550,43 @@
           "error_message"
         ],
         "title": "RunOut"
+      },
+      "SaveColumnMappingRequest": {
+        "properties": {
+          "mapping_type": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "derived",
+              "constant",
+              "unmapped",
+              "not_in_branch"
+            ],
+            "title": "Mapping Type",
+            "description": "`not_in_branch` (NULL) only inside a branch."
+          },
+          "rule_text": {
+            "type": "string",
+            "title": "Rule Text",
+            "default": ""
+          },
+          "sql_expression": {
+            "type": "string",
+            "title": "Sql Expression",
+            "default": ""
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The mapping's version; 0 to create it.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "mapping_type"
+        ],
+        "title": "SaveColumnMappingRequest"
       },
       "SearchHit": {
         "properties": {
@@ -18212,6 +19457,118 @@
         ],
         "title": "TableEnhancements"
       },
+      "TableMapping": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "source_layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core"
+            ],
+            "title": "Source Layer"
+          },
+          "integration_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Rule"
+          },
+          "match_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Match Keys"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "0 until first saved."
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            },
+            "type": "array",
+            "title": "Columns",
+            "description": "Every column of the table with its table-level mapping, by ordinal."
+          },
+          "is_aggregate": {
+            "type": "boolean",
+            "title": "Is Aggregate"
+          },
+          "branches": {
+            "items": {
+              "$ref": "#/components/schemas/MappingBranch"
+            },
+            "type": "array",
+            "title": "Branches"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnCoverage"
+            },
+            "type": "array",
+            "title": "Coverage",
+            "description": "Branch coverage, per column."
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql",
+            "description": "The branches' queries combined with UNION ALL; null without branches."
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "layer",
+          "source_layer",
+          "integration_rule",
+          "match_keys",
+          "notes",
+          "version",
+          "columns",
+          "is_aggregate",
+          "branches",
+          "coverage",
+          "sql"
+        ],
+        "title": "TableMapping"
+      },
       "TableProfile": {
         "properties": {
           "table_id": {
@@ -18534,6 +19891,85 @@
           "unread_count"
         ],
         "title": "UnreadNotifications"
+      },
+      "UpdateBranchRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "driving_input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driving Input"
+          },
+          "joins": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group By"
+          },
+          "having": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Having"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateBranchRequest"
       },
       "UpdateColumnEnhancements": {
         "properties": {
@@ -19325,6 +20761,54 @@
           "version"
         ],
         "title": "UpdateTableEnhancements"
+      },
+      "UpdateTableMappingRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The table mapping's version; 0 before its first save.",
+            "default": 0
+          },
+          "integration_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Rule"
+          },
+          "match_keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Keys"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "UpdateTableMappingRequest"
       },
       "UpdateUserRequest": {
         "properties": {

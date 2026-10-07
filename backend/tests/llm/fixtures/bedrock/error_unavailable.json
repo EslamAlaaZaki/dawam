@@ -1,0 +1,10 @@
+{
+  "status": 503,
+  "headers": {
+    "Content-Type": "application/json",
+    "x-amzn-errortype": "ServiceUnavailableException"
+  },
+  "body": {
+    "message": "Bedrock is unable to process your request."
+  }
+}

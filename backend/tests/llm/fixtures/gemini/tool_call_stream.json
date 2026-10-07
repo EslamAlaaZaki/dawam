@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "text/event-stream"
+  },
+  "body_lines": [
+    "data: {\"candidates\": [{\"content\": {\"role\": \"model\", \"parts\": [{\"functionCall\": {\"id\": \"call_abc\", \"name\": \"echo\", \"args\": {\"text\": \"ping\"}}}]}, \"index\": 0, \"finishReason\": \"STOP\"}], \"usageMetadata\": {\"promptTokenCount\": 40, \"candidatesTokenCount\": 9, \"totalTokenCount\": 49}}",
+    ""
+  ]
+}

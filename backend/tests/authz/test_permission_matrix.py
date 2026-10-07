@@ -33,6 +33,7 @@ from tests.authz.matrix import (
     signed_in,
     snapshot_id,
     source_table_id,
+    staging_table_name,
     system_id,
     table_id,
     tested_model_id,
@@ -671,6 +672,75 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}",
         "Edit KPIs, DW Schema, mappings (delete a column)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Column mappings and lineage (stories 99, 100, 104).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping",
+        "Open Workspace content (a table's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping",
+        "Edit KPIs, DW Schema, mappings (edit a table's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 0},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (save a column mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"mapping_type": "unmapped", "rule_text": "Not in the source"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches",
+        "Edit KPIs, DW Schema, mappings (add a mapping branch)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"name": "CRM", "driving_input": staging_table_name(roles)},
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}",
+        "Edit KPIs, DW Schema, mappings (edit a mapping branch)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}",
+        "Edit KPIs, DW Schema, mappings (delete a mapping branch)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/branches/{branch_id}/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (save a branch column mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"mapping_type": "not_in_branch"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}",
+        "Open Workspace content (a column's lineage)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    # DDL export (story 97).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/ddl",
+        "Open Workspace content (the DDL package)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/files/ddl",
+        "Upload, edit, delete Workspace files (save the DDL package)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
     ),
     # Source Systems (story 39). Changing a System Code is owner-only: the PATCH row
     # sends no code; tests/sources/test_source_systems.py covers the code change.

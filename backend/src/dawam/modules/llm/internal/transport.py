@@ -27,8 +27,9 @@ class HttpResponse:
         self.headers = {key.lower(): value for key, value in headers.items()}
         self._body = body
 
-    def read(self) -> bytes:
-        return self._body.read()
+    def read(self, size: int = -1) -> bytes:
+        """The whole body, or up to ``size`` bytes (a binary stream is read frame by frame)."""
+        return self._body.read(size)
 
     def iter_lines(self) -> Iterator[bytes]:
         for line in self._body:

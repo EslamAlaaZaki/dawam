@@ -1,0 +1,23 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Hello there."
+            }
+          ]
+        },
+        "index": 0,
+        "finishReason": "STOP"
+      }
+    ],
+    "modelVersion": "test-model"
+  }
+}
