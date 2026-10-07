@@ -1,7 +1,7 @@
 """add the DW Schema's tables and columns (the Core and Mart model editor).
 
-Revision ID: d6e3f9a4b725
-Revises: c5d2e8f3a614
+Revision ID: e7a1c4d9f2b8
+Revises: d6e3f9a4c725
 Create Date: 2026-10-07 10:00:00.000000
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "d6e3f9a4b725"
-down_revision: str | Sequence[str] | None = "c5d2e8f3a614"
+revision: str = "e7a1c4d9f2b8"
+down_revision: str | Sequence[str] | None = "d6e3f9a4c725"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
