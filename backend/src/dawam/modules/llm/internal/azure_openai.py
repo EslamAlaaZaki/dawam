@@ -155,7 +155,7 @@ class AzureOpenAIAdapter(OpenAICompatibleAdapter):
         deployment = quote(str(body["model"]), safe="")
         full = f"/openai/deployments/{deployment}{path}"
         source = self._token_provider
-        if source is not None:
+        if isinstance(source, EntraTokenSource):
             source()  # a failure to get a token is final: only a rejected request is retried
         try:
             return super()._post(full, body)
