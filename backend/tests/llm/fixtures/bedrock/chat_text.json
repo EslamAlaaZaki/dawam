@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "output": {
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "text": "Hello there."
+          }
+        ]
+      }
+    },
+    "stopReason": "end_turn",
+    "metrics": {
+      "latencyMs": 420
+    },
+    "usage": {
+      "inputTokens": 12,
+      "outputTokens": 3,
+      "totalTokens": 15
+    }
+  }
+}

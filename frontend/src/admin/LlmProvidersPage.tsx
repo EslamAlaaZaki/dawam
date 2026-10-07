@@ -91,6 +91,8 @@ function ProviderForm() {
           <option value="openai_compatible">OpenAI-compatible (vLLM, Ollama, OpenAI, ...)</option>
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="azure_openai">Azure OpenAI</option>
+          <option value="gemini">Google Gemini (API or Vertex AI)</option>
+          <option value="bedrock">AWS Bedrock</option>
         </select>
       </label>
       <label>
