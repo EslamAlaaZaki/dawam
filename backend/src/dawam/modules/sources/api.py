@@ -29,6 +29,7 @@ from .rename_api import router as rename_router
 from .service import SourceSystem as SourceSystemView
 from .service import SourceSystemService
 from .snapshot_api import router as snapshot_router
+from .summary_api import router as summary_router
 from .tables import CODE_MAX_LENGTH, DESCRIPTION_MAX_LENGTH, NAME_MAX_LENGTH, OWNER_MAX_LENGTH
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/systems", tags=["sources"])
@@ -183,3 +184,4 @@ router.include_router(relationship_router, prefix="/{system_id}")
 router.include_router(import_router, prefix="/{system_id}/import")
 router.include_router(rename_router, prefix="/{system_id}")
 router.include_router(profiling_router, prefix="/{system_id}")
+router.include_router(summary_router, prefix="/{system_id}")

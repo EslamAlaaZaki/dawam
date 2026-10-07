@@ -8,8 +8,9 @@ composition root fills.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,21 @@ class WorkspaceArchivedHook(Protocol):
         """Called inside the transaction that archives the Workspace, so the hook's
         changes are kept only if the archive is."""
         ...
+
+
+@dataclass(frozen=True)
+class SourceAnalysis:
+    """Source Analysis progress of one Source System."""
+
+    system_id: uuid.UUID
+    name: str
+    status: Literal["not_started", "in_progress", "complete"]
+
+
+class SourceAnalysisProvider(Protocol):
+    def __call__(self, workspace_id: uuid.UUID) -> list[SourceAnalysis]:
+        """The Source Analysis progress of each Source System of the Workspace. The
+        ``sources`` module imports ``workspaces``, so ``workspaces`` asks through this port."""
 
 
 class WorkspaceCreatedHook(Protocol):

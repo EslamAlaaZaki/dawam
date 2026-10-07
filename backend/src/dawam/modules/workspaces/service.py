@@ -14,7 +14,7 @@ from dawam.modules.activity import record_activity
 from dawam.modules.auth import SecurityEventRecorder, User
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
-from dawam.platform.hooks import WorkspaceArchivedHook, WorkspaceCreatedHook
+from dawam.platform.hooks import SourceAnalysisProvider, WorkspaceArchivedHook, WorkspaceCreatedHook
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
 from .internal.policy import (
@@ -242,16 +242,19 @@ class WorkspaceService:
         clock: Clock,
         events: SecurityEventRecorder | None = None,
         on_archived: WorkspaceArchivedHook | None = None,
+        source_analysis: SourceAnalysisProvider | None = None,
         on_created: WorkspaceCreatedHook | None = None,
     ) -> None:
         """``events`` records Workspace deletions; ``delete`` needs it. ``on_archived`` is
         called in the transaction that archives a Workspace (the composition root sets
         it, e.g. to cancel the Workspace's jobs); ``on_created`` in the one that creates
-        it (e.g. to give it its AI settings)."""
+        it (e.g. to give it its AI settings). ``source_analysis`` tells the stage progress
+        how far each Source System's analysis is (without it: no systems)."""
         self._engine = engine
         self._clock = clock
         self._events = events
         self._on_archived = on_archived
+        self._source_analysis = source_analysis
         self._on_created = on_created
 
     def authorize(self, user: User, action: Action, workspace_id: uuid.UUID) -> WorkspaceScope:
@@ -378,9 +381,10 @@ class WorkspaceService:
         """Stage progress of a Workspace, for any member (viewers included)."""
         with Session(self._engine) as db:
             authorized(db, user, Action.VIEW_WORKSPACE, workspace_id)
-        # No Source Systems, KPIs or DW Schema exist yet, so nothing has been started.
+        # No KPIs or DW Schema exist yet, so nothing there has been started.
+        analysis = self._source_analysis(workspace_id) if self._source_analysis else []
         return StageProgress(
-            source_analysis=[],
+            source_analysis=[SystemProgress(a.system_id, a.name, a.status) for a in analysis],
             kpis=KpiProgress(status="not_started"),
             dw_modeling=[LayerProgress(layer=layer, status="not_started") for layer in LAYERS],
         )

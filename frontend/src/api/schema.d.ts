@@ -1625,6 +1625,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source Summary
+         * @description The Source System dashboard: counts computed from the Source Schema, profiles,
+         *     relationships and PII findings (any member; never a value).
+         */
+        get: operations["getSourceSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/pii-rules": {
         parameters: {
             query?: never;
@@ -6059,6 +6080,74 @@ export interface components {
              * @description Columns of the tables above the Snapshot no longer has, still tracked and flagged `source_removed` or `out_of_scope`.
              */
             removed_columns: components["schemas"]["RemovedColumn"][];
+        };
+        /** SourceSummary */
+        SourceSummary: {
+            /**
+             * System Id
+             * Format: uuid
+             */
+            system_id: string;
+            /**
+             * Has Snapshot
+             * @description False until the first Snapshot (extraction or import).
+             */
+            has_snapshot: boolean;
+            /**
+             * Table Count
+             * @description Tables and views in the latest Snapshot.
+             */
+            table_count: number;
+            /**
+             * Documented Tables
+             * @description Of them, those with a description.
+             */
+            documented_tables: number;
+            /**
+             * Documented Pct
+             * @description 0 to 100; 0 when there are no tables.
+             */
+            documented_pct: number;
+            /**
+             * Profiled Tables
+             * @description Of them, those with at least one column profile.
+             */
+            profiled_tables: number;
+            /**
+             * Profiled Pct
+             * @description 0 to 100; 0 when there are no tables.
+             */
+            profiled_pct: number;
+            /**
+             * Relationships Found
+             * @description Suggested and accepted relationships.
+             */
+            relationships_found: number;
+            /** Relationships Accepted */
+            relationships_accepted: number;
+            /**
+             * Relationships To Review
+             * @description Suggested ones waiting for a decision.
+             */
+            relationships_to_review: number;
+            /**
+             * Pii Found
+             * @description Columns with a suggested or confirmed PII finding.
+             */
+            pii_found: number;
+            /** Pii Confirmed */
+            pii_confirmed: number;
+            /**
+             * Pii To Review
+             * @description Columns whose finding is still suggested.
+             */
+            pii_to_review: number;
+            /**
+             * Status
+             * @description Source Analysis: `complete` once every table is documented and profiled and no PII finding or relationship waits for review.
+             * @enum {string}
+             */
+            status: "not_started" | "in_progress" | "complete";
         };
         /** SourceSystem */
         SourceSystem: {
@@ -10553,6 +10642,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableProfile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSummary"];
                 };
             };
             /** @description Validation error */
