@@ -1,0 +1,44 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/vnd.amazon.eventstream"
+  },
+  "body_events": [
+    {
+      "type": "messageStart",
+      "payload": {
+        "role": "assistant"
+      }
+    },
+    {
+      "type": "contentBlockDelta",
+      "payload": {
+        "contentBlockIndex": 0,
+        "delta": {
+          "text": "Hello"
+        }
+      }
+    },
+    {
+      "type": "contentBlockDelta",
+      "payload": {
+        "contentBlockIndex": 0,
+        "delta": {
+          "text": " there."
+        }
+      }
+    },
+    {
+      "type": "contentBlockStop",
+      "payload": {
+        "contentBlockIndex": 0
+      }
+    },
+    {
+      "type": "messageStop",
+      "payload": {
+        "stopReason": "end_turn"
+      }
+    }
+  ]
+}

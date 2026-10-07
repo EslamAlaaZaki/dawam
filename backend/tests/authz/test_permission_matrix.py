@@ -657,6 +657,21 @@ ROWS: list[Row] = [
         "Open Workspace content (a column's lineage)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    # DDL export (story 97).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/ddl",
+        "Open Workspace content (the DDL package)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/files/ddl",
+        "Upload, edit, delete Workspace files (save the DDL package)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+    ),
     # Source Systems (story 39). Changing a System Code is owner-only: the PATCH row
     # sends no code; tests/sources/test_source_systems.py covers the code change.
     Row(

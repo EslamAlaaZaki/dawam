@@ -174,6 +174,12 @@ class FileService:
         area = self._warehouse_area(user, workspace_id)
         return self._put(user, workspace_id, area, filename=filename, content=content)
 
+    def save_generated_to_warehouse(
+        self, user: User, workspace_id: uuid.UUID, *, name: str, data: bytes
+    ) -> WorkspaceFile:
+        """Like ``save_generated``, into the Data Warehouse's file area (404 before set up)."""
+        return self.upload_to_warehouse(user, workspace_id, filename=name, content=io.BytesIO(data))
+
     def _system_area(self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID) -> _Area:
         system = self._systems.get(user, workspace_id, system_id)
         return _Area("source_system", system.id, {"system_code": system.code})

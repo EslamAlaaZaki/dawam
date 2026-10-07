@@ -17,6 +17,8 @@ from importlib.metadata import entry_points
 from ..gateway import Adapter
 from .anthropic import AnthropicAdapter
 from .azure_openai import AzureOpenAIAdapter
+from .bedrock import BedrockAdapter
+from .gemini import GeminiAdapter
 from .openai_compatible import OpenAICompatibleAdapter
 from .transport import Transport, UrllibTransport
 
@@ -27,6 +29,8 @@ BUILTIN_ADAPTERS: dict[str, type] = {
     "openai_compatible": OpenAICompatibleAdapter,
     "anthropic": AnthropicAdapter,
     "azure_openai": AzureOpenAIAdapter,
+    "gemini": GeminiAdapter,
+    "bedrock": BedrockAdapter,
 }
 ADAPTER_KINDS = tuple(BUILTIN_ADAPTERS)
 
