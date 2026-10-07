@@ -363,6 +363,23 @@ class WorkspaceService:
                 )
             )
 
+    def member_ids_among(
+        self, workspace_id: uuid.UUID, user_ids: Iterable[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """The users among ``user_ids`` who are members of the Workspace, for a module
+        that must check ids a client sent (e.g. @mentions). Authorizes nothing."""
+        ids = set(user_ids)
+        if not ids:
+            return set()
+        with Session(self._engine) as db:
+            return set(
+                db.scalars(
+                    sa.select(MemberRecord.user_id).where(
+                        MemberRecord.workspace_id == workspace_id, MemberRecord.user_id.in_(ids)
+                    )
+                )
+            )
+
     def names_by_id(self, workspace_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
         """The names of the Workspaces among ``workspace_ids`` that exist. Authorizes
         nothing: for an admin-only view."""
