@@ -12033,6 +12033,7 @@
           "source_system.extract",
           "source_schema.enhance",
           "source_system.profile",
+          "source_system.query",
           "source_table.top_n",
           "pii.review",
           "pii.manage_rules",
@@ -21619,6 +21620,19 @@
           "duration_ms": {
             "type": "integer",
             "title": "Duration Ms"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "What the tool kept of its result. A source query: `columns`, `row_count`, `duration_ms` and `can_write` (the Connection user could change data: warn), never a row."
           }
         },
         "type": "object",

@@ -53,6 +53,11 @@ Public interface. Other modules import only what is re-exported here:
   ``Rejected(reason)`` or a ``SafeQuery``: fully qualified SQL regenerated from the verified
   parse tree, plus which output columns to mask. Run ``SafeQuery.sql``, never the input.
   ``untraceable_views`` lists the views the guard cannot trace (not queryable).
+- ``SourceQueryService``: the assistant's ``run_source_query`` (owners and editors, a live
+  Connection): guard, read-only run with the statement timeout and a row cap, a per-run
+  ``QueryBudget`` of source-query seconds, masking of guard-masked and validator-hit columns, a
+  ``value-at-query`` finding on a hit, error text of our own, and an audit entry (``ai``
+  channel) without result values.
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -120,6 +125,12 @@ from .snapshot_service import (
     SnapshotSummary,
     SourceSchema,
 )
+from .source_query_service import (
+    DEFAULT_BUDGET_SECONDS,
+    QueryBudget,
+    SourceQueryResult,
+    SourceQueryService,
+)
 from .summary_service import SourceSummary, SourceSummaryService
 
 router = APIRouter()
@@ -127,6 +138,7 @@ router.include_router(_systems_router)
 router.include_router(_pii_rules_router)
 
 __all__ = [
+    "DEFAULT_BUDGET_SECONDS",
     "EXTRACT_JOB",
     "INFER_JOB",
     "PII_SCAN_JOB",
@@ -148,6 +160,7 @@ __all__ = [
     "PiiScanService",
     "PiiService",
     "ProfilingService",
+    "QueryBudget",
     "Rejected",
     "Relationship",
     "RelationshipService",
@@ -161,6 +174,8 @@ __all__ = [
     "SnapshotService",
     "SnapshotSummary",
     "SourceEnhancementHandler",
+    "SourceQueryResult",
+    "SourceQueryService",
     "SourceSchema",
     "SourceSummary",
     "SourceSummaryService",
