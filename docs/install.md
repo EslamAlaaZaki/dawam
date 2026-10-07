@@ -81,8 +81,11 @@ DAWAM_DATABASE_URL=postgresql+psycopg://user:password@host:5432/database
 
 By default, uploaded files are stored in a Docker volume at `/var/lib/dawam/files` inside the container:
 
-- **`DAWAM_STORAGE_BACKEND`**: `local` (default) or `s3` (requires `pip install dawam[s3]`).
+- **`DAWAM_STORAGE_BACKEND`**: `local` (default) or `s3` (requires an image built with the `s3` extra; see below).
 - **`DAWAM_STORAGE_PATH`**: Directory for local storage (default: `/var/lib/dawam/files`).
+
+The default image does not include the S3 client (`boto3`, the `s3` extra in `backend/pyproject.toml`). To use S3,
+change `RUN pip install .` in the `Dockerfile` to `RUN pip install ".[s3]"` and rebuild (`docker compose build`).
 
 For S3-compatible storage (MinIO, Ceph, AWS S3):
 
@@ -159,17 +162,19 @@ DAWAM includes an optional Docker Compose profile for [Ollama](https://ollama.co
 2. **Pull a model:**
 
    ```bash
-   docker exec dawam-ollama-1 ollama pull llama2
+   docker compose exec ollama ollama pull qwen2.5:1.5b
    ```
 
    Recommended models for DAWAM's tool-calling requirements:
-   - `qwen2.5:1.5b` (1.5 billion parameters, tested in CI)
-   - `llama2:7b` (7 billion, better quality)
-   - `mistral:7b` (7 billion, good balance)
+   - `qwen2.5:1.5b` (1.5 billion parameters; the model the repo's Ollama CI workflow uses)
+   - `qwen2.5:7b` (instruct; better quality, needs more memory)
+   - `llama3.1:8b` (tool-capable Llama)
+
+   The model must support tool calling; older models such as Llama 2 do not.
 
 3. **Configure DAWAM to use Ollama:**
 
-   In the DAWAM UI (Admin > LLM Models), create an LLM provider:
+   In the admin console's LLM settings, create an LLM provider:
    - **Type**: `openai_compatible`
    - **Base URL**: `http://ollama:11434/v1`
    - **API Key**: Leave empty (Ollama doesn't require one)
@@ -185,14 +190,17 @@ DAWAM includes an optional Docker Compose profile for [Ollama](https://ollama.co
    docker run --gpus all -p 8001:8000 \
      -v huggingface_cache:/root/.cache/huggingface \
      vllm/vllm-openai:latest \
-     --model meta-llama/Llama-2-7b-hf
+     --model Qwen/Qwen2.5-7B-Instruct      --enable-auto-tool-choice      --tool-call-parser hermes
    ```
+
+   DAWAM needs tool calling, so both flags are required. The parser must match the model family:
+   `hermes` for Qwen2.5, `llama3_json` for Llama 3.1. See the vLLM tool-calling docs for other families.
 
 2. **Configure DAWAM:**
    - **Type**: `openai_compatible`
    - **Base URL**: `http://host.docker.internal:8001/v1` (or your vLLM address)
    - **API Key**: Leave empty or set if configured
-   - **Model Name**: `meta-llama/Llama-2-7b-hf`
+   - **Model Name**: `Qwen/Qwen2.5-7B-Instruct`
 
 ### SGLang
 
@@ -204,14 +212,17 @@ DAWAM includes an optional Docker Compose profile for [Ollama](https://ollama.co
    docker run --gpus all -p 8002:8000 \
      sglang/sglang:latest \
      python -m sglang.launch_server \
-     --model-path meta-llama/Llama-2-7b-hf
+     --model-path Qwen/Qwen2.5-7B-Instruct      --tool-call-parser qwen25
    ```
+
+   The parser must match the model family: `qwen25` for Qwen2.5, `llama3` for Llama 3.1. See the SGLang
+   tool-parser docs for other families.
 
 2. **Configure DAWAM:**
    - **Type**: `openai_compatible`
    - **Base URL**: `http://host.docker.internal:8002/v1`
    - **API Key**: Leave empty
-   - **Model Name**: `meta-llama/Llama-2-7b-hf`
+   - **Model Name**: `Qwen/Qwen2.5-7B-Instruct`
 
 ## Health Checks
 
@@ -234,34 +245,39 @@ To run DAWAM fully offline with no internet access:
 
    ```bash
    docker compose build
-   docker save dawam:latest | gzip > dawam.tar.gz
-   docker save pgvector/pgvector:pg16 | gzip > pgvector.tar.gz
-   docker save ollama/ollama | gzip > ollama.tar.gz  # optional
+   docker pull pgvector/pgvector:pg16
+   docker pull ollama/ollama   # optional, for local models
+   docker save dawam-app dawam-worker dawam-web dawam-edge pgvector/pgvector:pg16 ollama/ollama | gzip > dawam-images.tar.gz
    ```
 
-2. **Transfer the images to your air-gapped network** (USB drive, secure transfer, etc.).
+   The images are per service: `dawam-app`, `dawam-worker`, `dawam-web`, `dawam-edge`, plus `pgvector/pgvector:pg16`
+   and (optional) `ollama/ollama`. Check `docker images` if your Compose project name differs.
+
+2. **Transfer the archive** to the air-gapped network (USB drive, secure transfer, etc.).
 
 3. **Load the images on the air-gapped machine:**
 
    ```bash
-   docker load < dawam.tar.gz
-   docker load < pgvector.tar.gz
-   docker load < ollama.tar.gz  # optional
+   docker load < dawam-images.tar.gz
    ```
 
-4. **Download model files on a connected machine** and transfer them:
-
-   For Ollama:
+4. **Ollama models (optional).** On a connected machine, start the `ollama` service, pull the model, and archive the
+   model volume:
 
    ```bash
-   # On connected machine, pull models
-   docker run -it ollama/ollama ollama pull qwen2.5:1.5b
-   docker run -it ollama/ollama ollama pull llama2
-
-   # Copy the ~/.ollama directory (on the connected machine) to the air-gapped machine
+   docker compose --profile ollama up -d ollama
+   docker compose exec ollama ollama pull qwen2.5:1.5b
+   docker run --rm -v dawam_ollama-data:/data -v "$PWD":/out alpine tar czf /out/ollama-data.tgz -C /data .
    ```
 
-5. **On the air-gapped machine**, start DAWAM with the pre-built images and models.
+   On the air-gapped machine, restore it into the `ollama-data` volume before starting:
+
+   ```bash
+   docker volume create dawam_ollama-data
+   docker run --rm -v dawam_ollama-data:/data -v "$PWD":/in alpine tar xzf /in/ollama-data.tgz -C /data
+   ```
+
+5. **Start DAWAM** with `docker compose up --no-build` (add `--profile ollama` for local models).
 
 ## Networking
 

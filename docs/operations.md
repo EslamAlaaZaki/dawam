@@ -84,15 +84,18 @@ curl http://localhost:8000/readyz
 
 ## Encryption Key Rotation
 
-**Status: Not yet implemented.** Currently, there is no automated key rotation tool in DAWAM. Changing the encryption key requires manual steps and is complex because all stored credentials are encrypted with the old key.
+There is no rotation tool today. Stored values are sealed with a single `v1` format and the one key in `DAWAM_ENCRYPTION_KEY`; they cannot be re-encrypted automatically.
 
-**For future reference:** Key rotation will need to:
-1. Decrypt all stored credentials with the old key.
-2. Re-encrypt them with the new key.
-3. Update `DAWAM_ENCRYPTION_KEY` in `.env`.
-4. Restart the application.
+**What is encrypted:** Connection passwords, LLM provider API keys, and the mail module's stored passwords and link URLs.
 
-**Until implemented:** Treat the encryption key as permanent. Back it up securely and never lose it.
+**Changing the key makes all of these unreadable.** Procedure that works today:
+
+1. Plan downtime and take a database backup first.
+2. Generate a new key and set `DAWAM_ENCRYPTION_KEY` in `.env`, then restart (`docker compose up -d`).
+3. Re-enter the credential of every Connection and the key of every LLM provider in the admin console (and any mail credentials, if used).
+4. Verify: test each Connection and LLM provider, and check `GET /readyz`.
+
+If you only lose or mislay the key, restoring the old key restores access. Keep it backed up separately.
 
 ## Monitoring & Logging
 
@@ -130,17 +133,7 @@ Set `DAWAM_LOG_LEVEL` in `.env` to control verbosity: `DEBUG`, `INFO`, `WARNING`
 
 ### Migrations
 
-Database migrations run automatically at startup (controlled by `DAWAM_RUN_MIGRATIONS_ON_STARTUP=true`). To run them manually:
-
-```bash
-docker compose exec app python -m alembic upgrade head
-```
-
-View migration history:
-
-```bash
-docker compose exec app python -m alembic history
-```
+Database migrations run automatically when the app starts, controlled by `DAWAM_RUN_MIGRATIONS_ON_STARTUP` (default `true`). To upgrade, deploy the new image and restart; `GET /readyz` reports ready once migrations are at head.
 
 ### Vacuuming
 
@@ -264,8 +257,8 @@ Check the storage backend:
 # For local storage, verify the volume is mounted
 docker compose exec app ls -la /var/lib/dawam/files
 
-# For S3, verify credentials and bucket access
-docker compose exec app python -c "import boto3; boto3.client('s3').list_buckets()"
+# For S3, check the app logs and the S3 settings in .env (the image must be built with the s3 extra)
+docker compose logs app
 ```
 
 Increase upload size limit if needed:
@@ -304,12 +297,6 @@ Scale the worker by running multiple instances:
 ```bash
 docker compose up --scale worker=3
 ```
-
-### LLM Provider Timeout
-
-Increase the timeout for slow models:
-
-Edit `backend/src/dawam/modules/llm/gateway.py` and rebuild (not yet a configurable setting).
 
 ## Support & Resources
 

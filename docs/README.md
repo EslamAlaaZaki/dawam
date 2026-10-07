@@ -56,7 +56,7 @@ See [Configuration](./install.md#configuration) in the Installation Guide for al
 
 **Not yet implemented:**
 
-- **Key Rotation** — There is no automated tool to rotate `DAWAM_ENCRYPTION_KEY` yet. See [Encryption Key Rotation](./operations.md#encryption-key-rotation) for details.
+- **Key Rotation** — There is no automated tool to rotate `DAWAM_ENCRYPTION_KEY`; changing it means re-entering stored credentials. See [Encryption Key Rotation](./operations.md#encryption-key-rotation) for details.
 - **Prometheus Metrics** — Health endpoints exist (`/healthz`, `/readyz`), but no `/metrics` or Prometheus exporter yet.
 
 ## Support
