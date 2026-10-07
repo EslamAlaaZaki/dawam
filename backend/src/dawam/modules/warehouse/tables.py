@@ -39,7 +39,7 @@ TABLE_NAME_UNIQUE = "uq_dw_tables_layer_name"
 """Violated by a table name (any case) another table of the same Layer already has."""
 STAGING_SOURCE_UNIQUE = "uq_dw_tables_staging_source_table"
 """Violated by a second Staging Table for one Source Table."""
-COLUMN_NAME_UNIQUE ="uq_dw_columns_table_name"
+COLUMN_NAME_UNIQUE = "uq_dw_columns_table_name"
 """Violated by a column name (any case) another column of the same table already has."""
 
 LAYERS = ("staging", "core", "mart")

@@ -243,7 +243,9 @@ def _decimal(
         )
         scale = limits.max_scale
     if scale > precision:
-        flags.append(_lossy(f"The scale of {source_type} is over its precision: kept as {precision}."))
+        flags.append(
+            _lossy(f"The scale of {source_type} is over its precision: kept as {precision}.")
+        )
         scale = precision
     return TranslatedType(_neutral("decimal", precision=precision, scale=scale), tuple(flags))
 
