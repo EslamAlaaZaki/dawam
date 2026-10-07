@@ -146,3 +146,75 @@ class DwColumnRecord(Base):
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
+
+
+MAPPING_TYPES = ("direct", "derived", "constant", "unmapped")
+EDGE_KINDS = ("value", "uses", "lookup", "kpi")
+EDGE_NODE_TYPES = ("src_column", "dw_column", "dw_table", "branch", "kpi")
+MAPPING_TEXT_MAX_LENGTH = 4000
+
+
+class TableMappingRecord(Base):
+    """How a Core or Mart table is filled from the Layer below (spec §6.14 ``TableMapping``)."""
+
+    __tablename__ = "table_mappings"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    dw_table_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("dw_tables.id", ondelete="CASCADE"), unique=True
+    )
+    integration_rule: Mapped[str | None] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH))
+    match_keys: Mapped[list[str]] = mapped_column(sa.JSON)
+    notes: Mapped[str] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH), default="")
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    version: Mapped[int] = mapped_column()
+
+
+class ColumnMappingRecord(Base):
+    """One target column's mapping from the Layer below (spec §6.14 ``ColumnMapping``)."""
+
+    __tablename__ = "column_mappings"
+    __table_args__ = (
+        sa.CheckConstraint(f"mapping_type IN ({_in(MAPPING_TYPES)})", name="mapping_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    table_mapping_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("table_mappings.id", ondelete="CASCADE"), index=True
+    )
+    dw_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("dw_columns.id", ondelete="CASCADE"), unique=True
+    )
+    mapping_type: Mapped[str] = mapped_column(sa.String(16))
+    rule_text: Mapped[str] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH), default="")
+    sql_expression: Mapped[str] = mapped_column(sa.Text, default="")
+    """In the target platform's dialect; the master of the mapping's inputs."""
+    validation: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    """``{"unparsed": bool, "errors": [{"code", "message"}]}``."""
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    version: Mapped[int] = mapped_column()
+
+
+class LineageEdgeRecord(Base):
+    """An edge of the lineage graph, derived from a mapping's SQL on every save (§6.14)."""
+
+    __tablename__ = "lineage_edges"
+    __table_args__ = (
+        sa.CheckConstraint(f"kind IN ({_in(EDGE_KINDS)})", name="kind"),
+        sa.CheckConstraint(f"from_type IN ({_in(EDGE_NODE_TYPES)})", name="from_type"),
+        sa.CheckConstraint(f"to_type IN ({_in(EDGE_NODE_TYPES)})", name="to_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(sa.String(8))
+    from_type: Mapped[str] = mapped_column(sa.String(16))
+    from_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    to_type: Mapped[str] = mapped_column(sa.String(16))
+    to_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    mapping_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("column_mappings.id", ondelete="CASCADE"), index=True
+    )

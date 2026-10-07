@@ -733,6 +733,77 @@ export interface paths {
         patch: operations["updateDwColumn"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mapping
+         * @description A Core or Mart table's mapping from the Layer below, one entry per column (any
+         *     member); a column is `unmapped` until saved. 422 `invalid_mapping` for a Staging Table.
+         */
+        get: operations["getTableMapping"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Mapping
+         * @description Change the table's integration rule, match keys or notes (editors and owners);
+         *     fields left out stay as they are. 409 `version_conflict`.
+         */
+        patch: operations["updateTableMapping"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Column Mapping
+         * @description Save a column's mapping (editors and owners). The SQL is the master: its inputs
+         *     must be `table.column` of the Layer directly below, and lineage edges are derived from
+         *     it, replacing the previous ones. SQL that does not parse is saved with
+         *     `validation.unparsed` and an error, and produces no edges. 422 `invalid_mapping`;
+         *     409 `version_conflict`.
+         */
+        put: operations["saveColumnMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Lineage
+         * @description Every lineage edge on a path to (`upstream`) or from (`downstream`) a DW column
+         *     (any member). `uses` edges point at the table they steer.
+         */
+        get: operations["getColumnLineage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -2767,6 +2838,52 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ColumnMapping */
+        ColumnMapping: {
+            /**
+             * Id
+             * @description Null until the column's mapping is first saved.
+             */
+            id: string | null;
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /**
+             * Mapping Type
+             * @enum {string}
+             */
+            mapping_type: "direct" | "derived" | "constant" | "unmapped";
+            /**
+             * Rule Text
+             * @description The transformation rule, in plain language.
+             */
+            rule_text: string;
+            /**
+             * Sql Expression
+             * @description SQL in the target dialect, reading `table.column` of the Layer below.
+             */
+            sql_expression: string;
+            /**
+             * Inputs
+             * @description Columns the SQL reads into the result; derived from the SQL, never set.
+             */
+            inputs: components["schemas"]["MappingInput"][];
+            /**
+             * Uses
+             * @description Columns that only steer the result (conditions); derived from the SQL.
+             */
+            uses: components["schemas"]["MappingInput"][];
+            validation: components["schemas"]["MappingValidation"];
+            /**
+             * Version
+             * @description 0 until first saved.
+             */
+            version: number;
+        };
         /** ColumnProfile */
         ColumnProfile: {
             /**
@@ -3847,6 +3964,45 @@ export interface components {
              */
             mart: string;
         };
+        /** LineageEdge */
+        LineageEdge: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "value" | "uses" | "lookup" | "kpi";
+            /** From Type */
+            from_type: string;
+            /**
+             * From Id
+             * Format: uuid
+             */
+            from_id: string;
+            /**
+             * From Label
+             * @description `table.column` for a column, else the name.
+             */
+            from_label: string;
+            /** To Type */
+            to_type: string;
+            /**
+             * To Id
+             * Format: uuid
+             */
+            to_id: string;
+            /** To Label */
+            to_label: string;
+        };
+        /** LineageGraph */
+        LineageGraph: {
+            /** Edges */
+            edges: components["schemas"]["LineageEdge"][];
+        };
         /** LinkDocumentRequest */
         LinkDocumentRequest: {
             /**
@@ -4173,6 +4329,43 @@ export interface components {
             };
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
+        };
+        /** MappingInput */
+        MappingInput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "value" | "uses";
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+        };
+        /** MappingValidation */
+        MappingValidation: {
+            /**
+             * Unparsed
+             * @description The SQL could not be parsed; it produces no edges.
+             */
+            unparsed: boolean;
+            /**
+             * Errors
+             * @description Each error's `code` and `message`.
+             */
+            errors: {
+                [key: string]: string;
+            }[];
         };
         /** Me */
         Me: {
@@ -4725,6 +4918,30 @@ export interface components {
             change: "added" | "removed" | "changed";
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
+        };
+        /** SaveColumnMappingRequest */
+        SaveColumnMappingRequest: {
+            /**
+             * Mapping Type
+             * @enum {string}
+             */
+            mapping_type: "direct" | "derived" | "constant" | "unmapped";
+            /**
+             * Rule Text
+             * @default
+             */
+            rule_text: string;
+            /**
+             * Sql Expression
+             * @default
+             */
+            sql_expression: string;
+            /**
+             * Version
+             * @description The mapping's version; 0 to create it.
+             * @default 0
+             */
+            version: number;
         };
         /** SearchHit */
         SearchHit: {
@@ -5521,6 +5738,42 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** TableMapping */
+        TableMapping: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /**
+             * Source Layer
+             * @enum {string}
+             */
+            source_layer: "staging" | "core";
+            /** Integration Rule */
+            integration_rule: string | null;
+            /** Match Keys */
+            match_keys: string[];
+            /** Notes */
+            notes: string;
+            /**
+             * Version
+             * @description 0 until first saved.
+             */
+            version: number;
+            /**
+             * Columns
+             * @description Every column of the table, by ordinal.
+             */
+            columns: components["schemas"]["ColumnMapping"][];
+        };
         /** TableProfile */
         TableProfile: {
             /**
@@ -5855,6 +6108,21 @@ export interface components {
              * @description E.g. "changes slowly, history matters". Send null to clear it.
              */
             scd_hint?: string | null;
+        };
+        /** UpdateTableMappingRequest */
+        UpdateTableMappingRequest: {
+            /**
+             * Version
+             * @description The table mapping's version; 0 before its first save.
+             * @default 0
+             */
+            version: number;
+            /** Integration Rule */
+            integration_rule?: string | null;
+            /** Match Keys */
+            match_keys?: string[] | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * UpdateUserRequest
@@ -7753,6 +8021,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DwColumn"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getTableMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateTableMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTableMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveColumnMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveColumnMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getColumnLineage: {
+        parameters: {
+            query?: {
+                direction?: "upstream" | "downstream";
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineageGraph"];
                 };
             };
             /** @description Validation error */

@@ -11,9 +11,12 @@ Public interface. Other modules import only what is re-exported here:
   for generating valid names.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
-  ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns).
+  ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
+  column mappings under ``.../tables/{id}/mapping`` and the lineage graph at
+  ``/workspaces/{workspace_id}/data-warehouse/lineage``.
 
-Owns the ``data_warehouses``, ``dw_tables`` and ``dw_columns`` tables.
+Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
+``column_mappings`` and ``lineage_edges`` tables.
 """
 
 from .api import router
