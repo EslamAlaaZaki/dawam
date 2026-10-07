@@ -149,6 +149,7 @@ class SnapshotTable:
     is_sensitive: bool | None = None
     classification: str | None = None
     scd_hint: str | None = None
+    include_view_in_staging: bool | None = None
     version: int | None = None
 
 
@@ -802,6 +803,7 @@ class SnapshotService:
                         "is_sensitive": current.is_sensitive,
                         "classification": current.classification,
                         "scd_hint": current.scd_hint,
+                        "include_view_in_staging": current.include_view_in_staging,
                         "version": current.version,
                     }
                 ),

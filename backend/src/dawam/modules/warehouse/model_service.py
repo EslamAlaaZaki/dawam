@@ -138,6 +138,7 @@ class ModelColumn:
     is_system: bool
     version: int
     naming_violations: list[NamingViolation]
+    review_flags: list[dict[str, str]]
 
 
 @dataclass(frozen=True)
@@ -175,6 +176,7 @@ class ModelTable:
     updated_at: datetime
     version: int
     naming_violations: list[NamingViolation]
+    review_flags: list[dict[str, str]]
 
 
 def _invalid(field: str, message: str) -> ApiError:
@@ -287,6 +289,7 @@ def _column_view(record: DwColumnRecord, layer: str, rules: NamingRules) -> Mode
         naming_violations=check_column_name(
             rules, layer=layer, name=record.name, is_system=record.is_system
         ),
+        review_flags=list(record.review_flags or []),
     )
 
 
@@ -314,6 +317,7 @@ def _table_view(
         naming_violations=check_table_name(
             rules, layer=record.layer, kind=record.kind, name=record.name
         ),
+        review_flags=list(record.review_flags or []),
     )
 
 

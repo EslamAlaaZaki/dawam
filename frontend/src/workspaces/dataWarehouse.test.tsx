@@ -45,6 +45,8 @@ const SET_UP: DataWarehouse = {
     dimension_prefix: "d_",
     fact_prefix: "f_",
     bridge_prefix: "b_",
+    load_ts_column: "load_ts",
+    source_system_column: "source_system",
   },
   date_dimension: {
     start_year: 2010,

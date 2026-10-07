@@ -81,6 +81,13 @@ class NamingViolation(BaseModel):
     expected: str = Field(description="The prefix, or the case style, the name should follow.")
 
 
+class ReviewFlag(BaseModel):
+    code: str = Field(
+        description="`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+    )
+    message: str
+
+
 class DwColumn(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,6 +108,9 @@ class DwColumn(BaseModel):
     version: int
     naming_violations: list[NamingViolation] = Field(
         description="The Data Warehouse's naming rules this name breaks (a warning, not an error)."
+    )
+    review_flags: list[ReviewFlag] = Field(
+        description="What staging generation flagged on a staging column (empty otherwise)."
     )
 
 
@@ -143,6 +153,9 @@ class DwTable(BaseModel):
     updated_at: datetime
     version: int
     naming_violations: list[NamingViolation]
+    review_flags: list[ReviewFlag] = Field(
+        description="What staging generation flagged on a Staging Table (empty otherwise)."
+    )
 
 
 class DwTableList(BaseModel):
