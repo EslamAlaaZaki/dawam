@@ -14,6 +14,8 @@ export const MAPPING_TYPE_LABELS: Record<MappingType, string> = {
   direct: "Direct",
   derived: "Derived",
   constant: "Constant",
+  lookup: "Dimension lookup",
+  system: "System-generated",
   unmapped: "Unmapped",
   not_in_branch: "Not in this branch (NULL)",
 };

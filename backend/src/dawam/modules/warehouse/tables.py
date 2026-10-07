@@ -148,7 +148,7 @@ class DwColumnRecord(Base):
     version: Mapped[int] = mapped_column()
 
 
-MAPPING_TYPES = ("direct", "derived", "constant", "not_in_branch", "unmapped")
+MAPPING_TYPES = ("direct", "derived", "constant", "lookup", "system", "not_in_branch", "unmapped")
 BRANCH_NAME_MAX_LENGTH = 128
 EDGE_KINDS = ("value", "uses", "lookup", "kpi")
 EDGE_NODE_TYPES = ("src_column", "dw_column", "dw_table", "branch", "kpi")
@@ -228,6 +228,9 @@ class ColumnMappingRecord(Base):
     rule_text: Mapped[str] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH), default="")
     sql_expression: Mapped[str] = mapped_column(sa.Text, default="")
     """In the target platform's dialect; the master of the mapping's inputs."""
+    lookup: Mapped[dict[str, Any] | None] = mapped_column(sa.JSON)
+    """A ``lookup`` mapping's ``{"nk_inputs": [table.column], "as_of_input"?, "unknown_key"}``;
+    the dimension is the column's ``references_table_id``, not stored twice."""
     validation: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
     """``{"unparsed": bool, "errors": [{"code", "message"}]}``."""
     updated_by: Mapped[uuid.UUID | None] = mapped_column(

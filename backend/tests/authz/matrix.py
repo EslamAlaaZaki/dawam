@@ -557,7 +557,20 @@ def relationship_id(roles: RoleClients) -> str:
         )
 
 
+def conversation_id(roles: RoleClients) -> uuid.UUID:
+    """An assistant conversation the owner started and shared with the Workspace, so every
+    member may read it while only the owner may post to it."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/assistant/conversations"
+    created = owner.post(path, json={})
+    assert created.status_code == 201, created.text
+    shared = owner.patch(f"{path}/{created.json()['id']}", json={"shared_with_workspace": True})
+    assert shared.status_code == 200, shared.text
+    return uuid.UUID(created.json()["id"])
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
+    "conversation_id": conversation_id,
     "candidate_id": lambda roles: rename_pair(roles)[0],
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,

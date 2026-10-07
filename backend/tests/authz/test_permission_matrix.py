@@ -550,6 +550,48 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"internal_only": False, "data_sharing_level": "profiles"},
     ),
+    # The assistant's chat (stories 141, 149, 151, 152). Asking is open to every member; the
+    # conversation of the path is the owner's, shared with the Workspace: everyone reads it,
+    # only the member who started it posts, renames, shares or stops it.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations",
+        "See conversations other members shared with the Workspace (list)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations",
+        "Ask the assistant questions (start a conversation)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        json=lambda roles: {},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}",
+        "See conversations other members shared with the Workspace (open one)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}",
+        "Ask the assistant questions (rename or share your own conversation)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"title": "Renamed"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/messages",
+        "Ask the assistant questions (post to your own conversation)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"content": "Which tables hold customer data?"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/stop",
+        "Ask the assistant questions (stop your own response)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
     # Data Warehouse.
     Row(
         "GET",
@@ -636,6 +678,14 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/columns/{dw_column_id}",
         "Edit KPIs, DW Schema, mappings (delete a column)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/generated",
+        "Edit KPIs, DW Schema, mappings (add the generated date dimension)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+        json=lambda roles: {"kind": "date"},
     ),
     # Column mappings and lineage (stories 99, 100, 104).
     Row(

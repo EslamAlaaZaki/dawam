@@ -168,6 +168,8 @@ class Settings(DatabaseSettings):
     """Left unset, the S3 client falls back to its usual credential chain."""
     upload_max_mb: float = Field(default=25, gt=0)
     """Largest file an upload may carry, in megabytes (MiB)."""
+    assistant_max_tool_calls: int = Field(default=25, ge=1)
+    """Tool calls the assistant may make while answering one message (spec §6.16)."""
 
     @property
     def upload_max_bytes(self) -> int:

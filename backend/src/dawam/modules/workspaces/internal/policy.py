@@ -70,6 +70,11 @@ class Action(StrEnum):
     CHANGE_AI_SETTINGS = "workspace.ai_settings"
     """Choose the Workspace's agent model, its internal-only restriction and its
     data-sharing level (owners only; spec §4.3, stories 160, 161)."""
+    ASK_ASSISTANT = "assistant.ask"
+    """Start and share conversations with the assistant and ask it questions (every member,
+    viewers too; archived Workspaces make the chat read-only; spec §4.3, stories 149, 151).
+    Reading conversations needs only ``VIEW_WORKSPACE``. What the assistant may *do* is
+    decided per tool, by the action of the tool's own rule (a viewer's chat cannot write)."""
     CHANGE_DW_PLATFORM = "data_warehouse.change_platform"
     """Change the Data Warehouse's target platform after setup (owners only; spec §4.3)."""
     EDIT_DW_SCHEMA = "dw_schema.edit"
@@ -191,6 +196,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.TRANSFER_OWNERSHIP: _WorkspaceRule(min_role="owner"),
     Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_AI_SETTINGS: _WorkspaceRule(min_role="owner"),
+    Action.ASK_ASSISTANT: _WorkspaceRule(min_role="viewer"),
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
     Action.EDIT_DW_SCHEMA: _WorkspaceRule(min_role="editor"),
     Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),

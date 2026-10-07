@@ -10,6 +10,7 @@ from types import ModuleType
 from dawam.modules import (
     activity,
     admin,
+    assistant,
     audit,
     auth,
     collaboration,
@@ -39,6 +40,7 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     collaboration,
     files,
     llm,
+    assistant,
 )
 
 __all__ = ["ALL_MODULES"]

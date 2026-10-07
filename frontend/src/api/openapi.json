@@ -2077,6 +2077,71 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/generated": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-model"
+        ],
+        "summary": "Create Generated Table",
+        "description": "Add the built-in date or time dimension (editors and owners): a `generated`, conformed\ntable that needs no mapping. The date dimension's columns follow the Data Warehouse's\ndate-dimension settings (Gregorian attributes, optional Hijri and fiscal ones; the\nweekend flag and range apply to the seed rows). Its seed file is delivered with the DDL\npackage. 409 `name_taken` when it already exists; 404 `not_set_up`.",
+        "operationId": "createGeneratedDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGeneratedDwTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}": {
       "get": {
         "tags": [
@@ -8685,7 +8750,7 @@
           "files"
         ],
         "summary": "Save Ddl",
-        "description": "Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`\n(or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous\none (owners and editors). 404 before the Data Warehouse is set up.",
+        "description": "Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`\n(or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous\none (owners and editors). Generated date and time dimensions are seeded in the package;\ntheir seed files (`seed-<table>.csv` and `seed-<table>.sql`) are saved beside it.\n404 before the Data Warehouse is set up.",
         "operationId": "saveDdl",
         "parameters": [
           {
@@ -11078,6 +11143,389 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "List Conversations",
+        "description": "Your conversations in the Workspace and those members shared, newest first (any\nmember; read-only once the Workspace is archived).",
+        "operationId": "listAssistantConversations",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Create Conversation",
+        "description": "Start a conversation, private to you. 409 `workspace_archived`.",
+        "operationId": "createAssistantConversation",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConversationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Get Conversation",
+        "description": "A conversation with its messages, and per answer the tools used, tokens and duration.\n404 for somebody else's private conversation.",
+        "operationId": "getAssistantConversation",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Update Conversation",
+        "description": "Rename a conversation or share it with the Workspace's members. 403\n`not_your_conversation` for a shared conversation somebody else started.",
+        "operationId": "updateAssistantConversation",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConversationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/messages": {
+      "post": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Send Message",
+        "description": "Ask the assistant and stream its answer. Refusals before the stream starts are\nordinary errors (409 `workspace_archived`, 409 `run_in_progress`, 403\n`not_your_conversation`, 422 `invalid_message`); a model that cannot answer (provider\ndown, budget spent, no model assigned) ends the stream with `done` carrying the reason.",
+        "operationId": "sendAssistantMessage",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`).",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/stop": {
+      "post": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Stop Response",
+        "description": "Stop the conversation's running response; what was written so far is kept.",
+        "operationId": "stopAssistantResponse",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11123,6 +11571,7 @@
           "workspace.leave",
           "data_warehouse.set_up",
           "workspace.ai_settings",
+          "assistant.ask",
           "data_warehouse.change_platform",
           "dw_schema.edit",
           "source_system.create",
@@ -12146,6 +12595,8 @@
               "direct",
               "derived",
               "constant",
+              "lookup",
+              "system",
               "unmapped",
               "not_in_branch"
             ],
@@ -12179,6 +12630,17 @@
           },
           "validation": {
             "$ref": "#/components/schemas/MappingValidation"
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LookupSpec"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A `lookup` mapping's spec; its `sql_expression` is then derived."
           },
           "version": {
             "type": "integer",
@@ -12846,6 +13308,98 @@
         ],
         "title": "ConnectionTestResult"
       },
+      "ConversationDetailOut": {
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ConversationOut"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation",
+          "messages"
+        ],
+        "title": "ConversationDetailOut"
+      },
+      "ConversationList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ConversationList"
+      },
+      "ConversationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "shared_with_workspace": {
+            "type": "boolean",
+            "title": "Shared With Workspace",
+            "description": "Every member of the Workspace may read it; only its owner may post."
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine",
+            "description": "You started it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "shared_with_workspace",
+          "mine",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationOut"
+      },
+      "CreateConversationRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Title",
+            "description": "Optional; the first message names it otherwise.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "CreateConversationRequest"
+      },
       "CreateDwColumnRequest": {
         "properties": {
           "name": {
@@ -13076,6 +13630,35 @@
           "kind"
         ],
         "title": "CreateDwTableRequest"
+      },
+      "CreateGeneratedDwTableRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "date",
+              "time"
+            ],
+            "title": "Kind",
+            "description": "The built-in dimension to add."
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer",
+            "description": "`core` (default) or `mart`.",
+            "default": "core"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "CreateGeneratedDwTableRequest"
       },
       "CreateKpiRequest": {
         "properties": {
@@ -15943,6 +16526,53 @@
         ],
         "title": "LlmWorkspaceUsage"
       },
+      "LookupSpec": {
+        "properties": {
+          "nk_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Nk Inputs",
+            "description": "One `table.column` of the Layer below per natural-key column of the dimension, in order."
+          },
+          "as_of_input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Input",
+            "description": "The date column an SCD2 dimension is looked up as of."
+          },
+          "unknown_key": {
+            "type": "integer",
+            "title": "Unknown Key",
+            "description": "The key used when no dimension row matches."
+          },
+          "dimension_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dimension Id",
+            "description": "The FK's referenced table; derived, never set."
+          },
+          "dimension_name": {
+            "type": "string",
+            "title": "Dimension Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nk_inputs",
+          "unknown_key",
+          "dimension_id",
+          "dimension_name"
+        ],
+        "title": "LookupSpec"
+      },
       "MappingBranch": {
         "properties": {
           "id": {
@@ -16279,6 +16909,48 @@
         ],
         "title": "MergeRequest"
       },
+      "MessageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a member's message: the run that answered it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at",
+          "run"
+        ],
+        "title": "MessageOut"
+      },
       "NamingRules": {
         "properties": {
           "case_style": {
@@ -16416,6 +17088,47 @@
           "created_at"
         ],
         "title": "Notification"
+      },
+      "PageContextIn": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Type",
+            "description": "What the page shows, e.g. `kpi`."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "The object's name, as the page shows it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "PageContextIn"
       },
       "PendingInvitation": {
         "properties": {
@@ -17491,6 +18204,75 @@
         ],
         "title": "RoutineChange"
       },
+      "RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "`running`, `completed`, `tool_limit` (the cap was reached), `cancelled` or `failed`."
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallOut"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Why the run failed, e.g. `token_budget_exhausted`."
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "The reason to show the member."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "tool_calls",
+          "input_tokens",
+          "output_tokens",
+          "duration_ms",
+          "error_code",
+          "error_message"
+        ],
+        "title": "RunOut"
+      },
       "SaveColumnMappingRequest": {
         "properties": {
           "mapping_type": {
@@ -17499,6 +18281,8 @@
               "direct",
               "derived",
               "constant",
+              "lookup",
+              "system",
               "unmapped",
               "not_in_branch"
             ],
@@ -17514,6 +18298,19 @@
             "type": "string",
             "title": "Sql Expression",
             "default": ""
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lookup",
+            "description": "For `lookup` only: `nk_inputs` (`table.column` of the Layer below, one per natural-key column of the dimension), `as_of_input` (required for an SCD2 dimension) and `unknown_key` (default: the dimension's unknown member)."
           },
           "version": {
             "type": "integer",
@@ -17739,6 +18536,32 @@
           "next_cursor"
         ],
         "title": "SecurityEventPageOut"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 16000,
+            "title": "Content",
+            "description": "The member's message, 1 to 8000 characters."
+          },
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageContextIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The object on the current page; everything else is fetched."
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "SendMessageRequest"
       },
       "SentInvitationOut": {
         "properties": {
@@ -19730,6 +20553,36 @@
         ],
         "title": "TextUpdate"
       },
+      "ToolCallOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Arguments"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "`ok`, `refused`, `error` or `skipped` (over the cap)."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "arguments",
+          "status",
+          "duration_ms"
+        ],
+        "title": "ToolCallOut"
+      },
       "TopNRequest": {
         "properties": {
           "enabled": {
@@ -20001,6 +20854,36 @@
           "version"
         ],
         "title": "UpdateColumnEnhancements"
+      },
+      "UpdateConversationRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "shared_with_workspace": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared With Workspace",
+            "description": "Share with, or stop sharing with, the Workspace's members."
+          }
+        },
+        "type": "object",
+        "title": "UpdateConversationRequest"
       },
       "UpdateDwColumnRequest": {
         "properties": {
