@@ -2594,6 +2594,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/ai-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Settings
+         * @description The Workspace's AI settings and the models an owner may choose from (any member).
+         */
+        get: operations["getWorkspaceAiSettings"];
+        /**
+         * Set Ai Settings
+         * @description Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
+         *     that is not an approved agent model; 422 `no_internal_model` when internal-only has
+         *     no internal agent model to use.
+         */
+        put: operations["setWorkspaceAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2612,7 +2638,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2787,6 +2813,23 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** ApprovedAgentModel */
+        ApprovedAgentModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider Name */
+            provider_name: string;
+            /**
+             * Internal
+             * @description True when the provider is inside your infrastructure.
+             */
+            internal: boolean;
         };
         /** AuditEntry */
         AuditEntry: {
@@ -3441,6 +3484,12 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * DataSharingLevel
+         * @description What the AI may see, cumulative: each level includes every one before it.
+         * @enum {string}
+         */
+        DataSharingLevel: "metadata" | "profiles" | "documents" | "samples";
         /** DataWarehouse */
         DataWarehouse: {
             /**
@@ -6442,6 +6491,52 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** WorkspaceAiSettings */
+        WorkspaceAiSettings: {
+            /**
+             * Internal Only
+             * @description Every model role (agent, light, embedding) is refused an external provider.
+             */
+            internal_only: boolean;
+            /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
+            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Agent Model Id
+             * @description The Workspace's own agent model; null: the installation's.
+             */
+            agent_model_id: string | null;
+            /**
+             * Effective Agent Model Id
+             * @description The agent model in use: the Workspace's, else the installation's.
+             */
+            effective_agent_model_id: string | null;
+            /**
+             * Approved Models
+             * @description The admin-approved agent models an owner may choose from.
+             */
+            approved_models: components["schemas"]["ApprovedAgentModel"][];
+            /**
+             * Internal Agent Available
+             * @description The installation has an agent model on an internal provider.
+             */
+            internal_agent_available: boolean;
+            /**
+             * Banner
+             * @description Show a banner: the Workspace is not internal-only and the installation has no internal agent model.
+             */
+            banner: boolean;
+        };
+        /** WorkspaceAiSettingsRequest */
+        WorkspaceAiSettingsRequest: {
+            /** Internal Only */
+            internal_only: boolean;
+            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Agent Model Id
+             * @description An approved agent model; null: use the installation's.
+             */
+            agent_model_id?: string | null;
         };
         /** WorkspaceFile */
         WorkspaceFile: {
@@ -12883,6 +12978,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmUsage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getWorkspaceAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setWorkspaceAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceAiSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAiSettings"];
                 };
             };
             /** @description Validation error */

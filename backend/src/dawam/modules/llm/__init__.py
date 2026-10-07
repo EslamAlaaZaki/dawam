@@ -21,16 +21,27 @@ Public interface. Other modules import only what is re-exported here:
   user_id=)`` is how features call a model: the ``MeteredGateway`` checks the budgets before
   every call (429 ``token_budget_exhausted``) and records tokens per call; ``light`` falls
   back to the agent model when unassigned or not allowed.
-- ``router``: ``/admin/llm/roles``, ``/admin/llm/budgets[...]``, ``/admin/llm/usage``,
-  ``/admin/llm/providers[/{provider_id}[/models]]``,
+- ``WorkspaceAiService``: a Workspace's AI settings (its agent model, internal-only, data-sharing
+  level; owners only, audited). ``policy(workspace_id)`` is the one ``DataSharingPolicy``
+  other modules ask before sending data to a model: ``policy.allows(DataSharingLevel.SAMPLES)``
+  (levels are cumulative: metadata < profiles < documents < samples). An internal-only
+  Workspace's gateway refuses external providers for every role (409
+  ``external_provider_refused``). ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the
+  composition root sets (``app.state.on_workspace_created``): internal-only by default when the
+  installation's agent model is internal, decided in code.
+- ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` (members read, owners
+  change), then, admins only, ``/admin/llm/roles``, ``/admin/llm/budgets[...]``,
+  ``/admin/llm/usage``, ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
-Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets`` and
-``llm_usage`` tables. Imports ``auth`` and ``workspaces``
-(for the admin policy).
+Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
+``llm_usage`` and ``llm_workspace_settings`` tables. Imports ``auth``, ``activity``,
+``audit`` and ``workspaces`` (for the admin policy).
 """
 
-from .api import router
+from fastapi import APIRouter
+
+from .api import router as admin_router
 from .gateway import (
     Adapter,
     Capabilities,
@@ -61,13 +72,30 @@ from .service import (
     ProviderService,
     SetupStatus,
 )
+from .workspace_ai import (
+    ApprovedModel,
+    DataSharingLevel,
+    DataSharingPolicy,
+    WorkspaceAiService,
+    WorkspaceAiSettings,
+    WorkspaceAiView,
+    on_workspace_created,
+)
+from .workspace_ai_api import router as workspace_ai_router
+
+router = APIRouter()
+router.include_router(admin_router)
+router.include_router(workspace_ai_router)
 
 __all__ = [
     "Adapter",
     "AdapterConfig",
     "AdapterFactory",
+    "ApprovedModel",
     "Capabilities",
     "ChatEvent",
+    "DataSharingLevel",
+    "DataSharingPolicy",
     "Done",
     "FakeAdapter",
     "Gateway",
@@ -89,6 +117,10 @@ __all__ = [
     "ToolSpec",
     "Usage",
     "UsageReport",
+    "WorkspaceAiService",
+    "WorkspaceAiSettings",
+    "WorkspaceAiView",
     "adapter_for",
+    "on_workspace_created",
     "router",
 ]

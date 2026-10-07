@@ -14,7 +14,7 @@ from dawam.modules.activity import record_activity
 from dawam.modules.auth import SecurityEventRecorder, User
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
-from dawam.platform.hooks import SourceAnalysisProvider, WorkspaceArchivedHook
+from dawam.platform.hooks import SourceAnalysisProvider, WorkspaceArchivedHook, WorkspaceCreatedHook
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
 from .internal.policy import (
@@ -243,16 +243,19 @@ class WorkspaceService:
         events: SecurityEventRecorder | None = None,
         on_archived: WorkspaceArchivedHook | None = None,
         source_analysis: SourceAnalysisProvider | None = None,
+        on_created: WorkspaceCreatedHook | None = None,
     ) -> None:
         """``events`` records Workspace deletions; ``delete`` needs it. ``on_archived`` is
         called in the transaction that archives a Workspace (the composition root sets
-        it, e.g. to cancel the Workspace's jobs). ``source_analysis`` tells the stage
-        progress how far each Source System's analysis is (without it: no systems)."""
+        it, e.g. to cancel the Workspace's jobs); ``on_created`` in the one that creates
+        it (e.g. to give it its AI settings). ``source_analysis`` tells the stage progress
+        how far each Source System's analysis is (without it: no systems)."""
         self._engine = engine
         self._clock = clock
         self._events = events
         self._on_archived = on_archived
         self._source_analysis = source_analysis
+        self._on_created = on_created
 
     def authorize(self, user: User, action: Action, workspace_id: uuid.UUID) -> WorkspaceScope:
         """Check that ``user`` may perform ``action`` in the Workspace ``workspace_id``
@@ -307,6 +310,8 @@ class WorkspaceService:
                 object_label=record.name,
                 at=now,
             )
+            if self._on_created is not None:
+                self._on_created(db, record.id, now)
             return workspace_view(user, record, "owner")
 
     def list_for(

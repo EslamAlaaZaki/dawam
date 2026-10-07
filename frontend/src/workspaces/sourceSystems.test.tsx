@@ -111,10 +111,11 @@ describe("Source Systems in the folder tree", () => {
 
     const all = names();
     const start = all.indexOf("Core Banking");
-    expect(all.slice(start, start + 8)).toEqual([
+    expect(all.slice(start, start + 9)).toEqual([
       "Core Banking",
       "Connection | Schema Import",
       "Source Schema",
+      "ER diagram",
       "Profiling",
       "PII",
       "Documents",

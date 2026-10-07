@@ -1,7 +1,7 @@
 """Ports a module exposes for modules that import it to fill (README rule 5).
 
 ``workspaces`` is imported by every Workspace-scoped module, so it cannot import them
-back. What it must tell them (a Workspace was archived) it calls through a port the
+back. What it must tell them (a Workspace was created or archived) it calls through a port the
 composition root fills.
 """
 
@@ -35,4 +35,10 @@ class SourceAnalysisProvider(Protocol):
     def __call__(self, workspace_id: uuid.UUID) -> list[SourceAnalysis]:
         """The Source Analysis progress of each Source System of the Workspace. The
         ``sources`` module imports ``workspaces``, so ``workspaces`` asks through this port."""
+
+
+class WorkspaceCreatedHook(Protocol):
+    def __call__(self, db: Session, workspace_id: uuid.UUID, at: datetime) -> None:
+        """Called inside the transaction that creates the Workspace (after its row and its
+        owner exist), so what the hook adds is kept only if the Workspace is."""
         ...

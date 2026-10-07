@@ -22,7 +22,7 @@ from dawam.modules.admin import SystemSettingsService
 from dawam.modules.auth import AuthService
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
-from dawam.modules.llm import AdapterFactory
+from dawam.modules.llm import AdapterFactory, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceSummaryService
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
@@ -137,6 +137,9 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.source_analysis = SourceSummaryService(
         engine, workspaces=WorkspaceService(engine, clock=services.clock)
     ).source_analysis
+
+    # A new Workspace gets its AI settings (llm) as it is created: workspaces cannot import llm.
+    app.state.on_workspace_created = on_workspace_created
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)
