@@ -31,6 +31,13 @@ def upgrade() -> None:
         sa.Column("review_flags", sa.JSON(), server_default=sa.text("'[]'"), nullable=False),
     )
     op.create_index(op.f("ix_dw_tables_source_table_id"), "dw_tables", ["source_table_id"])
+    op.create_index(
+        "uq_dw_tables_staging_source_table",
+        "dw_tables",
+        ["data_warehouse_id", "source_table_id"],
+        unique=True,
+        postgresql_where=sa.text("layer = 'staging'"),
+    )
     op.add_column("dw_columns", sa.Column("source_column_id", sa.Uuid(), nullable=True))
     op.add_column(
         "dw_columns",
@@ -43,6 +50,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_dw_columns_source_column_id"), table_name="dw_columns")
     op.drop_column("dw_columns", "review_flags")
     op.drop_column("dw_columns", "source_column_id")
+    op.drop_index("uq_dw_tables_staging_source_table", table_name="dw_tables")
     op.drop_index(op.f("ix_dw_tables_source_table_id"), table_name="dw_tables")
     op.drop_column("dw_tables", "review_flags")
     op.drop_column("dw_tables", "source_table_id")

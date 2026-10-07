@@ -85,6 +85,27 @@ def test_a_number_without_precision_is_a_wide_decimal_and_lossy(platform, scale)
     assert [f.code for f in result.flags] == ["lossy_type"]
 
 
+@pytest.mark.parametrize(
+    ("source", "expected", "codes"),
+    [
+        ("NUMBER(*,0)", neutral("decimal", precision=38, scale=10), ["lossy_type"]),
+        ("NUMBER(*)", neutral("decimal", precision=38, scale=10), ["lossy_type"]),
+        ("NUMBER(3,5)", neutral("decimal", precision=3, scale=3), ["lossy_type"]),
+        ("NUMBER(5,5)", neutral("decimal", precision=5, scale=5), []),
+        ("NUMBER(10,-2)", neutral("decimal", precision=10, scale=0), ["lossy_type"]),
+        ("VARCHAR2(100 CHAR)", neutral("string", length=100), []),
+        ("VARCHAR2(100 BYTE)", neutral("string", length=100), []),
+        ("NVARCHAR2(50)", neutral("string", length=50), []),
+        ("CHAR(10 CHAR)", neutral("char", length=10), []),
+    ],
+)
+def test_oracle_precision_and_length_semantics(source, expected, codes):
+    result = translate_type("postgresql", source, engine="oracle")
+
+    assert result.data_type == expected
+    assert [f.code for f in result.flags] == codes
+
+
 def test_a_decimal_wider_than_38_digits_is_capped_and_lossy():
     result = translate_type("postgresql", "numeric(50,5)")
 

@@ -37,7 +37,9 @@ class DataWarehouseRecord(Base):
 
 TABLE_NAME_UNIQUE = "uq_dw_tables_layer_name"
 """Violated by a table name (any case) another table of the same Layer already has."""
-COLUMN_NAME_UNIQUE = "uq_dw_columns_table_name"
+STAGING_SOURCE_UNIQUE = "uq_dw_tables_staging_source_table"
+"""Violated by a second Staging Table for one Source Table."""
+COLUMN_NAME_UNIQUE ="uq_dw_columns_table_name"
 """Violated by a column name (any case) another column of the same table already has."""
 
 LAYERS = ("staging", "core", "mart")
@@ -73,6 +75,13 @@ class DwTableRecord(Base):
     __table_args__ = (
         sa.Index(
             TABLE_NAME_UNIQUE, "data_warehouse_id", "layer", sa.text("lower(name)"), unique=True
+        ),
+        sa.Index(
+            STAGING_SOURCE_UNIQUE,
+            "data_warehouse_id",
+            "source_table_id",
+            unique=True,
+            postgresql_where=sa.text("layer = 'staging'"),
         ),
         sa.CheckConstraint(f"layer IN ({_in(LAYERS)})", name="layer"),
         sa.CheckConstraint(f"kind IN ({_in(TABLE_KINDS)})", name="kind"),

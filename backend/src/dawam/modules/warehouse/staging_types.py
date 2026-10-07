@@ -121,7 +121,8 @@ def _neutral(kind: str, **extra: Any) -> dict[str, Any]:
 
 def _ints(text: str) -> list[int | str]:
     parts = [p.strip().lower() for p in text.split(",") if p.strip()]
-    return [int(p) if re.fullmatch(r"-?\d+", p) else p for p in parts]
+    # "100 char" / "10 byte" (Oracle length semantics) keep their number.
+    return [int(m.group()) if (m := re.match(r"-?\d+(?=\s|$)", p)) else p for p in parts]
 
 
 def translate_type(
@@ -215,7 +216,8 @@ def _decimal(
     if text == "smallmoney":
         return TranslatedType(_neutral("decimal", precision=10, scale=min(4, limits.max_scale)))
     numbers = [p for p in params if isinstance(p, int)]
-    if not numbers:
+    if not numbers or not isinstance(params[0], int):  # NUMBER(*,0): no precision either
+        numbers = []
         precision, scale = limits.default_decimal
         return TranslatedType(
             _neutral("decimal", precision=precision, scale=scale),
@@ -240,7 +242,9 @@ def _decimal(
             _lossy(f"The scale of {source_type} is over the platform's {limits.max_scale}.")
         )
         scale = limits.max_scale
-    scale = min(scale, precision)
+    if scale > precision:
+        flags.append(_lossy(f"The scale of {source_type} is over its precision: kept as {precision}."))
+        scale = precision
     return TranslatedType(_neutral("decimal", precision=precision, scale=scale), tuple(flags))
 
 
