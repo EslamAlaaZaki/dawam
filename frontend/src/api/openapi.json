@@ -4516,6 +4516,340 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationship-inference": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Start Relationship Inference",
+        "description": "Infer undeclared relationships from the latest Snapshot, as a background job (owners\nand editors). Name, type, uniqueness and JOIN conditions in views and routines always\ncount; value overlap only with a live Connection and profiled columns. 409\n`no_snapshot` before the first Snapshot; 422 for a bad threshold or sample size.",
+        "operationId": "startRelationshipInference",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/InferenceRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "List Relationships",
+        "description": "The Source System's inferred relationships with their evidence (any member). Only\ncandidates at or above `min_confidence` (default 0.6) are shown.",
+        "operationId": "listRelationships",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "suggested",
+                    "accepted",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only relationships in this state.",
+              "title": "Status"
+            },
+            "description": "Only relationships in this state."
+          },
+          {
+            "name": "min_confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1,
+              "minimum": 0,
+              "description": "Hide candidates below this confidence.",
+              "default": 0.6,
+              "title": "Min Confidence"
+            },
+            "description": "Hide candidates below this confidence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Accept Relationship",
+        "description": "Accept a relationship (owners and editors): the Source Schema treats it as real.\nAudited.",
+        "operationId": "acceptRelationship",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "relationship_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Relationship Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relationship"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Reject Relationship",
+        "description": "Reject a relationship (owners and editors); later runs do not propose it again.\nAudited.",
+        "operationId": "rejectRelationship",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "relationship_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Relationship Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relationship"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/template": {
       "get": {
         "tags": [
@@ -5436,6 +5770,324 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pii-rules": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "List Pii Rules",
+        "description": "Built-in rules with their on/off state, and the custom rules (owners).",
+        "operationId": "listPiiRules",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiRuleList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Create Pii Rule",
+        "description": "Add a custom PII rule (owners). It applies to later name and value scans. Audited.",
+        "operationId": "createPiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiRuleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPiiRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pii-rules/built-in/{rule_id}": {
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Switch Built In Pii Rule",
+        "description": "Switch a built-in rule on or off for this Workspace (owners). Built-in rules are\nnever edited. Audited.",
+        "operationId": "switchBuiltInPiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuiltInSwitch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltInPiiRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pii-rules/{rule_id}": {
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Update Pii Rule",
+        "description": "Edit a custom PII rule (owners); a field left out stays. Audited.",
+        "operationId": "updatePiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiRuleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPiiRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Delete Pii Rule",
+        "description": "Delete a custom PII rule (owners). Findings it made stay. Audited.",
+        "operationId": "deletePiiRule",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation error",
@@ -9502,6 +10154,122 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/ai-settings": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Ai Settings",
+        "description": "The Workspace's AI settings and the models an owner may choose from (any member).",
+        "operationId": "getWorkspaceAiSettings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Ai Settings",
+        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model; 422 `no_internal_model` when internal-only has\nno internal agent model to use.",
+        "operationId": "setWorkspaceAiSettings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceAiSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9546,6 +10314,7 @@
           "workspace.reassign_ownership",
           "workspace.leave",
           "data_warehouse.set_up",
+          "workspace.ai_settings",
           "data_warehouse.change_platform",
           "dw_schema.edit",
           "source_system.create",
@@ -9556,6 +10325,7 @@
           "source_system.profile",
           "source_table.top_n",
           "pii.review",
+          "pii.manage_rules",
           "job.cancel_own",
           "job.cancel_any",
           "installation.list_workspaces",
@@ -9944,6 +10714,36 @@
         ],
         "title": "AdminWorkspacePage"
       },
+      "ApprovedAgentModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "True when the provider is inside your infrastructure."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "provider_name",
+          "internal"
+        ],
+        "title": "ApprovedAgentModel"
+      },
       "AuditEntry": {
         "properties": {
           "id": {
@@ -10159,6 +10959,56 @@
           "files"
         ],
         "title": "Body_validateSchemaImport"
+      },
+      "BuiltInPiiRule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "E.g. `national_id`."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Off means this Workspace's scans skip the rule."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "confidence",
+          "enabled"
+        ],
+        "title": "BuiltInPiiRule"
+      },
+      "BuiltInSwitch": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "BuiltInSwitch"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -10539,6 +11389,41 @@
           "profile"
         ],
         "title": "ColumnProfileView"
+      },
+      "ColumnRef": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "table_id",
+          "db_schema",
+          "table",
+          "column"
+        ],
+        "title": "ColumnRef"
       },
       "Connection": {
         "properties": {
@@ -11274,6 +12159,106 @@
         ],
         "title": "CreateWorkspaceRequest"
       },
+      "CustomPiiRule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique per Workspace; a finding's rule is `custom:<name>`."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords",
+            "description": "Matched, once normalised, inside a normalised column name."
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "A regex a sampled value must match in full."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0.5 to 1; what a name match alone is worth."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "keywords",
+          "pattern",
+          "category",
+          "confidence",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CustomPiiRule"
+      },
+      "DataSharingLevel": {
+        "type": "string",
+        "enum": [
+          "metadata",
+          "profiles",
+          "documents",
+          "samples"
+        ],
+        "title": "DataSharingLevel",
+        "description": "What the AI may see, cumulative: each level includes every one before it."
+      },
       "DataWarehouse": {
         "properties": {
           "set_up": {
@@ -11685,6 +12670,14 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "naming_violations": {
+            "items": {
+              "$ref": "#/components/schemas/NamingViolation"
+            },
+            "type": "array",
+            "title": "Naming Violations",
+            "description": "The Data Warehouse's naming rules this name breaks (a warning, not an error)."
           }
         },
         "type": "object",
@@ -11703,7 +12696,8 @@
           "description",
           "semantic_type",
           "is_system",
-          "version"
+          "version",
+          "naming_violations"
         ],
         "title": "DwColumn"
       },
@@ -11865,6 +12859,13 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "naming_violations": {
+            "items": {
+              "$ref": "#/components/schemas/NamingViolation"
+            },
+            "type": "array",
+            "title": "Naming Violations"
           }
         },
         "type": "object",
@@ -11883,7 +12884,8 @@
           "columns",
           "created_at",
           "updated_at",
-          "version"
+          "version",
+          "naming_violations"
         ],
         "title": "DwTable"
       },
@@ -11985,6 +12987,11 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "naming_violation_count": {
+            "type": "integer",
+            "title": "Naming Violation Count",
+            "description": "How many naming rules the table's own name breaks."
           }
         },
         "type": "object",
@@ -12000,7 +13007,8 @@
           "is_conformed",
           "description",
           "column_count",
-          "version"
+          "version",
+          "naming_violation_count"
         ],
         "title": "DwTableSummary"
       },
@@ -12394,6 +13402,51 @@
           "disabled_features"
         ],
         "title": "ImportStatus"
+      },
+      "InferenceRequest": {
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "title": "Threshold",
+            "description": "Only candidates at or above this confidence (above 0, at most 1) are kept.",
+            "default": 0.6
+          },
+          "sample_size": {
+            "type": "integer",
+            "title": "Sample Size",
+            "description": "Rows sampled per table for value overlap (1 to 100000); used only with a live Connection and profiled columns.",
+            "default": 5000
+          }
+        },
+        "type": "object",
+        "title": "InferenceRequest"
+      },
+      "InferenceStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `infer_relationships` job: follow it at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "InferenceStarted"
       },
       "InvitationLinkOut": {
         "properties": {
@@ -13232,10 +14285,6 @@
           },
           "adapter": {
             "type": "string",
-            "enum": [
-              "openai_compatible",
-              "anthropic"
-            ],
             "title": "Adapter"
           },
           "base_url": {
@@ -13314,11 +14363,8 @@
           },
           "adapter": {
             "type": "string",
-            "enum": [
-              "openai_compatible",
-              "anthropic"
-            ],
             "title": "Adapter",
+            "description": "`openai_compatible`, `anthropic`, `azure_openai` or a plugin kind.",
             "default": "openai_compatible"
           },
           "base_url": {
@@ -14035,6 +15081,34 @@
         "type": "object",
         "title": "NamingRules"
       },
+      "NamingViolation": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "case_style",
+              "prefix"
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "expected": {
+            "type": "string",
+            "title": "Expected",
+            "description": "The prefix, or the case style, the name should follow."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "expected"
+        ],
+        "title": "NamingViolation"
+      },
       "Notification": {
         "properties": {
           "id": {
@@ -14349,6 +15423,164 @@
         ],
         "title": "PiiFindingPage"
       },
+      "PiiRuleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Name",
+            "description": "1 to 40 lower-case letters, digits and underscores, starting with a letter."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "keywords": {
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Keywords",
+            "description": "Name keywords, e.g. `emp_no`; separators and case are ignored."
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "A regex tested on whole sampled values in value scans. At least one of keywords and pattern is required."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0.5 to 1.",
+            "default": 0.8
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "category"
+        ],
+        "title": "PiiRuleCreate"
+      },
+      "PiiRuleList": {
+        "properties": {
+          "built_in": {
+            "items": {
+              "$ref": "#/components/schemas/BuiltInPiiRule"
+            },
+            "type": "array",
+            "title": "Built In"
+          },
+          "custom": {
+            "items": {
+              "$ref": "#/components/schemas/CustomPiiRule"
+            },
+            "type": "array",
+            "title": "Custom"
+          }
+        },
+        "type": "object",
+        "required": [
+          "built_in",
+          "custom"
+        ],
+        "title": "PiiRuleList"
+      },
+      "PiiRuleUpdate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "An empty string removes it."
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "direct_identifier",
+                  "quasi_identifier",
+                  "sensitive",
+                  "financial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "title": "PiiRuleUpdate"
+      },
       "PiiScanRequest": {
         "properties": {
           "table_ids": {
@@ -14592,6 +15824,117 @@
           "status"
         ],
         "title": "ReindexStarted"
+      },
+      "Relationship": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "from_column": {
+            "$ref": "#/components/schemas/ColumnRef",
+            "description": "The referencing column."
+          },
+          "to_column": {
+            "$ref": "#/components/schemas/ColumnRef",
+            "description": "The referenced (unique) column."
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "inferred",
+              "routine"
+            ],
+            "title": "Origin",
+            "description": "`routine` when a view or routine joins the two columns, else `inferred`."
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "0 to 1, from the signals in `evidence`."
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence",
+            "description": "Each signal that fired with its score and detail: `name`, `type`, `unique`, `join` (the views and routines) and `overlap` (a ratio, with a live Connection and profiling). Names and ratios only, never a data value."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "from_column",
+          "to_column",
+          "origin",
+          "confidence",
+          "evidence",
+          "status",
+          "version",
+          "detected_at",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "Relationship"
+      },
+      "RelationshipPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Relationship"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Most confident first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RelationshipPage"
       },
       "RemovedColumn": {
         "properties": {
@@ -18148,6 +19491,104 @@
           "updated_at"
         ],
         "title": "Workspace"
+      },
+      "WorkspaceAiSettings": {
+        "properties": {
+          "internal_only": {
+            "type": "boolean",
+            "title": "Internal Only",
+            "description": "Every model role (agent, light, embedding) is refused an external provider."
+          },
+          "data_sharing_level": {
+            "$ref": "#/components/schemas/DataSharingLevel",
+            "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
+          },
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "The Workspace's own agent model; null: the installation's."
+          },
+          "effective_agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Agent Model Id",
+            "description": "The agent model in use: the Workspace's, else the installation's."
+          },
+          "approved_models": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovedAgentModel"
+            },
+            "type": "array",
+            "title": "Approved Models",
+            "description": "The admin-approved agent models an owner may choose from."
+          },
+          "internal_agent_available": {
+            "type": "boolean",
+            "title": "Internal Agent Available",
+            "description": "The installation has an agent model on an internal provider."
+          },
+          "banner": {
+            "type": "boolean",
+            "title": "Banner",
+            "description": "Show a banner: the Workspace is not internal-only and the installation has no internal agent model."
+          }
+        },
+        "type": "object",
+        "required": [
+          "internal_only",
+          "data_sharing_level",
+          "agent_model_id",
+          "effective_agent_model_id",
+          "approved_models",
+          "internal_agent_available",
+          "banner"
+        ],
+        "title": "WorkspaceAiSettings"
+      },
+      "WorkspaceAiSettingsRequest": {
+        "properties": {
+          "internal_only": {
+            "type": "boolean",
+            "title": "Internal Only"
+          },
+          "data_sharing_level": {
+            "$ref": "#/components/schemas/DataSharingLevel"
+          },
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "An approved agent model; null: use the installation's."
+          }
+        },
+        "type": "object",
+        "required": [
+          "internal_only",
+          "data_sharing_level"
+        ],
+        "title": "WorkspaceAiSettingsRequest"
       },
       "WorkspaceFile": {
         "properties": {

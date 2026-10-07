@@ -46,6 +46,7 @@ from ..tables import (
     SnapshotRecord,
     SnapshotRoutineRecord,
     SnapshotTableRecord,
+    SourceSystemRecord,
     SrcColumnRecord,
     SrcDbSchemaRecord,
     SrcRoutineRecord,
@@ -53,7 +54,7 @@ from ..tables import (
 )
 from . import renames
 from .connector import SourceCatalog
-from .pii import scan_columns
+from .pii import load_rule_set, scan_columns
 
 _INSERT_BATCH = 5000
 
@@ -448,11 +449,15 @@ def store_catalog(
         )
     _insert(db, SnapshotTableRecord, table_rows)
     _insert(db, SnapshotColumnRecord, column_rows)
+    workspace_id = db.scalars(
+        sa.select(SourceSystemRecord.workspace_id).where(SourceSystemRecord.id == source_system_id)
+    ).one()
     scan_columns(
         db,
         snapshot_id=sid,
         columns=[(row["src_column_id"], row["name"]) for row in column_rows],
         at=taken_at,
+        rules=load_rule_set(db, workspace_id),
     )
     _insert(db, SnapshotConstraintRecord, constraint_rows)
     _insert(db, SnapshotIndexRecord, index_rows)

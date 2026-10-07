@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "headers": {},
+  "body": {
+    "error": {
+      "message": "Unknown parameter: foo."
+    }
+  }
+}

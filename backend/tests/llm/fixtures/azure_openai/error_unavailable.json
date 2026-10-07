@@ -1,0 +1,9 @@
+{
+  "status": 503,
+  "headers": {},
+  "body": {
+    "error": {
+      "message": "The server is overloaded."
+    }
+  }
+}
