@@ -1,0 +1,57 @@
+name: Assistant against Ollama
+
+# Slow and CPU-only: never gates a PR. Runs on demand, weekly, and on PRs that touch the
+# assistant or the LLM gateway.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+  pull_request:
+    paths:
+      - "backend/src/dawam/modules/assistant/**"
+      - "backend/src/dawam/modules/llm/**"
+      - ".github/workflows/assistant-ollama.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  assistant-ollama:
+    name: Assistant against Ollama
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      DAWAM_OLLAMA_URL: http://localhost:11434/v1
+      DAWAM_OLLAMA_MODEL: qwen2.5:1.5b
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ollama
+          key: ollama-${{ env.DAWAM_OLLAMA_MODEL }}
+      - name: Start Ollama and pull the model
+        run: |
+          mkdir -p ~/.ollama
+          docker run -d --name ollama -p 11434:11434 -v ~/.ollama:/root/.ollama ollama/ollama
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:11434/api/version && ready=1 && break
+            sleep 2
+          done
+          if [ -z "$ready" ]; then echo "::error::Ollama did not become healthy within 60 seconds"; exit 1; fi
+          docker exec ollama ollama pull "$DAWAM_OLLAMA_MODEL"
+      - name: Tests (pytest -m ollama)
+        run: pytest -m ollama tests/assistant/test_ollama.py

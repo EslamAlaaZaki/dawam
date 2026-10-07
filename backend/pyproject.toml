@@ -45,10 +45,11 @@ packages = ["src/dawam"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -m 'not oracle'"
+addopts = "-ra -m 'not oracle and not ollama'"
 pythonpath = ["."]
 markers = [
     "oracle: needs an Oracle container (slow and heavy); run with `pytest -m oracle`",
+    "ollama: needs a running Ollama server (DAWAM_OLLAMA_URL); run with `pytest -m ollama`",
 ]
 
 [tool.ruff]

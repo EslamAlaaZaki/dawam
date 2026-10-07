@@ -6,6 +6,10 @@ yields ``Text`` deltas and ``ToolFinished`` reports as they happen, then one ``F
 that says how the run ended: ``completed``, ``tool_limit`` (the cap was hit and the model
 answered with what it had), ``cancelled`` (the member pressed stop) or ``failed`` (the
 provider or a budget refused; the reason is kept).
+
+A model known to lack native tool calling runs in limited mode (``prompted.py``): the tools
+are described in the system prompt and a JSON reply is parsed strictly. Before every model
+call the conversation is fitted to the model's context window (``context.py``).
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 
 from dawam.modules.llm import (
@@ -29,7 +33,9 @@ from dawam.modules.llm import (
 )
 from dawam.platform.errors import ApiError
 
+from .context import fit_messages, shorten_result
 from .prompt import quote_data
+from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
 
 DEFAULT_MAX_TOOL_CALLS = 25
 
@@ -132,23 +138,32 @@ def run_agent(
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer."""
     run = _Run()
-    messages = [Message("system", system), *history]
     capabilities = gateway.capabilities()
+    window = capabilities.context_window
     stream = capabilities.streaming is not False
-    tools_usable = capabilities.tool_calling is not False
+    prompted = capabilities.tool_calling is False  # limited mode: tools are described in text
+    messages = [Message("system", system), *history]
+    protect_from = len(history)  # the member's latest message
     limit_hit = False
-    known_tools = {spec.name for spec in tools.specs()}
+    specs = {spec.name: spec for spec in tools.specs()}
+    known_tools = set(specs)
+    retries = 0
     last_poll = timer()
     try:
         while True:
             if is_cancelled():
                 yield run.finish("cancelled")
                 return
-            offered = tools.specs() if tools_usable and len(run.calls) < max_tool_calls else ()
+            under_cap = len(run.calls) < max_tool_calls
+            offered = tools.specs() if under_cap else ()
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
-            with closing(gateway.chat(messages, offered, stream)) as events:
+            sent = fit_messages(messages, window, protect_from=protect_from)
+            if prompted and offered:
+                head = sent[0]
+                sent[0] = replace(head, content=head.content + "\n\n" + tools_prompt(offered))
+            with closing(gateway.chat(sent, () if prompted else offered, stream)) as events:
                 for event in events:
                     # Reading the stop flag is a query: while text streams, not on every delta.
                     if timer() - last_poll >= delta_poll_seconds:
@@ -158,18 +173,46 @@ def run_agent(
                             return
                     if isinstance(event, TextDelta):
                         answer.append(event.text)
-                        run.text.append(event.text)
-                        yield Text(event.text)
+                        if not prompted:
+                            run.text.append(event.text)
+                            yield Text(event.text)
                     elif isinstance(event, ToolCallEvent):
-                        if offered:
+                        if offered and not prompted:
                             pending.append(event.call)
                     elif isinstance(event, Done) and event.usage is not None:
                         run.prompt += event.usage.prompt_tokens
                         run.completion += event.usage.completion_tokens
+            if prompted:
+                reply = "".join(answer)
+                verdict = parse_reply(reply, specs) if offered else None
+                if isinstance(verdict, PromptedInvalid):
+                    if retries >= MAX_RETRIES:
+                        yield run.finish(
+                            "failed",
+                            "invalid_tool_call",
+                            "The model could not produce a valid tool call.",
+                        )
+                        return
+                    retries += 1
+                    messages.append(Message("assistant", reply))
+                    messages.append(Message("user", correction(verdict.reason)))
+                    continue
+                if verdict is None:
+                    if reply:
+                        run.text.append(reply)
+                        yield Text(reply)
+                else:
+                    retries = 0
+                    call_id = f"call_{len(run.calls) + 1}"
+                    pending.append(ToolCall(call_id, verdict.name, verdict.arguments))
             if not pending:
-                yield run.finish("tool_limit" if limit_hit else "completed")
+                capped = limit_hit or (prompted and not under_cap)
+                yield run.finish("tool_limit" if capped else "completed")
                 return
-            messages.append(Message("assistant", "".join(answer) or None, tuple(pending)))
+            if prompted:
+                messages.append(Message("assistant", "".join(answer)))
+            else:
+                messages.append(Message("assistant", "".join(answer) or None, tuple(pending)))
             executed = sum(1 for c in run.calls if c.status != "skipped")
             for call in pending:
                 if is_cancelled():
@@ -188,16 +231,14 @@ def run_agent(
                 )
                 run.calls.append(record)
                 yield ToolFinished(record)
-                messages.append(
-                    Message(
-                        "tool",
-                        quote_data(
-                            f"tool:{call.name if call.name in known_tools else 'unknown'}",
-                            outcome.content,
-                        ),
-                        tool_call_id=call.id,
-                    )
+                quoted = quote_data(
+                    f"tool:{call.name if call.name in known_tools else 'unknown'}",
+                    shorten_result(outcome.content, window),
                 )
+                if prompted:
+                    messages.append(Message("user", quoted))
+                else:
+                    messages.append(Message("tool", quoted, tool_call_id=call.id))
     except LlmError as exc:
         yield run.finish("failed", exc.code, exc.message)
     except ApiError as exc:
