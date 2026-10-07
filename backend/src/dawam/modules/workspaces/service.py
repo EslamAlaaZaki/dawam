@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Literal
@@ -353,6 +354,20 @@ class WorkspaceService:
                     )
                 )
             )
+
+    def names_by_id(self, workspace_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """The names of the Workspaces among ``workspace_ids`` that exist. Authorizes
+        nothing: for an admin-only view."""
+        ids = set(workspace_ids)
+        if not ids:
+            return {}
+        with Session(self._engine) as db:
+            rows = db.execute(
+                sa.select(WorkspaceRecord.id, WorkspaceRecord.name).where(
+                    WorkspaceRecord.id.in_(ids)
+                )
+            )
+            return {row.id: row.name for row in rows}
 
     def stage_progress(self, user: User, workspace_id: uuid.UUID) -> StageProgress:
         """Stage progress of a Workspace, for any member (viewers included)."""

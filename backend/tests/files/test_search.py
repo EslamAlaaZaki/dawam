@@ -107,6 +107,36 @@ def test_results_are_cited_passages_and_any_member_may_search(roles, policy):
     assert search(roles, "   ").json()["items"] == []
 
 
+def test_an_exhausted_token_budget_blocks_embedding_but_full_text_search_still_works(
+    roles, policy, fake_llm, app
+):
+    register_embedding_model(roles, internal=True)
+    budget = roles.client("admin").put(
+        "/api/v1/admin/llm/budgets/installation", json={"monthly_token_budget": 0}
+    )
+    assert budget.status_code == 200, budget.text
+    fake_llm.calls.clear()
+    sid = system(roles)
+
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+
+    assert len(search(roles, "postings").json()["items"]) == 1
+    assert [c for c in fake_llm.calls if c.kind == "embed"] == []
+    assert chunk_rows(app) == [(None, None)]
+
+
+def test_embedding_calls_count_towards_the_workspace_usage(roles, policy, fake_llm):
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+
+    usage = roles.client("admin").get("/api/v1/admin/llm/usage").json()
+    [row] = usage["workspaces"]
+    assert row["workspace_id"] == str(roles.workspace_id)
+    assert row["tokens_by_role"].get("embedding", 0) > 0
+
+
 def test_uploading_a_file_again_replaces_its_passages(roles, policy):
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "old ledger wording")
