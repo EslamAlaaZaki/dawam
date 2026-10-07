@@ -24,6 +24,12 @@ ARABIC_ID = "".join(chr(0x660 + int(digit)) for digit in "1000000008")
         ("call +966 50 123 4567", "call [redacted: phone]"),
         ("card 4111 1111 1111 1111", "card [redacted: card_number]"),
         ("order 1000000009 of 12 items", "order 1000000009 of 12 items"),
+        ("from 192.168.1.20 today", "from [redacted: ip_address] today"),
+        ("host 2001:db8::ff00:42:8329 up", "host [redacted: ip_address] up"),
+        ("::1 loopback", "[redacted: ip_address] loopback"),
+        ("version 1.2.3.4.5 and time 12:30:45", "version 1.2.3.4.5 and time 12:30:45"),
+        ("mail محمد@مثال.سعودية now", "mail [redacted: email] now"),
+        ("mail jürgen@bücher.example now", "mail [redacted: email] now"),
     ],
 )
 def test_redact_text(text: str, expected: str):

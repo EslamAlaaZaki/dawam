@@ -17,6 +17,11 @@ this order, failing closed at every step:
 6. what the model learns about a failure is a message of our own per error code: a database's
    error text can echo a value.
 
+Known limitation: a model can read an unflagged text column piece by piece with
+``SUBSTR``/``LEFT``/``RIGHT``/``REVERSE`` so that no single cell passes a validator. The guard
+does not block this (it would block most legitimate exploration); the per-run budget, the row
+cap and the audit trail of every query limit and expose it.
+
 Every run is audited (``source_query`` entity, channel ``ai``): the model's SQL with
 validator-detectable PII redacted, the outcome, column names, row count and duration, never a
 result value. The service never logs a value either.
@@ -42,7 +47,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
-from dawam.platform.pii_validators import VALIDATORS, first_match, redact_text
+from dawam.platform.pii_validators import VALIDATORS, first_match, match_ratio, redact_text
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import (
@@ -54,7 +59,7 @@ from .internal.connector import (
     connector_for,
 )
 from .internal.pii import load_rule_set, scan_columns
-from .internal.query_guard import Rejected, check_query
+from .internal.query_guard import Rejected, cap_rows, check_query
 from .internal.query_guard_catalog import load_guard_catalog
 from .tables import (
     ConnectionRecord,
@@ -74,6 +79,10 @@ MASK = "[masked]"
 MAX_CELL_CHARS = 500
 """A longer text cell is cut before it is tested and before the model sees it."""
 MAX_AUDIT_SQL_CHARS = 2000
+WEAK_RULES = ("birth_date", "commercial_registration")
+"""Rules too common to prove PII on one value; a column is masked when most of it matches."""
+WEAK_MATCH_RATIO = 0.8
+WEAK_MIN_VALUES = 3
 EVIDENCE = "A value returned by an AI query passed the {rule} check; the value is not kept."
 AUDIT_ENTITY = "source_query"
 
@@ -217,6 +226,14 @@ class SourceQueryService:
                 allowed_schemas=tuple(connection.allowed_schemas),
             )
             engine_name = connection.engine
+            if engine_name == "sqlserver" and connection.can_write is not False:
+                raise ApiError(
+                    409,
+                    "read_only_login_required",
+                    "SQL Server has no read-only session, so the assistant may query it only "
+                    "when the last connection test showed the login cannot write. An owner "
+                    "must connect with a read-only login and test the connection again.",
+                )
             params = self._params(connection, budget)
             can_write = connection.can_write
         checked = check_query(sql, engine=engine_name, catalog=catalog)
@@ -224,19 +241,27 @@ class SourceQueryService:
             raise ApiError(422, "query_rejected", redact_text(checked.reason))
         connector = (self._connectors or connector_for)(engine_name, params)
         try:
-            raw = connector.query(checked.sql, limit=self._row_limit)  # SafeQuery.sql, never `sql`
+            # SafeQuery.sql, never `sql`, with the database's own row limit on top.
+            capped = cap_rows(
+                checked.sql, engine=engine_name, catalog=catalog, limit=self._row_limit + 1
+            )
+            raw = connector.query(capped or checked.sql, limit=self._row_limit)
         except ConnectorError as exc:
             raise _source_error(exc.code) from None
         except Exception:  # a driver's text can echo a value: say nothing of it
             raise _source_error("database_error") from None
         masked = set(checked.masked_ordinals)
         hits: dict[int, str] = {}
+        weak: set[int] = set()
         for ordinal in range(len(raw.columns)):
             if ordinal in masked:
                 continue
-            if rule := _value_rule(row[ordinal] for row in raw.rows if ordinal < len(row)):
+            column = [row[ordinal] for row in raw.rows if ordinal < len(row)]
+            if rule := _value_rule(column):
                 hits[ordinal] = rule
-        masked |= set(hits)
+            elif _mostly_weak(column):
+                weak.add(ordinal)
+        masked |= set(hits) | weak
         written = self._record_findings(workspace_id, snapshot_id, checked, hits)
         # Names are the model's own aliases; redacted all the same.
         names = tuple(redact_text(str(n)) for n in raw.columns)
@@ -428,6 +453,19 @@ def _value_rule(values: Any) -> str | None:
         if embedded:
             return embedded[0]
     return None
+
+
+def _mostly_weak(values: list[Any]) -> bool:
+    """Whether most of the column's values pass a weak rule (dates of birth, commercial
+    registration numbers): each alone proves nothing, a whole column of them is PII."""
+    shown = [_comparable(v) for v in values if v is not None]
+    if len(shown) < WEAK_MIN_VALUES:
+        return False
+    for rule in WEAK_RULES:
+        found = match_ratio(rule, shown)
+        if found is not None and found.ratio >= WEAK_MATCH_RATIO:
+            return True
+    return False
 
 
 def _shown(value: Any) -> Any:

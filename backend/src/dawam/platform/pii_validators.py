@@ -116,8 +116,8 @@ def _iban(value: Any, today: date) -> bool:
 
 
 _EMAIL = re.compile(
-    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
-    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}"
+    r"[\w.%+\-]+@[^\W_](?:[\w\-]*[^\W_])?"
+    r"(?:\.[^\W_](?:[\w\-]*[^\W_])?)*\.[^\W\d_]{2,}"
 )
 
 
@@ -254,10 +254,9 @@ def first_match(value: Any, *, today: date | None = None) -> str | None:
 _INVISIBLE = "​‌‍⁠﻿­"
 """Zero-width characters a writer can slip into an identifier to defeat a pattern."""
 _JOINER = rf"[\s\-().{_INVISIBLE}]?"
-_EMAIL_IN_TEXT = re.compile(
-    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
-    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}"
-)
+_EMAIL_IN_TEXT = re.compile(_EMAIL.pattern)
+_IPV4_IN_TEXT = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\w|\.\d)")
+_IPV6_IN_TEXT = re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])")
 _IBAN_IN_TEXT = re.compile(
     rf"(?<![A-Za-z0-9])[Ss][Aa](?:{_JOINER}[0-9A-Za-z]){{22}}(?![A-Za-z0-9])"
 )
@@ -330,6 +329,8 @@ def redact_text(text: str, *, today: date | None = None, found: list[str] | None
 
     text = _EMAIL_IN_TEXT.sub(whole(("email",)), text)
     text = _IBAN_IN_TEXT.sub(whole(("iban",)), text)
+    text = _IPV4_IN_TEXT.sub(whole(("ip_address",)), text)
+    text = _IPV6_IN_TEXT.sub(whole(("ip_address",)), text)
     return _DIGITS_IN_TEXT.sub(numbers, text)
 
 

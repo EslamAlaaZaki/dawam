@@ -30,6 +30,7 @@ from dawam.modules.sources import (
 )
 from dawam.modules.warehouse import DataWarehouseService
 from dawam.modules.workspaces import WorkspaceService
+from dawam.platform.pii_validators import redact_json
 
 from .internal.agent import Text, ToolFinished
 from .internal.tools import ToolRegistry, ToolServices
@@ -327,7 +328,7 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
                 "tool",
                 {
                     "name": call.name,
-                    "arguments": call.arguments,
+                    "arguments": redact_json(call.arguments),
                     "status": call.status,
                     "duration_ms": call.duration_ms,
                     "result": call.result,

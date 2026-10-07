@@ -221,6 +221,21 @@ def check_query(sql: str, *, engine: str, catalog: GuardCatalog) -> SafeQuery | 
         return Rejected("The query could not be analysed safely.")
 
 
+def cap_rows(sql: str, *, engine: str, catalog: GuardCatalog, limit: int) -> str | None:
+    """``sql`` (a ``SafeQuery.sql``) with a row limit the database itself applies (``LIMIT``,
+    ``TOP`` or ``FETCH FIRST`` per engine), checked by the guard again; ``None`` if that
+    cannot be done safely (the caller then relies on its own fetch cap)."""
+    try:
+        tree = sqlglot.parse_one(sql, read=_DIALECTS[engine])
+        if not isinstance(tree, exp.Query):
+            return None
+        capped = tree.limit(limit).sql(dialect=_DIALECTS[engine], identify=True, comments=False)
+        again = check_query(capped, engine=engine, catalog=catalog)
+    except Exception:
+        return None
+    return again.sql if isinstance(again, SafeQuery) else None
+
+
 def untraceable_views(*, engine: str, catalog: GuardCatalog) -> tuple[UntraceableView, ...]:
     """Views in the allowed schemas the guard cannot trace (not queryable; shown as untraceable)."""
     try:

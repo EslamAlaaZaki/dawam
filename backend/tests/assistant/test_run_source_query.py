@@ -520,3 +520,82 @@ def test_every_run_is_audited_without_result_values(roles, model, fake_llm, sour
     assert rejected["new"]["outcome"] == "rejected" and rejected["new"]["error_code"]
     assert not any(value in json.dumps(entries) for value in SECRETS)
     assert ran["actor"] == rejected["actor"] and ran["actor"] is not None
+
+
+# -- engine limits, weak rules, the wire ---------------------------------------------------
+
+
+@pytest.mark.parametrize(("can_write", "runs"), [(None, False), (True, False), (False, True)])
+def test_sql_server_is_queried_only_when_the_login_is_proven_read_only(
+    roles, model, fake_llm, source, fake_source, app: FastAPI, can_write, runs
+):
+    connector = fake_source(QueryResult(("n",), ((3,),), False))
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text("UPDATE connections SET engine = 'sqlserver', can_write = :w"),
+            {"w": can_write},
+        )
+
+    [(status, seen)] = run_queries(
+        roles, fake_llm, source, "SELECT COUNT(*) AS n FROM public.people"
+    )
+
+    assert (status == "ok") is runs and (len(connector.sent) == 1) is runs
+    if not runs:
+        assert "read_only_login_required" in seen and "read-only login" in seen
+
+
+def test_the_database_is_asked_for_at_most_one_row_over_the_cap(
+    roles, model, fake_llm, source, fake_source
+):
+    connector = fake_source(QueryResult(("id",), ((1,),), False))
+
+    run_queries(roles, fake_llm, source, "SELECT id FROM public.big")
+
+    assert connector.sent[0].upper().rstrip().endswith("LIMIT 101")
+
+
+def test_a_column_that_is_mostly_dates_or_registration_numbers_is_masked(
+    roles, model, fake_llm, source, fake_source
+):
+    fake_source(
+        QueryResult(
+            ("born", "cr", "mixed", "few"),
+            (
+                ("1990-01-01", "1010123456", "1990-01-01", "1990-01-01"),
+                ("1985-06-07", "4030987654", "1985-06-07", None),
+                ("2001-12-31", "2050111222", "2001-12-31", None),
+                ("1999-02-02", "7000000001", "text", None),
+                ("1970-03-03", "1010123457", "more text", None),
+            ),
+            False,
+        )
+    )
+
+    [(_, seen)] = run_queries(roles, fake_llm, source, "SELECT who AS born FROM public.people")
+
+    result = payload(seen)
+    assert result["masked_columns"] == ["born", "cr"]
+    assert [row[0] for row in result["rows"]] == ["[masked]"] * 5
+    assert [row[2] for row in result["rows"]][:2] == ["1990-01-01", "1985-06-07"]
+
+
+def test_the_streamed_tool_frame_is_redacted_like_the_saved_one(roles, model, fake_llm, source):
+    client = roles.client("editor")
+    fake_llm.script(
+        Reply(
+            tool_calls=(
+                tool(
+                    "run_source_query",
+                    system_id=system_id(source),
+                    sql="SELECT COUNT(*) AS n FROM public.people WHERE who <> '2000000006'",
+                ),
+            )
+        ),
+        Reply(text="done"),
+    )
+
+    events = ask(client, roles, conversation(client, roles), "Look")
+
+    [(_, shown)] = [e for e in events if e[0] == "tool"]
+    assert "2000000006" not in json.dumps(shown) and "[redacted: " in shown["arguments"]["sql"]
