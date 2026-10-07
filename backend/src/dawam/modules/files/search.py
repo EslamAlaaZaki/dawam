@@ -26,9 +26,10 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
 from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
-from dawam.modules.llm import Gateway, LlmError, ProviderService
+from dawam.modules.llm import LlmError, MeteredGateway, ProviderService, RoleService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
+from dawam.platform.errors import ApiError
 
 from .internal.arabic import normalise, words
 from .internal.chunking import chunk
@@ -69,22 +70,29 @@ class NoDocumentAi:
 class EmbeddingModel:
     id: uuid.UUID
     is_internal: bool
-    gateway: Gateway
+    gateway: MeteredGateway
+    """Metered: the token budgets are checked before every embedding call."""
 
 
 class EmbeddingModels(Protocol):
-    def current(self) -> EmbeddingModel | None:
-        """The installation's embedding model, or ``None`` if none is registered."""
+    def current(
+        self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> EmbeddingModel | None:
+        """The installation's embedding model (calls are attributed to the Workspace and,
+        when a user is behind them, the user), or ``None`` if none is registered."""
         ...
 
 
 class RegisteredEmbeddingModels:
     """The first tested embedding model of the admin's provider registry."""
 
-    def __init__(self, providers: ProviderService) -> None:
+    def __init__(self, providers: ProviderService, roles: RoleService) -> None:
         self._providers = providers
+        self._roles = roles
 
-    def current(self) -> EmbeddingModel | None:
+    def current(
+        self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> EmbeddingModel | None:
         candidates = [
             (provider, model)
             for provider in self._providers.list_providers()
@@ -94,7 +102,10 @@ class RegisteredEmbeddingModels:
         if not candidates:
             return None
         provider, model = min(candidates, key=lambda pair: (pair[1].created_at, str(pair[1].id)))
-        return EmbeddingModel(model.id, provider.is_internal, self._providers.gateway_for(model.id))
+        gateway = self._roles.metered_gateway(
+            model.id, "embedding", workspace_id=workspace_id, user_id=user_id
+        )
+        return EmbeddingModel(model.id, provider.is_internal, gateway)
 
 
 @dataclass(frozen=True)
@@ -107,6 +118,13 @@ class Passage:
     text: str
     score: float
     source_system_id: uuid.UUID
+
+
+def _unless_other_api_error(exc: Exception) -> None:
+    """An exhausted token budget only costs the semantic ranking (full-text still works);
+    any other API error is a real failure."""
+    if isinstance(exc, ApiError) and exc.code != "token_budget_exhausted":
+        raise exc
 
 
 def _vector_literal(vector: Sequence[float]) -> str:
@@ -130,14 +148,16 @@ class DocumentSearchService:
         self._embeddings = embeddings
         self._jobs = JobService(engine, runner=jobs, clock=clock)
 
-    def _embedder(self, workspace_id: uuid.UUID) -> EmbeddingModel | None:
+    def _embedder(
+        self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> EmbeddingModel | None:
         """The model to embed this Workspace's documents (and queries) with, or ``None``:
         the data level excludes documents, no embedding model is registered, or the
         Workspace is internal-only and the model's provider is external."""
         settings = self._ai.document_settings(workspace_id)
         if not settings.includes_documents:
             return None
-        model = self._embeddings.current()
+        model = self._embeddings.current(workspace_id, user_id)
         if model is None or (settings.internal_only and not model.is_internal):
             return None
         return model
@@ -161,7 +181,8 @@ class DocumentSearchService:
                 for start in range(0, len(chunks), EMBED_BATCH):
                     batch = [c.text for c in chunks[start : start + EMBED_BATCH]]
                     vectors.extend(model.gateway.embed(batch))
-            except LlmError as exc:
+            except (LlmError, ApiError) as exc:
+                _unless_other_api_error(exc)
                 logger.warning("embedding failed, indexing full-text only: %s", exc)
                 vectors = None
 
@@ -260,7 +281,7 @@ class DocumentSearchService:
                     )
                 )
             ]
-            vector_ranking = self._vector_ranking(db, workspace_id, query, scope, params)
+            vector_ranking = self._vector_ranking(db, workspace_id, user.id, query, scope, params)
             if vector_ranking:
                 ranked.append(vector_ranking)
 
@@ -299,14 +320,21 @@ class DocumentSearchService:
         ]
 
     def _vector_ranking(
-        self, db: Session, workspace_id: uuid.UUID, query: str, scope: str, params: dict[str, Any]
+        self,
+        db: Session,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
+        query: str,
+        scope: str,
+        params: dict[str, Any],
     ) -> list[uuid.UUID]:
-        model = self._embedder(workspace_id)
+        model = self._embedder(workspace_id, user_id)
         if model is None:
             return []
         try:
             [vector] = model.gateway.embed([query])
-        except LlmError as exc:
+        except (LlmError, ApiError) as exc:
+            _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
             return []
         return list(

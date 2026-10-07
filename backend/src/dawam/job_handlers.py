@@ -22,7 +22,7 @@ from dawam.modules.files import (
     RegisteredEmbeddingModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
-from dawam.modules.llm import AdapterFactory, ProviderService
+from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
 from dawam.modules.sources import (
     EXTRACT_JOB,
     INFER_JOB,
@@ -63,7 +63,9 @@ def build_document_search(
         engine,
         workspaces=WorkspaceService(engine, clock=clock),
         ai=document_ai or NoDocumentAi(),
-        embeddings=RegisteredEmbeddingModels(providers),
+        embeddings=RegisteredEmbeddingModels(
+            providers, RoleService(engine, providers=providers, clock=clock)
+        ),
         jobs=runner,
         clock=clock,
     )

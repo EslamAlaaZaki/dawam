@@ -19,6 +19,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+import regex
+
 CATEGORIES = ("direct_identifier", "quasi_identifier", "sensitive", "financial")
 """Direct identifier, quasi-identifier, sensitive/special category, financial."""
 
@@ -183,13 +185,107 @@ _RULES: tuple[NameRule, ...] = (
 RULES: dict[str, NameRule] = {rule.id: rule for rule in _RULES}
 """Every built-in name rule by id."""
 
+CUSTOM_PREFIX = "custom:"
+"""A custom rule's id in a finding is this plus its name, so it never clashes with a
+built-in rule."""
+CUSTOM_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,39}")
+MAX_KEYWORDS = 20
+MAX_KEYWORD_LENGTH = 64
+MAX_PATTERN_LENGTH = 200
+MIN_CUSTOM_CONFIDENCE = NAME_CONFIDENCE_FLOOR
+_NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d*,\d*\})")
 
-def match_name(name: str) -> NameMatch | None:
-    """The first rule matching the column ``name``, or ``None``."""
+
+@dataclass(frozen=True)
+class CustomRule:
+    """An organisation-specific rule of a Workspace: keywords matched on normalised column
+    names and/or a regex tested on whole sampled values."""
+
+    name: str
+    category: str
+    confidence: float
+    keywords: tuple[str, ...]
+    """Normalised (``normalise``), matched as substrings of a normalised column name."""
+    pattern: regex.Pattern[str] | None
+    """Compiled with the ``regex`` package so a match can be given a time limit."""
+
+    @property
+    def id(self) -> str:
+        return CUSTOM_PREFIX + self.name
+
+
+@dataclass(frozen=True)
+class RuleSet:
+    """The rules in force for one Workspace: built-in rules it disabled, and its own."""
+
+    disabled: frozenset[str] = frozenset()
+    custom: tuple[CustomRule, ...] = ()
+
+
+DEFAULT_RULES = RuleSet()
+
+
+def check_pattern(pattern: str) -> regex.Pattern[str]:
+    """Compile a custom rule's regex; ``ValueError`` if it is too long, invalid or has a
+    nested quantifier (which can take exponential time on a long value)."""
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        raise ValueError(f"The pattern is at most {MAX_PATTERN_LENGTH} characters.")
+    if _NESTED_QUANTIFIER.search(pattern):
+        raise ValueError("The pattern has a nested quantifier such as (a+)+, which is not allowed.")
+    try:
+        return regex.compile(pattern)
+    except regex.error as exc:
+        raise ValueError(f"The pattern is not a valid regular expression: {exc}.") from None
+
+
+def compile_custom_rule(
+    name: str,
+    *,
+    keywords: list[str],
+    pattern: str | None,
+    category: str,
+    confidence: float,
+) -> CustomRule:
+    """Validate and compile a custom rule; ``ValueError`` (a safe message) if it is bad."""
+    if not CUSTOM_NAME_PATTERN.fullmatch(name):
+        raise ValueError(
+            "The name is 1 to 40 lower-case letters, digits and underscores, "
+            "starting with a letter."
+        )
+    if category not in CATEGORIES:
+        raise ValueError(f"The category must be one of {', '.join(CATEGORIES)}.")
+    if not MIN_CUSTOM_CONFIDENCE <= confidence <= 1:
+        raise ValueError(f"The confidence is {MIN_CUSTOM_CONFIDENCE} to 1.")
+    if len(keywords) > MAX_KEYWORDS or any(len(k) > MAX_KEYWORD_LENGTH for k in keywords):
+        raise ValueError(
+            f"At most {MAX_KEYWORDS} keywords of up to {MAX_KEYWORD_LENGTH} characters each."
+        )
+    normalised = tuple(dict.fromkeys(normalise(k) for k in keywords))
+    if "" in normalised:
+        raise ValueError("A keyword needs at least one letter or digit.")
+    compiled = check_pattern(pattern) if pattern else None
+    if not normalised and compiled is None:
+        raise ValueError("A rule needs at least one keyword or a pattern.")
+    return CustomRule(name, category, confidence, normalised, compiled)
+
+
+def match_name(name: str, rules: RuleSet = DEFAULT_RULES) -> NameMatch | None:
+    """The first rule matching the column ``name``, or ``None``. A Workspace's custom rules
+    are tried first, then the built-in ones it has not disabled."""
     normalised = normalise(name)
     if not normalised:
         return None
+    for custom in rules.custom:
+        if any(keyword in normalised for keyword in custom.keywords):
+            return NameMatch(
+                rule=custom.id,
+                category=custom.category,
+                confidence=max(custom.confidence, NAME_CONFIDENCE_FLOOR),
+                evidence=f'The column name "{name}" matches the custom rule {custom.name}.',
+            )
     for rule in _RULES:
+        if rule.id in rules.disabled:
+            continue
         if rule.pattern.search(normalised):
             return NameMatch(
                 rule=rule.id,

@@ -38,6 +38,10 @@ Public interface. Other modules import only what is re-exported here:
   text, and (live Connection and profiling only) value overlap; those at or above the
   threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
   Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
+- ``PiiRuleService``: owners add, edit and delete the Workspace's custom PII rules (name
+  keywords and/or a regex, a category and a confidence) and switch built-in rules off or on;
+  built-in rules are never edited. ``internal.pii.load_rule_set`` feeds them to the name scan
+  of every new Snapshot and to value scans; changes are audited (``pii_rule`` entity).
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -54,6 +58,8 @@ Public interface. Other modules import only what is re-exported here:
   ``POST .../systems/{system_id}/relationship-inference``,
   ``GET .../systems/{system_id}/relationships``,
   ``POST .../systems/{system_id}/relationships/{relationship_id}/accept|reject``,
+  ``GET|POST /workspaces/{workspace_id}/pii-rules``, ``PATCH|DELETE .../pii-rules/{rule_id}``,
+  ``PATCH .../pii-rules/built-in/{rule_id}``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
   ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
 
@@ -65,13 +71,17 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 ``workspaces``.
 """
 
-from .api import router
+from fastapi import APIRouter
+
+from .api import router as _systems_router
 from .connection_service import Connection, ConnectionService
 from .dictionary_api import DataDictionaryServiceDep
 from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
+from .pii_rule_api import router as _pii_rules_router
+from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
@@ -87,6 +97,10 @@ from .snapshot_service import (
     SourceSchema,
 )
 
+router = APIRouter()
+router.include_router(_systems_router)
+router.include_router(_pii_rules_router)
+
 __all__ = [
     "EXTRACT_JOB",
     "INFER_JOB",
@@ -101,6 +115,7 @@ __all__ = [
     "ImportResult",
     "ImportStatus",
     "PiiFinding",
+    "PiiRuleService",
     "PiiScanService",
     "PiiService",
     "ProfilingService",
