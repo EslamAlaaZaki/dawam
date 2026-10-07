@@ -3393,7 +3393,7 @@ export interface components {
              * Mapping Type
              * @enum {string}
              */
-            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
+            mapping_type: "direct" | "derived" | "constant" | "lookup" | "system" | "unmapped" | "not_in_branch";
             /**
              * Rule Text
              * @description The transformation rule, in plain language.
@@ -3415,6 +3415,8 @@ export interface components {
              */
             uses: components["schemas"]["MappingInput"][];
             validation: components["schemas"]["MappingValidation"];
+            /** @description A `lookup` mapping's spec; its `sql_expression` is then derived. */
+            lookup?: components["schemas"]["LookupSpec"] | null;
             /**
              * Version
              * @description 0 until first saved.
@@ -5043,6 +5045,32 @@ export interface components {
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
         };
+        /** LookupSpec */
+        LookupSpec: {
+            /**
+             * Nk Inputs
+             * @description One `table.column` of the Layer below per natural-key column of the dimension, in order.
+             */
+            nk_inputs: string[];
+            /**
+             * As Of Input
+             * @description The date column an SCD2 dimension is looked up as of.
+             */
+            as_of_input?: string | null;
+            /**
+             * Unknown Key
+             * @description The key used when no dimension row matches.
+             */
+            unknown_key: number;
+            /**
+             * Dimension Id
+             * Format: uuid
+             * @description The FK's referenced table; derived, never set.
+             */
+            dimension_id: string;
+            /** Dimension Name */
+            dimension_name: string;
+        };
         /** MappingBranch */
         MappingBranch: {
             /**
@@ -5876,7 +5904,7 @@ export interface components {
              * @description `not_in_branch` (NULL) only inside a branch.
              * @enum {string}
              */
-            mapping_type: "direct" | "derived" | "constant" | "unmapped" | "not_in_branch";
+            mapping_type: "direct" | "derived" | "constant" | "lookup" | "system" | "unmapped" | "not_in_branch";
             /**
              * Rule Text
              * @default
@@ -5887,6 +5915,13 @@ export interface components {
              * @default
              */
             sql_expression: string;
+            /**
+             * Lookup
+             * @description For `lookup` only: `nk_inputs` (`table.column` of the Layer below, one per natural-key column of the dimension), `as_of_input` (required for an SCD2 dimension) and `unknown_key` (default: the dimension's unknown member).
+             */
+            lookup?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Version
              * @description The mapping's version; 0 to create it.

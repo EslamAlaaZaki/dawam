@@ -41,7 +41,24 @@ def mapping_service(request: Request) -> MappingService:
 
 MappingServiceDep = Annotated[MappingService, Depends(mapping_service)]
 
-MappingType = Literal["direct", "derived", "constant", "unmapped", "not_in_branch"]
+MappingType = Literal[
+    "direct", "derived", "constant", "lookup", "system", "unmapped", "not_in_branch"
+]
+
+
+class LookupSpec(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    nk_inputs: list[str] = Field(
+        description="One `table.column` of the Layer below per natural-key column of the "
+        "dimension, in order."
+    )
+    as_of_input: str | None = Field(
+        None, description="The date column an SCD2 dimension is looked up as of."
+    )
+    unknown_key: int = Field(description="The key used when no dimension row matches.")
+    dimension_id: uuid.UUID = Field(description="The FK's referenced table; derived, never set.")
+    dimension_name: str
 
 
 class MappingInput(BaseModel):
@@ -77,6 +94,9 @@ class ColumnMapping(BaseModel):
         description="Columns that only steer the result (conditions); derived from the SQL."
     )
     validation: MappingValidation
+    lookup: LookupSpec | None = Field(
+        None, description="A `lookup` mapping's spec; its `sql_expression` is then derived."
+    )
     version: int = Field(description="0 until first saved.")
 
 
@@ -164,6 +184,12 @@ class SaveColumnMappingRequest(BaseModel):
     mapping_type: MappingType = Field(description="`not_in_branch` (NULL) only inside a branch.")
     rule_text: str = ""
     sql_expression: str = ""
+    lookup: dict[str, Any] | None = Field(
+        None,
+        description="For `lookup` only: `nk_inputs` (`table.column` of the Layer below, one "
+        "per natural-key column of the dimension), `as_of_input` (required for an SCD2 "
+        "dimension) and `unknown_key` (default: the dimension's unknown member).",
+    )
     version: int = Field(0, description="The mapping's version; 0 to create it.")
 
 

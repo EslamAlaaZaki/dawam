@@ -115,6 +115,9 @@ class ColumnMappingView:
     uses: list[MappingInput]
     validation: dict[str, Any]
     version: int
+    lookup: dict[str, Any] | None
+    """A lookup's spec with its ``dimension_id`` and ``dimension_name``; ``sql_expression``
+    then shows the SQL that resolves the key (derived, never stored)."""
 
 
 @dataclass(frozen=True)
@@ -179,6 +182,7 @@ def _snapshot(record: ColumnMappingRecord) -> dict[str, Any]:
         "mapping_type": record.mapping_type,
         "rule_text": record.rule_text,
         "sql_expression": record.sql_expression,
+        "lookup": record.lookup,
     }
 
 
@@ -266,8 +270,10 @@ class MappingService:
     ) -> ColumnMappingView:
         """Create (``version`` 0) or change a column's mapping, in a branch when
         ``branch_id`` is given, else at table level. ``fields``: ``mapping_type`` (direct,
-        derived, constant, unmapped; ``not_in_branch`` in a branch, where it means NULL),
-        ``rule_text`` and ``sql_expression``. Derives and stores the mapping's lineage
+        derived, constant, unmapped; ``not_in_branch`` in a branch, where it means NULL;
+        ``lookup`` for a Core fact's FK, with ``lookup`` = ``{nk_inputs, as_of_input?,
+        unknown_key?}``; ``system`` for a system column), ``rule_text`` and
+        ``sql_expression`` (none for lookup and system). Derives and stores the mapping's lineage
         edges from the SQL. System columns are table-level only. 422 ``invalid_mapping``;
         404 ``not_found`` for a branch of another table; 409 ``version_conflict``."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
@@ -296,14 +302,27 @@ class MappingService:
             ).first()
             if (record.version if record else 0) != version:
                 raise _conflict(record.version if record else 0)
-            mapping_type, rule_text, sql = self._fields(fields, in_branch=branch is not None)
-            parsed, validation = self._parse(warehouse, mapping_type, sql)
+            mapping_type, rule_text, sql = self._fields(
+                fields, in_branch=branch is not None, column=column
+            )
+            dimension: DwTableRecord | None = None
+            lookup: dict[str, Any] | None = None
+            if mapping_type == "lookup":
+                lookup, parsed, dimension = self._lookup(
+                    db, warehouse, table, column, fields.get("lookup")
+                )
+                validation: dict[str, Any] = {"unparsed": False, "errors": []}
+            else:
+                if fields.get("lookup") is not None:
+                    raise _invalid("lookup", "Only a lookup mapping has a lookup.")
+                parsed, validation = self._parse(warehouse, mapping_type, sql)
             inputs = self._resolve(db, warehouse, table, parsed) if parsed else {}
             before = _snapshot(record) if record else None
             if record is not None and before == {
                 "mapping_type": mapping_type,
                 "rule_text": rule_text,
                 "sql_expression": sql,
+                "lookup": lookup,
             }:
                 return self._column_view(db, column, record)
             if record is None:
@@ -320,11 +339,12 @@ class MappingService:
             record.mapping_type = mapping_type
             record.rule_text = rule_text
             record.sql_expression = sql
+            record.lookup = lookup
             record.validation = validation
             record.updated_by = user.id
             record.updated_at = now
             db.flush()
-            self._replace_edges(db, record, table, parsed, inputs)
+            self._replace_edges(db, record, table, parsed, inputs, dimension)
             after = _snapshot(record)
             changed = [f for f in after if before is None or before[f] != after[f]]
             if before is None or changed:
@@ -649,18 +669,142 @@ class MappingService:
             raise _not_found("Branch")
         return branch
 
-    def _fields(self, fields: Mapping[str, Any], *, in_branch: bool) -> tuple[str, str, str]:
+    def _fields(
+        self, fields: Mapping[str, Any], *, in_branch: bool, column: DwColumnRecord
+    ) -> tuple[str, str, str]:
         mapping_type = fields.get("mapping_type")
         if mapping_type not in MAPPING_TYPES or (mapping_type == "not_in_branch" and not in_branch):
             allowed = [t for t in MAPPING_TYPES if in_branch or t != "not_in_branch"]
             raise _invalid("mapping_type", f"The type must be one of {', '.join(allowed)}.")
         rule_text = _text(fields.get("rule_text"), "rule_text", "rule", MAPPING_TEXT_MAX_LENGTH)
         sql = _text(fields.get("sql_expression"), "sql_expression", "SQL", SQL_MAX_LENGTH)
-        if mapping_type in ("unmapped", "not_in_branch") and sql:
+        sqlless = ("unmapped", "not_in_branch", "lookup", "system")
+        if mapping_type in sqlless and sql:
             raise _invalid("sql_expression", f"A {mapping_type} column has no SQL.")
-        if mapping_type not in ("unmapped", "not_in_branch") and not sql:
+        if mapping_type not in sqlless and not sql:
             raise _invalid("sql_expression", f"A {mapping_type} mapping needs its SQL expression.")
+        if mapping_type == "system" and (in_branch or not is_system_column(column)):
+            raise _invalid(
+                "mapping_type",
+                "Only a system column (surrogate key, SCD housekeeping, audit) is mapped as "
+                "system, at table level.",
+            )
         return mapping_type, rule_text, sql
+
+    def _lookup(
+        self,
+        db: Session,
+        warehouse: DataWarehouseRecord,
+        table: DwTableRecord,
+        column: DwColumnRecord,
+        raw: Any,
+    ) -> tuple[dict[str, Any], ParsedExpression, DwTableRecord]:
+        """A lookup's checked spec, the natural-key and as-of columns it reads (as
+        ``uses`` inputs: they steer which dimension row is found) and its dimension, the
+        column's ``references_table_id``. The dimension is a declared reference, not an
+        input, so the layering check does not apply to it."""
+        if table.layer != "core" or column.role != "fk" or column.references_table_id is None:
+            raise _invalid("mapping_type", "Only a Core fact's foreign key is mapped as a lookup.")
+        if not isinstance(raw, Mapping):
+            raise _invalid("lookup", "A lookup needs its natural-key inputs.")
+        dimension = db.get(DwTableRecord, column.references_table_id)
+        if dimension is None:  # pragma: no cover - the foreign key guarantees it
+            raise _not_found("Dimension")
+        nk_raw = raw.get("nk_inputs")
+        if not isinstance(nk_raw, list) or not nk_raw:
+            raise _invalid("lookup", "A lookup needs at least one natural-key input.")
+        nk_columns = [
+            c for c in self._columns(db, dimension.id) if c.role == "nk" and not c.is_system
+        ]
+        if len(nk_raw) != len(nk_columns):
+            raise _invalid(
+                "lookup",
+                f"{dimension.name} has {len(nk_columns)} natural-key column(s); give one input "
+                "for each, in order.",
+            )
+        nk_inputs = [self._lookup_input(warehouse, item, "nk_inputs") for item in nk_raw]
+        as_of = raw.get("as_of_input")
+        as_of_input = None
+        if as_of not in (None, ""):
+            as_of_input = self._lookup_input(warehouse, as_of, "as_of_input")
+        if dimension.scd_type == 2 and as_of_input is None:
+            raise _invalid(
+                "lookup", f"{dimension.name} is SCD2: give the date input to look it up as of."
+            )
+        unknown = raw.get("unknown_key")
+        if unknown is None:
+            unknown = (dimension.unknown_member or {}).get("surrogate_key", -1)
+        if isinstance(unknown, bool) or not isinstance(unknown, int):
+            raise _invalid("lookup", "The unknown-member key is a whole number.")
+        refs: list[ColumnRef] = []
+        for text in (*nk_inputs, *([as_of_input] if as_of_input else [])):
+            ref = self._single_column(warehouse, text)
+            if ref not in refs:
+                refs.append(ref)
+        spec: dict[str, Any] = {"nk_inputs": nk_inputs, "unknown_key": unknown}
+        if as_of_input:
+            spec["as_of_input"] = as_of_input
+        return spec, ParsedExpression(value=(), uses=tuple(refs), is_column=False), dimension
+
+    @staticmethod
+    def _lookup_input(warehouse: DataWarehouseRecord, item: Any, field: str) -> str:
+        if not isinstance(item, str) or not item.strip():
+            raise _invalid("lookup", f"Each {field} entry is a column, as table.column.")
+        text = item.strip()
+        try:
+            parsed = parse_expression(text, warehouse.target_platform)
+        except Unparsable as exc:
+            raise _invalid("lookup", f"{text} does not parse: {exc}") from None
+        if not parsed.is_column or not parsed.value or parsed.value[0].table is None:
+            raise _invalid("lookup", f"{text} is not one column written as table.column.")
+        return text
+
+    @staticmethod
+    def _single_column(warehouse: DataWarehouseRecord, text: str) -> ColumnRef:
+        return parse_expression(text, warehouse.target_platform).value[0]
+
+    def _lookup_sql(
+        self, db: Session, platform: str, column: DwColumnRecord, lookup: Mapping[str, Any]
+    ) -> tuple[DwTableRecord | None, str]:
+        """The dimension and the expression that finds its key: the surrogate key of the row
+        matching the natural-key inputs (and valid as of the date, for SCD2), else the
+        unknown-member key."""
+        dimension = (
+            db.get(DwTableRecord, column.references_table_id)
+            if column.references_table_id
+            else None
+        )
+        if dimension is None:
+            return None, ""
+        dialect = DIALECTS.get(platform)
+
+        def ident(name: str) -> str:
+            return exp.to_identifier(name).sql(dialect=dialect)
+
+        columns = self._columns(db, dimension.id)
+        by_role = {c.role: c for c in columns if is_system_column(c)}
+        nk_columns = [c for c in columns if c.role == "nk" and not c.is_system]
+        sk = by_role.get("sk")
+        if sk is None:
+            return dimension, ""
+        table_name = ident(dimension.name)
+        conditions = [
+            f"{table_name}.{ident(nk.name)} = {text}"
+            for nk, text in zip(nk_columns, lookup["nk_inputs"], strict=False)
+        ]
+        as_of = lookup.get("as_of_input")
+        valid_from, valid_to = by_role.get("scd_valid_from"), by_role.get("scd_valid_to")
+        if as_of and valid_from is not None and valid_to is not None:
+            conditions.append(
+                f"{as_of} BETWEEN {table_name}.{ident(valid_from.name)} "
+                f"AND {table_name}.{ident(valid_to.name)}"
+            )
+        where = " AND ".join(conditions)
+        sql = (
+            f"COALESCE((SELECT {table_name}.{ident(sk.name)} FROM {table_name} WHERE {where}), "
+            f"{lookup['unknown_key']})"
+        )
+        return dimension, sql
 
     def _parse(
         self, warehouse: DataWarehouseRecord, mapping_type: str, sql: str
@@ -745,8 +889,21 @@ class MappingService:
         table: DwTableRecord,
         parsed: ParsedExpression | None,
         inputs: dict[ColumnRef, tuple[DwTableRecord, DwColumnRecord]],
+        dimension: DwTableRecord | None = None,
     ) -> None:
         db.execute(sa.delete(LineageEdgeRecord).where(LineageEdgeRecord.mapping_id == record.id))
+        if dimension is not None:
+            db.add(
+                LineageEdgeRecord(
+                    id=uuid.uuid4(),
+                    kind="lookup",
+                    from_type="dw_column",
+                    from_id=record.dw_column_id,
+                    to_type="dw_table",
+                    to_id=dimension.id,
+                    mapping_id=record.id,
+                )
+            )
         if parsed is None:
             return
         for ref in parsed.value:
@@ -891,26 +1048,41 @@ class MappingService:
                 id=None,
                 column_id=column.id,
                 column_name=column.name,
-                mapping_type="unmapped",
+                mapping_type="system" if is_system_column(column) else "unmapped",
                 rule_text="",
                 sql_expression="",
                 inputs=[],
                 uses=[],
                 validation={"unparsed": False, "errors": []},
                 version=0,
+                lookup=None,
             )
         values, uses = self._inputs(db, record.id)
+        sql, lookup = record.sql_expression, None
+        if record.mapping_type == "lookup" and record.lookup:
+            platform = db.scalars(
+                sa.select(DataWarehouseRecord.target_platform)
+                .join(DwTableRecord, DwTableRecord.data_warehouse_id == DataWarehouseRecord.id)
+                .where(DwTableRecord.id == column.table_id)
+            ).one()
+            dimension, sql = self._lookup_sql(db, platform, column, record.lookup)
+            lookup = {
+                **record.lookup,
+                "dimension_id": dimension.id if dimension else None,
+                "dimension_name": dimension.name if dimension else None,
+            }
         return ColumnMappingView(
             id=record.id,
             column_id=column.id,
             column_name=column.name,
             mapping_type=record.mapping_type,
             rule_text=record.rule_text,
-            sql_expression=record.sql_expression,
+            sql_expression=sql,
             inputs=values,
             uses=uses,
             validation=record.validation,
             version=record.version,
+            lookup=lookup,
         )
 
     def _view(self, db: Session, table: DwTableRecord) -> TableMappingView:
@@ -958,7 +1130,9 @@ class MappingService:
             columns=[self._column_view(db, c, records.get(c.id)) for c in columns],
             is_aggregate=table.is_aggregate,
             branches=branch_views,
-            coverage=self._coverage(columns, records, branches, branch_records),
+            coverage=self._coverage(
+                columns, records, branches, branch_records, generated=table.kind == "generated"
+            ),
             sql=self._compose_sql(platform, columns, branch_views) if branch_views else None,
         )
 
@@ -1027,12 +1201,15 @@ class MappingService:
         records: dict[uuid.UUID, ColumnMappingRecord],
         branches: list[MappingBranchRecord],
         branch_records: dict[tuple[uuid.UUID | None, uuid.UUID], ColumnMappingRecord],
+        *,
+        generated: bool = False,
     ) -> list[ColumnCoverage]:
         """A column is covered when every branch maps it or marks it ``not_in_branch``;
-        without branches, when its table-level mapping is set. System columns are covered."""
+        without branches, when its table-level mapping is set. System columns are covered,
+        and so are all columns of a generated table, which needs no inputs."""
         result = []
         for column in columns:
-            if is_system_column(column):
+            if generated or is_system_column(column):
                 result.append(ColumnCoverage(column.id, column.name, True, True, []))
                 continue
             if branches:
@@ -1070,6 +1247,7 @@ class MappingService:
                         "direct",
                         "derived",
                         "constant",
+                        "lookup",
                     )
                     else cast_null(column.data_type, platform)
                 )
