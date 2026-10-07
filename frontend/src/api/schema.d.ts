@@ -1017,6 +1017,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/data-dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Data Dictionary
+         * @description The Source System's data dictionary as an Excel workbook (any member): a `Tables`
+         *     and a `Columns` sheet with types, descriptions, tags, classifications and PII
+         *     categories, never values. 404 before the first Snapshot. To keep a copy, save it to the
+         *     file area with `POST .../files/data-dictionary`.
+         */
+        get: operations["downloadDataDictionary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
         parameters: {
             query?: never;
@@ -1332,6 +1355,90 @@ export interface paths {
          *     and an added object of the same kind (and, for columns, table).
          */
         post: operations["mergeRemovedObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Profiling
+         * @description Profile the chosen tables (owners and editors) as a background job. 409
+         *     `profiling_unavailable` for a Source System with no live Connection (a Schema Import
+         *     has none): profiling needs one.
+         */
+        post: operations["startProfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table Profile
+         * @description A table's profile and its columns' (any member). Min/max and top-N values are
+         *     never shown for a Protected Column.
+         */
+        get: operations["getTableProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Column Profile
+         * @description One column's profile (any member).
+         */
+        get: operations["getColumnProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profiling-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Table Top N
+         * @description Switch top-N value capture on or off for a table (owners only; audited). Off by
+         *     default; switching it off deletes the stored values.
+         */
+        put: operations["setTableTopN"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1737,6 +1844,28 @@ export interface paths {
          *     422 `invalid_file_name`.
          */
         post: operations["uploadSourceSystemFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Data Dictionary
+         * @description Export the Source System's data dictionary into its file area as
+         *     `data-dictionary-<code>.xlsx` (owners and editors), overwriting the previous one.
+         *     404 before the first Snapshot.
+         */
+        post: operations["saveDataDictionary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2176,6 +2305,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Roles
+         * @description Which model fills each role, and whether re-indexing is needed (admins only).
+         */
+        get: operations["getLlmRoles"];
+        /**
+         * Set Roles
+         * @description Assign models to the roles (admins only). The agent role is required; every model
+         *     must be registered and have passed "Test connection". Switching the embedding model
+         *     sets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`.
+         */
+        put: operations["setLlmRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Budgets
+         * @description The installation's monthly token budget and every Workspace's own (admins only).
+         */
+        get: operations["getLlmBudgets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Installation Budget
+         * @description Set (or, with null, remove) the installation's monthly token budget (admins
+         *     only). Once it is used up, AI calls fail with 429 `token_budget_exhausted`; the rest
+         *     of DAWAM keeps working.
+         */
+        put: operations["setLlmInstallationBudget"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Workspace Budget
+         * @description Set a Workspace's own monthly token budget (admins only). 404 `workspace_not_found`.
+         */
+        put: operations["setLlmWorkspaceBudget"];
+        post?: never;
+        /**
+         * Clear Workspace Budget
+         * @description Remove a Workspace's own budget (admins only): only the installation's applies.
+         */
+        delete: operations["clearLlmWorkspaceBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description AI usage in a month, in total, per Workspace and per user, with tokens per model
+         *     role (admins only).
+         */
+        get: operations["getLlmUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2194,7 +2436,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_table.top_n" | "pii.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -2524,6 +2766,85 @@ export interface components {
             is_sensitive: boolean;
             /** Version */
             version: number;
+        };
+        /** ColumnProfile */
+        ColumnProfile: {
+            /**
+             * Row Count
+             * @description Rows in the sample.
+             */
+            row_count: number;
+            /**
+             * Row Cap
+             * @description The sample cap of the run.
+             */
+            row_cap: number;
+            /**
+             * Sampled
+             * @description The sample hit its cap: the table may be larger.
+             */
+            sampled: boolean;
+            /**
+             * Null Pct
+             * @description 0 to 100.
+             */
+            null_pct: number;
+            /**
+             * Distinct Count
+             * @description Null for types the engine cannot compare.
+             */
+            distinct_count: number | null;
+            /**
+             * Min
+             * @description Always null for a Protected Column.
+             */
+            min: string | null;
+            /**
+             * Max
+             * @description Always null for a Protected Column.
+             */
+            max: string | null;
+            /**
+             * Avg Len
+             * @description Text columns only.
+             */
+            avg_len: number | null;
+            /**
+             * Max Len
+             * @description Text columns only.
+             */
+            max_len: number | null;
+            /**
+             * Top Values
+             * @description Only while the table's top-N switch is on; never for a Protected Column.
+             */
+            top_values: components["schemas"]["TopValue"][] | null;
+            /**
+             * Patterns
+             * @description Detected patterns such as `email` or `phone`.
+             */
+            patterns: string[];
+            /**
+             * Profiled At
+             * Format: date-time
+             */
+            profiled_at: string;
+        };
+        /** ColumnProfileView */
+        ColumnProfileView: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Name */
+            name: string;
+            /** Data Type */
+            data_type: string | null;
+            /** Is Protected */
+            is_protected: boolean;
+            /** @description Null until the column is profiled. */
+            profile: components["schemas"]["ColumnProfile"] | null;
         };
         /** Connection */
         Connection: {
@@ -3540,6 +3861,24 @@ export interface components {
              */
             object_id: string;
         };
+        /** LlmBudgetRequest */
+        LlmBudgetRequest: {
+            /**
+             * Monthly Token Budget
+             * @description Tokens per calendar month (UTC). Null removes the installation's limit.
+             */
+            monthly_token_budget: number | null;
+        };
+        /** LlmBudgets */
+        LlmBudgets: {
+            /**
+             * Installation Monthly Token Budget
+             * @description Null: unlimited.
+             */
+            installation_monthly_token_budget: number | null;
+            /** Workspaces */
+            workspaces: components["schemas"]["LlmWorkspaceBudget"][];
+        };
         /** LlmModel */
         LlmModel: {
             /**
@@ -3700,6 +4039,42 @@ export interface components {
              */
             timeout_seconds: number;
         };
+        /** LlmRoles */
+        LlmRoles: {
+            /**
+             * Agent Model Id
+             * @description Required for AI to work; null only until an admin assigns one.
+             */
+            agent_model_id: string | null;
+            /**
+             * Light Model Id
+             * @description Null: light tasks (titles, short summaries) use the agent model.
+             */
+            light_model_id: string | null;
+            /** Embedding Model Id */
+            embedding_model_id: string | null;
+            /**
+             * Reindex Needed
+             * @description True after the embedding model or its vector dimension changed: documents must be indexed again.
+             */
+            reindex_needed: boolean;
+            /** Reindex Reason */
+            reindex_reason: ("embedding_model_changed" | "embedding_dimension_changed") | null;
+            /** Reindex Flagged At */
+            reindex_flagged_at: string | null;
+        };
+        /** LlmRolesRequest */
+        LlmRolesRequest: {
+            /**
+             * Agent Model Id
+             * Format: uuid
+             */
+            agent_model_id: string;
+            /** Light Model Id */
+            light_model_id?: string | null;
+            /** Embedding Model Id */
+            embedding_model_id?: string | null;
+        };
         /** LlmSetupStatus */
         LlmSetupStatus: {
             /**
@@ -3716,6 +4091,88 @@ export interface components {
              * @description False: new Workspaces will default to not internal-only.
              */
             has_internal_agent_model: boolean;
+        };
+        /** LlmUsage */
+        LlmUsage: {
+            /**
+             * Month
+             * @description `YYYY-MM` (UTC).
+             */
+            month: string;
+            totals: components["schemas"]["LlmUsageTotals"];
+            /** Installation Monthly Token Budget */
+            installation_monthly_token_budget: number | null;
+            /** Workspaces */
+            workspaces: components["schemas"]["LlmWorkspaceUsage"][];
+            /** Users */
+            users: components["schemas"]["LlmUserUsage"][];
+        };
+        /** LlmUsageTotals */
+        LlmUsageTotals: {
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Calls */
+            calls: number;
+            /**
+             * Estimated Calls
+             * @description Calls whose tokens DAWAM estimated.
+             */
+            estimated_calls: number;
+        };
+        /** LlmUserUsage */
+        LlmUserUsage: {
+            /** User Id */
+            user_id: string | null;
+            /** Email */
+            email: string | null;
+            /** Display Name */
+            display_name: string | null;
+            totals: components["schemas"]["LlmUsageTotals"];
+            /** Tokens By Role */
+            tokens_by_role: {
+                [key: string]: number;
+            };
+        };
+        /** LlmWorkspaceBudget */
+        LlmWorkspaceBudget: {
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Workspace Name
+             * @description Null if the Workspace no longer exists.
+             */
+            workspace_name: string | null;
+            /** Monthly Token Budget */
+            monthly_token_budget: number;
+        };
+        /** LlmWorkspaceBudgetRequest */
+        LlmWorkspaceBudgetRequest: {
+            /** Monthly Token Budget */
+            monthly_token_budget: number;
+        };
+        /** LlmWorkspaceUsage */
+        LlmWorkspaceUsage: {
+            /**
+             * Workspace Id
+             * @description Null: calls made for no Workspace, or one since deleted.
+             */
+            workspace_id: string | null;
+            /** Workspace Name */
+            workspace_name: string | null;
+            totals: components["schemas"]["LlmUsageTotals"];
+            /** Tokens By Role */
+            tokens_by_role: {
+                [key: string]: number;
+            };
+            /** Monthly Token Budget */
+            monthly_token_budget: number | null;
         };
         /** Me */
         Me: {
@@ -4045,6 +4502,20 @@ export interface components {
         PlatformList: {
             /** Items */
             items: components["schemas"]["Platform"][];
+        };
+        /** ProfilingStarted */
+        ProfilingStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             * @description The `profile` job: follow it at `GET /jobs/{job_id}`.
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** ReassignOwnerRequest */
         ReassignOwnerRequest: {
@@ -4933,6 +5404,26 @@ export interface components {
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
         };
+        /** StartProfilingRequest */
+        StartProfilingRequest: {
+            /**
+             * Table Ids
+             * @description The tables and views to profile.
+             */
+            table_ids: string[];
+            /**
+             * Row Cap
+             * @description At most this many rows of each table are read.
+             * @default 100000
+             */
+            row_cap: number;
+            /**
+             * Timeout Seconds
+             * @description Each source query is stopped after this long.
+             * @default 30
+             */
+            timeout_seconds: number;
+        };
         /** SuspectedPiiColumn */
         SuspectedPiiColumn: {
             /**
@@ -5030,6 +5521,32 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** TableProfile */
+        TableProfile: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Top N Enabled
+             * @description An owner's switch; off by default.
+             */
+            top_n_enabled: boolean;
+            /**
+             * Row Count
+             * @description Rows in the sample; null before profiling.
+             */
+            row_count: number | null;
+            /** Profiled At */
+            profiled_at: string | null;
+            /** Columns */
+            columns: components["schemas"]["ColumnProfileView"][];
+        };
         /** Target */
         Target: {
             /**
@@ -5072,6 +5589,18 @@ export interface components {
              * @description The new text; it overwrites the file in place.
              */
             content: string;
+        };
+        /** TopNRequest */
+        TopNRequest: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** TopValue */
+        TopValue: {
+            /** Value */
+            value: string;
+            /** Count */
+            count: number;
         };
         /** TransferOwnershipRequest */
         TransferOwnershipRequest: {
@@ -7971,6 +8500,47 @@ export interface operations {
             };
         };
     };
+    downloadDataDictionary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The data dictionary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     updateTableEnhancements: {
         parameters: {
             query?: never;
@@ -8596,6 +9166,182 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenamedObject"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startProfiling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartProfilingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilingStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getTableProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableProfile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getColumnProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+                column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnProfileView"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setTableTopN: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopNRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableProfile"];
                 };
             };
             /** @description Validation error */
@@ -9685,6 +10431,47 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_uploadSourceSystemFile"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveDataDictionary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {
@@ -10885,6 +11672,289 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmSetupStatus"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmRoles"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmRolesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmRoles"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmBudgets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmInstallationBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmWorkspaceBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmWorkspaceBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmWorkspaceBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmUsage: {
+        parameters: {
+            query?: {
+                /** @description `YYYY-MM` (UTC); default: this month. */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmUsage"];
                 };
             };
             /** @description Validation error */

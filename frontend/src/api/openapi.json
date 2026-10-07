@@ -3660,6 +3660,67 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/data-dictionary": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Download Data Dictionary",
+        "description": "The Source System's data dictionary as an Excel workbook (any member): a `Tables`\nand a `Columns` sheet with types, descriptions, tags, classifications and PII\ncategories, never values. 404 before the first Snapshot. To keep a copy, save it to the\nfile area with `POST .../files/data-dictionary`.",
+        "operationId": "downloadDataDictionary",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The data dictionary.",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}": {
       "patch": {
         "tags": [
@@ -4750,6 +4811,326 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RenamedObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Start Profiling",
+        "description": "Profile the chosen tables (owners and editors) as a background job. 409\n`profiling_unavailable` for a Source System with no live Connection (a Schema Import\nhas none): profiling needs one.",
+        "operationId": "startProfiling",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartProfilingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilingStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Table Profile",
+        "description": "A table's profile and its columns' (any member). Min/max and top-N values are\nnever shown for a Protected Column.",
+        "operationId": "getTableProfile",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Column Profile",
+        "description": "One column's profile (any member).",
+        "operationId": "getColumnProfile",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Column Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnProfileView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profiling-settings": {
+      "put": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Set Table Top N",
+        "description": "Switch top-N value capture on or off for a table (owners only; audited). Off by\ndefault; switching it off deletes the stored values.",
+        "operationId": "setTableTopN",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopNRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableProfile"
                 }
               }
             }
@@ -6515,6 +6896,70 @@
             }
           }
         },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Data Dictionary",
+        "description": "Export the Source System's data dictionary into its file area as\n`data-dictionary-<code>.xlsx` (owners and editors), overwriting the previous one.\n404 before the first Snapshot.",
+        "operationId": "saveDataDictionary",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Successful Response",
@@ -8397,6 +8842,364 @@
           }
         }
       }
+    },
+    "/api/v1/admin/llm/roles": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Roles",
+        "description": "Which model fills each role, and whether re-indexing is needed (admins only).",
+        "operationId": "getLlmRoles",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRoles"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Roles",
+        "description": "Assign models to the roles (admins only). The agent role is required; every model\nmust be registered and have passed \"Test connection\". Switching the embedding model\nsets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`.",
+        "operationId": "setLlmRoles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRoles"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Budgets",
+        "description": "The installation's monthly token budget and every Workspace's own (admins only).",
+        "operationId": "getLlmBudgets",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets/installation": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Installation Budget",
+        "description": "Set (or, with null, remove) the installation's monthly token budget (admins\nonly). Once it is used up, AI calls fail with 429 `token_budget_exhausted`; the rest\nof DAWAM keeps working.",
+        "operationId": "setLlmInstallationBudget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Workspace Budget",
+        "description": "Set a Workspace's own monthly token budget (admins only). 404 `workspace_not_found`.",
+        "operationId": "setLlmWorkspaceBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmWorkspaceBudgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Workspace Budget",
+        "description": "Remove a Workspace's own budget (admins only): only the installation's applies.",
+        "operationId": "clearLlmWorkspaceBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/usage": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Usage",
+        "description": "AI usage in a month, in total, per Workspace and per user, with tokens per model\nrole (admins only).",
+        "operationId": "getLlmUsage",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`YYYY-MM` (UTC); default: this month.",
+              "title": "Month"
+            },
+            "description": "`YYYY-MM` (UTC); default: this month."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmUsage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8448,6 +9251,8 @@
           "source_system.change_code",
           "source_system.extract",
           "source_schema.enhance",
+          "source_system.profile",
+          "source_table.top_n",
           "pii.review",
           "job.cancel_own",
           "job.cancel_any",
@@ -9172,6 +9977,182 @@
           "version"
         ],
         "title": "ColumnEnhancements"
+      },
+      "ColumnProfile": {
+        "properties": {
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "description": "Rows in the sample."
+          },
+          "row_cap": {
+            "type": "integer",
+            "title": "Row Cap",
+            "description": "The sample cap of the run."
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled",
+            "description": "The sample hit its cap: the table may be larger."
+          },
+          "null_pct": {
+            "type": "number",
+            "title": "Null Pct",
+            "description": "0 to 100."
+          },
+          "distinct_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distinct Count",
+            "description": "Null for types the engine cannot compare."
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min",
+            "description": "Always null for a Protected Column."
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "Always null for a Protected Column."
+          },
+          "avg_len": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Len",
+            "description": "Text columns only."
+          },
+          "max_len": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Len",
+            "description": "Text columns only."
+          },
+          "top_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TopValue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Values",
+            "description": "Only while the table's top-N switch is on; never for a Protected Column."
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Patterns",
+            "description": "Detected patterns such as `email` or `phone`."
+          },
+          "profiled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Profiled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_count",
+          "row_cap",
+          "sampled",
+          "null_pct",
+          "distinct_count",
+          "min",
+          "max",
+          "avg_len",
+          "max_len",
+          "top_values",
+          "patterns",
+          "profiled_at"
+        ],
+        "title": "ColumnProfile"
+      },
+      "ColumnProfileView": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Type"
+          },
+          "is_protected": {
+            "type": "boolean",
+            "title": "Is Protected"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ColumnProfile"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until the column is profiled."
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "name",
+          "data_type",
+          "is_protected",
+          "profile"
+        ],
+        "title": "ColumnProfileView"
       },
       "Connection": {
         "properties": {
@@ -11512,6 +12493,58 @@
         ],
         "title": "LinkDocumentRequest"
       },
+      "LlmBudgetRequest": {
+        "properties": {
+          "monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Token Budget",
+            "description": "Tokens per calendar month (UTC). Null removes the installation's limit."
+          }
+        },
+        "type": "object",
+        "required": [
+          "monthly_token_budget"
+        ],
+        "title": "LlmBudgetRequest"
+      },
+      "LlmBudgets": {
+        "properties": {
+          "installation_monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installation Monthly Token Budget",
+            "description": "Null: unlimited."
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceBudget"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "installation_monthly_token_budget",
+          "workspaces"
+        ],
+        "title": "LlmBudgets"
+      },
       "LlmModel": {
         "properties": {
           "id": {
@@ -11868,6 +12901,128 @@
         ],
         "title": "LlmProviderRequest"
       },
+      "LlmRoles": {
+        "properties": {
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "Required for AI to work; null only until an admin assigns one."
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id",
+            "description": "Null: light tasks (titles, short summaries) use the agent model."
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id"
+          },
+          "reindex_needed": {
+            "type": "boolean",
+            "title": "Reindex Needed",
+            "description": "True after the embedding model or its vector dimension changed: documents must be indexed again."
+          },
+          "reindex_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "embedding_model_changed",
+                  "embedding_dimension_changed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reindex Reason"
+          },
+          "reindex_flagged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reindex Flagged At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_model_id",
+          "light_model_id",
+          "embedding_model_id",
+          "reindex_needed",
+          "reindex_reason",
+          "reindex_flagged_at"
+        ],
+        "title": "LlmRoles"
+      },
+      "LlmRolesRequest": {
+        "properties": {
+          "agent_model_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agent Model Id"
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id"
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_model_id"
+        ],
+        "title": "LlmRolesRequest"
+      },
       "LlmSetupStatus": {
         "properties": {
           "complete": {
@@ -11897,6 +13052,248 @@
           "has_internal_agent_model"
         ],
         "title": "LlmSetupStatus"
+      },
+      "LlmUsage": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "`YYYY-MM` (UTC)."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LlmUsageTotals"
+          },
+          "installation_monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installation Monthly Token Budget"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceUsage"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/LlmUserUsage"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "totals",
+          "installation_monthly_token_budget",
+          "workspaces",
+          "users"
+        ],
+        "title": "LlmUsage"
+      },
+      "LlmUsageTotals": {
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "title": "Prompt Tokens"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "title": "Completion Tokens"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "estimated_calls": {
+            "type": "integer",
+            "title": "Estimated Calls",
+            "description": "Calls whose tokens DAWAM estimated."
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "calls",
+          "estimated_calls"
+        ],
+        "title": "LlmUsageTotals"
+      },
+      "LlmUserUsage": {
+        "properties": {
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LlmUsageTotals"
+          },
+          "tokens_by_role": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Tokens By Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "totals",
+          "tokens_by_role"
+        ],
+        "title": "LlmUserUsage"
+      },
+      "LlmWorkspaceBudget": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name",
+            "description": "Null if the Workspace no longer exists."
+          },
+          "monthly_token_budget": {
+            "type": "integer",
+            "title": "Monthly Token Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "monthly_token_budget"
+        ],
+        "title": "LlmWorkspaceBudget"
+      },
+      "LlmWorkspaceBudgetRequest": {
+        "properties": {
+          "monthly_token_budget": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
+            "title": "Monthly Token Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "monthly_token_budget"
+        ],
+        "title": "LlmWorkspaceBudgetRequest"
+      },
+      "LlmWorkspaceUsage": {
+        "properties": {
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id",
+            "description": "Null: calls made for no Workspace, or one since deleted."
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LlmUsageTotals"
+          },
+          "tokens_by_role": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Tokens By Role"
+          },
+          "monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Token Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "totals",
+          "tokens_by_role",
+          "monthly_token_budget"
+        ],
+        "title": "LlmWorkspaceUsage"
       },
       "Me": {
         "properties": {
@@ -12544,6 +13941,33 @@
           "items"
         ],
         "title": "PlatformList"
+      },
+      "ProfilingStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "The `profile` job: follow it at `GET /jobs/{job_id}`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "ProfilingStarted"
       },
       "ReassignOwnerRequest": {
         "properties": {
@@ -14529,6 +15953,42 @@
         ],
         "title": "StageProgress"
       },
+      "StartProfilingRequest": {
+        "properties": {
+          "table_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Table Ids",
+            "description": "The tables and views to profile."
+          },
+          "row_cap": {
+            "type": "integer",
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Row Cap",
+            "description": "At most this many rows of each table are read.",
+            "default": 100000
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "description": "Each source query is stopped after this long.",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_ids"
+        ],
+        "title": "StartProfilingRequest"
+      },
       "SuspectedPiiColumn": {
         "properties": {
           "column_id": {
@@ -14755,6 +16215,70 @@
         ],
         "title": "TableEnhancements"
       },
+      "TableProfile": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "top_n_enabled": {
+            "type": "boolean",
+            "title": "Top N Enabled",
+            "description": "An owner's switch; off by default."
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count",
+            "description": "Rows in the sample; null before profiling."
+          },
+          "profiled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profiled At"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnProfileView"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "db_schema",
+          "name",
+          "top_n_enabled",
+          "row_count",
+          "profiled_at",
+          "columns"
+        ],
+        "title": "TableProfile"
+      },
       "Target": {
         "properties": {
           "label": {
@@ -14842,6 +16366,37 @@
           "content"
         ],
         "title": "TextUpdate"
+      },
+      "TopNRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "TopNRequest"
+      },
+      "TopValue": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "TopValue"
       },
       "TransferOwnershipRequest": {
         "properties": {

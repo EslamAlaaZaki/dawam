@@ -8,6 +8,8 @@ import {
   type SchemaSearchHit,
   type SourceSchema,
 } from "../api/snapshots";
+import type { Workspace } from "../api/workspaces";
+import { ProfilePanel } from "./ProfilePanel";
 
 type Table = SourceSchema["tables"][number];
 type Routine = SourceSchema["routines"][number];
@@ -43,12 +45,13 @@ function useDebounced(value: string, ms: number) {
  * member can browse. Objects that are not `present` carry their state.
  */
 export function SchemaBrowser({
-  workspaceId,
+  workspace,
   systemId,
 }: {
-  workspaceId: string;
+  workspace: Workspace;
   systemId: string;
 }) {
+  const workspaceId = workspace.id;
   const schema = useSourceSchema(workspaceId, systemId, true);
   const [selection, setSelection] = useState<Selection>(null);
   const [search, setSearch] = useState("");
@@ -149,6 +152,8 @@ export function SchemaBrowser({
       {table && (
         <TablePage
           table={table}
+          workspace={workspace}
+          systemId={systemId}
           removedColumns={content.removed_columns.filter((c) => c.table_id === table.id)}
         />
       )}
@@ -190,7 +195,17 @@ function SearchResults({
   );
 }
 
-function TablePage({ table, removedColumns }: { table: Table; removedColumns: RemovedColumn[] }) {
+function TablePage({
+  table,
+  workspace,
+  systemId,
+  removedColumns,
+}: {
+  table: Table;
+  workspace: Workspace;
+  systemId: string;
+  removedColumns: RemovedColumn[];
+}) {
   const title = `${table.db_schema}.${table.name}`;
   return (
     <section aria-label={`Table ${title}`}>
@@ -258,6 +273,7 @@ function TablePage({ table, removedColumns }: { table: Table; removedColumns: Re
           ))}
         </tbody>
       </table>
+      <ProfilePanel workspace={workspace} systemId={systemId} tableId={table.id} />
       <h5>Keys</h5>
       {table.constraints.length === 0 ? (
         <p className="empty-state">No keys.</p>

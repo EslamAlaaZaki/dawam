@@ -299,6 +299,15 @@ def model_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(response.json()["id"])
 
 
+def tested_model_id(roles: RoleClients) -> uuid.UUID:
+    """A model that passed "Test connection" (against the scripted fake)."""
+    use_fake_llm(roles)
+    model = model_id(roles)
+    response = roles.client("admin").post(f"/api/v1/admin/llm/models/{model}/test")
+    assert response.json()["test_ok"] is True, response.text
+    return model
+
+
 def use_fake_llm(roles: RoleClients) -> None:
     """Answer every LLM request with the scripted fake, so "Test connection" needs no server."""
     fake = FakeAdapter()

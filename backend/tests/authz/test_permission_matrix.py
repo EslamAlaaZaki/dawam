@@ -34,6 +34,7 @@ from tests.authz.matrix import (
     source_table_id,
     system_id,
     table_id,
+    tested_model_id,
     use_fake_llm,
     workspace,
 )
@@ -265,6 +266,43 @@ ROWS: list[Row] = [
         setup=use_fake_llm,
     ),
     Row("GET", "/api/v1/admin/llm/setup", "AI setup status (story 158)", admin_only()),
+    # Model roles, token budgets and AI usage (stories 157, 159, 162).
+    Row("GET", "/api/v1/admin/llm/roles", "see the model roles (story 157)", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/roles",
+        "assign models to roles (story 157)",
+        admin_only(),
+        json=lambda roles: {"agent_model_id": str(tested_model_id(roles))},
+        setup=use_fake_llm,
+    ),
+    Row("GET", "/api/v1/admin/llm/budgets", "see the token budgets (story 159)", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/installation",
+        "set the installation's token budget (story 159)",
+        admin_only(),
+        json=lambda roles: {"monthly_token_budget": 1000},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}",
+        "set a Workspace's token budget (story 159)",
+        admin_only(),
+        json=lambda roles: {"monthly_token_budget": 1000},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}",
+        "remove a Workspace's token budget (story 159)",
+        admin_only(),
+    ),
+    Row(
+        "GET",
+        "/api/v1/admin/llm/usage",
+        "AI usage per Workspace and user (story 162)",
+        admin_only(),
+    ),
     # User management (stories 14-19, 15a) and the security-event log (story 23).
     Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
     Row(
@@ -657,6 +695,13 @@ ROWS: list[Row] = [
         files=lambda roles: {"file": ("notes.md", b"# Notes", "text/markdown")},
     ),
     Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/files/data-dictionary",
+        "Upload, edit, delete Workspace files (save the data dictionary)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+    ),
+    Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
         "Open Workspace content (download a file)",
@@ -836,7 +881,36 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=save_a_connection,
     ),
-    # Schema Import (stories 47, 49-51): owners and editors download the template, validate
+    # Profiling (stories 55-57): owners and editors run it, only owners switch top-N on
+    # per table, every member reads the profiles.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling",
+        "Run extraction / Schema Import / profiling (profile tables)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"table_ids": [table_id(roles)]},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile",
+        "Open Workspace content (a table's profile)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile",
+        "Open Workspace content (a column's profile)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profiling-settings",
+        "Switch top-N value profiling on or off for a table",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"enabled": False},
+    ),  # Schema Import (stories 47, 49-51): owners and editors download the template, validate
     # and upload, and ask for a Connection; every member sees the disabled features.
     Row(
         "GET",
@@ -869,6 +943,13 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/connection-requests",
         "Run extraction / Schema Import / profiling (ask for a Connection)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/data-dictionary",
+        "Open Workspace content (the data dictionary as XLSX)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
     ),
     Row(
         "GET",

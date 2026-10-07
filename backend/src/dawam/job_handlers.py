@@ -22,8 +22,15 @@ from dawam.modules.files import (
     RegisteredEmbeddingModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
-from dawam.modules.llm import AdapterFactory, ProviderService
-from dawam.modules.sources import EXTRACT_JOB, PII_SCAN_JOB, PiiScanService, SnapshotService
+from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
+from dawam.modules.sources import (
+    EXTRACT_JOB,
+    PII_SCAN_JOB,
+    PROFILE_JOB,
+    PiiScanService,
+    ProfilingService,
+    SnapshotService,
+)
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -54,7 +61,9 @@ def build_document_search(
         engine,
         workspaces=WorkspaceService(engine, clock=clock),
         ai=document_ai or NoDocumentAi(),
-        embeddings=RegisteredEmbeddingModels(providers),
+        embeddings=RegisteredEmbeddingModels(
+            providers, RoleService(engine, providers=providers, clock=clock)
+        ),
         jobs=runner,
         clock=clock,
     )
@@ -75,6 +84,13 @@ def _service_handlers(
         encryption_key=settings.encryption_key.get_secret_value(),
         clock=clock,
     )
+    profiling = ProfilingService(
+        engine,
+        workspaces=WorkspaceService(engine, clock=clock),
+        jobs=runner,
+        encryption_key=settings.encryption_key.get_secret_value(),
+        clock=clock,
+    )
     pii_scans = PiiScanService(
         engine,
         workspaces=WorkspaceService(engine, clock=clock),
@@ -87,6 +103,7 @@ def _service_handlers(
     )
     return {
         EXTRACT_JOB: snapshots.run_extraction,
+        PROFILE_JOB: profiling.run_profiling,
         PII_SCAN_JOB: pii_scans.run_scan,
         REINDEX_JOB: documents.run_reindex,
     }

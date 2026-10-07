@@ -85,6 +85,11 @@ class Action(StrEnum):
     EDIT_SOURCE_ENHANCEMENTS = "source_schema.enhance"
     """Add descriptions, tags, a sensitivity flag, a classification and an SCD hint to a
     Source System's tables and columns (owners and editors; spec stories 61, 62)."""
+    RUN_PROFILING = "source_system.profile"
+    """Profile selected tables of a Source System through its Connection (owners and
+    editors; spec §4.3 "Run extraction / Schema Import / profiling", story 55)."""
+    ENABLE_TOP_N = "source_table.top_n"
+    """Switch top-N value capture on or off for one table (owners only; spec §6.5)."""
     REVIEW_PII = "pii.review"
     """List PII findings and confirm or dismiss them in the review queue (owners and
     editors; spec §4.3 "Review PII findings", stories 133-135)."""
@@ -189,6 +194,8 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.LEAVE_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
     Action.RUN_EXTRACTION: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_ENHANCEMENTS: _WorkspaceRule(min_role="editor"),
+    Action.RUN_PROFILING: _WorkspaceRule(min_role="editor"),
+    Action.ENABLE_TOP_N: _WorkspaceRule(min_role="owner"),
     Action.REVIEW_PII: _WorkspaceRule(min_role="editor"),
     Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
