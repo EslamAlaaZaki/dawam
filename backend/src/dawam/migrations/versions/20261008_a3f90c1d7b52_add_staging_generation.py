@@ -1,7 +1,7 @@
 """add staging generation.
 
 Revision ID: a3f90c1d7b52
-Revises: 5d2a8f1c7e36
+Revises: 712926c5eed8
 Create Date: 2026-10-08 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a3f90c1d7b52"
-down_revision: str | Sequence[str] | None = "5d2a8f1c7e36"
+down_revision: str | Sequence[str] | None = "712926c5eed8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
