@@ -655,6 +655,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/generated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Generated Table
+         * @description Add the built-in date or time dimension (editors and owners): a `generated`, conformed
+         *     table that needs no mapping. The date dimension's columns follow the Data Warehouse's
+         *     date-dimension settings (Gregorian attributes, optional Hijri and fiscal ones; the
+         *     weekend flag and range apply to the seed rows). Its seed file is delivered with the DDL
+         *     package. 409 `name_taken` when it already exists; 404 `not_set_up`.
+         */
+        post: operations["createGeneratedDwTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}": {
         parameters: {
             query?: never;
@@ -2223,7 +2247,9 @@ export interface paths {
          * Save Ddl
          * @description Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`
          *     (or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous
-         *     one (owners and editors). 404 before the Data Warehouse is set up.
+         *     one (owners and editors). Generated date and time dimensions are seeded in the package;
+         *     their seed files (`seed-<table>.csv` and `seed-<table>.sql`) are saved beside it.
+         *     404 before the Data Warehouse is set up.
          */
         post: operations["saveDdl"];
         delete?: never;
@@ -3607,6 +3633,22 @@ export interface components {
             is_conformed?: boolean | null;
             /** Description */
             description?: string | null;
+        };
+        /** CreateGeneratedDwTableRequest */
+        CreateGeneratedDwTableRequest: {
+            /**
+             * Kind
+             * @description The built-in dimension to add.
+             * @enum {string}
+             */
+            kind: "date" | "time";
+            /**
+             * Layer
+             * @description `core` (default) or `mart`.
+             * @default core
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
         };
         /** CreateKpiRequest */
         CreateKpiRequest: {
@@ -8600,6 +8642,50 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateDwTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTable"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createGeneratedDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGeneratedDwTableRequest"];
             };
         };
         responses: {

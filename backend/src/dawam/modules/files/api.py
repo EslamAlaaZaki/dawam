@@ -144,11 +144,16 @@ def save_ddl(
 ) -> WorkspaceFile:
     """Export the DDL package into the Data Warehouse's file area as `ddl-<layer>.sql`
     (or `ddl-data-warehouse.sql` for the whole Data Warehouse), overwriting the previous
-    one (owners and editors). 404 before the Data Warehouse is set up."""
+    one (owners and editors). Generated date and time dimensions are seeded in the package;
+    their seed files (`seed-<table>.csv` and `seed-<table>.sql`) are saved beside it.
+    404 before the Data Warehouse is set up."""
     package = ddl.export(user, workspace_id, layer=layer)
-    return _out(
-        files.save_generated_to_warehouse(user, workspace_id, name=package.name, data=package.data)
+    saved = files.save_generated_to_warehouse(
+        user, workspace_id, name=package.name, data=package.data
     )
+    for seed in ddl.seed_files(user, workspace_id, layer=layer):
+        files.save_generated_to_warehouse(user, workspace_id, name=seed.name, data=seed.data)
+    return _out(saved)
 
 
 def _attachment(name: str) -> str:
