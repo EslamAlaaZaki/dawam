@@ -23,6 +23,7 @@ import {
   type DwTableSummary,
 } from "../api/dwModel";
 import { allows, type Workspace } from "../api/workspaces";
+import { MappingsGrid } from "./MappingsGrid";
 import { StarPanel } from "../diagrams/StarPanel";
 
 const LAYER_LABELS: Record<DwLayer, string> = {
@@ -312,6 +313,7 @@ function TableDetails({
   const table = useDwTable(workspace.id, tableId);
   const removeColumn = useDeleteDwColumn(workspace.id, tableId);
   const removeTable = useDeleteDwTable(workspace.id, tableId);
+  const [showMappings, setShowMappings] = useState(false);
 
   if (table.isPending) {
     return <p>Loading…</p>;
@@ -419,6 +421,21 @@ function TableDetails({
           ))}
         </tbody>
       </table>
+      {t.layer !== "staging" && (
+        <>
+          <button
+            type="button"
+            className="secondary"
+            aria-expanded={showMappings}
+            onClick={() => setShowMappings((open) => !open)}
+          >
+            {showMappings ? "Hide mappings" : "Mappings"}
+          </button>
+          {showMappings && (
+            <MappingsGrid workspaceId={workspace.id} tableId={t.id} editable={editable} />
+          )}
+        </>
+      )}
       {(removeColumn.isError || removeTable.isError) && (
         <p className="form-error" role="alert">
           {removeColumn.error?.message ?? removeTable.error?.message}

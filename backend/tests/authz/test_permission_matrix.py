@@ -630,6 +630,33 @@ ROWS: list[Row] = [
         "Edit KPIs, DW Schema, mappings (delete a column)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
+    # Column mappings and lineage (stories 99, 100, 104).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping",
+        "Open Workspace content (a table's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PATCH",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping",
+        "Edit KPIs, DW Schema, mappings (edit a table's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 0},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}/mapping/columns/{dw_column_id}",
+        "Edit KPIs, DW Schema, mappings (save a column mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"mapping_type": "unmapped", "rule_text": "Not in the source"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage/columns/{dw_column_id}",
+        "Open Workspace content (a column's lineage)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
     # DDL export (story 97).
     Row(
         "GET",
