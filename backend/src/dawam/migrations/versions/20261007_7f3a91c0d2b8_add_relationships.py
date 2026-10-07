@@ -1,7 +1,7 @@
 """add relationships.
 
 Revision ID: 7f3a91c0d2b8
-Revises: d6e3f9a4b725
+Revises: 8f3a1c7e52b9
 Create Date: 2026-10-07 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "7f3a91c0d2b8"
-down_revision: str | Sequence[str] | None = "d6e3f9a4b725"
+down_revision: str | Sequence[str] | None = "8f3a1c7e52b9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
