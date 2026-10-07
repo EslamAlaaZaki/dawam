@@ -17,6 +17,7 @@ import {
 } from "../api/assistant";
 import { ApiError } from "../api/client";
 import { allows, type Workspace } from "../api/workspaces";
+import { ConversationChangeSets } from "./ChangeSetReview";
 
 /** What is being answered right now. */
 interface Draft {
@@ -54,21 +55,32 @@ function FailureNote({ run }: { run: Run }) {
   }
   return (
     <p role="alert" className="assistant-failure">
-      The assistant could not answer: {run.error_message ?? "an unknown problem"}
+      The assistant could not answer:{" "}
+      {run.error_message ?? "an unknown problem"}
     </p>
   );
 }
 
-function Turn({ message, answer }: { message: ChatMessage; answer: ChatMessage | undefined }) {
+function Turn({
+  message,
+  answer,
+}: {
+  message: ChatMessage;
+  answer: ChatMessage | undefined;
+}) {
   const run = message.run;
   return (
     <li className="assistant-turn">
       <p className="assistant-question">{message.content}</p>
       {run && <ToolList tools={run.tool_calls} />}
       {answer && <p className="assistant-answer">{answer.content}</p>}
-      {run?.status === "cancelled" && <p className="assistant-note">Stopped.</p>}
+      {run?.status === "cancelled" && (
+        <p className="assistant-note">Stopped.</p>
+      )}
       {run?.status === "tool_limit" && (
-        <p className="assistant-note">Stopped using tools: the limit for one request was reached.</p>
+        <p className="assistant-note">
+          Stopped using tools: the limit for one request was reached.
+        </p>
       )}
       {run && <FailureNote run={run} />}
     </li>
@@ -126,7 +138,11 @@ export function AssistantPanel({
         },
       });
     } catch (error) {
-      setRefusal(error instanceof ApiError ? error.message : "The assistant did not answer.");
+      setRefusal(
+        error instanceof ApiError
+          ? error.message
+          : "The assistant did not answer.",
+      );
     } finally {
       setDraft(null);
     }
@@ -211,7 +227,9 @@ export function AssistantPanel({
         <p className="assistant-note">Could not load the conversations.</p>
       )}
       {current && !mine && (
-        <p className="assistant-note">Shared by a colleague: you can read it, not reply.</p>
+        <p className="assistant-note">
+          Shared by a colleague: you can read it, not reply.
+        </p>
       )}
       <ol className="assistant-turns" aria-label="Conversation">
         {turns.map(({ message, answer }) => (
@@ -229,9 +247,21 @@ export function AssistantPanel({
           </li>
         )}
       </ol>
-      {failed && !draft && turns.every(({ message }) => message.run?.id !== failed.id) && (
-        <FailureNote run={failed} />
-      )}
+      {selected &&
+        messages.some((m) =>
+          m.run?.tool_calls.some((t) => t.name === "propose_changes"),
+        ) && (
+          <ConversationChangeSets
+            workspace={workspace}
+            conversationId={selected}
+            messageCount={messages.length}
+          />
+        )}
+      {failed &&
+        !draft &&
+        turns.every(({ message }) => message.run?.id !== failed.id) && (
+          <FailureNote run={failed} />
+        )}
       {refusal && (
         <p role="alert" className="assistant-failure">
           {refusal}

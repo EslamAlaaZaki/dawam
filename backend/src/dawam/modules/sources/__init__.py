@@ -19,6 +19,9 @@ Public interface. Other modules import only what is re-exported here:
 - ``EnhancementService``: owners and editors add descriptions, tags, a sensitivity flag,
   and (tables) a classification and SCD hint to Source Objects; each change is audited
   (``source_table`` / ``source_column`` entities) and appears in the activity feed.
+- ``SourceEnhancementHandler(object_type)``: the ``changesets`` engine's handler for
+  ``source_table`` and ``source_column`` items (enhancement updates); the composition root
+  registers one of each.
 - ``PiiService``: owners and editors review PII findings (``PiiFinding``): list the queue,
   ``confirm`` (sets ``is_sensitive`` and the PII category) or ``dismiss``; decisions are
   audited. Name rules run on every new Snapshot. ``is_protected`` is the one Protected
@@ -75,8 +78,8 @@ Owns the ``source_systems`` and ``connections`` tables, the Source Objects
 (``src_db_schemas``, ``src_tables``, ``src_columns``, ``src_routines``) and the Snapshots
 (``snapshots``, ``snapshot_*``, ``definition_texts``). ``internal/`` holds the Connector
 interface, its PostgreSQL implementation and the Snapshot writer, which other code
-reaches only through the service API. Imports ``activity``, ``audit``, ``auth``, ``jobs`` and
-``workspaces``.
+reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
+``changesets``, ``jobs`` and ``workspaces``.
 """
 
 from fastapi import APIRouter
@@ -85,6 +88,7 @@ from .api import router as _systems_router
 from .connection_service import Connection, ConnectionService
 from .dictionary_api import DataDictionaryServiceDep
 from .dictionary_service import DataDictionary, DataDictionaryService
+from .enhancement_changes import SourceEnhancementHandler
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected
@@ -156,6 +160,7 @@ __all__ = [
     "SnapshotContent",
     "SnapshotService",
     "SnapshotSummary",
+    "SourceEnhancementHandler",
     "SourceSchema",
     "SourceSummary",
     "SourceSummaryService",
