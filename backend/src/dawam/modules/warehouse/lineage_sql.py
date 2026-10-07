@@ -86,3 +86,75 @@ def parse_expression(sql: str, platform: str) -> ParsedExpression:
         if ref not in target:
             target.append(ref)
     return ParsedExpression(tuple(value), tuple(uses), isinstance(root, exp.Column))
+
+
+@dataclass(frozen=True)
+class BranchParts:
+    tables: tuple[str, ...]
+    """Every table the branch's FROM, joins and conditions name (lower case)."""
+    group_by: tuple[str, ...]
+    """The ``GROUP BY`` expressions, normalized."""
+    group_columns: frozenset[ColumnRef]
+    """Every column the ``GROUP BY`` expressions read."""
+
+
+def _normal(node: exp.Expression, platform: str) -> str:
+    return node.sql(dialect=DIALECTS.get(platform)).lower()
+
+
+def parse_branch(
+    driving_input: str,
+    joins: str,
+    filters: str,
+    group_by: str | None,
+    having: str | None,
+    platform: str,
+) -> BranchParts:
+    """Read a branch's SQL parts as the query they make. Raises ``Unparsable``."""
+    parts = [f"SELECT 1 FROM {driving_input}", joins]
+    if filters:
+        parts.append(f"WHERE {filters}")
+    if group_by:
+        parts.append(f"GROUP BY {group_by}")
+    if having:
+        parts.append(f"HAVING {having}")
+    try:
+        trees = sqlglot.parse(" ".join(p for p in parts if p), read=DIALECTS.get(platform))
+    except SqlglotError as exc:
+        raise Unparsable(str(exc).splitlines()[0]) from None
+    tree = trees[0] if len(trees) == 1 else None
+    if not isinstance(tree, exp.Select):
+        raise Unparsable("The branch must be one query: a driving input, joins and conditions.")
+    group = tree.args.get("group")
+    group_nodes = list(group.expressions) if group else []
+    columns = frozenset(
+        ColumnRef((c.table or "").lower() or None, c.name.lower())
+        for g in group_nodes
+        for c in g.find_all(exp.Column)
+    )
+    return BranchParts(
+        tables=tuple(dict.fromkeys(t.name.lower() for t in tree.find_all(exp.Table))),
+        group_by=tuple(_normal(g, platform) for g in group_nodes),
+        group_columns=columns,
+    )
+
+
+def is_group_safe(sql: str, parts: BranchParts, platform: str) -> bool:
+    """Whether an output expression is valid beside the branch's ``GROUP BY``: it
+    aggregates, or it is a grouped expression, or it reads only grouped columns."""
+    try:
+        trees = sqlglot.parse(f"SELECT {sql}", read=DIALECTS.get(platform))
+    except SqlglotError:
+        return True  # unparsed text is reported on its own
+    tree = trees[0] if len(trees) == 1 else None
+    if not isinstance(tree, exp.Select) or len(tree.expressions) != 1:
+        return True
+    root = tree.expressions[0]
+    if root.find(exp.AggFunc, exp.Window) is not None:
+        return True
+    if _normal(root, platform) in parts.group_by:
+        return True
+    return all(
+        ColumnRef((c.table or "").lower() or None, c.name.lower()) in parts.group_columns
+        for c in root.find_all(exp.Column)
+    )

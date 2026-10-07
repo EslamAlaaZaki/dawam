@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
+from sqlglot import exp
 
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
@@ -32,8 +33,18 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .lineage_graph import reachable_edge_ids
-from .lineage_sql import ColumnRef, ParsedExpression, Unparsable, parse_expression
+from .lineage_sql import (
+    DIALECTS,
+    BranchParts,
+    ColumnRef,
+    ParsedExpression,
+    Unparsable,
+    is_group_safe,
+    parse_branch,
+    parse_expression,
+)
 from .tables import (
+    BRANCH_NAME_MAX_LENGTH,
     MAPPING_TEXT_MAX_LENGTH,
     MAPPING_TYPES,
     ColumnMappingRecord,
@@ -41,6 +52,7 @@ from .tables import (
     DwColumnRecord,
     DwTableRecord,
     LineageEdgeRecord,
+    MappingBranchRecord,
     TableMappingRecord,
 )
 
@@ -48,6 +60,37 @@ SOURCE_LAYER = {"core": "staging", "mart": "core"}
 """The Layer a Layer is mapped from."""
 SQL_MAX_LENGTH = 20_000
 MATCH_KEY_MAX = 20
+SYSTEM_ROLES = ("sk", "audit", "scd_valid_from", "scd_valid_to", "scd_current_flag", "row_hash")
+"""Columns DAWAM generates: mapped at table level, never per branch (spec §6.14)."""
+BRANCH_FIELDS = ("name", "driving_input", "joins", "filters", "group_by", "having")
+
+
+def is_system_column(column: DwColumnRecord) -> bool:
+    return column.is_system or column.role in SYSTEM_ROLES
+
+
+@dataclass(frozen=True)
+class BranchView:
+    id: uuid.UUID
+    ordinal: int
+    name: str
+    driving_input: str
+    joins: str
+    filters: str
+    group_by: str | None
+    having: str | None
+    version: int
+    columns: list[ColumnMappingView]
+    errors: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ColumnCoverage:
+    column_id: uuid.UUID
+    column_name: str
+    system: bool
+    covered: bool
+    missing_branch_ids: list[uuid.UUID]
 
 
 @dataclass(frozen=True)
@@ -84,6 +127,10 @@ class TableMappingView:
     notes: str
     version: int
     columns: list[ColumnMappingView]
+    is_aggregate: bool
+    branches: list[BranchView]
+    coverage: list[ColumnCoverage]
+    sql: str | None
 
 
 @dataclass(frozen=True)
@@ -214,11 +261,14 @@ class MappingService:
         *,
         version: int,
         fields: Mapping[str, Any],
+        branch_id: uuid.UUID | None = None,
     ) -> ColumnMappingView:
-        """Create (``version`` 0) or change a column's mapping. ``fields``: ``mapping_type``
-        (direct, derived, constant, unmapped), ``rule_text`` and ``sql_expression``. Derives
-        and stores the mapping's lineage edges from the SQL. 422 ``invalid_mapping``;
-        409 ``version_conflict``."""
+        """Create (``version`` 0) or change a column's mapping, in a branch when
+        ``branch_id`` is given, else at table level. ``fields``: ``mapping_type`` (direct,
+        derived, constant, unmapped; ``not_in_branch`` in a branch, where it means NULL),
+        ``rule_text`` and ``sql_expression``. Derives and stores the mapping's lineage
+        edges from the SQL. System columns are table-level only. 422 ``invalid_mapping``;
+        404 ``not_found`` for a branch of another table; 409 ``version_conflict``."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
         with Session(self._engine) as db, db.begin():
             warehouse = self._warehouse(db, workspace_id)
@@ -232,12 +282,20 @@ class MappingService:
                 raise _not_found("Column")
             now = self._clock()
             table_mapping = self._table_mapping(db, table, now)
+            branch = self._branch(db, table_mapping, branch_id) if branch_id else None
+            if branch is not None and is_system_column(column):
+                raise _invalid(
+                    "column", "System columns are mapped at table level, not in a branch."
+                )
             record = db.scalars(
-                sa.select(ColumnMappingRecord).where(ColumnMappingRecord.dw_column_id == column.id)
+                sa.select(ColumnMappingRecord).where(
+                    ColumnMappingRecord.dw_column_id == column.id,
+                    ColumnMappingRecord.branch_id == branch_id,
+                )
             ).first()
             if (record.version if record else 0) != version:
                 raise _conflict(record.version if record else 0)
-            mapping_type, rule_text, sql = self._fields(fields)
+            mapping_type, rule_text, sql = self._fields(fields, in_branch=branch is not None)
             parsed, validation = self._parse(warehouse, mapping_type, sql)
             inputs = self._resolve(db, warehouse, table, parsed) if parsed else {}
             before = _snapshot(record) if record else None
@@ -251,6 +309,7 @@ class MappingService:
                 record = ColumnMappingRecord(
                     id=uuid.uuid4(),
                     table_mapping_id=table_mapping.id,
+                    branch_id=branch_id,
                     dw_column_id=column.id,
                     version=1,
                 )
@@ -275,7 +334,11 @@ class MappingService:
                     entity_type="column_mapping",
                     entity_id=record.id,
                     old=None if before is None else {f: before[f] for f in changed},
-                    new={"dw_column_id": str(column.id), **after}
+                    new={
+                        "dw_column_id": str(column.id),
+                        "branch_id": str(branch_id) if branch_id else None,
+                        **after,
+                    }
                     if before is None
                     else {f: after[f] for f in changed},
                     at=now,
@@ -287,7 +350,11 @@ class MappingService:
                     verb="column_mapping.created" if before is None else "column_mapping.updated",
                     object_type="column_mapping",
                     object_id=record.id,
-                    object_label=f"{table.name}.{column.name}",
+                    object_label=(
+                        f"{table.name}.{column.name}"
+                        if branch is None
+                        else f"{table.name}.{column.name} ({branch.name})"
+                    ),
                     details={"layer": table.layer, "table_id": str(table.id)},
                     at=now,
                 )
@@ -345,15 +412,221 @@ class MappingService:
 
     # --- rules -----------------------------------------------------------------------
 
-    def _fields(self, fields: Mapping[str, Any]) -> tuple[str, str, str]:
+    # --- branches --------------------------------------------------------------------
+
+    def create_branch(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        table_id: uuid.UUID,
+        *,
+        fields: Mapping[str, Any],
+    ) -> TableMappingView:
+        """Add a branch after the table's others. ``fields``: ``name``, ``driving_input``
+        (required), ``joins``, ``filters``, ``group_by``, ``having``: SQL parts in the target
+        dialect naming tables of the Layer below. 422 ``invalid_mapping``."""
+        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            warehouse = self._warehouse(db, workspace_id)
+            table = self._table(db, warehouse, table_id, lock=True)
+            now = self._clock()
+            mapping = self._table_mapping(db, table, now)
+            values = self._branch_values(db, warehouse, table, fields)
+            last = db.scalar(
+                sa.select(sa.func.max(MappingBranchRecord.ordinal)).where(
+                    MappingBranchRecord.table_mapping_id == mapping.id
+                )
+            )
+            branch = MappingBranchRecord(
+                id=uuid.uuid4(),
+                table_mapping_id=mapping.id,
+                ordinal=(last or 0) + 1,
+                created_at=now,
+                updated_at=now,
+                version=1,
+                **values,
+            )
+            db.add(branch)
+            db.flush()
+            self._record_branch(db, user, workspace_id, table, branch, "created", None, values, now)
+            return self._view(db, table)
+
+    def update_branch(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        table_id: uuid.UUID,
+        branch_id: uuid.UUID,
+        *,
+        version: int,
+        changes: Mapping[str, Any],
+    ) -> TableMappingView:
+        """Change a branch's fields; those left out stay. 404 ``not_found``;
+        422 ``invalid_mapping``; 409 ``version_conflict``."""
+        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            warehouse = self._warehouse(db, workspace_id)
+            table = self._table(db, warehouse, table_id, lock=True)
+            now = self._clock()
+            branch = self._branch(db, self._table_mapping(db, table, now), branch_id)
+            if branch.version != version:
+                raise _conflict(branch.version)
+            before = {f: getattr(branch, f) for f in BRANCH_FIELDS}
+            values = self._branch_values(db, warehouse, table, {**before, **changes})
+            changed = [f for f in BRANCH_FIELDS if before[f] != values[f]]
+            if changed:
+                for f in changed:
+                    setattr(branch, f, values[f])
+                branch.version += 1
+                branch.updated_at = now
+                self._record_branch(
+                    db,
+                    user,
+                    workspace_id,
+                    table,
+                    branch,
+                    "updated",
+                    {f: before[f] for f in changed},
+                    {f: values[f] for f in changed},
+                    now,
+                )
+            db.flush()
+            return self._view(db, table)
+
+    def delete_branch(
+        self, user: User, workspace_id: uuid.UUID, table_id: uuid.UUID, branch_id: uuid.UUID
+    ) -> None:
+        """Remove a branch with its column mappings and edges; the later branches move up.
+        404 ``not_found``."""
+        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            warehouse = self._warehouse(db, workspace_id)
+            table = self._table(db, warehouse, table_id, lock=True)
+            now = self._clock()
+            mapping = self._table_mapping(db, table, now)
+            branch = self._branch(db, mapping, branch_id)
+            old = {f: getattr(branch, f) for f in BRANCH_FIELDS}
+            db.execute(sa.delete(MappingBranchRecord).where(MappingBranchRecord.id == branch.id))
+            db.execute(
+                sa.update(MappingBranchRecord)
+                .where(
+                    MappingBranchRecord.table_mapping_id == mapping.id,
+                    MappingBranchRecord.ordinal > branch.ordinal,
+                )
+                .values(ordinal=MappingBranchRecord.ordinal - 1)
+            )
+            self._record_branch(db, user, workspace_id, table, branch, "deleted", old, None, now)
+
+    def _record_branch(
+        self,
+        db: Session,
+        user: User,
+        workspace_id: uuid.UUID,
+        table: DwTableRecord,
+        branch: MappingBranchRecord,
+        verb: str,
+        old: dict[str, Any] | None,
+        new: dict[str, Any] | None,
+        now: datetime,
+    ) -> None:
+        record_audit(
+            db,
+            workspace_id=workspace_id,
+            actor_id=user.id,
+            entity_type="mapping_branch",
+            entity_id=branch.id,
+            old=old,
+            new=new,
+            at=now,
+        )
+        record_activity(
+            db,
+            workspace_id=workspace_id,
+            actor_id=user.id,
+            verb=f"mapping_branch.{verb}",
+            object_type="mapping_branch",
+            object_id=branch.id,
+            object_label=f"{table.name}: {branch.name}",
+            details={"layer": table.layer, "table_id": str(table.id)},
+            at=now,
+        )
+
+    def _branch_values(
+        self,
+        db: Session,
+        warehouse: DataWarehouseRecord,
+        table: DwTableRecord,
+        fields: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """The checked branch fields: the text limits, the SQL as one query and every table
+        it names found in the Layer directly below."""
+        name = _text(fields.get("name"), "name", "name", BRANCH_NAME_MAX_LENGTH)
+        if not name:
+            raise _invalid("name", "A branch needs a name.")
+        driving = _text(fields.get("driving_input"), "driving_input", "driving input", 500)
+        if not driving:
+            raise _invalid("driving_input", "A branch needs a driving input table.")
+        joins = _text(fields.get("joins"), "joins", "joins", SQL_MAX_LENGTH)
+        filters = _text(fields.get("filters"), "filters", "filters", SQL_MAX_LENGTH)
+        group_by = _text(fields.get("group_by"), "group_by", "GROUP BY", SQL_MAX_LENGTH) or None
+        having = _text(fields.get("having"), "having", "HAVING", SQL_MAX_LENGTH) or None
+        if having and not group_by:
+            raise _invalid("having", "HAVING needs a GROUP BY.")
+        try:
+            parts = parse_branch(
+                driving, joins, filters, group_by, having, warehouse.target_platform
+            )
+        except Unparsable as exc:
+            raise _invalid("driving_input", f"The branch SQL does not parse: {exc}") from None
+        layer = SOURCE_LAYER[table.layer]
+        known = set(
+            db.scalars(
+                sa.select(sa.func.lower(DwTableRecord.name)).where(
+                    DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer == layer
+                )
+            )
+        )
+        for name_used in parts.tables:
+            if name_used not in known:
+                raise _invalid(
+                    "driving_input",
+                    f"{name_used} is not a {layer} table; {table.layer} tables are mapped "
+                    f"from the {layer} Layer.",
+                )
+        return {
+            "name": name,
+            "driving_input": driving,
+            "joins": joins,
+            "filters": filters,
+            "group_by": group_by,
+            "having": having,
+        }
+
+    def _branch(
+        self, db: Session, mapping: TableMappingRecord, branch_id: uuid.UUID
+    ) -> MappingBranchRecord:
+        branch = db.scalars(
+            sa.select(MappingBranchRecord)
+            .where(
+                MappingBranchRecord.id == branch_id,
+                MappingBranchRecord.table_mapping_id == mapping.id,
+            )
+            .with_for_update()
+        ).first()
+        if branch is None:
+            raise _not_found("Branch")
+        return branch
+
+    def _fields(self, fields: Mapping[str, Any], *, in_branch: bool) -> tuple[str, str, str]:
         mapping_type = fields.get("mapping_type")
-        if mapping_type not in MAPPING_TYPES:
-            raise _invalid("mapping_type", f"The type must be one of {', '.join(MAPPING_TYPES)}.")
+        if mapping_type not in MAPPING_TYPES or (mapping_type == "not_in_branch" and not in_branch):
+            allowed = [t for t in MAPPING_TYPES if in_branch or t != "not_in_branch"]
+            raise _invalid("mapping_type", f"The type must be one of {', '.join(allowed)}.")
         rule_text = _text(fields.get("rule_text"), "rule_text", "rule", MAPPING_TEXT_MAX_LENGTH)
         sql = _text(fields.get("sql_expression"), "sql_expression", "SQL", SQL_MAX_LENGTH)
-        if mapping_type == "unmapped" and sql:
-            raise _invalid("sql_expression", "An unmapped column has no SQL.")
-        if mapping_type != "unmapped" and not sql:
+        if mapping_type in ("unmapped", "not_in_branch") and sql:
+            raise _invalid("sql_expression", f"A {mapping_type} column has no SQL.")
+        if mapping_type not in ("unmapped", "not_in_branch") and not sql:
             raise _invalid("sql_expression", f"A {mapping_type} mapping needs its SQL expression.")
         return mapping_type, rule_text, sql
 
@@ -612,14 +885,35 @@ class MappingService:
         mapping = db.scalars(
             sa.select(TableMappingRecord).where(TableMappingRecord.dw_table_id == table.id)
         ).first()
-        records = {
-            r.dw_column_id: r
-            for r in db.scalars(
+        all_records = list(
+            db.scalars(
                 sa.select(ColumnMappingRecord)
                 .join(DwColumnRecord, DwColumnRecord.id == ColumnMappingRecord.dw_column_id)
                 .where(DwColumnRecord.table_id == table.id)
             )
-        }
+        )
+        records = {r.dw_column_id: r for r in all_records if r.branch_id is None}
+        columns = self._columns(db, table.id)
+        branches = (
+            list(
+                db.scalars(
+                    sa.select(MappingBranchRecord)
+                    .where(MappingBranchRecord.table_mapping_id == mapping.id)
+                    .order_by(MappingBranchRecord.ordinal)
+                )
+            )
+            if mapping
+            else []
+        )
+        platform = db.scalars(
+            sa.select(DataWarehouseRecord.target_platform).where(
+                DataWarehouseRecord.id == table.data_warehouse_id
+            )
+        ).one()
+        branch_records = {(r.branch_id, r.dw_column_id): r for r in all_records if r.branch_id}
+        branch_views = [
+            self._branch_view(db, table, platform, b, columns, branch_records) for b in branches
+        ]
         return TableMappingView(
             table_id=table.id,
             table_name=table.name,
@@ -629,7 +923,133 @@ class MappingService:
             match_keys=list(mapping.match_keys) if mapping else [],
             notes=mapping.notes if mapping else "",
             version=mapping.version if mapping else 0,
-            columns=[
-                self._column_view(db, c, records.get(c.id)) for c in self._columns(db, table.id)
-            ],
+            columns=[self._column_view(db, c, records.get(c.id)) for c in columns],
+            is_aggregate=table.is_aggregate,
+            branches=branch_views,
+            coverage=self._coverage(columns, records, branches, branch_records),
+            sql=self._compose_sql(platform, columns, branch_views) if branch_views else None,
         )
+
+    def _branch_view(
+        self,
+        db: Session,
+        table: DwTableRecord,
+        platform: str,
+        branch: MappingBranchRecord,
+        columns: list[DwColumnRecord],
+        records: dict[tuple[uuid.UUID | None, uuid.UUID], ColumnMappingRecord],
+    ) -> BranchView:
+        mapped = [c for c in columns if not is_system_column(c)]
+        views = [self._column_view(db, c, records.get((branch.id, c.id))) for c in mapped]
+        return BranchView(
+            id=branch.id,
+            ordinal=branch.ordinal,
+            name=branch.name,
+            driving_input=branch.driving_input,
+            joins=branch.joins,
+            filters=branch.filters,
+            group_by=branch.group_by,
+            having=branch.having,
+            version=branch.version,
+            columns=views,
+            errors=self._aggregate_errors(table, platform, branch, views),
+        )
+
+    @staticmethod
+    def _aggregate_errors(
+        table: DwTableRecord,
+        platform: str,
+        branch: MappingBranchRecord,
+        views: list[ColumnMappingView],
+    ) -> list[dict[str, Any]]:
+        """For an aggregate table, each plain output the branch's GROUP BY does not cover."""
+        if not table.is_aggregate:
+            return []
+        try:
+            parts: BranchParts = parse_branch(
+                branch.driving_input,
+                branch.joins,
+                branch.filters,
+                branch.group_by,
+                branch.having,
+                platform,
+            )
+        except Unparsable:
+            return []
+        return [
+            {
+                "code": "not_in_group_by",
+                "column_id": v.column_id,
+                "column_name": v.column_name,
+                "message": f"{v.column_name} is not aggregated and is not in the GROUP BY of "
+                f"branch {branch.name}.",
+            }
+            for v in views
+            if v.mapping_type in ("direct", "derived")
+            and not is_group_safe(v.sql_expression, parts, platform)
+        ]
+
+    @staticmethod
+    def _coverage(
+        columns: list[DwColumnRecord],
+        records: dict[uuid.UUID, ColumnMappingRecord],
+        branches: list[MappingBranchRecord],
+        branch_records: dict[tuple[uuid.UUID | None, uuid.UUID], ColumnMappingRecord],
+    ) -> list[ColumnCoverage]:
+        """A column is covered when every branch maps it or marks it ``not_in_branch``;
+        without branches, when its table-level mapping is set. System columns are covered."""
+        result = []
+        for column in columns:
+            if is_system_column(column):
+                result.append(ColumnCoverage(column.id, column.name, True, True, []))
+                continue
+            if branches:
+                missing = [
+                    b.id
+                    for b in branches
+                    if (r := branch_records.get((b.id, column.id))) is None
+                    or r.mapping_type == "unmapped"
+                ]
+            else:
+                r = records.get(column.id)
+                missing = []
+                if r is None or r.mapping_type == "unmapped":
+                    result.append(ColumnCoverage(column.id, column.name, False, False, []))
+                    continue
+            result.append(ColumnCoverage(column.id, column.name, False, not missing, missing))
+        return result
+
+    @staticmethod
+    def _compose_sql(
+        platform: str, columns: list[DwColumnRecord], branches: list[BranchView]
+    ) -> str:
+        """The table's rows: each branch's query, combined with UNION ALL, so a row that
+        only one branch yields is kept. A column a branch does not map is NULL there."""
+        dialect = DIALECTS.get(platform)
+        outputs = [c for c in columns if not is_system_column(c)]
+        queries = []
+        for branch in branches:
+            select = []
+            for column, view in zip(outputs, branch.columns, strict=True):
+                value = (
+                    view.sql_expression
+                    if view.mapping_type
+                    in (
+                        "direct",
+                        "derived",
+                        "constant",
+                    )
+                    else "NULL"
+                )
+                select.append(f"{value} AS {exp.to_identifier(column.name).sql(dialect=dialect)}")
+            lines = [f"SELECT {', '.join(select)}", f"FROM {branch.driving_input}"]
+            for text, keyword in (
+                (branch.joins, ""),
+                (branch.filters, "WHERE "),
+                (branch.group_by, "GROUP BY "),
+                (branch.having, "HAVING "),
+            ):
+                if text:
+                    lines.append(keyword + text)
+            queries.append("\n".join(lines))
+        return "\nUNION ALL\n".join(queries)

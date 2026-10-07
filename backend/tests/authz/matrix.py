@@ -26,7 +26,7 @@ import string
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -387,7 +387,7 @@ def dw_table_id(roles: RoleClients) -> str:
     ensure_data_warehouse(roles)
     owner = roles.client("owner")
     path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables"
-    listed = owner.get(path).json()["items"]
+    listed = owner.get(path, params={"layer": "core"}).json()["items"]
     if listed:
         return listed[0]["id"]
     response = owner.post(
@@ -418,6 +418,60 @@ def dw_column_id(roles: RoleClients) -> str:
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]
+
+
+def staging_table_name(roles: RoleClients) -> str:
+    """A Staging Table for a Core branch to read (inserted directly: only source analysis
+    makes them)."""
+    table = dw_table_id(roles)
+    now = datetime.now(UTC)
+    with roles.app.state.engine.begin() as connection:
+        if not connection.execute(
+            sa.text("select 1 from dw_tables where layer = 'staging' and name = 'stg_crm'")
+        ).first():
+            connection.execute(
+                sa.text(
+                    "insert into dw_tables (id, data_warehouse_id, layer, name, kind,"
+                    " is_aggregate, is_conformed, description, created_at, updated_at, version)"
+                    " select :id, data_warehouse_id, 'staging', 'stg_crm', 'staging', false,"
+                    " false, '', :now, :now, 1 from dw_tables where id = :t"
+                ),
+                {"id": uuid.uuid4(), "t": table, "now": now},
+            )
+    return "stg_crm"
+
+
+def branch_id(roles: RoleClients) -> str:
+    """A branch of that fact's mapping, inserted directly."""
+    table = dw_table_id(roles)
+    staging_table_name(roles)
+    with roles.app.state.engine.begin() as connection:
+        found = connection.execute(
+            sa.text(
+                "select b.id from mapping_branches b join table_mappings m on m.id = "
+                "b.table_mapping_id where m.dw_table_id = :t"
+            ),
+            {"t": table},
+        ).first()
+        if found:
+            return str(found[0])
+        mapping_id, new_id, now = uuid.uuid4(), uuid.uuid4(), datetime.now(UTC)
+        connection.execute(
+            sa.text(
+                "insert into table_mappings (id, dw_table_id, match_keys, notes, created_at,"
+                " updated_at, version) values (:m, :t, '[]', '', :now, :now, 0)"
+            ),
+            {"m": mapping_id, "t": table, "now": now},
+        )
+        connection.execute(
+            sa.text(
+                "insert into mapping_branches (id, table_mapping_id, ordinal, name,"
+                " driving_input, joins, filters, created_at, updated_at, version) values"
+                " (:b, :m, 1, 'CRM', 'stg_crm', '', '', :now, :now, 1)"
+            ),
+            {"b": new_id, "m": mapping_id, "now": now},
+        )
+    return str(new_id)
 
 
 def pii_finding_id(roles: RoleClients) -> str:
@@ -510,6 +564,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "column_id": column_id,
     "dw_table_id": dw_table_id,
     "dw_column_id": dw_column_id,
+    "branch_id": branch_id,
     "finding_id": pii_finding_id,
     "relationship_id": relationship_id,
     "rule_id": pii_rule_id,

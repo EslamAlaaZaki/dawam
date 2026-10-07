@@ -148,7 +148,8 @@ class DwColumnRecord(Base):
     version: Mapped[int] = mapped_column()
 
 
-MAPPING_TYPES = ("direct", "derived", "constant", "unmapped")
+MAPPING_TYPES = ("direct", "derived", "constant", "not_in_branch", "unmapped")
+BRANCH_NAME_MAX_LENGTH = 128
 EDGE_KINDS = ("value", "uses", "lookup", "kpi")
 EDGE_NODE_TYPES = ("src_column", "dw_column", "dw_table", "branch", "kpi")
 MAPPING_TEXT_MAX_LENGTH = 4000
@@ -171,20 +172,57 @@ class TableMappingRecord(Base):
     version: Mapped[int] = mapped_column()
 
 
+class MappingBranchRecord(Base):
+    """One row-set of a table, combined with the others by UNION ALL (spec §6.14)."""
+
+    __tablename__ = "mapping_branches"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    table_mapping_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("table_mappings.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column()
+    name: Mapped[str] = mapped_column(sa.String(BRANCH_NAME_MAX_LENGTH))
+    driving_input: Mapped[str] = mapped_column(sa.Text)
+    """The branch's driving table, in the target dialect (a table of the Layer below)."""
+    joins: Mapped[str] = mapped_column(sa.Text, default="")
+    filters: Mapped[str] = mapped_column(sa.Text, default="")
+    group_by: Mapped[str | None] = mapped_column(sa.Text)
+    having: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    version: Mapped[int] = mapped_column()
+
+
+COLUMN_MAPPING_UNIQUE = "uq_column_mappings_column_branch"
+TABLE_LEVEL_MAPPING_UNIQUE = "uq_column_mappings_table_level"
+
+
 class ColumnMappingRecord(Base):
-    """One target column's mapping from the Layer below (spec §6.14 ``ColumnMapping``)."""
+    """One target column's mapping from the Layer below (spec §6.14 ``ColumnMapping``);
+    per branch, or table-level when ``branch_id`` is null."""
 
     __tablename__ = "column_mappings"
     __table_args__ = (
         sa.CheckConstraint(f"mapping_type IN ({_in(MAPPING_TYPES)})", name="mapping_type"),
+        sa.Index(COLUMN_MAPPING_UNIQUE, "dw_column_id", "branch_id", unique=True),
+        sa.Index(
+            TABLE_LEVEL_MAPPING_UNIQUE,
+            "dw_column_id",
+            unique=True,
+            postgresql_where=sa.text("branch_id IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     table_mapping_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("table_mappings.id", ondelete="CASCADE"), index=True
     )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("mapping_branches.id", ondelete="CASCADE"), index=True
+    )
     dw_column_id: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("dw_columns.id", ondelete="CASCADE"), unique=True
+        sa.ForeignKey("dw_columns.id", ondelete="CASCADE")
     )
     mapping_type: Mapped[str] = mapped_column(sa.String(16))
     rule_text: Mapped[str] = mapped_column(sa.String(MAPPING_TEXT_MAX_LENGTH), default="")
