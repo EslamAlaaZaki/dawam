@@ -225,6 +225,60 @@ def test_a_long_constraint_name_is_shortened_with_a_stable_hash():
     assert ddl == generate_ddl("postgresql", SCHEMAS, [target, source])
 
 
+# --- literal escaping -----------------------------------------------------------------
+
+
+def default_insert(platform: str, kind: str, default) -> str:
+    table = DdlTable(
+        uuid.UUID(int=9),
+        "core",
+        "dim_x",
+        "dimension",
+        [col("k", "bigint", role="sk"), col("v", kind)],
+        {"surrogate_key": -1, "defaults": {"v": default}},
+    )
+    ddl = generate_ddl(platform, SCHEMAS, [table])
+    return ddl.split("-- Unknown members")[1]
+
+
+# default -> the literal expected per platform: postgresql, sqlserver, oracle, snowflake, bigquery
+ESCAPES = [
+    ("it's", ("'it''s'", "N'it''s'", "'it''s'", "'it''s'", "'it\\'s'")),
+    ("x\\", ("'x\\'", "N'x\\'", "'x\\'", "'x\\\\'", "'x\\\\'")),
+    (
+        "\\'; DROP",
+        ("'\\''; DROP'", "N'\\''; DROP'", "'\\''; DROP'", "'\\\\''; DROP'", "'\\\\\\'; DROP'"),
+    ),
+]
+
+
+@pytest.mark.parametrize("default,expected", ESCAPES, ids=["quote", "backslash", "both"])
+@pytest.mark.parametrize("index,platform", list(enumerate(TARGET_PLATFORMS)))
+def test_string_defaults_are_escaped_for_the_dialect(index, platform, default, expected):
+    sql = default_insert(platform, "string", default)
+    assert f", {expected[index]}" in sql
+
+
+def test_bigquery_timestamp_defaults_are_datetime_literals():
+    sql = default_insert("bigquery", "timestamp", "2000-01-01 00:00:00")
+    assert "DATETIME '2000-01-01 00:00:00'" in sql
+    assert "TIMESTAMP" not in sql
+
+
+@pytest.mark.parametrize("platform", TARGET_PLATFORMS)
+def test_boolean_defaults_are_boolean_literals(platform):
+    true = "1" if platform in ("sqlserver", "oracle") else "TRUE"
+    for default in ("true", 1):
+        sql = default_insert(platform, "boolean", default).rstrip(";\n").rstrip(")")
+        assert sql.endswith(f", {true}")
+
+
+def test_a_schema_name_with_a_line_break_is_refused_for_oracle():
+    table = DdlTable(1, "core", "t", "fact", [col("a", "bigint")])
+    with pytest.raises(ValueError):
+        generate_ddl("oracle", {**SCHEMAS, "core": "a\nDROP"}, [table])
+
+
 # --- endpoints ------------------------------------------------------------------------
 
 

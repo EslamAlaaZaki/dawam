@@ -242,8 +242,21 @@ _ISO = {
 _ZERO_UUID = "00000000-0000-0000-0000-000000000000"
 
 
+def _quote(platform: TargetPlatform, value: str) -> str:
+    """``value`` as a single-quoted string literal. Snowflake and BigQuery read ``\\`` as an
+    escape, so it is doubled first; BigQuery refuses ``''`` and takes ``\\'``."""
+    if platform == "bigquery":
+        escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+        escaped = escaped.replace("\n", "\\n").replace("\r", "\\r")
+    elif platform == "snowflake":
+        escaped = value.replace("\\", "\\\\").replace("'", "''")
+    else:
+        escaped = value.replace("'", "''")
+    return f"'{escaped}'"
+
+
 def _string(platform: TargetPlatform, value: str) -> str:
-    text = "'" + value.replace("'", "''") + "'"
+    text = _quote(platform, value)
     return "N" + text if platform == "sqlserver" else text
 
 
@@ -254,20 +267,22 @@ def _boolean(platform: TargetPlatform, value: bool) -> str:
 
 
 def _temporal(platform: TargetPlatform, kind: str, value: str) -> str:
-    plain = "'" + value.replace("'", "''") + "'"
+    plain = _quote(platform, value)
     if platform == "sqlserver":
         return plain
     if kind == "time":
         if platform == "oracle":
-            return f"INTERVAL '0 {value}' DAY TO SECOND"
+            return f"INTERVAL {_quote(platform, '0 ' + value)} DAY TO SECOND"
         return f"TIME {plain}"
     if kind == "timestamptz":
         if platform == "oracle":
-            return f"TIMESTAMP '{value.replace('+00:00', ' +00:00')}'"
+            return f"TIMESTAMP {_quote(platform, value.replace('+00:00', ' +00:00'))}"
         if platform == "snowflake":
             return f"TO_TIMESTAMP_TZ({plain})"
         return f"TIMESTAMP {plain}" if platform == "bigquery" else f"TIMESTAMPTZ {plain}"
-    keyword = "DATE" if kind == "date" else "TIMESTAMP"
+    # BigQuery's DATETIME is the neutral ``timestamp``; its TIMESTAMP carries a zone.
+    timestamp = "DATETIME" if platform == "bigquery" else "TIMESTAMP"
+    keyword = "DATE" if kind == "date" else timestamp
     return f"{keyword} {plain}"
 
 
@@ -305,6 +320,13 @@ def _literal(platform: TargetPlatform, column: DdlColumn, value: Any) -> str:
     if value is None:
         return "NULL"
     kind = column.data_type["type"]
+    if kind == "boolean":
+        text = str(value).strip().lower()
+        if text in ("true", "1", "yes"):
+            return _boolean(platform, True)
+        if text in ("false", "0", "no"):
+            return _boolean(platform, False)
+        return _fallback(platform, column)
     if isinstance(value, bool):
         return _boolean(platform, value)
     if isinstance(value, int | float):
@@ -355,6 +377,8 @@ def _create_schema(platform: TargetPlatform, name: str) -> str:
             f"    EXEC('{command}');"
         )
     if platform == "oracle":
+        if "\n" in name or "\r" in name:
+            raise ValueError("A schema name cannot contain a line break.")
         return f"-- Oracle: schema {quoted} is a user; create it first (CREATE USER {quoted} ...)."
     return f"CREATE SCHEMA IF NOT EXISTS {quoted};"
 

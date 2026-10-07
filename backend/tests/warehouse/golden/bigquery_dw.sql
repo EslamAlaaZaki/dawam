@@ -69,7 +69,7 @@ ALTER TABLE mart.fact_sales_monthly ADD CONSTRAINT fk_fact_sales_monthly_custome
 -- Unknown members
 
 INSERT INTO core.dim_customer (customer_key, customer_id, full_name, segment, birth_date, is_vip, credit_limit, profile, scd_valid_from, scd_valid_to, scd_current_flag, row_hash)
-VALUES (-1, 'Unknown', 'Unknown customer''s name', '?', NULL, FALSE, NULL, NULL, TIMESTAMP '1900-01-01 00:00:00', TIMESTAMP '9999-12-31 00:00:00', TRUE, 'unknown');
+VALUES (-1, 'Unknown', 'Unknown customer\'s name', '?', NULL, FALSE, NULL, NULL, DATETIME '1900-01-01 00:00:00', DATETIME '9999-12-31 00:00:00', TRUE, 'unknown');
 
 INSERT INTO core.dim_product (product_key, product_code, weight, launched_at, opens_at, guid, blob, `order`, doc)
 VALUES (-1, 'Unknown', 1.5, TIMESTAMP '1900-01-01 00:00:00+00:00', TIME '00:00:00', '00000000-0000-0000-0000-000000000000', b'\x00', 0, JSON '{}');
