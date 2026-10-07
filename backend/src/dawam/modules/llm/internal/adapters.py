@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import lru_cache
 from importlib.metadata import entry_points
 
 from ..gateway import Adapter
@@ -46,6 +47,7 @@ PluginAdapterFactory = Callable[[AdapterConfig, Transport], Adapter]
 """What a ``dawam.llm_providers`` entry point loads."""
 
 
+@lru_cache(maxsize=1)
 def plugin_factories() -> dict[str, PluginAdapterFactory]:
     found: dict[str, PluginAdapterFactory] = {}
     for entry in entry_points(group=ENTRY_POINT_GROUP):
@@ -53,8 +55,10 @@ def plugin_factories() -> dict[str, PluginAdapterFactory]:
             continue
         try:
             found[entry.name] = entry.load()
-        except Exception:
-            log.warning("LLM provider plugin %r could not be loaded", entry.name, exc_info=True)
+        except Exception as exc:
+            log.warning(
+                "LLM provider plugin %r could not be loaded (%s)", entry.name, type(exc).__name__
+            )
     return found
 
 
