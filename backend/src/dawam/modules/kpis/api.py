@@ -100,6 +100,9 @@ class Kpi(BaseModel):
     refresh_frequency: str
     targets: list[Target]
     origin: KpiOrigin
+    rationale: str | None = Field(
+        description="Why the AI suggested the KPI; null unless `origin` is `ai`."
+    )
     status: KpiStatus
     version: int = Field(description="Send it back when editing; a stale one gets 409.")
     created_at: datetime

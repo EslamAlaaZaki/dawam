@@ -192,6 +192,7 @@ export function KpiCatalog({
                   <button type="button" className="secondary" onClick={() => setOpenId(kpi.id)}>
                     {kpi.name}
                   </button>
+                  {kpi.origin === "ai" && <AiLabel />}
                 </td>
                 <td>{KPI_STATUS_LABELS[kpi.status]}</td>
                 <td>{kpi.unit || "—"}</td>
@@ -216,6 +217,28 @@ export function KpiCatalog({
         <p>Only owners and editors can document KPIs.</p>
       )}
     </section>
+  );
+}
+
+/** Marks a KPI the AI suggested. */
+function AiLabel() {
+  return (
+    <span className="badge" title="Suggested by the AI">
+      {" "}
+      AI-generated
+    </span>
+  );
+}
+
+/** Why the AI suggested a KPI. */
+function AiRationale({ kpi }: { kpi: Kpi }) {
+  if (kpi.origin !== "ai") {
+    return null;
+  }
+  return (
+    <p className="form-hint" aria-label="AI rationale">
+      <AiLabel /> {kpi.rationale ?? "No rationale was given."}
+    </p>
   );
 }
 
@@ -289,6 +312,7 @@ function KpiDetails({
     return (
       <section aria-label={`KPI ${kpi.name}`}>
         <h4>{kpi.name}</h4>
+        <AiRationale kpi={kpi} />
         <dl className="details">
           <dt>Status</dt>
           <dd>{KPI_STATUS_LABELS[kpi.status]}</dd>
@@ -340,6 +364,7 @@ function KpiDetails({
       aria-label={`KPI ${kpi.name}`}
     >
       <h4>{kpi.name}</h4>
+      <AiRationale kpi={kpi} />
       <label>
         Status
         <select name="status" defaultValue={kpi.status}>
