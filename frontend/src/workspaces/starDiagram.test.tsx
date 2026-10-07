@@ -35,6 +35,7 @@ function column(n: number, tableId: string, name: string, over: Partial<DwColumn
     description: "",
     semantic_type: null,
     is_system: false,
+    naming_violations: [],
     version: 1,
     ...over,
   };
@@ -54,6 +55,7 @@ function table(n: number, name: string, over: Partial<DwTable>): DwTable {
     unknown_member: null,
     description: "",
     columns: [],
+    naming_violations: [],
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
     version: 1,
@@ -100,11 +102,12 @@ const RETURNS = table(5, "fact_returns", {
 });
 
 function summary(t: DwTable): DwTableSummary {
-  const { columns, unknown_member, created_at, updated_at, ...rest } = t;
+  const { columns, unknown_member, created_at, updated_at, naming_violations, ...rest } = t;
   void unknown_member;
   void created_at;
   void updated_at;
-  return { ...rest, column_count: columns.length } as DwTableSummary;
+  void naming_violations;
+  return { ...rest, column_count: columns.length, naming_violation_count: 0 };
 }
 
 function backend(tables: DwTable[]) {
