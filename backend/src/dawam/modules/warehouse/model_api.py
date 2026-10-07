@@ -73,6 +73,14 @@ class DwUnknownMember(BaseModel):
     )
 
 
+class NamingViolation(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: Literal["case_style", "prefix"]
+    message: str
+    expected: str = Field(description="The prefix, or the case style, the name should follow.")
+
+
 class DwColumn(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,6 +99,9 @@ class DwColumn(BaseModel):
     semantic_type: str | None
     is_system: bool = Field(description="DAWAM maintains it (SCD2 housekeeping).")
     version: int
+    naming_violations: list[NamingViolation] = Field(
+        description="The Data Warehouse's naming rules this name breaks (a warning, not an error)."
+    )
 
 
 class DwTableSummary(BaseModel):
@@ -108,6 +119,9 @@ class DwTableSummary(BaseModel):
     description: str
     column_count: int
     version: int
+    naming_violation_count: int = Field(
+        description="How many naming rules the table's own name breaks."
+    )
 
 
 class DwTable(BaseModel):
@@ -128,6 +142,7 @@ class DwTable(BaseModel):
     created_at: datetime
     updated_at: datetime
     version: int
+    naming_violations: list[NamingViolation]
 
 
 class DwTableList(BaseModel):

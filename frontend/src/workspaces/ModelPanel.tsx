@@ -61,7 +61,9 @@ function typeText(type: DwColumn["data_type"]): string {
   return type.type;
 }
 
-function tableDetail(table: Pick<DwTableSummary, "kind" | "grain" | "scd_type" | "is_conformed">) {
+function tableDetail(
+  table: Pick<DwTableSummary, "kind" | "grain" | "scd_type" | "is_conformed">,
+) {
   if (table.kind === "fact") {
     return table.grain ?? "";
   }
@@ -81,7 +83,13 @@ function whole(value: FormDataEntryValue | null): number | undefined {
  * for owners and editors forms to add and change tables and their columns. Staging Tables
  * come from the Source Schema, so that Layer's model is read-only.
  */
-export function ModelPanel({ workspace, layer }: { workspace: Workspace; layer: DwLayer }) {
+export function ModelPanel({
+  workspace,
+  layer,
+}: {
+  workspace: Workspace;
+  layer: DwLayer;
+}) {
   const tables = useDwTables(workspace.id, layer);
   // A Mart fact may point at Core conformed dimensions, so Core's tables are needed too.
   const core = useDwTables(workspace.id, "core");
@@ -97,7 +105,9 @@ export function ModelPanel({ workspace, layer }: { workspace: Workspace; layer: 
   }
   const references: Reference[] = [
     ...tables.data,
-    ...(layer === "mart" ? (core.data ?? []).filter((t) => t.is_conformed) : []),
+    ...(layer === "mart"
+      ? (core.data ?? []).filter((t) => t.is_conformed)
+      : []),
   ].filter((t) => t.kind === "dimension" || t.kind === "generated");
 
   return (
@@ -106,7 +116,8 @@ export function ModelPanel({ workspace, layer }: { workspace: Workspace; layer: 
       {tables.data.length === 0 ? (
         <p className="empty-state">
           No tables in the {label} Layer yet.
-          {layer === "staging" && " Staging Tables are created from the Source Schema."}
+          {layer === "staging" &&
+            " Staging Tables are created from the Source Schema."}
         </p>
       ) : (
         <table className="admin-table">
@@ -122,9 +133,19 @@ export function ModelPanel({ workspace, layer }: { workspace: Workspace; layer: 
             {tables.data.map((table) => (
               <tr key={table.id}>
                 <td>
-                  <button type="button" className="secondary" onClick={() => setOpenId(table.id)}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setOpenId(table.id)}
+                  >
                     {table.name}
                   </button>
+                  {table.naming_violation_count > 0 && (
+                    <small role="status">
+                      {" "}
+                      Naming: {table.naming_violation_count} to fix
+                    </small>
+                  )}
                 </td>
                 <td>{KIND_LABELS[table.kind] ?? table.kind}</td>
                 <td>{tableDetail(table)}</td>
@@ -146,9 +167,15 @@ export function ModelPanel({ workspace, layer }: { workspace: Workspace; layer: 
         />
       )}
       {editable ? (
-        <AddTableForm workspaceId={workspace.id} layer={layer} onAdded={(t) => setOpenId(t.id)} />
+        <AddTableForm
+          workspaceId={workspace.id}
+          layer={layer}
+          onAdded={(t) => setOpenId(t.id)}
+        />
       ) : (
-        layer !== "staging" && <p>Only owners and editors can edit the model.</p>
+        layer !== "staging" && (
+          <p>Only owners and editors can edit the model.</p>
+        )
       )}
     </section>
   );
@@ -203,7 +230,9 @@ function AddTableForm({
         <select
           name="kind"
           value={kind}
-          onChange={(e) => setKind(e.target.value as CreateDwTableRequest["kind"])}
+          onChange={(e) =>
+            setKind(e.target.value as CreateDwTableRequest["kind"])
+          }
         >
           <option value="fact">Fact</option>
           <option value="dimension">Dimension</option>
@@ -214,7 +243,12 @@ function AddTableForm({
         <>
           <label>
             Grain
-            <input name="grain" required maxLength={1000} placeholder="One row per…" />
+            <input
+              name="grain"
+              required
+              maxLength={1000}
+              placeholder="One row per…"
+            />
           </label>
           <label>
             Fact type
@@ -289,6 +323,13 @@ function TableDetails({
   return (
     <section aria-label={`Table ${t.name}`}>
       <h4>{t.name}</h4>
+      {t.naming_violations.length > 0 && (
+        <ul aria-label="Naming violations">
+          {t.naming_violations.map((v) => (
+            <li key={v.code}>{v.message}</li>
+          ))}
+        </ul>
+      )}
       <dl className="details">
         <dt>Kind</dt>
         <dd>{KIND_LABELS[t.kind] ?? t.kind}</dd>
@@ -329,7 +370,15 @@ function TableDetails({
         <tbody>
           {t.columns.map((column) => (
             <tr key={column.id}>
-              <td>{column.name}</td>
+              <td>
+                {column.name}
+                {column.naming_violations.map((v) => (
+                  <small key={v.code} role="status">
+                    {" "}
+                    {v.message}
+                  </small>
+                ))}
+              </td>
               <td>
                 {typeText(column.data_type)}
                 {column.is_nullable ? "" : " not null"}
@@ -342,7 +391,8 @@ function TableDetails({
                     `→ ${names.get(column.references_table_id) ?? "another table"}${
                       column.role_name ? ` (${column.role_name})` : ""
                     }`,
-                  column.scd_type_override != null && `SCD ${column.scd_type_override}`,
+                  column.scd_type_override != null &&
+                    `SCD ${column.scd_type_override}`,
                   column.is_system && "DAWAM",
                 ]
                   .filter(Boolean)
@@ -374,7 +424,11 @@ function TableDetails({
       )}
       {editable ? (
         <>
-          <EditTableForm workspaceId={workspace.id} table={t} reload={() => table.refetch()} />
+          <EditTableForm
+            workspaceId={workspace.id}
+            table={t}
+            reload={() => table.refetch()}
+          />
           <AddColumnForm
             workspaceId={workspace.id}
             table={t}
@@ -385,7 +439,9 @@ function TableDetails({
               type="button"
               className="secondary"
               disabled={removeTable.isPending}
-              onClick={() => removeTable.mutate(undefined, { onSuccess: onClose })}
+              onClick={() =>
+                removeTable.mutate(undefined, { onSuccess: onClose })
+              }
             >
               Delete table
             </button>
@@ -413,7 +469,9 @@ function EditTableForm({
   reload: () => void;
 }) {
   const update = useUpdateDwTable(workspaceId, table.id);
-  const conflict = update.error instanceof ApiError && update.error.code === "version_conflict";
+  const conflict =
+    update.error instanceof ApiError &&
+    update.error.code === "version_conflict";
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -430,7 +488,10 @@ function EditTableForm({
           }
         : {}),
       ...(table.kind === "dimension"
-        ? { scd_type: Number(get("scd_type")), is_conformed: data.get("is_conformed") !== null }
+        ? {
+            scd_type: Number(get("scd_type")),
+            is_conformed: data.get("is_conformed") !== null,
+          }
         : {}),
     });
   }
@@ -450,17 +511,30 @@ function EditTableForm({
       </label>
       <label>
         Description
-        <textarea name="description" rows={2} maxLength={4000} defaultValue={table.description} />
+        <textarea
+          name="description"
+          rows={2}
+          maxLength={4000}
+          defaultValue={table.description}
+        />
       </label>
       {table.kind === "fact" && (
         <>
           <label>
             Grain
-            <input name="grain" required maxLength={1000} defaultValue={table.grain ?? ""} />
+            <input
+              name="grain"
+              required
+              maxLength={1000}
+              defaultValue={table.grain ?? ""}
+            />
           </label>
           <label>
             Fact type
-            <select name="fact_type" defaultValue={table.fact_type ?? "transactional"}>
+            <select
+              name="fact_type"
+              defaultValue={table.fact_type ?? "transactional"}
+            >
               {Object.entries(FACT_TYPE_LABELS).map(([value, text]) => (
                 <option key={value} value={value}>
                   {text}
@@ -481,7 +555,11 @@ function EditTableForm({
             </select>
           </label>
           <label>
-            <input type="checkbox" name="is_conformed" defaultChecked={table.is_conformed} />{" "}
+            <input
+              type="checkbox"
+              name="is_conformed"
+              defaultChecked={table.is_conformed}
+            />{" "}
             Conformed dimension
           </label>
         </>
@@ -489,8 +567,8 @@ function EditTableForm({
       {conflict ? (
         <div className="form-error" role="alert">
           <p>
-            Someone else changed this table since you opened it. Reload it to see their changes,
-            then edit again.
+            Someone else changed this table since you opened it. Reload it to
+            see their changes, then edit again.
           </p>
           <button
             type="button"
@@ -530,9 +608,14 @@ function AddColumnForm({
 }) {
   const create = useCreateDwColumn(workspaceId, table.id);
   const [dataType, setDataType] = useState<string>("string");
-  const [role, setRole] = useState<keyof typeof COLUMN_ROLE_LABELS>("attribute");
-  const roles = (Object.keys(COLUMN_ROLE_LABELS) as (keyof typeof COLUMN_ROLE_LABELS)[]).filter(
-    (r) => table.kind === "fact" || (r !== "measure" && r !== "degenerate_dimension"),
+  const [role, setRole] =
+    useState<keyof typeof COLUMN_ROLE_LABELS>("attribute");
+  const roles = (
+    Object.keys(COLUMN_ROLE_LABELS) as (keyof typeof COLUMN_ROLE_LABELS)[]
+  ).filter(
+    (r) =>
+      table.kind === "fact" ||
+      (r !== "measure" && r !== "degenerate_dimension"),
   );
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -555,7 +638,9 @@ function AddColumnForm({
       is_nullable: data.get("is_nullable") !== null,
     };
     if (role === "measure" && get("additivity")) {
-      body.additivity = get("additivity") as CreateDwColumnRequest["additivity"];
+      body.additivity = get(
+        "additivity",
+      ) as CreateDwColumnRequest["additivity"];
     }
     if (role === "fk") {
       body.references_table_id = get("references_table_id") || null;
@@ -581,7 +666,11 @@ function AddColumnForm({
       </label>
       <label>
         Data type
-        <select name="data_type" value={dataType} onChange={(e) => setDataType(e.target.value)}>
+        <select
+          name="data_type"
+          value={dataType}
+          onChange={(e) => setDataType(e.target.value)}
+        >
           {NEUTRAL_TYPES.map((type) => (
             <option key={type} value={type}>
               {type}
@@ -612,7 +701,9 @@ function AddColumnForm({
         <select
           name="role"
           value={role}
-          onChange={(e) => setRole(e.target.value as keyof typeof COLUMN_ROLE_LABELS)}
+          onChange={(e) =>
+            setRole(e.target.value as keyof typeof COLUMN_ROLE_LABELS)
+          }
         >
           {roles.map((value) => (
             <option key={value} value={value}>
@@ -657,7 +748,11 @@ function AddColumnForm({
       )}
       <label>
         Semantic type
-        <input name="semantic_type" maxLength={64} placeholder="amount, quantity…" />
+        <input
+          name="semantic_type"
+          maxLength={64}
+          placeholder="amount, quantity…"
+        />
       </label>
       <label>
         Description
