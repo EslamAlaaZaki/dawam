@@ -95,3 +95,21 @@ def get_impact(
     """What depends on a node, typically a source column (any member): the DW columns,
     DW tables and KPIs downstream of it."""
     return ImpactReport.model_validate(lineage.impact(user, workspace_id, node))
+
+
+class PiiViewReport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    columns: list[LineageNode]
+    """PII-derived DW columns: fed by a confirmed PII column through value edges."""
+    tables: list[LineageNode]
+    """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
+
+
+@router.get("/pii", operation_id="getPiiView")
+def get_pii_view(
+    workspace_id: uuid.UUID, user: CurrentUser, lineage: LineageServiceDep
+) -> PiiViewReport:
+    """The PII view (any member): DW columns derived from confirmed PII and, separately,
+    the tables PII only influences. Recomputed from the current mappings on every call."""
+    return PiiViewReport.model_validate(lineage.pii_view(user, workspace_id))

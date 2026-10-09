@@ -781,6 +781,12 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=True),
         query=lambda roles: {"node": dw_column_id(roles)},
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/pii",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the PII view)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
     # DDL export (story 97).
     Row(
         "GET",
