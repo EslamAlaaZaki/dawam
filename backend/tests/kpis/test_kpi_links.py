@@ -421,9 +421,15 @@ def test_an_accepted_change_set_links_the_kpi_and_writes_its_formula_sql(
     assert [
         i["column_name"] for i in roles.client("viewer").get(links_path(roles, kpi)).json()["items"]
     ] == ["amount"]
-    entry = AuditService(app.state.engine).list(
-        roles.workspace_id, entity_type="kpi", entity_id=kpi["id"]
-    )[-1]
+    # The test clock is frozen, so the creation and the change share a timestamp: find the
+    # change by its content rather than by position.
+    entry = next(
+        e
+        for e in AuditService(app.state.engine).list(
+            roles.workspace_id, entity_type="kpi", entity_id=kpi["id"]
+        )
+        if (e.new or {}).get("formula_sql") == "SELECT SUM(amount) FROM fact_loan"
+    )
     assert entry.via == "ai"
     assert entry.new == {
         "formula_sql": "SELECT SUM(amount) FROM fact_loan",
