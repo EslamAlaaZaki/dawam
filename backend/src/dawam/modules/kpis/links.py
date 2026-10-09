@@ -33,6 +33,10 @@ from dawam.platform.errors import ApiError
 
 from .tables import MAX_LINKS, KpiLinkRecord
 
+WRITING = (exp.DML, exp.DDL, exp.Into, exp.Lock, exp.Command, exp.Copy)
+"""Nodes that write or lock, which a SELECT can still hide: a data-modifying CTE
+(``WITH x AS (DELETE ... RETURNING *) SELECT ...``), ``SELECT ... INTO``, ``FOR UPDATE``."""
+
 MAX_PROBLEMS = 5
 """How many problems a refusal names."""
 
@@ -60,8 +64,11 @@ def validate_formula(schema: DwSchema | None, sql: str) -> None:
         statements = sqlglot.parse(sql, read=dialect)
     except SqlglotError as exc:
         raise _refused(f"The formula is not valid SQL: {str(exc).splitlines()[0]}") from None
+    statements = [s for s in statements if s is not None]  # a trailing ";" parses to None
     if len(statements) != 1 or not isinstance(statements[0], exp.Query):
         raise _refused("The formula must be one SELECT query.")
+    if statements[0].find(*WRITING):
+        raise _refused("The formula must only read: no INSERT, UPDATE, DELETE, DDL, INTO or locks.")
     if schema is None:
         return
     tree = statements[0]

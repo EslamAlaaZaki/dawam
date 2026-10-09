@@ -255,6 +255,7 @@ def patch_formula(roles: RoleClients, kpi: dict, sql: str):
         "WITH t AS (SELECT amount FROM fact_loan) SELECT SUM(amount) FROM t",
         "SELECT SUM(fact_loan.amount * fact_loan.rate) FROM fact_loan",
         "SELECT 1",
+        "SELECT 1 -- ; DROP TABLE fact_loan",  # a comment, not a second statement
     ],
 )
 def test_formula_sql_that_fits_the_dw_schema_is_accepted(roles: RoleClients, model, sql):
@@ -292,6 +293,37 @@ def test_formula_sql_that_does_not_fit_the_dw_schema_is_refused(
         assert error_code(refused) == "invalid_kpi"
         assert refused.json()["error"]["details"]["field"] == "formula_sql"
         assert fragment in refused.json()["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 1; DROP TABLE fact_loan",
+        "SELECT 1 /* ; */; DELETE FROM fact_loan",
+        "WITH d AS (DELETE FROM fact_loan RETURNING amount) SELECT SUM(amount) FROM d",
+        "WITH i AS (INSERT INTO fact_loan (amount) VALUES (1) RETURNING amount) SELECT * FROM i",
+        "WITH u AS (UPDATE fact_loan SET amount = 0 RETURNING amount) SELECT * FROM u",
+        "SELECT amount INTO stolen FROM fact_loan",
+        "SELECT amount FROM fact_loan FOR UPDATE",
+        "INSERT INTO fact_loan (amount) VALUES (1)",
+        "CREATE TABLE x AS SELECT amount FROM fact_loan",
+        "DROP TABLE fact_loan",
+        "TRUNCATE TABLE fact_loan",
+        "COPY fact_loan TO '/tmp/x'",
+    ],
+)
+@pytest.mark.parametrize("with_dw", [True, False])
+def test_formula_sql_is_one_read_only_select(roles: RoleClients, request, sql, with_dw):
+    if with_dw:
+        request.getfixturevalue("model")
+    kpi = created(roles)
+
+    response = patch_formula(roles, kpi, sql)
+    on_create = add(roles, name="Other", formula_sql=sql)
+
+    for refused in (response, on_create):
+        assert refused.status_code == 422, sql
+        assert error_code(refused) == "invalid_kpi"
 
 
 def test_before_the_dw_exists_formula_sql_is_only_parsed(roles: RoleClients):
