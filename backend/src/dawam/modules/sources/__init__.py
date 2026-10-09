@@ -61,6 +61,9 @@ Public interface. Other modules import only what is re-exported here:
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
+- ``StagingSourceService``: for the warehouse module (it authorizes first), ``read`` the tables
+  staging generation covers (base tables, and views opted in with ``include_view_in_staging``)
+  and ``assign_placeholders`` (the stable ``placeholder_no`` of non-Latin names).
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
@@ -131,6 +134,12 @@ from .source_query_service import (
     SourceQueryResult,
     SourceQueryService,
 )
+from .staging_source_service import (
+    StagingColumn,
+    StagingSourceService,
+    StagingSystem,
+    StagingTable,
+)
 from .summary_service import SourceSummary, SourceSummaryService
 
 router = APIRouter()
@@ -182,6 +191,10 @@ __all__ = [
     "SourceSystem",
     "SourceSystemPage",
     "SourceSystemService",
+    "StagingColumn",
+    "StagingSourceService",
+    "StagingSystem",
+    "StagingTable",
     "TableProfile",
     "UntraceableView",
     "check_query",

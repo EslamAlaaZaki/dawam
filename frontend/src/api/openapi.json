@@ -3602,15 +3602,15 @@
         }
       }
     },
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
-      "get": {
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
+      "post": {
         "tags": [
           "data-warehouse",
-          "data-warehouse"
+          "data-warehouse-staging"
         ],
-        "summary": "Run Validation",
-        "description": "Validate every Core and Mart mapping (any member): errors (SQL that does not parse,\na missing GROUP BY column) and warnings (unmapped columns, a multi-branch table without\nan integration rule, data-type compatibility such as truncation between a direct\nmapping's input and its target), with the mapping coverage. Computed on read. 404\n`not_set_up` before the Data Warehouse is set up.",
-        "operationId": "runValidation",
+        "summary": "Generate Staging",
+        "description": "Generate the Staging Layer from the Source Schema (owners and editors; software,\nno AI): one Staging Table per source base table (and per view opted in), named\n`stg_<system code>_<database schema>_<table>`, with translated column types, the audit\ncolumns, and `direct` mappings and lineage from the source. Names and types that needed\na placeholder, a hash suffix or a lossy translation are flagged for review. Running it\nagain adds only what is new. 404 `not_set_up` before the Data Warehouse is set up.",
+        "operationId": "generateStaging",
         "parameters": [
           {
             "name": "workspace_id",
@@ -3629,62 +3629,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationReport"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/coverage": {
-      "get": {
-        "tags": [
-          "data-warehouse",
-          "data-warehouse"
-        ],
-        "summary": "Get Coverage",
-        "description": "Mapping coverage per table, per Layer and for the whole Data Warehouse (any member),\nbranch-aware: a column is covered when every branch maps it or marks it not available.",
-        "operationId": "getMappingCoverage",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoverageReport"
+                  "$ref": "#/components/schemas/StagingResult"
                 }
               }
             }
@@ -14177,54 +14122,6 @@
         ],
         "title": "ConversationOut"
       },
-      "CoverageOut": {
-        "properties": {
-          "total": {
-            "type": "integer",
-            "title": "Total",
-            "description": "Columns that need a mapping (system columns excluded)."
-          },
-          "covered": {
-            "type": "integer",
-            "title": "Covered",
-            "description": "Of those, mapped in every branch (or not available there)."
-          },
-          "percent": {
-            "type": "integer",
-            "title": "Percent",
-            "description": "`covered` of `total`, 0-100; 0 when `total` is 0."
-          }
-        },
-        "type": "object",
-        "required": [
-          "total",
-          "covered",
-          "percent"
-        ],
-        "title": "CoverageOut"
-      },
-      "CoverageReport": {
-        "properties": {
-          "layers": {
-            "items": {
-              "$ref": "#/components/schemas/LayerCoverageOut"
-            },
-            "type": "array",
-            "title": "Layers",
-            "description": "Core, then Mart."
-          },
-          "coverage": {
-            "$ref": "#/components/schemas/CoverageOut",
-            "description": "The whole Data Warehouse."
-          }
-        },
-        "type": "object",
-        "required": [
-          "layers",
-          "coverage"
-        ],
-        "title": "CoverageReport"
-      },
       "CreateConversationRequest": {
         "properties": {
           "title": {
@@ -15264,6 +15161,14 @@
             "type": "array",
             "title": "Naming Violations",
             "description": "The Data Warehouse's naming rules this name breaks (a warning, not an error)."
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags",
+            "description": "What staging generation flagged on a staging column (empty otherwise)."
           }
         },
         "type": "object",
@@ -15283,7 +15188,8 @@
           "semantic_type",
           "is_system",
           "version",
-          "naming_violations"
+          "naming_violations",
+          "review_flags"
         ],
         "title": "DwColumn"
       },
@@ -15452,6 +15358,14 @@
             },
             "type": "array",
             "title": "Naming Violations"
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags",
+            "description": "What staging generation flagged on a Staging Table (empty otherwise)."
           }
         },
         "type": "object",
@@ -15471,7 +15385,8 @@
           "created_at",
           "updated_at",
           "version",
-          "naming_violations"
+          "naming_violations",
+          "review_flags"
         ],
         "title": "DwTable"
       },
@@ -16438,35 +16353,6 @@
           "status"
         ],
         "title": "KpiProgress"
-      },
-      "LayerCoverageOut": {
-        "properties": {
-          "layer": {
-            "type": "string",
-            "enum": [
-              "core",
-              "mart"
-            ],
-            "title": "Layer"
-          },
-          "tables": {
-            "items": {
-              "$ref": "#/components/schemas/TableCoverageOut"
-            },
-            "type": "array",
-            "title": "Tables"
-          },
-          "coverage": {
-            "$ref": "#/components/schemas/CoverageOut"
-          }
-        },
-        "type": "object",
-        "required": [
-          "layer",
-          "tables",
-          "coverage"
-        ],
-        "title": "LayerCoverageOut"
       },
       "LayerProgress": {
         "properties": {
@@ -17870,6 +17756,20 @@
             "maxLength": 64,
             "title": "Bridge Prefix",
             "default": "bridge_"
+          },
+          "load_ts_column": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Load Ts Column",
+            "description": "Name of the load-timestamp audit column of Staging Tables.",
+            "default": "load_ts"
+          },
+          "source_system_column": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Source System Column",
+            "description": "Name of the System Code audit column of Staging Tables.",
+            "default": "source_system"
           }
         },
         "type": "object",
@@ -18553,104 +18453,6 @@
         ],
         "title": "PlatformList"
       },
-      "ProblemOut": {
-        "properties": {
-          "severity": {
-            "type": "string",
-            "enum": [
-              "error",
-              "warning"
-            ],
-            "title": "Severity"
-          },
-          "code": {
-            "type": "string",
-            "title": "Code",
-            "description": "`unparsed_sql`, `not_in_group_by` or another mapping error code (errors); `unmapped_column`, `missing_integration_rule`, `may_truncate`, `may_lose_precision`, `may_fail_conversion` or `nullable_into_required` (warnings)."
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          },
-          "table_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Table Id"
-          },
-          "table_name": {
-            "type": "string",
-            "title": "Table Name"
-          },
-          "layer": {
-            "type": "string",
-            "enum": [
-              "core",
-              "mart"
-            ],
-            "title": "Layer"
-          },
-          "column_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Column Id"
-          },
-          "column_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Column Name"
-          },
-          "branch_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Branch Id"
-          },
-          "branch_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Branch Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "severity",
-          "code",
-          "message",
-          "table_id",
-          "table_name",
-          "layer",
-          "column_id",
-          "column_name",
-          "branch_id",
-          "branch_name"
-        ],
-        "title": "ProblemOut"
-      },
       "ProfilingStarted": {
         "properties": {
           "job_id": {
@@ -19135,6 +18937,25 @@
         ],
         "title": "ResetPasswordRequest"
       },
+      "ReviewFlag": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ReviewFlag"
+      },
       "RoutineChange": {
         "properties": {
           "id": {
@@ -19601,7 +19422,9 @@
               "case_style": "lower",
               "dimension_prefix": "dim_",
               "fact_prefix": "fact_",
-              "bridge_prefix": "bridge_"
+              "bridge_prefix": "bridge_",
+              "load_ts_column": "load_ts",
+              "source_system_column": "source_system"
             }
           },
           "date_dimension": {
@@ -20579,6 +20402,18 @@
             "title": "Scd Hint",
             "description": "Set only in the Source Schema."
           },
+          "include_view_in_staging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include View In Staging",
+            "description": "Whether a view gets a Staging Table; set only in the Source Schema."
+          },
           "version": {
             "anyOf": [
               {
@@ -21043,6 +20878,83 @@
         ],
         "title": "StageProgress"
       },
+      "StagingFlag": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Name",
+            "description": "Null for a flag on the table itself."
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "column_name",
+          "code",
+          "message"
+        ],
+        "title": "StagingFlag"
+      },
+      "StagingResult": {
+        "properties": {
+          "tables_created": {
+            "type": "integer",
+            "title": "Tables Created"
+          },
+          "columns_created": {
+            "type": "integer",
+            "title": "Columns Created",
+            "description": "Including the audit columns."
+          },
+          "tables_existing": {
+            "type": "integer",
+            "title": "Tables Existing",
+            "description": "Source tables that already had a Staging Table; left as they are."
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/StagingFlag"
+            },
+            "type": "array",
+            "title": "Flags",
+            "description": "What to review, for the tables just created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables_created",
+          "columns_created",
+          "tables_existing",
+          "flags"
+        ],
+        "title": "StagingResult"
+      },
       "StartProfilingRequest": {
         "properties": {
           "table_ids": {
@@ -21230,38 +21142,6 @@
         ],
         "title": "TableChange"
       },
-      "TableCoverageOut": {
-        "properties": {
-          "table_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Table Id"
-          },
-          "table_name": {
-            "type": "string",
-            "title": "Table Name"
-          },
-          "layer": {
-            "type": "string",
-            "enum": [
-              "core",
-              "mart"
-            ],
-            "title": "Layer"
-          },
-          "coverage": {
-            "$ref": "#/components/schemas/CoverageOut"
-          }
-        },
-        "type": "object",
-        "required": [
-          "table_id",
-          "table_name",
-          "layer",
-          "coverage"
-        ],
-        "title": "TableCoverageOut"
-      },
       "TableEnhancements": {
         "properties": {
           "id": {
@@ -21320,6 +21200,10 @@
             ],
             "title": "Scd Hint"
           },
+          "include_view_in_staging": {
+            "type": "boolean",
+            "title": "Include View In Staging"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -21333,6 +21217,7 @@
           "is_sensitive",
           "classification",
           "scd_hint",
+          "include_view_in_staging",
           "version"
         ],
         "title": "TableEnhancements"
@@ -22647,6 +22532,18 @@
             ],
             "title": "Scd Hint",
             "description": "E.g. \"changes slowly, history matters\". Send null to clear it."
+          },
+          "include_view_in_staging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include View In Staging",
+            "description": "Give this view a Staging Table (views only; base tables always get one)."
           }
         },
         "type": "object",
@@ -22788,37 +22685,6 @@
           "version"
         ],
         "title": "UpdateWorkspaceRequest"
-      },
-      "ValidationReport": {
-        "properties": {
-          "problems": {
-            "items": {
-              "$ref": "#/components/schemas/ProblemOut"
-            },
-            "type": "array",
-            "title": "Problems",
-            "description": "Errors first, then by Layer and table."
-          },
-          "error_count": {
-            "type": "integer",
-            "title": "Error Count"
-          },
-          "warning_count": {
-            "type": "integer",
-            "title": "Warning Count"
-          },
-          "coverage": {
-            "$ref": "#/components/schemas/CoverageReport"
-          }
-        },
-        "type": "object",
-        "required": [
-          "problems",
-          "error_count",
-          "warning_count",
-          "coverage"
-        ],
-        "title": "ValidationReport"
       },
       "VersionInfo": {
         "properties": {

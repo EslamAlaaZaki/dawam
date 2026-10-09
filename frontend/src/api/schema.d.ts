@@ -1003,45 +1003,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Run Validation
-         * @description Validate every Core and Mart mapping (any member): errors (SQL that does not parse,
-         *     a missing GROUP BY column) and warnings (unmapped columns, a multi-branch table without
-         *     an integration rule, data-type compatibility such as truncation between a direct
-         *     mapping's input and its target), with the mapping coverage. Computed on read. 404
-         *     `not_set_up` before the Data Warehouse is set up.
-         */
-        get: operations["runValidation"];
+        get?: never;
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/coverage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /**
-         * Get Coverage
-         * @description Mapping coverage per table, per Layer and for the whole Data Warehouse (any member),
-         *     branch-aware: a column is covered when every branch maps it or marks it not available.
+         * Generate Staging
+         * @description Generate the Staging Layer from the Source Schema (owners and editors; software,
+         *     no AI): one Staging Table per source base table (and per view opted in), named
+         *     `stg_<system code>_<database schema>_<table>`, with translated column types, the audit
+         *     columns, and `direct` mappings and lineage from the source. Names and types that needed
+         *     a placeholder, a hash suffix or a lossy translation are flagged for review. Running it
+         *     again adds only what is new. 404 `not_set_up` before the Data Warehouse is set up.
          */
-        get: operations["getMappingCoverage"];
-        put?: never;
-        post?: never;
+        post: operations["generateStaging"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4123,34 +4103,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /** CoverageOut */
-        CoverageOut: {
-            /**
-             * Total
-             * @description Columns that need a mapping (system columns excluded).
-             */
-            total: number;
-            /**
-             * Covered
-             * @description Of those, mapped in every branch (or not available there).
-             */
-            covered: number;
-            /**
-             * Percent
-             * @description `covered` of `total`, 0-100; 0 when `total` is 0.
-             */
-            percent: number;
-        };
-        /** CoverageReport */
-        CoverageReport: {
-            /**
-             * Layers
-             * @description Core, then Mart.
-             */
-            layers: components["schemas"]["LayerCoverageOut"][];
-            /** @description The whole Data Warehouse. */
-            coverage: components["schemas"]["CoverageOut"];
-        };
         /** CreateConversationRequest */
         CreateConversationRequest: {
             /**
@@ -4599,6 +4551,11 @@ export interface components {
              * @description The Data Warehouse's naming rules this name breaks (a warning, not an error).
              */
             naming_violations: components["schemas"]["NamingViolation"][];
+            /**
+             * Review Flags
+             * @description What staging generation flagged on a staging column (empty otherwise).
+             */
+            review_flags: components["schemas"]["ReviewFlag"][];
         };
         /**
          * DwDataType
@@ -4675,6 +4632,11 @@ export interface components {
             version: number;
             /** Naming Violations */
             naming_violations: components["schemas"]["NamingViolation"][];
+            /**
+             * Review Flags
+             * @description What staging generation flagged on a Staging Table (empty otherwise).
+             */
+            review_flags: components["schemas"]["ReviewFlag"][];
         };
         /** DwTableList */
         DwTableList: {
@@ -5112,17 +5074,6 @@ export interface components {
              * @enum {string}
              */
             status: "not_started" | "in_progress" | "complete";
-        };
-        /** LayerCoverageOut */
-        LayerCoverageOut: {
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "core" | "mart";
-            /** Tables */
-            tables: components["schemas"]["TableCoverageOut"][];
-            coverage: components["schemas"]["CoverageOut"];
         };
         /** LayerProgress */
         LayerProgress: {
@@ -5771,6 +5722,18 @@ export interface components {
              * @default bridge_
              */
             bridge_prefix: string;
+            /**
+             * Load Ts Column
+             * @description Name of the load-timestamp audit column of Staging Tables.
+             * @default load_ts
+             */
+            load_ts_column: string;
+            /**
+             * Source System Column
+             * @description Name of the System Code audit column of Staging Tables.
+             * @default source_system
+             */
+            source_system_column: string;
         };
         /** NamingViolation */
         NamingViolation: {
@@ -6072,41 +6035,6 @@ export interface components {
             /** Items */
             items: components["schemas"]["Platform"][];
         };
-        /** ProblemOut */
-        ProblemOut: {
-            /**
-             * Severity
-             * @enum {string}
-             */
-            severity: "error" | "warning";
-            /**
-             * Code
-             * @description `unparsed_sql`, `not_in_group_by` or another mapping error code (errors); `unmapped_column`, `missing_integration_rule`, `may_truncate`, `may_lose_precision`, `may_fail_conversion` or `nullable_into_required` (warnings).
-             */
-            code: string;
-            /** Message */
-            message: string;
-            /**
-             * Table Id
-             * Format: uuid
-             */
-            table_id: string;
-            /** Table Name */
-            table_name: string;
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "core" | "mart";
-            /** Column Id */
-            column_id: string | null;
-            /** Column Name */
-            column_name: string | null;
-            /** Branch Id */
-            branch_id: string | null;
-            /** Branch Name */
-            branch_name: string | null;
-        };
         /** ProfilingStarted */
         ProfilingStarted: {
             /**
@@ -6357,6 +6285,16 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** ReviewFlag */
+        ReviewFlag: {
+            /**
+             * Code
+             * @description `placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+        };
         /** RoutineChange */
         RoutineChange: {
             /**
@@ -6575,7 +6513,9 @@ export interface components {
              *       "case_style": "lower",
              *       "dimension_prefix": "dim_",
              *       "fact_prefix": "fact_",
-             *       "bridge_prefix": "bridge_"
+             *       "bridge_prefix": "bridge_",
+             *       "load_ts_column": "load_ts",
+             *       "source_system_column": "source_system"
              *     }
              */
             naming_rules: components["schemas"]["NamingRules"];
@@ -6974,6 +6914,11 @@ export interface components {
              */
             scd_hint?: string | null;
             /**
+             * Include View In Staging
+             * @description Whether a view gets a Staging Table; set only in the Source Schema.
+             */
+            include_view_in_staging?: boolean | null;
+            /**
              * Version
              * @description Send it back when editing the enhancements; set only in the Source Schema.
              */
@@ -7218,6 +7163,48 @@ export interface components {
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
         };
+        /** StagingFlag */
+        StagingFlag: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Name
+             * @description Null for a flag on the table itself.
+             */
+            column_name: string | null;
+            /**
+             * Code
+             * @description `placeholder`, `truncated`, `collision`, `lossy_type` or `fallback_type`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** StagingResult */
+        StagingResult: {
+            /** Tables Created */
+            tables_created: number;
+            /**
+             * Columns Created
+             * @description Including the audit columns.
+             */
+            columns_created: number;
+            /**
+             * Tables Existing
+             * @description Source tables that already had a Staging Table; left as they are.
+             */
+            tables_existing: number;
+            /**
+             * Flags
+             * @description What to review, for the tables just created.
+             */
+            flags: components["schemas"]["StagingFlag"][];
+        };
         /** StartProfilingRequest */
         StartProfilingRequest: {
             /**
@@ -7315,22 +7302,6 @@ export interface components {
              */
             columns: components["schemas"]["ColumnChange"][];
         };
-        /** TableCoverageOut */
-        TableCoverageOut: {
-            /**
-             * Table Id
-             * Format: uuid
-             */
-            table_id: string;
-            /** Table Name */
-            table_name: string;
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "core" | "mart";
-            coverage: components["schemas"]["CoverageOut"];
-        };
         /** TableEnhancements */
         TableEnhancements: {
             /**
@@ -7348,6 +7319,8 @@ export interface components {
             classification: ("master" | "transactional" | "reference" | "log" | "landing") | null;
             /** Scd Hint */
             scd_hint: string | null;
+            /** Include View In Staging */
+            include_view_in_staging: boolean;
             /** Version */
             version: number;
         };
@@ -7785,6 +7758,11 @@ export interface components {
              * @description E.g. "changes slowly, history matters". Send null to clear it.
              */
             scd_hint?: string | null;
+            /**
+             * Include View In Staging
+             * @description Give this view a Staging Table (views only; base tables always get one).
+             */
+            include_view_in_staging?: boolean | null;
         };
         /** UpdateTableMappingRequest */
         UpdateTableMappingRequest: {
@@ -7830,19 +7808,6 @@ export interface components {
             description?: string | null;
             /** Domain */
             domain?: string | null;
-        };
-        /** ValidationReport */
-        ValidationReport: {
-            /**
-             * Problems
-             * @description Errors first, then by Layer and table.
-             */
-            problems: components["schemas"]["ProblemOut"][];
-            /** Error Count */
-            error_count: number;
-            /** Warning Count */
-            warning_count: number;
-            coverage: components["schemas"]["CoverageReport"];
         };
         /** VersionInfo */
         VersionInfo: {
@@ -10399,7 +10364,7 @@ export interface operations {
             };
         };
     };
-    runValidation: {
+    generateStaging: {
         parameters: {
             query?: never;
             header?: never;
@@ -10416,47 +10381,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationReport"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getMappingCoverage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CoverageReport"];
+                    "application/json": components["schemas"]["StagingResult"];
                 };
             };
             /** @description Validation error */

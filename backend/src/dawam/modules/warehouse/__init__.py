@@ -20,6 +20,11 @@ Public interface. Other modules import only what is re-exported here:
   per table, per Layer and for the whole Data Warehouse (branch-aware). ``modeling_progress``
   fills the DW Modeling part of the stage-progress port. ``GET .../data-warehouse/validation``
   and ``GET .../data-warehouse/coverage``.
+- ``StagingService``: owners and editors ``generate`` the Staging Layer from the Source Schema
+  (software only): one Staging Table per source base table (and per opted-in view), named
+  ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
+  mappings and lineage; ``StagingResult`` lists what was flagged for review.
+  ``POST .../data-warehouse/staging/generate``.
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
@@ -48,6 +53,7 @@ from .platforms import (
 )
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .validation_service import ValidationReport, ValidationService
+from .staging_service import StagingFlag, StagingResult, StagingService
 
 __all__ = [
     "PLATFORM_PROFILES",
@@ -63,6 +69,9 @@ __all__ = [
     "MappingService",
     "NamingRules",
     "PlatformProfile",
+    "StagingFlag",
+    "StagingResult",
+    "StagingService",
     "TargetPlatform",
     "ValidationReport",
     "ValidationService",

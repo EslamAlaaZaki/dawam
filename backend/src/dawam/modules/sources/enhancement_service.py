@@ -35,7 +35,14 @@ from .tables import (
     SrcTableRecord,
 )
 
-TABLE_FIELDS = ("description", "tags", "is_sensitive", "classification", "scd_hint")
+TABLE_FIELDS = (
+    "description",
+    "tags",
+    "is_sensitive",
+    "classification",
+    "scd_hint",
+    "include_view_in_staging",
+)
 COLUMN_FIELDS = ("description", "tags", "is_sensitive")
 """The enhancements of a table and of a column: what the audit trail records."""
 
@@ -48,6 +55,7 @@ class TableEnhancements:
     is_sensitive: bool
     classification: str | None
     scd_hint: str | None
+    include_view_in_staging: bool
     version: int
 
 
@@ -113,6 +121,10 @@ def set_fields(
             record.is_sensitive = bool(value)
         elif field == "classification" and isinstance(record, SrcTableRecord):
             record.classification = _classification(value)
+        elif field == "include_view_in_staging" and isinstance(record, SrcTableRecord):
+            if record.kind != "view":
+                raise _invalid("Only a view can be opted in; every base table is staged.", field)
+            record.include_view_in_staging = bool(value)
         elif field == "scd_hint" and isinstance(record, SrcTableRecord):
             record.scd_hint = _text(value, "SCD hint", field, SCD_HINT_MAX_LENGTH)
         else:  # pragma: no cover - a programming error

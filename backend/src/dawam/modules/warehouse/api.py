@@ -25,6 +25,7 @@ from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .service import CaseStyle, DataWarehouseService, Weekday
 from .validation_api import router as validation_router
+from .staging_api import router as staging_router
 
 router = APIRouter(tags=["data-warehouse"])
 router.include_router(model_router)
@@ -32,6 +33,7 @@ router.include_router(mapping_router)
 router.include_router(lineage_router)
 router.include_router(ddl_router)
 router.include_router(validation_router)
+router.include_router(staging_router)
 
 
 def data_warehouse_service(request: Request) -> DataWarehouseService:
@@ -48,6 +50,7 @@ DataWarehouseServiceDep = Annotated[DataWarehouseService, Depends(data_warehouse
 # refuses a long name; this only keeps the payload bounded.
 SchemaName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
 Prefix = Annotated[str, StringConstraints(strip_whitespace=True, max_length=64)]
+AuditName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=1024)]
 
 
 class LayerSchemas(BaseModel):
@@ -65,6 +68,12 @@ class NamingRules(BaseModel):
     dimension_prefix: Prefix = "dim_"
     fact_prefix: Prefix = "fact_"
     bridge_prefix: Prefix = "bridge_"
+    load_ts_column: AuditName = Field(
+        "load_ts", description="Name of the load-timestamp audit column of Staging Tables."
+    )
+    source_system_column: AuditName = Field(
+        "source_system", description="Name of the System Code audit column of Staging Tables."
+    )
 
 
 class DateDimension(BaseModel):
