@@ -1003,7 +1003,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
         parameters: {
             query?: never;
             header?: never;
@@ -1011,15 +1011,35 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Download Mapping Sheet
-         * @description The Core and Mart mappings as a mapping sheet (any member): one row per target column
-         *     (per branch) with its type, inputs as `table.column` separated by `;`, rule, SQL,
-         *     mapping type and lookup dimension. XLSX adds a `Branches` sheet with each branch's join
-         *     path, filters, group-by, integration rule and match keys; CSV holds the first sheet.
-         *     404 before the Data Warehouse is set up. To keep a copy, save it to the file area with
-         *     `POST .../files/mapping-sheet`.
+         * Run Validation
+         * @description Validate every Core and Mart mapping (any member): errors (SQL that does not parse,
+         *     a missing GROUP BY column) and warnings (unmapped columns, a multi-branch table without
+         *     an integration rule, data-type compatibility such as truncation between a direct
+         *     mapping's input and its target), with the mapping coverage. Computed on read. 404
+         *     `not_set_up` before the Data Warehouse is set up.
          */
-        get: operations["downloadMappingSheet"];
+        get: operations["runValidation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Coverage
+         * @description Mapping coverage per table, per Layer and for the whole Data Warehouse (any member),
+         *     branch-aware: a column is covered when every branch maps it or marks it not available.
+         */
+        get: operations["getMappingCoverage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2452,29 +2472,6 @@ export interface paths {
          *     404 before the Data Warehouse is set up.
          */
         post: operations["saveDdl"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/mapping-sheet": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Save Mapping Sheet
-         * @description Export the mapping sheet into the Data Warehouse's file area as
-         *     `mapping-sheet-<layer>.<format>` (or `mapping-sheet-data-warehouse.<format>`),
-         *     overwriting the previous one (owners and editors). 404 before the Data Warehouse is
-         *     set up.
-         */
-        post: operations["saveMappingSheet"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4151,6 +4148,34 @@ export interface components {
              */
             updated_at: string;
         };
+        /** CoverageOut */
+        CoverageOut: {
+            /**
+             * Total
+             * @description Columns that need a mapping (system columns excluded).
+             */
+            total: number;
+            /**
+             * Covered
+             * @description Of those, mapped in every branch (or not available there).
+             */
+            covered: number;
+            /**
+             * Percent
+             * @description `covered` of `total`, 0-100; 0 when `total` is 0.
+             */
+            percent: number;
+        };
+        /** CoverageReport */
+        CoverageReport: {
+            /**
+             * Layers
+             * @description Core, then Mart.
+             */
+            layers: components["schemas"]["LayerCoverageOut"][];
+            /** @description The whole Data Warehouse. */
+            coverage: components["schemas"]["CoverageOut"];
+        };
         /** CreateConversationRequest */
         CreateConversationRequest: {
             /**
@@ -5123,6 +5148,17 @@ export interface components {
              */
             status: "not_started" | "in_progress" | "complete";
         };
+        /** LayerCoverageOut */
+        LayerCoverageOut: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Tables */
+            tables: components["schemas"]["TableCoverageOut"][];
+            coverage: components["schemas"]["CoverageOut"];
+        };
         /** LayerProgress */
         LayerProgress: {
             /**
@@ -6082,6 +6118,41 @@ export interface components {
         PlatformList: {
             /** Items */
             items: components["schemas"]["Platform"][];
+        };
+        /** ProblemOut */
+        ProblemOut: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+            /**
+             * Code
+             * @description `unparsed_sql`, `not_in_group_by` or another mapping error code (errors); `unmapped_column`, `missing_integration_rule`, `may_truncate`, `may_lose_precision`, `may_fail_conversion` or `nullable_into_required` (warnings).
+             */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Column Id */
+            column_id: string | null;
+            /** Column Name */
+            column_name: string | null;
+            /** Branch Id */
+            branch_id: string | null;
+            /** Branch Name */
+            branch_name: string | null;
         };
         /** ProfilingStarted */
         ProfilingStarted: {
@@ -7350,6 +7421,22 @@ export interface components {
              */
             columns: components["schemas"]["ColumnChange"][];
         };
+        /** TableCoverageOut */
+        TableCoverageOut: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            coverage: components["schemas"]["CoverageOut"];
+        };
         /** TableEnhancements */
         TableEnhancements: {
             /**
@@ -7856,6 +7943,19 @@ export interface components {
             description?: string | null;
             /** Domain */
             domain?: string | null;
+        };
+        /** ValidationReport */
+        ValidationReport: {
+            /**
+             * Problems
+             * @description Errors first, then by Layer and table.
+             */
+            problems: components["schemas"]["ProblemOut"][];
+            /** Error Count */
+            error_count: number;
+            /** Warning Count */
+            warning_count: number;
+            coverage: components["schemas"]["CoverageReport"];
         };
         /** VersionInfo */
         VersionInfo: {
@@ -10412,14 +10512,9 @@ export interface operations {
             };
         };
     };
-    downloadMappingSheet: {
+    runValidation: {
         parameters: {
-            query?: {
-                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
-                format?: "xlsx" | "csv";
-                /** @description One Layer's mappings; omit for Core and Mart. */
-                layer?: ("core" | "mart") | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 workspace_id: string;
@@ -10428,14 +10523,53 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The mapping sheet. */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
-                    "text/csv": unknown;
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMappingCoverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageReport"];
                 };
             };
             /** @description Validation error */
@@ -13828,51 +13962,6 @@ export interface operations {
             query?: {
                 /** @description One Layer's package; omit for the whole Data Warehouse. */
                 layer?: ("staging" | "core" | "mart") | null;
-            };
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceFile"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    saveMappingSheet: {
-        parameters: {
-            query?: {
-                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
-                format?: "xlsx" | "csv";
-                /** @description One Layer's mappings; omit for Core and Mart. */
-                layer?: ("core" | "mart") | null;
             };
             header?: never;
             path: {

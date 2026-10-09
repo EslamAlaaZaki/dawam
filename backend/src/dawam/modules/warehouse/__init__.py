@@ -17,6 +17,12 @@ Public interface. Other modules import only what is re-exported here:
 - ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
   sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
   .../data-warehouse/mapping-sheet`` downloads it.
+- ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
+  (errors: unparsable SQL, GROUP BY gaps; warnings: unmapped columns, a missing integration
+  rule, data-type compatibility such as truncation, see ``type_compat``) and reads ``coverage``
+  per table, per Layer and for the whole Data Warehouse (branch-aware). ``modeling_progress``
+  fills the DW Modeling part of the stage-progress port. ``GET .../data-warehouse/validation``
+  and ``GET .../data-warehouse/coverage``.
 - ``StagingService``: owners and editors ``generate`` the Staging Layer from the Source Schema
   (software only): one Staging Table per source base table (and per opted-in view), named
   ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
@@ -40,6 +46,7 @@ from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
+from .mapping_service import MappingService
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -51,6 +58,7 @@ from .platforms import (
 )
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .staging_service import StagingFlag, StagingResult, StagingService
+from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
     "PLATFORM_PROFILES",
@@ -65,6 +73,7 @@ __all__ = [
     "LayerSchemas",
     "MappingExportService",
     "MappingExportServiceDep",
+    "MappingService",
     "MappingSheet",
     "NamingRules",
     "PlatformProfile",
@@ -74,6 +83,8 @@ __all__ = [
     "StagingResult",
     "StagingService",
     "TargetPlatform",
+    "ValidationReport",
+    "ValidationService",
     "is_reserved_word",
     "max_identifier_length",
     "platform_profile",
