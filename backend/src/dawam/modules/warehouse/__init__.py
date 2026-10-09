@@ -14,6 +14,9 @@ Public interface. Other modules import only what is re-exported here:
   inserts and the seed rows of generated tables; ``files`` saves it, plus ``seed_files``
   (CSV and ``INSERT`` script per generated table), to the file area. ``GET
   .../data-warehouse/ddl`` downloads it.
+- ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
+  sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
+  .../data-warehouse/mapping-sheet`` downloads it.
 - ``StagingService``: owners and editors ``generate`` the Staging Layer from the Source Schema
   (software only): one Staging Table per source base table (and per opted-in view), named
   ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
@@ -35,6 +38,8 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .mapping_export import MappingExportService, MappingSheet
+from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -58,8 +63,13 @@ __all__ = [
     "DdlService",
     "DdlServiceDep",
     "LayerSchemas",
+    "MappingExportService",
+    "MappingExportServiceDep",
+    "MappingSheet",
     "NamingRules",
     "PlatformProfile",
+    "SheetFormat",
+    "SheetLayer",
     "StagingFlag",
     "StagingResult",
     "StagingService",

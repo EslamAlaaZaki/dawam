@@ -3602,6 +3602,96 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Download Mapping Sheet",
+        "description": "The Core and Mart mappings as a mapping sheet (any member): one row per target column\n(per branch) with its type, inputs as `table.column` separated by `;`, rule, SQL,\nmapping type and lookup dimension. XLSX adds a `Branches` sheet with each branch's join\npath, filters, group-by, integration rule and match keys; CSV holds the first sheet.\n404 before the Data Warehouse is set up. To keep a copy, save it to the file area with\n`POST .../files/mapping-sheet`.",
+        "operationId": "downloadMappingSheet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "xlsx",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet).",
+              "default": "xlsx",
+              "title": "Format"
+            },
+            "description": "`xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet)."
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One Layer's mappings; omit for Core and Mart.",
+              "title": "Layer"
+            },
+            "description": "One Layer's mappings; omit for Core and Mart."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The mapping sheet.",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {},
+              "text/csv": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
       "post": {
         "tags": [
@@ -9183,6 +9273,98 @@
               "title": "Layer"
             },
             "description": "One Layer's package; omit for the whole Data Warehouse."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/mapping-sheet": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Mapping Sheet",
+        "description": "Export the mapping sheet into the Data Warehouse's file area as\n`mapping-sheet-<layer>.<format>` (or `mapping-sheet-data-warehouse.<format>`),\noverwriting the previous one (owners and editors). 404 before the Data Warehouse is\nset up.",
+        "operationId": "saveMappingSheet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "xlsx",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet).",
+              "default": "xlsx",
+              "title": "Format"
+            },
+            "description": "`xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet)."
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One Layer's mappings; omit for Core and Mart.",
+              "title": "Layer"
+            },
+            "description": "One Layer's mappings; omit for Core and Mart."
           }
         ],
         "responses": {

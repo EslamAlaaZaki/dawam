@@ -1003,6 +1003,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Mapping Sheet
+         * @description The Core and Mart mappings as a mapping sheet (any member): one row per target column
+         *     (per branch) with its type, inputs as `table.column` separated by `;`, rule, SQL,
+         *     mapping type and lookup dimension. XLSX adds a `Branches` sheet with each branch's join
+         *     path, filters, group-by, integration rule and match keys; CSV holds the first sheet.
+         *     404 before the Data Warehouse is set up. To keep a copy, save it to the file area with
+         *     `POST .../files/mapping-sheet`.
+         */
+        get: operations["downloadMappingSheet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
         parameters: {
             query?: never;
@@ -2427,6 +2452,29 @@ export interface paths {
          *     404 before the Data Warehouse is set up.
          */
         post: operations["saveDdl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/mapping-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Mapping Sheet
+         * @description Export the mapping sheet into the Data Warehouse's file area as
+         *     `mapping-sheet-<layer>.<format>` (or `mapping-sheet-data-warehouse.<format>`),
+         *     overwriting the previous one (owners and editors). 404 before the Data Warehouse is
+         *     set up.
+         */
+        post: operations["saveMappingSheet"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10364,6 +10412,52 @@ export interface operations {
             };
         };
     };
+    downloadMappingSheet: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
+                format?: "xlsx" | "csv";
+                /** @description One Layer's mappings; omit for Core and Mart. */
+                layer?: ("core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mapping sheet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     generateStaging: {
         parameters: {
             query?: never;
@@ -13734,6 +13828,51 @@ export interface operations {
             query?: {
                 /** @description One Layer's package; omit for the whole Data Warehouse. */
                 layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveMappingSheet: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
+                format?: "xlsx" | "csv";
+                /** @description One Layer's mappings; omit for Core and Mart. */
+                layer?: ("core" | "mart") | null;
             };
             header?: never;
             path: {
