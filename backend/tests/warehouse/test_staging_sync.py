@@ -384,3 +384,43 @@ def test_a_viewer_cannot_propose_a_sync(warehouse: RoleClients, role: str):
     )
 
     assert response.status_code == 403
+
+
+def test_drop_removed_is_rechecked_when_accepted(warehouse: RoleClients):
+    system = add_system(warehouse)
+    ids = staged(warehouse, system, {"customers": CUSTOMER, "legacy": [("id", "integer")]})
+    run(
+        warehouse,
+        "update src_tables set status = 'source_removed' where id = :id",
+        id=ids["legacy"]["id"],
+    )
+    accept(warehouse, sync(warehouse, system)["change_set_id"])
+    proposed = warehouse.client("editor").post(f"{base(warehouse)}/staging/drop-removed").json()
+    # A mapping starts reading the table after the proposal.
+    legacy_id = columns_of(warehouse, staging_tables(warehouse)["stg_crm_public_legacy"])["id"][
+        "id"
+    ]
+    run(
+        warehouse,
+        "insert into lineage_edges (id, kind, from_type, from_id, to_type, to_id)"
+        " values (:id, 'value', 'dw_column', :f, 'dw_column', :t)",
+        id=uuid.uuid4(),
+        f=legacy_id,
+        t=uuid.uuid4(),
+    )
+
+    result = accept(warehouse, proposed["change_set_id"], role="owner")
+
+    assert result["accepted"] == [] and [s["reason"] for s in result["skipped"]] == ["stale"]
+    assert "stg_crm_public_legacy" in staging_tables(warehouse)
+
+
+def test_a_failing_snapshot_hook_is_logged_and_does_not_raise(caplog: pytest.LogCaptureFixture):
+    from dawam.platform.hooks import notify_snapshot_created
+
+    def broken(*_args) -> None:
+        raise RuntimeError("boom")
+
+    notify_snapshot_created(broken, uuid.uuid4(), uuid.uuid4(), None)
+
+    assert "following a new Snapshot failed" in caplog.text
