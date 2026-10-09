@@ -869,6 +869,19 @@ ROWS: list[Row] = [
         json=lambda roles: {"version": 1, "unit": "customers"},
     ),
     Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/links",
+        "Open Workspace content (a KPI's links)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/links",
+        "Edit KPIs (link one to DW columns)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"version": 1, "dw_column_ids": []},
+    ),
+    Row(
         "DELETE",
         "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}",
         "Edit KPIs (delete one)",

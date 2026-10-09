@@ -2407,6 +2407,33 @@ export interface paths {
         patch: operations["updateKpi"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Links
+         * @description The DW columns a KPI uses (any member), by Layer, table and position.
+         */
+        get: operations["getKpiLinks"];
+        /**
+         * Set Links
+         * @description Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage
+         *     edge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`
+         *     without a Data Warehouse; 409 `version_conflict` if `version` is stale; 422
+         *     `invalid_kpi_link`.
+         */
+        put: operations["setKpiLinks"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/comments": {
         parameters: {
             query?: never;
@@ -5272,6 +5299,40 @@ export interface components {
              */
             updated_at: string;
         };
+        /** KpiLink */
+        KpiLink: {
+            /**
+             * Dw Column Id
+             * Format: uuid
+             */
+            dw_column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Table Name */
+            table_name: string;
+            /** Column Name */
+            column_name: string;
+            /** Role */
+            role: string;
+        };
+        /** KpiLinks */
+        KpiLinks: {
+            /**
+             * Version
+             * @description The KPI's version; send it back with the next edit.
+             */
+            version: number;
+            /** Items */
+            items: components["schemas"]["KpiLink"][];
+        };
         /** KpiPage */
         KpiPage: {
             /** Items */
@@ -6835,6 +6896,19 @@ export interface components {
              * @enum {string}
              */
             delivery: "sent" | "link_for_admin" | "not_sent";
+        };
+        /** SetKpiLinksRequest */
+        SetKpiLinksRequest: {
+            /**
+             * Version
+             * @description The KPI's `version` you last saw.
+             */
+            version: number;
+            /**
+             * Dw Column Ids
+             * @description Every DW column the KPI uses (replaces the current links): Core or Mart columns, at the highest Layer that holds the measure.
+             */
+            dw_column_ids: string[];
         };
         /** SetUpRequest */
         SetUpRequest: {
@@ -14003,6 +14077,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Kpi"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getKpiLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiLinks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setKpiLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetKpiLinksRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiLinks"];
                 };
             };
             /** @description Validation error */

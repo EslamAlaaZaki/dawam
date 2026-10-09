@@ -24,6 +24,7 @@ from dawam.modules.files import (
     RegisteredEmbeddingModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
+from dawam.modules.kpis import KpiLinkHandler
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
 from dawam.modules.sources import (
     EXTRACT_JOB,
@@ -47,7 +48,9 @@ JOB_HANDLERS: Mapping[str, JobHandler] = {}
 def build_change_set_handlers() -> ObjectHandlers:
     """Each module that owns objects a Change Set may change registers its handlers here."""
     return ObjectHandlers(
-        SourceEnhancementHandler("source_table"), SourceEnhancementHandler("source_column")
+        SourceEnhancementHandler("source_table"),
+        SourceEnhancementHandler("source_column"),
+        KpiLinkHandler(),
     )
 
 
