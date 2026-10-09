@@ -31,20 +31,35 @@ function ToolList({ tools }: { tools: readonly ToolCall[] }) {
   if (tools.length === 0) {
     return null;
   }
+  const canWrite = tools.some(
+    (tool) => tool.name === "run_source_query" && tool.result?.can_write === true,
+  );
   return (
-    <details className="assistant-tools">
-      <summary>
-        {tools.length === 1 ? "1 tool used" : `${tools.length} tools used`}
-      </summary>
-      <ul>
-        {tools.map((tool, index) => (
-          <li key={index}>
-            <strong>{tool.name}</strong> ({tool.status}, {tool.duration_ms} ms)
-            <code>{JSON.stringify(tool.arguments)}</code>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <>
+      {canWrite && (
+        <p role="alert" className="assistant-failure">
+          Warning: the database user of this Connection can change data. The assistant only runs
+          read-only SELECT queries, but an owner should give DAWAM a read-only user.
+        </p>
+      )}
+      <details className="assistant-tools">
+        <summary>
+          {tools.length === 1 ? "1 tool used" : `${tools.length} tools used`}
+        </summary>
+        <ul>
+          {tools.map((tool, index) => (
+            <li key={index}>
+              <strong>{tool.name}</strong> ({tool.status}, {tool.duration_ms} ms
+              {typeof tool.result?.row_count === "number"
+                ? `, ${tool.result.row_count} rows`
+                : ""}
+              )
+              <code>{JSON.stringify(tool.arguments)}</code>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </>
   );
 }
 

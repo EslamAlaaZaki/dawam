@@ -488,4 +488,6 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
 
     offered = tool_names(fake_llm) - {"generate_file"}
     extra = {"get_pii_findings", "propose_changes"} if role != "viewer" else set()
+    if value == "samples" and role != "viewer":
+        extra.add("run_source_query")  # sample rows and a role that may query a source
     assert offered == expected | extra

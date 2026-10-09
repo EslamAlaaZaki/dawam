@@ -27,10 +27,12 @@ from dawam.modules.sources import (
     PiiService,
     ProfilingService,
     SnapshotService,
+    SourceQueryService,
     SourceSystemService,
 )
 from dawam.modules.warehouse import DataWarehouseService
 from dawam.modules.workspaces import WorkspaceService
+from dawam.platform.pii_validators import redact_json
 
 from .internal.agent import Text, ToolFinished
 from .internal.tools import ToolRegistry, ToolServices
@@ -102,7 +104,14 @@ def assistant_service(request: Request) -> AssistantService:
             ),
             pii=PiiService(engine, workspaces=workspaces, clock=clock),
             documents=state.document_search,
+            source_queries=SourceQueryService(
+                engine,
+                workspaces=workspaces,
+                encryption_key=encryption_key,
+                clock=clock,
+            ),
         ),
+        source_query_seconds=state.settings.assistant_source_query_seconds,
     )
     return AssistantService(
         engine,
@@ -138,6 +147,12 @@ class ToolCallOut(BaseModel):
     arguments: dict[str, Any]
     status: str = Field(description="`ok`, `refused`, `error` or `skipped` (over the cap).")
     duration_ms: int
+    result: dict[str, Any] | None = Field(
+        default=None,
+        description="What the tool kept of its result. A source query: `columns`, `row_count`, "
+        "`duration_ms` and `can_write` (the Connection user could change data: warn), "
+        "never a row.",
+    )
 
 
 class RunOut(BaseModel):
@@ -218,7 +233,11 @@ def _run(view: RunView) -> RunOut:
         status=view.status,
         tool_calls=[
             ToolCallOut(
-                name=c.name, arguments=c.arguments, status=c.status, duration_ms=c.duration_ms
+                name=c.name,
+                arguments=c.arguments,
+                status=c.status,
+                duration_ms=c.duration_ms,
+                result=c.result,
             )
             for c in view.tool_calls
         ],
@@ -320,9 +339,10 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
                 "tool",
                 {
                     "name": call.name,
-                    "arguments": call.arguments,
+                    "arguments": redact_json(call.arguments),
                     "status": call.status,
                     "duration_ms": call.duration_ms,
+                    "result": call.result,
                 },
             )
         elif isinstance(event, Completed):
