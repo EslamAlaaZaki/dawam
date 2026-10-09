@@ -250,3 +250,30 @@ class StagingSourceService:
             if record.placeholder_no is None:
                 tops[record.table_id] += 1
                 record.placeholder_no = tops[record.table_id]
+
+
+def source_column_labels(
+    db: Session, workspace_id: uuid.UUID, column_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """``SYSTEM.schema.table.column`` for each given id that is a source column of the
+    Workspace (others are left out); in the caller's session, no permission check."""
+    ids = list(column_ids)
+    if not ids:
+        return {}
+    rows = db.execute(
+        sa.select(
+            SrcColumnRecord.id,
+            SourceSystemRecord.code,
+            SrcDbSchemaRecord.name,
+            SrcTableRecord.name,
+            SrcColumnRecord.name,
+        )
+        .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+        .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+        .join(SourceSystemRecord, SourceSystemRecord.id == SrcDbSchemaRecord.source_system_id)
+        .where(SrcColumnRecord.id.in_(ids), SourceSystemRecord.workspace_id == workspace_id)
+    )
+    return {
+        column_id: ".".join(part for part in (system, schema, table, column) if part)
+        for column_id, system, schema, table, column in rows
+    }

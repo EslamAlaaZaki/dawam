@@ -472,6 +472,7 @@ METADATA_TOOLS = {
     "list_files",
     "run_validation",
     "get_score",
+    "get_lineage",
 }
 LEVELS = [
     ("metadata", METADATA_TOOLS),

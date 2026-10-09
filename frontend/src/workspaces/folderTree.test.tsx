@@ -296,11 +296,9 @@ describe("the folder tree", () => {
         "No Source Systems yet. Each Source System you add will get its own folder here.",
       ),
     ).toBeInTheDocument();
-    fireEvent.click(item("Lineage"));
+    fireEvent.click(item("Score"));
     expect(
-      screen.getByText(
-        "Lineage appears here once there is a DW Schema to trace.",
-      ),
+      screen.getByText("The Data Warehouse has not been scored yet."),
     ).toBeInTheDocument();
   });
 });

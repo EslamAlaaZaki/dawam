@@ -41,6 +41,10 @@ Public interface. Other modules import only what is re-exported here:
   tables a KPI's formula SQL and links refer to, and the ``kpi`` lineage edges this module
   stores for them (``DwSchema``, ``SchemaTable``, ``SchemaColumn``; ``SQL_DIALECTS`` maps a
   target platform to its sqlglot dialect).
+- ``lineage_edges`` / ``lineage_nodes`` (in the caller's session, no permission check): the
+  stored lineage edges within ``depth`` of a node, walked with recursive CTEs and a cycle
+  guard, and the DW columns and tables among a set of node ids (``LineageEdge``,
+  ``LineageNode``); the ``lineage`` module labels the rest and serves the graph.
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
@@ -62,6 +66,7 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .lineage_graph import LineageEdge, LineageNode, lineage_edges, lineage_nodes
 from .lineage_sql import DIALECTS as SQL_DIALECTS
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
@@ -107,6 +112,8 @@ __all__ = [
     "DdlServiceDep",
     "DwSchema",
     "LayerSchemas",
+    "LineageEdge",
+    "LineageNode",
     "MappingExportService",
     "MappingExportServiceDep",
     "MappingService",
@@ -132,6 +139,8 @@ __all__ = [
     "describe_columns",
     "install_score_recalculation",
     "is_reserved_word",
+    "lineage_edges",
+    "lineage_nodes",
     "mart_columns_reading",
     "max_identifier_length",
     "platform_profile",

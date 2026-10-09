@@ -13,6 +13,7 @@ from dawam.modules.changesets import ChangeSetService, ObjectHandlers
 from dawam.modules.files import DocumentSearchService, FileService
 from dawam.modules.jobs import JobRunner, JobService
 from dawam.modules.kpis import KpiService
+from dawam.modules.lineage import LineageService
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, WorkspaceAiService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
@@ -108,6 +109,7 @@ def build_assistant_service(
             ),
             jobs=JobService(engine, runner=jobs, clock=clock),
             scores=ScoreService(engine, workspaces=workspaces, clock=clock),
+            lineage=LineageService(engine, workspaces=workspaces),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )
