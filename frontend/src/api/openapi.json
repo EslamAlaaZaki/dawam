@@ -3602,6 +3602,128 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Get Score",
+        "description": "The Data Warehouse score and grade (any member), a score per Layer (\"not scored\"\nfor a Layer with no tables) and per table, and the failed checks with severity, a link\nto the object and a fix hint. It is recalculated after every design change. 404 before\nthe Data Warehouse is set up.",
+        "operationId": "getScore",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Score"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/history": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Get Score History",
+        "description": "The score trend (any member): one summary per recalculation, oldest first, the\nlatest `limit` of them.",
+        "operationId": "getScoreHistory",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreHistory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
       "get": {
         "tags": [
@@ -15958,6 +16080,91 @@
         ],
         "title": "ExtractionStarted"
       },
+      "FailedCheck": {
+        "properties": {
+          "check_code": {
+            "type": "string",
+            "title": "Check Code"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "table",
+              "column"
+            ],
+            "title": "Object Type"
+          },
+          "object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Object Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "object_name": {
+            "type": "string",
+            "title": "Object Name"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "fix_hint": {
+            "type": "string",
+            "title": "Fix Hint"
+          },
+          "link": {
+            "type": "string",
+            "title": "Link",
+            "description": "An app path to the object at fault."
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_code",
+          "title",
+          "category",
+          "severity",
+          "layer",
+          "object_type",
+          "object_id",
+          "table_id",
+          "object_name",
+          "message",
+          "fix_hint",
+          "link"
+        ],
+        "title": "FailedCheck"
+      },
       "FieldChange": {
         "properties": {
           "field": {
@@ -16790,6 +16997,66 @@
         },
         "type": "object",
         "title": "LayerSchemas"
+      },
+      "LayerScore": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "0-100; null: the Layer is not scored."
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "D",
+                  "F"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "scored": {
+            "type": "boolean",
+            "title": "Scored"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "score",
+          "grade",
+          "scored",
+          "table_count"
+        ],
+        "title": "LayerScore"
       },
       "LineageEdge": {
         "properties": {
@@ -19614,6 +19881,170 @@
         ],
         "title": "SaveColumnMappingRequest"
       },
+      "Score": {
+        "properties": {
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "The Data Warehouse score (Core and Mart), 0-100; null: nothing to score."
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "D",
+                  "F"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "capped": {
+            "type": "boolean",
+            "title": "Capped",
+            "description": "An unresolved error holds the grade at C."
+          },
+          "calculated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Calculated At"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/LayerScore"
+            },
+            "type": "array",
+            "title": "Layers",
+            "description": "Staging is scored apart and is not part of the Data Warehouse score."
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableScore"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/FailedCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks",
+            "description": "Errors first."
+          },
+          "checks_passed": {
+            "type": "integer",
+            "title": "Checks Passed"
+          },
+          "checks_failed": {
+            "type": "integer",
+            "title": "Checks Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "grade",
+          "capped",
+          "calculated_at",
+          "layers",
+          "tables",
+          "failed_checks",
+          "checks_passed",
+          "checks_failed"
+        ],
+        "title": "Score"
+      },
+      "ScoreHistory": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreRun"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ScoreHistory"
+      },
+      "ScoreRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "D",
+                  "F"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/LayerScore"
+            },
+            "type": "array",
+            "title": "Layers"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "score",
+          "grade",
+          "layers",
+          "created_at"
+        ],
+        "title": "ScoreRun"
+      },
       "SearchHit": {
         "properties": {
           "kind": {
@@ -21909,6 +22340,40 @@
           "columns"
         ],
         "title": "TableProfile"
+      },
+      "TableScore": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "layer",
+          "name",
+          "score"
+        ],
+        "title": "TableScore"
       },
       "Target": {
         "properties": {
