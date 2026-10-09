@@ -9430,6 +9430,60 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/pii": {
+      "get": {
+        "tags": [
+          "lineage"
+        ],
+        "summary": "Get Pii View",
+        "description": "The PII view (any member): DW columns derived from confirmed PII and, separately,\nthe tables PII only influences. Recomputed from the current mappings on every call.",
+        "operationId": "getPiiView",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiViewReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/comments": {
       "get": {
         "tags": [
@@ -19745,6 +19799,30 @@
           "status"
         ],
         "title": "PiiScanStarted"
+      },
+      "PiiViewReport": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Tables"
+          }
+        },
+        "type": "object",
+        "required": [
+          "columns",
+          "tables"
+        ],
+        "title": "PiiViewReport"
       },
       "Platform": {
         "properties": {

@@ -2548,6 +2548,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/pii": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pii View
+         * @description The PII view (any member): DW columns derived from confirmed PII and, separately,
+         *     the tables PII only influences. Recomputed from the current mappings on every call.
+         */
+        get: operations["getPiiView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/comments": {
         parameters: {
             query?: never;
@@ -6505,6 +6526,13 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
+        /** PiiViewReport */
+        PiiViewReport: {
+            /** Columns */
+            columns: components["schemas"]["LineageNode"][];
+            /** Tables */
+            tables: components["schemas"]["LineageNode"][];
         };
         /** Platform */
         Platform: {
@@ -14693,6 +14721,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImpactReport"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPiiView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiViewReport"];
                 };
             };
             /** @description Validation error */
