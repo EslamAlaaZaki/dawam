@@ -8638,6 +8638,142 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/links": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Get Links",
+        "description": "The DW columns a KPI uses (any member), by Layer, table and position.",
+        "operationId": "getKpiLinks",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiLinks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Set Links",
+        "description": "Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage\nedge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`\nwithout a Data Warehouse; 409 `version_conflict` if `version` is stale; 422\n`invalid_kpi_link`.",
+        "operationId": "setKpiLinks",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetKpiLinksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiLinks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/comments": {
       "get": {
         "tags": [
@@ -16307,6 +16443,72 @@
         ],
         "title": "Kpi"
       },
+      "KpiLink": {
+        "properties": {
+          "dw_column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dw Column Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dw_column_id",
+          "table_id",
+          "layer",
+          "table_name",
+          "column_name",
+          "role"
+        ],
+        "title": "KpiLink"
+      },
+      "KpiLinks": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The KPI's version; send it back with the next edit."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KpiLink"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "items"
+        ],
+        "title": "KpiLinks"
+      },
       "KpiPage": {
         "properties": {
           "items": {
@@ -19394,6 +19596,31 @@
           "delivery"
         ],
         "title": "SentInvitationOut"
+      },
+      "SetKpiLinksRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The KPI's `version` you last saw."
+          },
+          "dw_column_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Dw Column Ids",
+            "description": "Every DW column the KPI uses (replaces the current links): Core or Mart columns, at the highest Layer that holds the measure."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "dw_column_ids"
+        ],
+        "title": "SetKpiLinksRequest"
       },
       "SetUpRequest": {
         "properties": {

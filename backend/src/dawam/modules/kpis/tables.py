@@ -62,3 +62,19 @@ class KpiRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
     """Starts at 1 and goes up by one on every edit (optimistic concurrency, spec §8.3)."""
+
+
+MAX_LINKS = 100
+
+
+class KpiLinkRecord(Base):
+    """A KPI's use of a DW column (spec §6.13): the highest Layer holding the measure."""
+
+    __tablename__ = "kpi_links"
+
+    kpi_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("kpis.id", ondelete="CASCADE"), primary_key=True
+    )
+    dw_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("dw_columns.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

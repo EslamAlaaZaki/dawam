@@ -19,6 +19,11 @@ Public interface. Other modules import only what is re-exported here:
   ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
   mappings and lineage; ``StagingResult`` lists what was flagged for review.
   ``POST .../data-warehouse/staging/generate``.
+- ``read_schema`` / ``describe_columns`` / ``mart_columns_reading`` and ``replace_kpi_edges`` /
+  ``clear_kpi_edges`` (in the caller's session, no permission check): the Core and Mart
+  tables a KPI's formula SQL and links refer to, and the ``kpi`` lineage edges this module
+  stores for them (``DwSchema``, ``SchemaTable``, ``SchemaColumn``; ``SQL_DIALECTS`` maps a
+  target platform to its sqlglot dialect).
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
@@ -35,6 +40,7 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .lineage_sql import DIALECTS as SQL_DIALECTS
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -44,11 +50,22 @@ from .platforms import (
     max_identifier_length,
     platform_profile,
 )
+from .schema_reader import (
+    DwSchema,
+    SchemaColumn,
+    SchemaTable,
+    clear_kpi_edges,
+    describe_columns,
+    mart_columns_reading,
+    read_schema,
+    replace_kpi_edges,
+)
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .staging_service import StagingFlag, StagingResult, StagingService
 
 __all__ = [
     "PLATFORM_PROFILES",
+    "SQL_DIALECTS",
     "TARGET_PLATFORMS",
     "DataWarehouse",
     "DataWarehouseService",
@@ -57,15 +74,23 @@ __all__ = [
     "DdlPackage",
     "DdlService",
     "DdlServiceDep",
+    "DwSchema",
     "LayerSchemas",
     "NamingRules",
     "PlatformProfile",
+    "SchemaColumn",
+    "SchemaTable",
     "StagingFlag",
     "StagingResult",
     "StagingService",
     "TargetPlatform",
+    "clear_kpi_edges",
+    "describe_columns",
     "is_reserved_word",
+    "mart_columns_reading",
     "max_identifier_length",
     "platform_profile",
+    "read_schema",
+    "replace_kpi_edges",
     "router",
 ]

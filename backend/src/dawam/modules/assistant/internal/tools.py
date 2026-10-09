@@ -205,6 +205,107 @@ class _ProposeChanges(BaseModel):
     items: list[_ChangeItem] = Field(min_length=1, max_length=MAX_PROPOSED_ITEMS)
 
 
+class _GetKpiLinkCandidates(BaseModel):
+    pass
+
+
+class _KpiLinkItem(BaseModel):
+    kpi_id: uuid.UUID = Field(description="The KPI's id.")
+    formula_sql: str | None = Field(
+        default=None,
+        max_length=20_000,
+        description="One SELECT query against the DW Schema's Core and Mart tables; leave out "
+        "to keep the KPI's own.",
+    )
+    dw_column_ids: list[uuid.UUID] | None = Field(
+        default=None,
+        max_length=100,
+        description="Ids of the DW columns the KPI uses, at the highest Layer that holds the "
+        "measure (Mart if present, otherwise Core); leave out to keep the KPI's own links.",
+    )
+    label: str = Field(default="", max_length=200, description="The KPI's name.")
+
+
+class _ProposeKpiLinks(BaseModel):
+    title: str = Field(min_length=1, max_length=200, description="What the proposal is for.")
+    items: list[_KpiLinkItem] = Field(min_length=1, max_length=MAX_PROPOSED_ITEMS)
+
+
+def _get_kpi_link_candidates(ctx: ToolContext, args: _GetKpiLinkCandidates) -> Any:
+    found = ctx.services.kpis.link_candidates(ctx.user, ctx.workspace_id)
+    schema = found.schema
+    return {
+        "kpis": [
+            {
+                "id": k.id,
+                "name": k.name,
+                "definition": k.definition,
+                "formula_text": k.formula_text,
+                "formula_sql": k.formula_sql,
+                "unit": k.unit,
+                "aggregation": k.aggregation,
+            }
+            for k in found.kpis
+        ],
+        "dw_schema": None
+        if schema is None
+        else {
+            "platform": schema.platform,
+            "layer_schemas": schema.layer_schemas,
+            "tables": [
+                {
+                    "layer": t.layer,
+                    "name": t.name,
+                    "kind": t.kind,
+                    "columns": [
+                        {"id": c.id, "name": c.name, "role": c.role, "additivity": c.additivity}
+                        for c in t.columns
+                    ],
+                }
+                for t in schema.tables
+            ],
+        },
+        "note": "KPIs here have no links or no formula SQL. Without a dw_schema the Data "
+        "Warehouse is not set up and nothing can be proposed.",
+    }
+
+
+def _propose_kpi_links(ctx: ToolContext, args: _ProposeKpiLinks) -> Any:
+    """The changes are not made: they become a Change Set the user reviews."""
+    items = []
+    for n, item in enumerate(args.items):
+        payload: dict[str, Any] = {}
+        if item.formula_sql is not None:
+            payload["formula_sql"] = item.formula_sql
+        if item.dw_column_ids is not None:
+            payload["links"] = [str(i) for i in item.dw_column_ids]
+        items.append(
+            ProposedItem(
+                key=f"kpi{n}",
+                object_type="kpi",
+                operation="update",
+                object_id=item.kpi_id,
+                payload=payload,
+                label=item.label,
+            )
+        )
+    detail = ctx.services.change_sets.propose(
+        ctx.user,
+        ctx.workspace_id,
+        origin="ai",
+        scope={"kind": "kpi_links"},
+        title=args.title,
+        conversation_id=ctx.conversation_id,
+        items=items,
+    )
+    return {
+        "change_set_id": detail.change_set.id,
+        "status": "proposed",
+        "note": "The user reviews these changes; nothing has been changed yet.",
+        "items": len(detail.items),
+    }
+
+
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
     """An app link, relative to the Workspace page: the system's Source Schema folder with
     the object named in the query (the app has no page of its own for an object yet)."""
@@ -703,6 +804,24 @@ TOOLS: tuple[Tool, ...] = (
         "write",
         Action.REVIEW_CHANGE_SETS,
         _propose_changes,
+    ),
+    Tool(
+        "get_kpi_link_candidates",
+        "List the KPIs that have no links to DW columns or no formula SQL, with the Data "
+        "Warehouse's Core and Mart tables and columns (ids included) to propose them from.",
+        _GetKpiLinkCandidates,
+        "read",
+        Action.REVIEW_CHANGE_SETS,
+        _get_kpi_link_candidates,
+    ),
+    Tool(
+        "propose_kpi_links",
+        "Propose links from KPIs to DW columns and their formula SQL against the DW Schema. "
+        "Nothing changes until the user accepts the proposal as a Change Set.",
+        _ProposeKpiLinks,
+        "write",
+        Action.REVIEW_CHANGE_SETS,
+        _propose_kpi_links,
     ),
 )
 

@@ -22,6 +22,7 @@ from .service import Kpi as KpiView
 from .service import KpiService, KpiTarget
 from .tables import (
     AGGREGATION_MAX_LENGTH,
+    MAX_LINKS,
     MAX_TARGETS,
     NAME_MAX_LENGTH,
     OWNER_MAX_LENGTH,
@@ -230,6 +231,60 @@ def update_kpi(
     # Null means "leave as is" for every field but the formula SQL, which it clears.
     changes = {k: v for k, v in changes.items() if v is not None or k == "formula_sql"}
     return _out(kpis.update(user, workspace_id, kpi_id, version=body.version, changes=changes))
+
+
+class KpiLink(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    dw_column_id: uuid.UUID
+    table_id: uuid.UUID
+    layer: Literal["core", "mart"]
+    table_name: str
+    column_name: str
+    role: str
+
+
+class KpiLinks(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    version: int = Field(description="The KPI's version; send it back with the next edit.")
+    items: list[KpiLink]
+
+
+class SetKpiLinksRequest(BaseModel):
+    version: int = Field(description="The KPI's `version` you last saw.")
+    dw_column_ids: list[uuid.UUID] = Field(
+        max_length=MAX_LINKS * 2,
+        description="Every DW column the KPI uses (replaces the current links): Core or Mart "
+        "columns, at the highest Layer that holds the measure.",
+    )
+
+
+@router.get("/{kpi_id}/links", operation_id="getKpiLinks")
+def get_links(
+    workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
+) -> KpiLinks:
+    """The DW columns a KPI uses (any member), by Layer, table and position."""
+    return KpiLinks.model_validate(kpis.links(user, workspace_id, kpi_id))
+
+
+@router.put("/{kpi_id}/links", operation_id="setKpiLinks")
+def set_links(
+    workspace_id: uuid.UUID,
+    kpi_id: uuid.UUID,
+    body: SetKpiLinksRequest,
+    user: CurrentUser,
+    kpis: KpiServiceDep,
+) -> KpiLinks:
+    """Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage
+    edge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`
+    without a Data Warehouse; 409 `version_conflict` if `version` is stale; 422
+    `invalid_kpi_link`."""
+    return KpiLinks.model_validate(
+        kpis.set_links(
+            user, workspace_id, kpi_id, version=body.version, dw_column_ids=body.dw_column_ids
+        )
+    )
 
 
 @router.delete("/{kpi_id}", operation_id="deleteKpi", status_code=204, response_class=Response)

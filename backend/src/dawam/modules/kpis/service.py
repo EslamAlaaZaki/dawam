@@ -13,11 +13,20 @@ from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
 from dawam.modules.sources import SourceSystemService
+from dawam.modules.warehouse import DwSchema, SchemaColumn, read_schema
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
+from .links import (
+    check_links,
+    described,
+    drop_links,
+    link_ids,
+    validate_formula,
+    write_links,
+)
 from .tables import (
     AGGREGATION_MAX_LENGTH,
     MAX_TARGETS,
@@ -29,6 +38,7 @@ from .tables import (
     TARGET_TEXT_MAX_LENGTH,
     TEXT_MAX_LENGTH,
     UNIT_MAX_LENGTH,
+    KpiLinkRecord,
     KpiRecord,
 )
 
@@ -89,6 +99,48 @@ class Kpi:
 class KpiPage:
     items: list[Kpi]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class KpiLink:
+    dw_column_id: uuid.UUID
+    table_id: uuid.UUID
+    layer: str
+    table_name: str
+    column_name: str
+    role: str
+
+
+@dataclass(frozen=True)
+class KpiLinks:
+    """A KPI's links, with the KPI's ``version`` to send back with the next edit."""
+
+    version: int
+    items: list[KpiLink]
+
+
+@dataclass(frozen=True)
+class LinkCandidates:
+    """What the AI needs to propose links and formula SQL."""
+
+    kpis: list[Kpi]
+    """KPIs with no links or no formula SQL (at most ``MAX_CANDIDATES``)."""
+    schema: DwSchema | None
+    """The Core and Mart tables; ``None`` before the Data Warehouse is set up."""
+
+
+MAX_CANDIDATES = 100
+
+
+def _link_view(column: SchemaColumn) -> KpiLink:
+    return KpiLink(
+        dw_column_id=column.id,
+        table_id=column.table_id,
+        layer=column.layer,
+        table_name=column.table_name,
+        column_name=column.name,
+        role=column.role,
+    )
 
 
 def _view(record: KpiRecord) -> Kpi:
@@ -199,6 +251,10 @@ class KpiService:
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         if source_system_id is not None:
             self._systems.get(user, workspace_id, source_system_id)
+        cleaned_sql = _clean_sql(formula_sql)
+        if cleaned_sql is not None:
+            with Session(self._engine) as db:
+                validate_formula(read_schema(db, workspace_id), cleaned_sql)
         now = self._clock()
         record = KpiRecord(
             id=uuid.uuid4(),
@@ -212,7 +268,7 @@ class KpiService:
             updated_at=now,
             version=1,
             targets=_clean_targets(targets),
-            formula_sql=_clean_sql(formula_sql),
+            formula_sql=cleaned_sql,
             **{
                 field: _clean(value, label, field, limit)
                 for field, value, (label, limit) in (
@@ -331,12 +387,15 @@ class KpiService:
                     setattr(record, field, _clean(value, label, field, limit))
                 elif field == "formula_sql":
                     record.formula_sql = _clean_sql(value)
+                    if record.formula_sql is not None:
+                        validate_formula(read_schema(db, workspace_id), record.formula_sql)
                 elif field == "targets":
                     record.targets = _clean_targets(value)
                 elif field == "status":
                     record.status = _clean_status(value)
                 else:  # pragma: no cover - a programming error
                     raise ValueError(f"cannot change KPI field {field!r}")
+            _revoke_approval(record, before, changes)
             after = _snapshot(record)
             changed = [f for f in AUDITED_FIELDS if before[f] != after[f]]
             if not changed:
@@ -381,7 +440,99 @@ class KpiService:
                 at=now,
             )
             self._record_activity(db, user, "kpi.deleted", record)
+            drop_links(db, record.id)
             db.delete(record)
+
+    def links(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> KpiLinks:
+        """The DW columns a KPI uses (any member), by Layer, table and position."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            record = self._load(db, workspace_id, kpi_id)
+            return KpiLinks(
+                record.version, [_link_view(c) for c in described(db, workspace_id, kpi_id)]
+            )
+
+    def set_links(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        kpi_id: uuid.UUID,
+        *,
+        version: int,
+        dw_column_ids: Sequence[uuid.UUID],
+    ) -> KpiLinks:
+        """Replace the DW columns a KPI uses (owners and editors); each is a Core or Mart
+        column, at the highest Layer that holds the measure, and becomes a ``kpi`` lineage
+        edge. A stale ``version`` is 409 ``version_conflict``; 404 ``not_set_up`` without a
+        Data Warehouse; 422 ``invalid_kpi_link``. Changing the links of an approved KPI
+        returns it to draft."""
+        self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            record = self._load(db, workspace_id, kpi_id, lock=True)
+            if record.version != version:
+                raise ApiError(
+                    409,
+                    "version_conflict",
+                    "Someone else changed this KPI since you loaded it. Reload and try again.",
+                    {"current_version": record.version},
+                )
+            columns = check_links(db, workspace_id, dw_column_ids)
+            change = self._apply_links(db, user, record, columns)
+            return KpiLinks(
+                record.version if change else version,
+                [_link_view(c) for c in columns],
+            )
+
+    def link_candidates(self, user: User, workspace_id: uuid.UUID) -> LinkCandidates:
+        """The KPIs that have no links or no formula SQL, with the DW Schema to propose them
+        from (any member): the AI's input for a Change Set."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        linked = sa.select(KpiLinkRecord.kpi_id)
+        query = (
+            sa.select(KpiRecord)
+            .where(
+                KpiRecord.workspace_id == workspace_id,
+                sa.or_(KpiRecord.formula_sql.is_(None), KpiRecord.id.not_in(linked)),
+            )
+            .order_by(KpiRecord.name, KpiRecord.id)
+            .limit(MAX_CANDIDATES)
+        )
+        with Session(self._engine) as db:
+            return LinkCandidates(
+                kpis=[_view(r) for r in db.scalars(query)], schema=read_schema(db, workspace_id)
+            )
+
+    def _apply_links(
+        self, db: Session, user: User, record: KpiRecord, columns: Sequence[SchemaColumn]
+    ) -> bool:
+        """Store the links on the locked ``record`` and audit the change; ``False`` if there
+        was none."""
+        old = sorted(str(i) for i in link_ids(db, record.id))
+        new = sorted(str(c.id) for c in columns)
+        if old == new:
+            return False
+        write_links(db, record.id, [c.id for c in columns])
+        old_fields: dict[str, Any] = {"links": old}
+        new_fields: dict[str, Any] = {"links": new}
+        if record.status == "approved":
+            old_fields["status"], new_fields["status"] = "approved", "draft"
+            record.status = "draft"
+        record.version += 1
+        now = self._clock()
+        record.updated_at = now
+        db.flush()
+        record_audit(
+            db,
+            workspace_id=record.workspace_id,
+            actor_id=user.id,
+            entity_type="kpi",
+            entity_id=record.id,
+            old=old_fields,
+            new=new_fields,
+            at=now,
+        )
+        self._record_activity(db, user, "kpi.edited", record, details={"fields": ["links"]})
+        return True
 
     def _load(
         self, db: Session, workspace_id: uuid.UUID, kpi_id: uuid.UUID, *, lock: bool = False
@@ -420,6 +571,19 @@ class KpiService:
             },
             at=self._clock(),
         )
+
+
+def _revoke_approval(
+    record: KpiRecord, before: Mapping[str, Any], changes: Mapping[str, Any]
+) -> None:
+    """A structural edit (formula SQL) of an approved KPI returns it to draft, unless the
+    same edit sets the status (spec story 80)."""
+    if (
+        before["status"] == "approved"
+        and "status" not in changes
+        and record.formula_sql != before["formula_sql"]
+    ):
+        record.status = "draft"
 
 
 def _clean_sql(value: str | None) -> str | None:

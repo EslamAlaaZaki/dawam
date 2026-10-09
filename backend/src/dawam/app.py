@@ -27,6 +27,7 @@ from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ObjectHandlers, reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
+from dawam.modules.kpis import KpiLinkHandler
 from dawam.modules.llm import AdapterFactory, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceEnhancementHandler, SourceSummaryService
@@ -148,7 +149,9 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
     app.state.change_set_handlers = ObjectHandlers(
-        SourceEnhancementHandler("source_table"), SourceEnhancementHandler("source_column")
+        SourceEnhancementHandler("source_table"),
+        SourceEnhancementHandler("source_column"),
+        KpiLinkHandler(),
     )
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot
     # import sources, which computes it.
