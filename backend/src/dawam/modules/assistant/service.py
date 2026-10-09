@@ -380,6 +380,13 @@ class AssistantService:
         user = self._users(uuid.UUID(str(params["user_id"])))
         if user is None or not user.is_active:
             raise RuntimeError("The member who started this job can no longer sign in.")
+        try:  # still a member who may ask the assistant, in this Workspace only
+            self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        except ApiError as exc:
+            ctx.log(f"Refused: {exc.message}")
+            raise RuntimeError(
+                "The member who started this job may no longer use the assistant."
+            ) from exc
         cap = self._max_job_tool_calls
         ctx.log(f"Started: {task[:200]}")
         calls = 0
@@ -421,17 +428,24 @@ class AssistantService:
             f"{finished.prompt_tokens} prompt and {finished.completion_tokens} completion tokens."
         )
         if finished.status == "cancelled":
-            self._post(conversation_id, f"Job cancelled: {title}. No changes were proposed.")
+            self._post(
+                workspace_id, conversation_id, f"Job cancelled: {title}. No changes were proposed."
+            )
             raise JobCancelledError
         if finished.status == "failed":
             reason = redact_text(finished.error_message or "The assistant could not finish.")
-            self._post(conversation_id, f"Job failed: {title}. {reason} No changes were proposed.")
+            self._post(
+                workspace_id,
+                conversation_id,
+                f"Job failed: {title}. {reason} No changes were proposed.",
+            )
             raise RuntimeError(reason)
         try:
             proposed = tools.submit_proposals(title)
         except ApiError as exc:
             ctx.log(f"The Change Set was refused: {exc.message}")
             self._post(
+                workspace_id,
                 conversation_id,
                 f"Job failed: {title}. The proposed changes were refused: {exc.message} "
                 "No changes were proposed.",
@@ -442,9 +456,11 @@ class AssistantService:
         if proposed:
             ctx.log(f"Proposed one Change Set with {proposed} items.")
             outcome += f"\n\nIt proposed {proposed} changes for your review."
-        self._post(conversation_id, outcome)
+        self._post(workspace_id, conversation_id, outcome)
 
-    def _post(self, conversation_id: uuid.UUID | None, content: str) -> None:
+    def _post(
+        self, workspace_id: uuid.UUID, conversation_id: uuid.UUID | None, content: str
+    ) -> None:
         """Add the job's outcome to the conversation it came from, as an assistant message."""
         if conversation_id is None:
             return
@@ -452,7 +468,10 @@ class AssistantService:
         with Session(self._engine) as db, db.begin():
             conversation = db.scalars(
                 sa.select(ConversationRecord)
-                .where(ConversationRecord.id == conversation_id)
+                .where(
+                    ConversationRecord.id == conversation_id,
+                    ConversationRecord.workspace_id == workspace_id,
+                )
                 .with_for_update()
             ).first()
             if conversation is None:

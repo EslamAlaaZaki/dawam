@@ -299,3 +299,58 @@ def test_a_job_started_by_a_viewer_cannot_propose_changes(roles, model, fake_llm
 
     assert change_sets(roles) == []
     assert "propose_changes refused" in jobs_of(roles, "viewer")[0]["log"]
+
+
+def test_a_bad_proposal_is_reported_to_the_model_and_the_rest_still_make_the_change_set(
+    roles, model, fake_llm
+):
+    import uuid
+
+    table, system = schema_ids(roles)
+    fake_llm.script(
+        Reply(tool_calls=(tool("start_job", title="Describe", task="Describe tables"),)),
+        Reply(tool_calls=(propose(str(uuid.uuid4()), system, "bad"),)),
+        Reply(tool_calls=(propose(table, system, "good"),)),
+        Reply(text="Proposed."),
+        Reply(text="Started."),
+    )
+    owner = roles.client("owner")
+
+    ask(owner, roles, conversation(owner, roles), "Describe")
+
+    [created] = change_sets(roles)
+    assert created["item_counts"] == {"pending": 1}
+    assert jobs_of(roles)[0]["status"] == "succeeded"
+    assert (
+        "propose_changes error" in jobs_of(roles)[0]["log"] or "refused" in jobs_of(roles)[0]["log"]
+    )
+
+
+def test_a_job_aborts_when_its_requester_is_no_longer_a_member(
+    app, services, roles, model, fake_llm
+):
+    from sqlalchemy import text
+
+    viewer = roles.user("viewer")
+    with app.state.engine.begin() as db:
+        db.execute(
+            text("delete from workspace_members where user_id = :u and workspace_id = :w"),
+            {"u": viewer.id, "w": roles.workspace_id},
+        )
+
+    job = job_service(app, services).submit(
+        roles.workspace_id,
+        JOB_TYPE,
+        {
+            "user_id": str(viewer.id),
+            "workspace_id": str(roles.workspace_id),
+            "title": "Explore",
+            "conversation_id": None,
+            "task": "Explore",
+        },
+        title="Explore",
+        created_by=viewer.id,
+    )
+
+    assert job.status == "failed" and fake_llm.calls == []
+    assert change_sets(roles) == []

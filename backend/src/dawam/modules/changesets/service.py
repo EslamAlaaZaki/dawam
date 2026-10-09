@@ -352,6 +352,29 @@ class ChangeSetService:
                 _view(record, _counts(records)), [_item_view(r) for r in records]
             )
 
+    def validate(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        *,
+        scope: Mapping[str, Any],
+        items: Sequence[ProposedItem],
+        earlier_keys: Sequence[str] = (),
+    ) -> None:
+        """Check proposed items as ``propose`` would, without saving anything (422
+        ``invalid_change_set`` for the first bad one). ``earlier_keys`` are items already
+        collected that these may depend on."""
+        self._workspaces.authorize(user, Action.REVIEW_CHANGE_SETS, workspace_id)
+        ids: dict[str, uuid.UUID] = {k: uuid.uuid4() for k in earlier_keys}
+        with Session(self._engine) as db, db.begin():
+            for position, proposed in enumerate(items):
+                if proposed.key in ids:
+                    raise _invalid(f"Two items share the key `{proposed.key}`.")
+                record = self._item_record(
+                    db, workspace_id, uuid.uuid4(), position, proposed, ids, scope
+                )
+                ids[proposed.key] = record.id
+
     def _item_record(
         self,
         db: Session,

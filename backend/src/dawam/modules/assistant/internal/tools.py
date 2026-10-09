@@ -232,6 +232,12 @@ class Proposals:
         self.items: list[_ChangeItem] = []
 
     def add(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> int:
+        self.check(source_system_id, items)
+        self.source_system_id = source_system_id
+        self.items.extend(items)
+        return len(self.items)
+
+    def check(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> None:
         if self.source_system_id not in (None, source_system_id):
             raise ApiError(
                 422,
@@ -245,9 +251,21 @@ class Proposals:
             taken.add(item.key)
         if len(self.items) + len(items) > MAX_JOB_ITEMS:
             raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
-        self.source_system_id = source_system_id
-        self.items.extend(items)
-        return len(self.items)
+
+
+def _proposed_items(items: Sequence[_ChangeItem]) -> list[ProposedItem]:
+    return [
+        ProposedItem(
+            key=item.key,
+            object_type=item.object_type,
+            operation="update",
+            object_id=item.object_id,
+            payload=item.changes,
+            label=item.label,
+            depends_on=item.depends_on,
+        )
+        for item in items
+    ]
 
 
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
@@ -620,7 +638,20 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
 def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     """The changes are not made: they become a Change Set the user reviews."""
     if ctx.proposals is not None:  # in a job: one Change Set when the job succeeds
-        total = ctx.proposals.add(args.source_system_id, args.items)
+        proposals = ctx.proposals
+        proposals.check(args.source_system_id, args.items)
+        # Validated now, so a bad object is reported to the model rather than failing the job.
+        ctx.services.change_sets.validate(
+            ctx.user,
+            ctx.workspace_id,
+            scope={
+                "kind": "source_enhancements",
+                "source_system_id": str(args.source_system_id),
+            },
+            items=_proposed_items(args.items),
+            earlier_keys=[item.key for item in proposals.items],
+        )
+        total = proposals.add(args.source_system_id, args.items)
         return {
             "status": "collected",
             "note": "These changes join the job's Change Set, which the user reviews when the "
