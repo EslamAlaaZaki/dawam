@@ -24,12 +24,12 @@ from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
-from dawam.modules.changesets import ObjectHandlers, reject_pending_change_sets
+from dawam.modules.changesets import reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
-from dawam.modules.llm import AdapterFactory, on_workspace_created
+from dawam.modules.llm import AdapterFactory, adapter_for, on_workspace_created
 from dawam.modules.mail import MailService
-from dawam.modules.sources import SourceEnhancementHandler, SourceSummaryService
+from dawam.modules.sources import SourceSummaryService
 from dawam.modules.warehouse import MappingService, ValidationService
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
 from dawam.platform import health, meta
@@ -87,7 +87,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         engine=engine,
         settings=settings,
         clock=services.clock,
-        llm_adapters=services.llm_adapters,
+        # Looked up when a job runs: tests swap in a fake provider after the app is built.
+        llm_adapters=lambda kind, config: (services.llm_adapters or adapter_for)(kind, config),
         document_ai=services.document_ai,
     )
 
@@ -148,9 +149,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # Change Sets proposed in a private conversation are hidden from everyone else.
     app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
-    app.state.change_set_handlers = ObjectHandlers(
-        SourceEnhancementHandler("source_table"), SourceEnhancementHandler("source_column")
-    )
+    app.state.change_set_handlers = job_handlers.build_change_set_handlers()
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot
     # import sources, which computes it.
     app.state.source_analysis = SourceSummaryService(
