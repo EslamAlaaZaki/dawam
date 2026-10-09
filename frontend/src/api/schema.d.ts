@@ -1003,7 +1003,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/score": {
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
         parameters: {
             query?: never;
             header?: never;
@@ -1011,34 +1011,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Score
-         * @description The Data Warehouse score and grade (any member), a score per Layer ("not scored"
-         *     for a Layer with no tables) and per table, and the failed checks with severity, a link
-         *     to the object and a fix hint. It is recalculated after every design change. 404 before
-         *     the Data Warehouse is set up.
+         * Download Mapping Sheet
+         * @description The Core and Mart mappings as a mapping sheet (any member): one row per target column
+         *     (per branch) with its type, inputs as `table.column` separated by `;`, rule, SQL,
+         *     mapping type and lookup dimension. XLSX adds a `Branches` sheet with each branch's join
+         *     path, filters, group-by, integration rule and match keys; CSV holds the first sheet.
+         *     404 before the Data Warehouse is set up. To keep a copy, save it to the file area with
+         *     `POST .../files/mapping-sheet`.
          */
-        get: operations["getScore"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Score History
-         * @description The score trend (any member): one summary per recalculation, oldest first, the
-         *     latest `limit` of them.
-         */
-        get: operations["getScoreHistory"];
+        get: operations["downloadMappingSheet"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2516,6 +2497,29 @@ export interface paths {
          *     404 before the Data Warehouse is set up.
          */
         post: operations["saveDdl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/mapping-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Mapping Sheet
+         * @description Export the mapping sheet into the Data Warehouse's file area as
+         *     `mapping-sheet-<layer>.<format>` (or `mapping-sheet-data-warehouse.<format>`),
+         *     overwriting the previous one (owners and editors). 404 before the Data Warehouse is
+         *     set up.
+         */
+        post: operations["saveMappingSheet"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4851,51 +4855,6 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
-        /** FailedCheck */
-        FailedCheck: {
-            /** Check Code */
-            check_code: string;
-            /** Title */
-            title: string;
-            /** Category */
-            category: string;
-            /**
-             * Severity
-             * @enum {string}
-             */
-            severity: "error" | "warning" | "info";
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "staging" | "core" | "mart";
-            /**
-             * Object Type
-             * @enum {string}
-             */
-            object_type: "table" | "column";
-            /**
-             * Object Id
-             * Format: uuid
-             */
-            object_id: string;
-            /**
-             * Table Id
-             * Format: uuid
-             */
-            table_id: string;
-            /** Object Name */
-            object_name: string;
-            /** Message */
-            message: string;
-            /** Fix Hint */
-            fix_hint: string;
-            /**
-             * Link
-             * @description An app path to the object at fault.
-             */
-            link: string;
-        };
         /** FieldChange */
         FieldChange: {
             /** Field */
@@ -5283,25 +5242,6 @@ export interface components {
              * @default mart
              */
             mart: string;
-        };
-        /** LayerScore */
-        LayerScore: {
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "staging" | "core" | "mart";
-            /**
-             * Score
-             * @description 0-100; null: the Layer is not scored.
-             */
-            score: number | null;
-            /** Grade */
-            grade: ("A" | "B" | "C" | "D" | "F") | null;
-            /** Scored */
-            scored: boolean;
-            /** Table Count */
-            table_count: number;
         };
         /** LineageEdge */
         LineageEdge: {
@@ -6617,69 +6557,6 @@ export interface components {
              */
             version: number;
         };
-        /** Score */
-        Score: {
-            /**
-             * Score
-             * @description The Data Warehouse score (Core and Mart), 0-100; null: nothing to score.
-             */
-            score: number | null;
-            /** Grade */
-            grade: ("A" | "B" | "C" | "D" | "F") | null;
-            /**
-             * Capped
-             * @description An unresolved error holds the grade at C.
-             */
-            capped: boolean;
-            /**
-             * Calculated At
-             * Format: date-time
-             */
-            calculated_at: string;
-            /**
-             * Layers
-             * @description Staging is scored apart and is not part of the Data Warehouse score.
-             */
-            layers: components["schemas"]["LayerScore"][];
-            /** Tables */
-            tables: components["schemas"]["TableScore"][];
-            /**
-             * Failed Checks
-             * @description Errors first.
-             */
-            failed_checks: components["schemas"]["FailedCheck"][];
-            /** Checks Passed */
-            checks_passed: number;
-            /** Checks Failed */
-            checks_failed: number;
-        };
-        /** ScoreHistory */
-        ScoreHistory: {
-            /**
-             * Items
-             * @description Oldest first.
-             */
-            items: components["schemas"]["ScoreRun"][];
-        };
-        /** ScoreRun */
-        ScoreRun: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Score */
-            score: number | null;
-            /** Grade */
-            grade: ("A" | "B" | "C" | "D" | "F") | null;
-            /** Layers */
-            layers: components["schemas"]["LayerScore"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -7710,23 +7587,6 @@ export interface components {
             profiled_at: string | null;
             /** Columns */
             columns: components["schemas"]["ColumnProfileView"][];
-        };
-        /** TableScore */
-        TableScore: {
-            /**
-             * Table Id
-             * Format: uuid
-             */
-            table_id: string;
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "staging" | "core" | "mart";
-            /** Name */
-            name: string;
-            /** Score */
-            score: number;
         };
         /** Target */
         Target: {
@@ -10705,50 +10565,13 @@ export interface operations {
             };
         };
     };
-    getScore: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Score"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getScoreHistory: {
+    downloadMappingSheet: {
         parameters: {
             query?: {
-                limit?: number;
+                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
+                format?: "xlsx" | "csv";
+                /** @description One Layer's mappings; omit for Core and Mart. */
+                layer?: ("core" | "mart") | null;
             };
             header?: never;
             path: {
@@ -10758,13 +10581,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description The mapping sheet. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScoreHistory"];
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                    "text/csv": unknown;
                 };
             };
             /** @description Validation error */
@@ -14237,6 +14061,51 @@ export interface operations {
             query?: {
                 /** @description One Layer's package; omit for the whole Data Warehouse. */
                 layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveMappingSheet: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
+                format?: "xlsx" | "csv";
+                /** @description One Layer's mappings; omit for Core and Mart. */
+                layer?: ("core" | "mart") | null;
             };
             header?: never;
             path: {

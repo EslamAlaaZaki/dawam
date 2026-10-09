@@ -14,6 +14,9 @@ Public interface. Other modules import only what is re-exported here:
   inserts and the seed rows of generated tables; ``files`` saves it, plus ``seed_files``
   (CSV and ``INSERT`` script per generated table), to the file area. ``GET
   .../data-warehouse/ddl`` downloads it.
+- ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
+  sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
+  .../data-warehouse/mapping-sheet`` downloads it.
 - ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
   (errors: unparsable SQL, GROUP BY gaps; warnings: unmapped columns, a missing integration
   rule, data-type compatibility such as truncation, see ``type_compat``) and reads ``coverage``
@@ -45,6 +48,8 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .mapping_export import MappingExportService, MappingSheet
+from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_service import MappingService
 from .platforms import (
     PLATFORM_PROFILES,
@@ -74,12 +79,17 @@ __all__ = [
     "DdlService",
     "DdlServiceDep",
     "LayerSchemas",
+    "MappingExportService",
+    "MappingExportServiceDep",
     "MappingService",
+    "MappingSheet",
     "NamingRules",
     "PlatformProfile",
     "Score",
     "ScoreScheduler",
     "ScoreService",
+    "SheetFormat",
+    "SheetLayer",
     "StagingFlag",
     "StagingResult",
     "StagingService",

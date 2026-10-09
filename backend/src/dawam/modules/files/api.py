@@ -17,7 +17,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
 from dawam.modules.sources import DataDictionaryServiceDep, SourceSystemService
-from dawam.modules.warehouse import DataWarehouseService, DdlLayer, DdlServiceDep
+from dawam.modules.warehouse import (
+    DataWarehouseService,
+    DdlLayer,
+    DdlServiceDep,
+    MappingExportServiceDep,
+    SheetFormat,
+    SheetLayer,
+)
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
@@ -154,6 +161,27 @@ def save_ddl(
     for seed in ddl.seed_files(user, workspace_id, layer=layer):
         files.save_generated_to_warehouse(user, workspace_id, name=seed.name, data=seed.data)
     return _out(saved)
+
+
+@router.post(
+    "/data-warehouse/files/mapping-sheet", operation_id="saveMappingSheet", status_code=201
+)
+def save_mapping_sheet(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    files: FileServiceDep,
+    exports: MappingExportServiceDep,
+    format: SheetFormat = "xlsx",
+    layer: SheetLayer = None,
+) -> WorkspaceFile:
+    """Export the mapping sheet into the Data Warehouse's file area as
+    `mapping-sheet-<layer>.<format>` (or `mapping-sheet-data-warehouse.<format>`),
+    overwriting the previous one (owners and editors). 404 before the Data Warehouse is
+    set up."""
+    sheet = exports.export(user, workspace_id, fmt=format, layer=layer)
+    return _out(
+        files.save_generated_to_warehouse(user, workspace_id, name=sheet.name, data=sheet.data)
+    )
 
 
 def _attachment(name: str) -> str:
