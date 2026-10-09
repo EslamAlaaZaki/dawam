@@ -44,6 +44,7 @@ from .lineage_sql import (
     parse_branch,
     parse_expression,
 )
+from .score_trigger import touch
 from .tables import (
     BRANCH_NAME_MAX_LENGTH,
     MAPPING_TEXT_MAX_LENGTH,
@@ -135,6 +136,7 @@ class TableMappingView:
     branches: list[BranchView]
     coverage: list[ColumnCoverage]
     sql: str | None
+    kind: str = ""
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,28 @@ class MappingService:
             warehouse = self._warehouse(db, workspace_id)
             table = self._table(db, warehouse, table_id)
             return self._view(db, table)
+
+    def table_views(self, workspace_id: uuid.UUID) -> list[TableMappingView]:
+        """The mapping of every Core and Mart table, by Layer and name. Authorizes nothing:
+        the validation and coverage service has (it reads whole Workspaces). Empty before
+        the Data Warehouse is set up."""
+        with Session(self._engine) as db:
+            warehouse = db.scalars(
+                sa.select(DataWarehouseRecord).where(
+                    DataWarehouseRecord.workspace_id == workspace_id
+                )
+            ).first()
+            if warehouse is None:
+                return []
+            tables = db.scalars(
+                sa.select(DwTableRecord)
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.layer.in_(tuple(SOURCE_LAYER)),
+                )
+                .order_by(DwTableRecord.layer, DwTableRecord.name, DwTableRecord.id)
+            )
+            return [self._view(db, table) for table in tables]
 
     def lineage(
         self,
@@ -530,6 +554,7 @@ class MappingService:
             branch = self._branch(db, mapping, branch_id)
             old = {f: getattr(branch, f) for f in BRANCH_FIELDS}
             db.execute(sa.delete(MappingBranchRecord).where(MappingBranchRecord.id == branch.id))
+            touch(db, "table", table.id)  # a bulk delete is not seen as a flush
             db.execute(
                 sa.update(MappingBranchRecord)
                 .where(
@@ -1134,6 +1159,7 @@ class MappingService:
                 columns, records, branches, branch_records, generated=table.kind == "generated"
             ),
             sql=self._compose_sql(platform, columns, branch_views) if branch_views else None,
+            kind=table.kind,
         )
 
     def _branch_view(

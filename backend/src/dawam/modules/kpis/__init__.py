@@ -6,7 +6,9 @@ Public interface. Other modules import only what is re-exported here:
   ``KpiPage``, ``KpiTarget``), under a Source System or under the Data Warehouse
   (``source_system_id`` ``None``; no Data Warehouse setup needed). Every call
   authorizes through the workspaces module's policy; every change is audited and
-  recorded as activity.
+  recorded as activity. ``suggest`` creates the AI's suggestions as draft KPIs
+  (``origin`` ``ai``, with a ``rationale``), create-only: it skips names that exist,
+  redacts values the PII validators match, and audits each KPI as ``via=ai``.
   Formula SQL is one SELECT query validated with sqlglot against the Core and Mart tables of
   the Data Warehouse (only parsed before it is set up). ``links`` / ``set_links`` read and
   replace the DW columns a KPI uses (``KpiLinks``, ``KpiLink``), at the highest Layer
@@ -30,8 +32,10 @@ from .service import (
     KpiLinks,
     KpiPage,
     KpiService,
+    KpiSuggestion,
     KpiTarget,
     LinkCandidates,
+    SuggestedKpis,
 )
 
 __all__ = [
@@ -41,7 +45,9 @@ __all__ = [
     "KpiLinks",
     "KpiPage",
     "KpiService",
+    "KpiSuggestion",
     "KpiTarget",
     "LinkCandidates",
+    "SuggestedKpis",
     "router",
 ]

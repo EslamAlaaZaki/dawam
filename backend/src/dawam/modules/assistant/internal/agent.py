@@ -38,6 +38,8 @@ from .prompt import quote_data
 from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
 
 DEFAULT_MAX_TOOL_CALLS = 25
+DEFAULT_MAX_JOB_TOOL_CALLS = 150
+"""The cap of a background job, which explores far more than a chat answer."""
 
 ToolStatus = Literal["ok", "refused", "error", "skipped"]
 RunStatus = Literal["completed", "tool_limit", "cancelled", "failed"]

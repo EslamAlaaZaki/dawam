@@ -77,7 +77,13 @@ function sse(frames: string[]): Response {
   });
 }
 
-const TOOL = { name: "get_object", arguments: { kind: "kpi" }, status: "ok", duration_ms: 42 };
+const JOB_ID = "99999999-9999-4999-8999-999999999999";
+const TOOL = {
+  name: "get_object",
+  arguments: { kind: "kpi" },
+  status: "ok",
+  duration_ms: 42,
+};
 
 interface Options {
   status?: Workspace["status"];
@@ -85,6 +91,7 @@ interface Options {
   detail?: ConversationDetail;
   answer?: () => Response | Promise<Response>;
   stopped?: () => void;
+  job?: Record<string, unknown>;
 }
 
 function backend(options: Options = {}) {
@@ -95,7 +102,11 @@ function backend(options: Options = {}) {
       case `GET ${API}`:
         return json(workspace(options.status));
       case `GET ${API}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET ${API}/members`:
         return json({ items: [] });
       case `GET ${API}/jobs`:
@@ -105,9 +116,13 @@ function backend(options: Options = {}) {
       case `POST ${ASSISTANT}`:
         return json(NEW_CONVERSATION, 201);
       case `GET ${ASSISTANT}/${CONVERSATION_ID}`:
-        return json(options.detail ?? { conversation: NEW_CONVERSATION, messages: [] });
+        return json(
+          options.detail ?? { conversation: NEW_CONVERSATION, messages: [] },
+        );
       case `POST ${ASSISTANT}/${CONVERSATION_ID}/messages`:
         return options.answer?.();
+      case `GET /api/v1/jobs/${JOB_ID}`:
+        return json(options.job);
       case `POST ${ASSISTANT}/${CONVERSATION_ID}/stop`:
         options.stopped?.();
         return noContent();
@@ -139,7 +154,10 @@ describe("the assistant's chat panel", () => {
             frame("tool", TOOL),
             frame("text", { text: "Net Revenue " }),
             frame("text", { text: "is a KPI." }),
-            frame("done", { run: run({ tool_calls: [TOOL] }), message_id: "a" }),
+            frame("done", {
+              run: run({ tool_calls: [TOOL] }),
+              message_id: "a",
+            }),
           ]),
         detail: {
           conversation: NEW_CONVERSATION,
@@ -166,11 +184,17 @@ describe("the assistant's chat panel", () => {
 
     await ask("What is Net Revenue?");
 
-    expect(await screen.findByText("Net Revenue is a KPI.")).toBeInTheDocument();
-    const tools = screen.getByText("1 tool used").closest("details") as HTMLElement;
+    expect(
+      await screen.findByText("Net Revenue is a KPI."),
+    ).toBeInTheDocument();
+    const tools = screen
+      .getByText("1 tool used")
+      .closest("details") as HTMLElement;
     expect(within(tools).getByText("get_object")).toBeInTheDocument();
     expect(within(tools).getByText(/42 ms/)).toBeInTheDocument();
-    const sent = requests.find((r) => r.method === "POST" && r.path.endsWith("/messages"));
+    const sent = requests.find(
+      (r) => r.method === "POST" && r.path.endsWith("/messages"),
+    );
     expect(sent).toMatchObject({
       csrf: CSRF_TOKEN,
       body: {
@@ -186,7 +210,12 @@ describe("the assistant's chat panel", () => {
       arguments: { sql: "SELECT COUNT(*) FROM s.t" },
       status: "ok",
       duration_ms: 12,
-      result: { columns: ["n"], row_count: 1, duration_ms: 12, can_write: true },
+      result: {
+        columns: ["n"],
+        row_count: 1,
+        duration_ms: 12,
+        can_write: true,
+      },
     };
     renderApp(
       backend({
@@ -195,7 +224,10 @@ describe("the assistant's chat panel", () => {
             frame("started", { run_id: "r", message_id: "m" }),
             frame("tool", query),
             frame("text", { text: "Counted." }),
-            frame("done", { run: run({ tool_calls: [query] }), message_id: "a" }),
+            frame("done", {
+              run: run({ tool_calls: [query] }),
+              message_id: "a",
+            }),
           ]),
         detail: {
           conversation: NEW_CONVERSATION,
@@ -226,6 +258,61 @@ describe("the assistant's chat panel", () => {
     expect(screen.getAllByText(/1 rows/).length).toBeGreaterThan(0);
   });
 
+  it("shows the progress of a job the assistant started", async () => {
+    const start = {
+      name: "start_job",
+      arguments: { title: "Explore tables", task: "x" },
+      status: "ok",
+      duration_ms: 5,
+      result: { job_id: JOB_ID, title: "Explore tables" },
+    };
+    renderApp(
+      backend({
+        job: {
+          id: JOB_ID,
+          status: "running",
+          progress: 40,
+          error: null,
+          log: "",
+        },
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Explore everything",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [start] }),
+            },
+          ],
+        },
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", start),
+            frame("text", { text: "Started." }),
+            frame("done", {
+              run: run({ tool_calls: [start] }),
+              message_id: "a",
+            }),
+          ]),
+      }),
+      PATH,
+    );
+
+    await ask("Explore everything");
+
+    const job = await screen.findByRole("status", {
+      name: "Job: Explore tables",
+    });
+    expect(await within(job).findByText("running")).toBeInTheDocument();
+    expect(within(job).getByRole("progressbar")).toHaveAttribute("value", "40");
+    expect(
+      within(job).getByRole("button", { name: "Cancel job" }),
+    ).toBeInTheDocument();
+  });
+
   it("stops the running answer with the Stop button", async () => {
     let finish: () => void = () => {};
     const stream = new ReadableStream<Uint8Array>({
@@ -234,7 +321,12 @@ describe("the assistant's chat panel", () => {
         controller.enqueue(encoder.encode(frame("text", { text: "Looking" })));
         finish = () => {
           controller.enqueue(
-            encoder.encode(frame("done", { run: run({ status: "cancelled" }), message_id: null })),
+            encoder.encode(
+              frame("done", {
+                run: run({ status: "cancelled" }),
+                message_id: null,
+              }),
+            ),
           );
           controller.close();
         };
@@ -242,7 +334,10 @@ describe("the assistant's chat panel", () => {
     });
     const requests = renderApp(
       backend({
-        answer: () => new Response(stream, { headers: { "Content-Type": "text/event-stream" } }),
+        answer: () =>
+          new Response(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
         stopped: () => finish(),
       }),
       PATH,
@@ -253,10 +348,16 @@ describe("the assistant's chat panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole("button", { name: "Stop" }),
+      ).not.toBeInTheDocument(),
     );
     expect(
-      requests.find((r) => r.method === "POST" && r.path === `${ASSISTANT}/${CONVERSATION_ID}/stop`),
+      requests.find(
+        (r) =>
+          r.method === "POST" &&
+          r.path === `${ASSISTANT}/${CONVERSATION_ID}/stop`,
+      ),
     ).toMatchObject({ csrf: CSRF_TOKEN });
   });
 
@@ -270,7 +371,8 @@ describe("the assistant's chat panel", () => {
               run: run({
                 status: "failed",
                 error_code: "token_budget_exhausted",
-                error_message: "The Workspace's monthly AI token budget is used up.",
+                error_message:
+                  "The Workspace's monthly AI token budget is used up.",
               }),
               message_id: null,
             }),
@@ -309,8 +411,12 @@ describe("the assistant's chat panel", () => {
 
     expect(await screen.findByText("An old question")).toBeInTheDocument();
     expect(screen.getByText(/conversations are read-only/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Ask the assistant")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "New conversation" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Ask the assistant"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "New conversation" }),
+    ).not.toBeInTheDocument();
   });
 
   it("lets the owner share a conversation, and only read a colleague's", async () => {
@@ -318,7 +424,11 @@ describe("the assistant's chat panel", () => {
       backend({
         conversations: [
           NEW_CONVERSATION,
-          { ...NEW_CONVERSATION, id: "88888888-8888-4888-8888-888888888888", mine: false },
+          {
+            ...NEW_CONVERSATION,
+            id: "88888888-8888-4888-8888-888888888888",
+            mine: false,
+          },
         ],
       }),
       PATH,

@@ -16,7 +16,8 @@ export function isActive(job: Job): boolean {
   return ACTIVE.has(job.status);
 }
 
-export const jobsKey = (workspaceId: string) => ["workspace", workspaceId, "jobs"] as const;
+export const jobsKey = (workspaceId: string) =>
+  ["workspace", workspaceId, "jobs"] as const;
 
 /** The Workspace's latest jobs, newest first; refreshed while any of them is active. */
 export function useJobs(workspaceId: string) {
@@ -39,19 +40,46 @@ export function useJobs(workspaceId: string) {
   });
 }
 
-export function useCancelJob(workspaceId: string) {
+/** One job (e.g. an assistant task started from the chat); refreshed while it is active. */
+export function useJob(jobId: string) {
   const client = useApiClient();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (jobId: string) => {
-      const { data, error, response } = await client.POST("/api/v1/jobs/{job_id}/cancel", {
-        params: { path: { job_id: jobId } },
-      });
+  return useQuery({
+    queryKey: ["job", jobId] as const,
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data && !isActive(query.state.data) ? false : REFRESH_MS,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/jobs/{job_id}",
+        {
+          params: { path: { job_id: jobId } },
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
       return data;
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
+  });
+}
+
+export function useCancelJob(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId: string) => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/jobs/{job_id}/cancel",
+        {
+          params: { path: { job_id: jobId } },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
   });
 }

@@ -1,7 +1,7 @@
 """add kpi links: the DW columns each KPI uses (kpis module).
 
 Revision ID: c58e1a0d4f27
-Revises: a3f90c1d7b52
+Revises: 8237a178c5bd
 Create Date: 2026-10-09 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c58e1a0d4f27"
-down_revision: str | Sequence[str] | None = "a3f90c1d7b52"
+down_revision: str | Sequence[str] | None = "8237a178c5bd"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

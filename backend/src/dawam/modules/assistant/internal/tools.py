@@ -25,7 +25,8 @@ from pydantic import BaseModel, Field, ValidationError
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
-from dawam.modules.kpis import KpiService
+from dawam.modules.jobs import JobService
+from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
@@ -35,6 +36,7 @@ from dawam.modules.sources import (
     SnapshotService,
     SourceQueryService,
 )
+from dawam.modules.warehouse import ScoreService, ValidationService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
@@ -46,6 +48,9 @@ logger = logging.getLogger(__name__)
 MAX_RESULT_CHARS = 20_000
 MAX_FILE_TEXT_CHARS = 15_000
 MAX_PROPOSED_ITEMS = 200
+MAX_JOB_ITEMS = 1000
+ASSISTANT_JOB = "assistant_task"
+"""The background job type that runs a long assistant task."""
 
 
 @dataclass(frozen=True)
@@ -57,7 +62,10 @@ class ToolServices:
     profiling: ProfilingService
     pii: PiiService
     documents: DocumentSearchService
+    scores: ScoreService
+    validation: ValidationService
     source_queries: SourceQueryService
+    jobs: JobService
 
 
 @dataclass(frozen=True)
@@ -71,6 +79,8 @@ class ToolContext:
     conversation_id: uuid.UUID | None = None
     budget: QueryBudget = field(default_factory=QueryBudget)
     """The source-query seconds this run has left (one budget per run)."""
+    proposals: Proposals | None = None
+    """Set for a job: ``propose_changes`` collects here instead of proposing at once."""
 
 
 @dataclass(frozen=True)
@@ -93,6 +103,8 @@ class Tool:
     run: Callable[[ToolContext, Any], Any]
     level: DataSharingLevel | None = None
     """The data-sharing level the Workspace needs for the tool to be used at all."""
+    chat_only: bool = False
+    """Not offered to a job (a job does not start jobs)."""
 
     @property
     def spec(self) -> ToolSpec:
@@ -141,6 +153,12 @@ class _GetPiiFindings(BaseModel):
     status: Literal["suggested", "confirmed", "dismissed"] | None = None
 
 
+class _GetScore(BaseModel):
+    limit: int = Field(
+        default=30, ge=1, le=100, description="At most this many failed checks, errors first."
+    )
+
+
 class _SearchDocuments(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     system_id: uuid.UUID | None = Field(
@@ -164,6 +182,28 @@ class _GenerateFile(BaseModel):
     system_id: uuid.UUID = Field(description="The Source System whose file area gets the file.")
     name: str = Field(min_length=1, max_length=200, description="File name, e.g. `notes.md`.")
     content: str = Field(max_length=200_000, description="The file's text.")
+
+
+class _KpiIdea(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="The KPI's name.")
+    rationale: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="Why this KPI fits: which tables, columns or documents point to it.",
+    )
+    definition: str = Field(default="", max_length=4000, description="The business definition.")
+    formula_text: str = Field(default="", max_length=4000, description="The formula in words.")
+    unit: str = Field(default="", max_length=50)
+    aggregation: str = Field(default="", max_length=50)
+
+
+class _SuggestKpis(BaseModel):
+    suggestions: list[_KpiIdea] = Field(min_length=1, max_length=20)
+    system_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Source System the KPIs are documented under; leave out for the "
+        "Data Warehouse.",
+    )
 
 
 class _RunSourceQuery(BaseModel):
@@ -304,6 +344,60 @@ def _propose_kpi_links(ctx: ToolContext, args: _ProposeKpiLinks) -> Any:
         "note": "The user reviews these changes; nothing has been changed yet.",
         "items": len(detail.items),
     }
+
+
+class _StartJob(BaseModel):
+    title: str = Field(min_length=1, max_length=200, description="A short name for the job.")
+    task: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="The whole task, self-contained: the job does not see this conversation.",
+    )
+
+
+class Proposals:
+    """The changes a job proposes: held until the job succeeds, then made one Change Set.
+    A job that aborts discards them, so it leaves no Change Set behind."""
+
+    def __init__(self) -> None:
+        self.source_system_id: uuid.UUID | None = None
+        self.items: list[_ChangeItem] = []
+
+    def add(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> int:
+        self.check(source_system_id, items)
+        self.source_system_id = source_system_id
+        self.items.extend(items)
+        return len(self.items)
+
+    def check(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> None:
+        if self.source_system_id not in (None, source_system_id):
+            raise ApiError(
+                422,
+                "one_source_system",
+                "A job's changes go into one Change Set, so they are all for one Source System.",
+            )
+        taken = {item.key for item in self.items}
+        for item in items:
+            if item.key in taken:
+                raise ApiError(422, "duplicate_key", f"The key `{item.key}` is already used.")
+            taken.add(item.key)
+        if len(self.items) + len(items) > MAX_JOB_ITEMS:
+            raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
+
+
+def _proposed_items(items: Sequence[_ChangeItem]) -> list[ProposedItem]:
+    return [
+        ProposedItem(
+            key=item.key,
+            object_type=item.object_type,
+            operation="update",
+            object_id=item.object_id,
+            payload=item.changes,
+            label=item.label,
+            depends_on=item.depends_on,
+        )
+        for item in items
+    ]
 
 
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
@@ -602,6 +696,37 @@ def _get_pii_findings(ctx: ToolContext, args: _GetPiiFindings) -> Any:
     ]
 
 
+def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
+    score = ctx.services.scores.current(ctx.user, ctx.workspace_id)
+    return {
+        "score": score.score,
+        "grade": score.grade,
+        "capped_at_c_by_errors": score.capped,
+        "calculated_at": score.calculated_at,
+        "layers": [
+            {
+                "layer": item.layer,
+                "score": item.score if item.scored else "not scored",
+                "grade": item.grade,
+            }
+            for item in score.layers
+        ],
+        "checks_failed": score.checks_failed,
+        "failed_checks": [
+            {
+                "check": f.check_code,
+                "severity": f.severity,
+                "layer": f.layer,
+                "object": f.object_name,
+                "problem": f.message,
+                "fix_hint": f.fix_hint,
+                "link": f.link,
+            }
+            for f in score.failed_checks[: args.limit]
+        ],
+    }
+
+
 def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
     passages = ctx.services.documents.search(
         ctx.user, ctx.workspace_id, args.query, system_id=args.system_id, limit=args.limit
@@ -634,6 +759,21 @@ def _read_file(ctx: ToolContext, args: _ReadFile) -> Any:
     return {"name": text.file.name, "content": content}
 
 
+class _RunValidation(BaseModel):
+    pass
+
+
+def _run_validation(ctx: ToolContext, args: _RunValidation) -> Any:
+    report = ctx.services.validation.run_validation(ctx.user, ctx.workspace_id)
+    return {
+        "error_count": report.error_count,
+        "warning_count": report.warning_count,
+        "problems": report.problems,
+        "coverage": report.coverage,
+        "link": f"/workspaces/{ctx.workspace_id}/data-warehouse",
+    }
+
+
 def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     # Model-written text may quote a value it saw: validator-detectable PII is redacted.
     return ctx.services.files.save_generated(
@@ -643,6 +783,31 @@ def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
         name=redact_text(args.name),
         data=redact_text(args.content).encode(),
     )
+
+
+def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
+    result = ctx.services.kpis.suggest(
+        ctx.user,
+        ctx.workspace_id,
+        [KpiSuggestion(**idea.model_dump()) for idea in args.suggestions],
+        source_system_id=args.system_id,
+    )
+    folder = "dw" if args.system_id is None else f"systems/{args.system_id}"
+    return {
+        "created": [
+            {
+                "id": kpi.id,
+                "name": kpi.name,
+                "status": kpi.status,
+                "origin": kpi.origin,
+                "link": f"?folder={folder}/kpis",
+            }
+            for kpi in result.created
+        ],
+        "skipped": result.skipped,
+        "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
+        "existing KPIs are never changed.",
+    }
 
 
 def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
@@ -675,6 +840,27 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
 
 def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     """The changes are not made: they become a Change Set the user reviews."""
+    if ctx.proposals is not None:  # in a job: one Change Set when the job succeeds
+        proposals = ctx.proposals
+        proposals.check(args.source_system_id, args.items)
+        # Validated now, so a bad object is reported to the model rather than failing the job.
+        ctx.services.change_sets.validate(
+            ctx.user,
+            ctx.workspace_id,
+            scope={
+                "kind": "source_enhancements",
+                "source_system_id": str(args.source_system_id),
+            },
+            items=_proposed_items(args.items),
+            earlier_keys=[item.key for item in proposals.items],
+        )
+        total = proposals.add(args.source_system_id, args.items)
+        return {
+            "status": "collected",
+            "note": "These changes join the job's Change Set, which the user reviews when the "
+            "job finishes; nothing has been changed yet.",
+            "items_so_far": total,
+        }
     detail = ctx.services.change_sets.propose(
         ctx.user,
         ctx.workspace_id,
@@ -701,6 +887,29 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
         "note": "The user reviews these changes; nothing has been changed yet.",
         "items": len(detail.items),
     }
+
+
+def _start_job(ctx: ToolContext, args: _StartJob) -> Any:
+    job = ctx.services.jobs.submit(
+        ctx.workspace_id,
+        ASSISTANT_JOB,
+        {
+            "user_id": str(ctx.user.id),
+            "workspace_id": str(ctx.workspace_id),
+            "title": args.title,
+            "conversation_id": str(ctx.conversation_id) if ctx.conversation_id else None,
+            "task": args.task,
+        },
+        title=args.title,
+        created_by=ctx.user.id,
+    )
+    content = {
+        "job_id": job.id,
+        "status": job.status,
+        "note": "The job runs in the background and the member follows it in the chat. "
+        "Tell them it started; do not wait for its result.",
+    }
+    return Reported(content, {"job_id": str(job.id), "title": job.title})
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -751,6 +960,15 @@ TOOLS: tuple[Tool, ...] = (
         _get_pii_findings,
     ),
     Tool(
+        "get_score",
+        "The Data Warehouse's rule-based design score (0-100) and grade, each Layer's score, "
+        "and the failed checks with severity, the object at fault and a fix hint.",
+        _GetScore,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _get_score,
+    ),
+    Tool(
         "search_documents",
         "Search the uploaded documents; each passage names its document and section.",
         _SearchDocuments,
@@ -777,6 +995,16 @@ TOOLS: tuple[Tool, ...] = (
         level=DataSharingLevel.DOCUMENTS,
     ),
     Tool(
+        "run_validation",
+        "Validate the Core and Mart mappings of the Data Warehouse: errors (SQL that does not "
+        "parse, GROUP BY gaps), warnings (unmapped columns, data-type truncation) and the "
+        "mapping coverage per table, Layer and Data Warehouse.",
+        _RunValidation,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _run_validation,
+    ),
+    Tool(
         "run_source_query",
         "Run one read-only SELECT on a Source System that has a live Connection, to check a "
         "hunch (e.g. a COUNT(*) overlap between two columns). At most 100 rows come back, "
@@ -794,6 +1022,17 @@ TOOLS: tuple[Tool, ...] = (
         "write",
         Action.UPLOAD_FILE,
         _generate_file,
+    ),
+    Tool(
+        "suggest_kpis",
+        "After reading a Source System's schema, profiles and documents, propose KPIs. They "
+        "are created as AI-labelled drafts with your rationale; a name that already exists "
+        "is skipped and existing KPIs are never changed. Never put sample values or "
+        "personal data in the text.",
+        _SuggestKpis,
+        "write",
+        Action.EDIT_KPI,
+        _suggest_kpis,
     ),
     Tool(
         "propose_changes",
@@ -822,6 +1061,17 @@ TOOLS: tuple[Tool, ...] = (
         "write",
         Action.REVIEW_CHANGE_SETS,
         _propose_kpi_links,
+    ),
+    Tool(
+        "start_job",
+        "Hand a large task (exploring many tables, generating a whole layer) to a background "
+        "job that can make many more tool calls than this chat. It reports progress here and "
+        "ends in one Change Set for the user to review. Give the complete task.",
+        _StartJob,
+        "write",
+        Action.ASK_ASSISTANT,
+        _start_job,
+        chat_only=True,
     ),
 )
 
@@ -901,7 +1151,11 @@ class ToolRegistry:
         workspace_id: uuid.UUID,
         policy: DataSharingPolicy,
         conversation_id: uuid.UUID | None = None,
+        *,
+        job: bool = False,
     ) -> BoundTools:
+        """The tools of one run. ``job``: a background job's tools (no ``start_job``; its
+        proposed changes are held for one Change Set, see ``BoundTools.submit_proposals``)."""
         ctx = ToolContext(
             user,
             workspace_id,
@@ -909,6 +1163,7 @@ class ToolRegistry:
             policy,
             conversation_id,
             QueryBudget(self._source_query_seconds),
+            Proposals() if job else None,
         )
         return BoundTools(self, ctx, policy)
 
@@ -947,12 +1202,46 @@ class BoundTools:
         return [
             tool.spec
             for tool in self._registry.all()
-            if self._registry.allowed(self._ctx, self._policy, tool) is None
+            if self._offered(tool) and self._registry.allowed(self._ctx, self._policy, tool) is None
         ]
+
+    def _offered(self, tool: Tool) -> bool:
+        return not (tool.chat_only and self._ctx.proposals is not None)
+
+    def submit_proposals(self, title: str) -> int:
+        """Make the changes a job collected into one Change Set; how many items it has (0:
+        none were proposed, so there is no Change Set)."""
+        proposals = self._ctx.proposals
+        if proposals is None or proposals.source_system_id is None:
+            return 0
+        detail = self._ctx.services.change_sets.propose(
+            self._ctx.user,
+            self._ctx.workspace_id,
+            origin="ai",
+            scope={
+                "kind": "source_enhancements",
+                "source_system_id": str(proposals.source_system_id),
+            },
+            title=title,
+            conversation_id=self._ctx.conversation_id,
+            items=[
+                ProposedItem(
+                    key=item.key,
+                    object_type=item.object_type,
+                    operation="update",
+                    object_id=item.object_id,
+                    payload=item.changes,
+                    label=item.label,
+                    depends_on=item.depends_on,
+                )
+                for item in proposals.items
+            ],
+        )
+        return len(detail.items)
 
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         tool = self._registry.get(name)
-        if tool is None:
+        if tool is None or not self._offered(tool):
             return ToolOutcome(f"There is no tool called `{name}`.", "error")
         refusal = self._registry.allowed(self._ctx, self._policy, tool)
         if refusal is not None:

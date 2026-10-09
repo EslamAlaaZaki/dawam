@@ -170,6 +170,11 @@ class Settings(DatabaseSettings):
     """Largest file an upload may carry, in megabytes (MiB)."""
     assistant_max_tool_calls: int = Field(default=25, ge=1)
     """Tool calls the assistant may make while answering one message (spec §6.16)."""
+    score_debounce_seconds: float = Field(default=2.0, ge=0)
+    """How long after a design change the Data Warehouse score is recalculated, so a burst of
+    edits is scored once; 0 scores at once."""
+    assistant_job_max_tool_calls: int = Field(default=150, ge=1)
+    """Tool calls an assistant job may make (spec §6.16); a job explores far more than a chat."""
     assistant_source_query_seconds: float = Field(default=120, gt=0)
     """Total seconds of source queries the assistant may run while answering one message
     (spec §6.8)."""
