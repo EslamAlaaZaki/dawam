@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
+from dawam.modules.jobs import JobService
 from dawam.modules.kpis import KpiService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
@@ -46,6 +47,9 @@ logger = logging.getLogger(__name__)
 MAX_RESULT_CHARS = 20_000
 MAX_FILE_TEXT_CHARS = 15_000
 MAX_PROPOSED_ITEMS = 200
+MAX_JOB_ITEMS = 1000
+ASSISTANT_JOB = "assistant_task"
+"""The background job type that runs a long assistant task."""
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,7 @@ class ToolServices:
     pii: PiiService
     documents: DocumentSearchService
     source_queries: SourceQueryService
+    jobs: JobService
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,8 @@ class ToolContext:
     conversation_id: uuid.UUID | None = None
     budget: QueryBudget = field(default_factory=QueryBudget)
     """The source-query seconds this run has left (one budget per run)."""
+    proposals: Proposals | None = None
+    """Set for a job: ``propose_changes`` collects here instead of proposing at once."""
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,8 @@ class Tool:
     run: Callable[[ToolContext, Any], Any]
     level: DataSharingLevel | None = None
     """The data-sharing level the Workspace needs for the tool to be used at all."""
+    chat_only: bool = False
+    """Not offered to a job (a job does not start jobs)."""
 
     @property
     def spec(self) -> ToolSpec:
@@ -203,6 +212,42 @@ class _ProposeChanges(BaseModel):
     title: str = Field(min_length=1, max_length=200, description="What the changes are for.")
     source_system_id: uuid.UUID = Field(description="The Source System the objects belong to.")
     items: list[_ChangeItem] = Field(min_length=1, max_length=MAX_PROPOSED_ITEMS)
+
+
+class _StartJob(BaseModel):
+    title: str = Field(min_length=1, max_length=200, description="A short name for the job.")
+    task: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="The whole task, self-contained: the job does not see this conversation.",
+    )
+
+
+class Proposals:
+    """The changes a job proposes: held until the job succeeds, then made one Change Set.
+    A job that aborts discards them, so it leaves no Change Set behind."""
+
+    def __init__(self) -> None:
+        self.source_system_id: uuid.UUID | None = None
+        self.items: list[_ChangeItem] = []
+
+    def add(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> int:
+        if self.source_system_id not in (None, source_system_id):
+            raise ApiError(
+                422,
+                "one_source_system",
+                "A job's changes go into one Change Set, so they are all for one Source System.",
+            )
+        taken = {item.key for item in self.items}
+        for item in items:
+            if item.key in taken:
+                raise ApiError(422, "duplicate_key", f"The key `{item.key}` is already used.")
+            taken.add(item.key)
+        if len(self.items) + len(items) > MAX_JOB_ITEMS:
+            raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
+        self.source_system_id = source_system_id
+        self.items.extend(items)
+        return len(self.items)
 
 
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
@@ -574,6 +619,14 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
 
 def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     """The changes are not made: they become a Change Set the user reviews."""
+    if ctx.proposals is not None:  # in a job: one Change Set when the job succeeds
+        total = ctx.proposals.add(args.source_system_id, args.items)
+        return {
+            "status": "collected",
+            "note": "These changes join the job's Change Set, which the user reviews when the "
+            "job finishes; nothing has been changed yet.",
+            "items_so_far": total,
+        }
     detail = ctx.services.change_sets.propose(
         ctx.user,
         ctx.workspace_id,
@@ -600,6 +653,29 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
         "note": "The user reviews these changes; nothing has been changed yet.",
         "items": len(detail.items),
     }
+
+
+def _start_job(ctx: ToolContext, args: _StartJob) -> Any:
+    job = ctx.services.jobs.submit(
+        ctx.workspace_id,
+        ASSISTANT_JOB,
+        {
+            "user_id": str(ctx.user.id),
+            "workspace_id": str(ctx.workspace_id),
+            "title": args.title,
+            "conversation_id": str(ctx.conversation_id) if ctx.conversation_id else None,
+            "task": args.task,
+        },
+        title=args.title,
+        created_by=ctx.user.id,
+    )
+    content = {
+        "job_id": job.id,
+        "status": job.status,
+        "note": "The job runs in the background and the member follows it in the chat. "
+        "Tell them it started; do not wait for its result.",
+    }
+    return Reported(content, {"job_id": str(job.id), "title": job.title})
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -704,6 +780,17 @@ TOOLS: tuple[Tool, ...] = (
         Action.REVIEW_CHANGE_SETS,
         _propose_changes,
     ),
+    Tool(
+        "start_job",
+        "Hand a large task (exploring many tables, generating a whole layer) to a background "
+        "job that can make many more tool calls than this chat. It reports progress here and "
+        "ends in one Change Set for the user to review. Give the complete task.",
+        _StartJob,
+        "write",
+        Action.ASK_ASSISTANT,
+        _start_job,
+        chat_only=True,
+    ),
 )
 
 
@@ -782,7 +869,11 @@ class ToolRegistry:
         workspace_id: uuid.UUID,
         policy: DataSharingPolicy,
         conversation_id: uuid.UUID | None = None,
+        *,
+        job: bool = False,
     ) -> BoundTools:
+        """The tools of one run. ``job``: a background job's tools (no ``start_job``; its
+        proposed changes are held for one Change Set, see ``BoundTools.submit_proposals``)."""
         ctx = ToolContext(
             user,
             workspace_id,
@@ -790,6 +881,7 @@ class ToolRegistry:
             policy,
             conversation_id,
             QueryBudget(self._source_query_seconds),
+            Proposals() if job else None,
         )
         return BoundTools(self, ctx, policy)
 
@@ -828,12 +920,46 @@ class BoundTools:
         return [
             tool.spec
             for tool in self._registry.all()
-            if self._registry.allowed(self._ctx, self._policy, tool) is None
+            if self._offered(tool) and self._registry.allowed(self._ctx, self._policy, tool) is None
         ]
+
+    def _offered(self, tool: Tool) -> bool:
+        return not (tool.chat_only and self._ctx.proposals is not None)
+
+    def submit_proposals(self, title: str) -> int:
+        """Make the changes a job collected into one Change Set; how many items it has (0:
+        none were proposed, so there is no Change Set)."""
+        proposals = self._ctx.proposals
+        if proposals is None or proposals.source_system_id is None:
+            return 0
+        detail = self._ctx.services.change_sets.propose(
+            self._ctx.user,
+            self._ctx.workspace_id,
+            origin="ai",
+            scope={
+                "kind": "source_enhancements",
+                "source_system_id": str(proposals.source_system_id),
+            },
+            title=title,
+            conversation_id=self._ctx.conversation_id,
+            items=[
+                ProposedItem(
+                    key=item.key,
+                    object_type=item.object_type,
+                    operation="update",
+                    object_id=item.object_id,
+                    payload=item.changes,
+                    label=item.label,
+                    depends_on=item.depends_on,
+                )
+                for item in proposals.items
+            ],
+        )
+        return len(detail.items)
 
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         tool = self._registry.get(name)
-        if tool is None:
+        if tool is None or not self._offered(tool):
             return ToolOutcome(f"There is no tool called `{name}`.", "error")
         refusal = self._registry.allowed(self._ctx, self._policy, tool)
         if refusal is not None:

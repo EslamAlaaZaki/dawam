@@ -13,7 +13,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -22,6 +22,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
+from dawam.modules.jobs import JobCancelledError, JobContext
 from dawam.modules.llm import Message, RoleService, WorkspaceAiService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
@@ -29,6 +30,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_json, redact_text
 
 from .internal.agent import (
+    DEFAULT_MAX_JOB_TOOL_CALLS,
     DEFAULT_MAX_TOOL_CALLS,
     Finished,
     Text,
@@ -36,7 +38,7 @@ from .internal.agent import (
     ToolFinished,
     run_agent,
 )
-from .internal.prompt import SYSTEM_PROMPT, quote_data
+from .internal.prompt import JOB_PROMPT, SYSTEM_PROMPT, quote_data
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -174,6 +176,8 @@ class AssistantService:
         tools: ToolRegistry,
         clock: Clock,
         max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
+        max_job_tool_calls: int = DEFAULT_MAX_JOB_TOOL_CALLS,
+        users: Callable[[uuid.UUID], User | None] = lambda _: None,
         timer: Callable[[], float] = time.monotonic,
     ) -> None:
         self._engine = engine
@@ -183,6 +187,8 @@ class AssistantService:
         self._tools = tools
         self._clock = clock
         self._max_tool_calls = max_tool_calls
+        self._max_job_tool_calls = max_job_tool_calls
+        self._users = users
         self._timer = timer
 
     # -- conversations ---------------------------------------------------------------
@@ -356,6 +362,112 @@ class AssistantService:
                 .where(RunRecord.conversation_id == conversation_id, RunRecord.status == "running")
                 .values(cancel_requested=True)
             )
+
+    # -- long tasks as jobs ------------------------------------------------------------
+
+    def run_job(self, params: Mapping[str, Any], ctx: JobContext) -> None:
+        """The ``assistant_task`` job handler: the same agent loop as a chat, as the member
+        who handed the task over, with the higher job cap. Progress and each tool call go to
+        the job's log. Success makes the changes it collected one Change Set; a failure,
+        spent budget or cancellation raises, so no Change Set is made. The outcome is also
+        written into the conversation the task came from."""
+        task = str(params.get("task", ""))
+        workspace_id = uuid.UUID(str(params["workspace_id"]))
+        conversation_id = (
+            uuid.UUID(str(params["conversation_id"])) if params.get("conversation_id") else None
+        )
+        title = str(params.get("title", "")) or "Assistant job"
+        user = self._users(uuid.UUID(str(params["user_id"])))
+        if user is None or not user.is_active:
+            raise RuntimeError("The member who started this job can no longer sign in.")
+        cap = self._max_job_tool_calls
+        ctx.log(f"Started: {task[:200]}")
+        calls = 0
+        finished: Finished
+        try:
+            gateway = self._roles.gateway_for_role(
+                "agent", workspace_id=workspace_id, user_id=user.id
+            )
+            tools = self._tools.bind(
+                user, workspace_id, self._ai.policy(workspace_id), conversation_id, job=True
+            )
+            finished = Finished("completed", "", [], 0, 0)
+            for event in run_agent(
+                gateway,
+                tools,
+                system=SYSTEM_PROMPT + JOB_PROMPT,
+                history=[Message("user", task)],
+                max_tool_calls=cap,
+                is_cancelled=lambda: ctx.cancelled,
+                timer=self._timer,
+                delta_poll_seconds=STOP_POLL_SECONDS,
+            ):
+                if isinstance(event, Finished):
+                    finished = event
+                    break
+                if isinstance(event, ToolFinished):
+                    calls += 1
+                    ctx.log(f"{event.call.name} {event.call.status}")
+                    ctx.progress(min(95, calls * 100 // cap))
+        except ApiError as exc:  # no model assigned, internal-only refusal
+            finished = Finished("failed", "", [], 0, 0, exc.code, exc.message)
+        except Exception:
+            logger.exception("assistant job crashed", extra={"job_id": str(ctx.job_id)})
+            finished = Finished(
+                "failed", "", [], 0, 0, "internal_error", "The assistant hit an unexpected error."
+            )
+        ctx.log(
+            f"Ended: {finished.status} after {calls} tool calls, "
+            f"{finished.prompt_tokens} prompt and {finished.completion_tokens} completion tokens."
+        )
+        if finished.status == "cancelled":
+            self._post(conversation_id, f"Job cancelled: {title}. No changes were proposed.")
+            raise JobCancelledError
+        if finished.status == "failed":
+            reason = redact_text(finished.error_message or "The assistant could not finish.")
+            self._post(conversation_id, f"Job failed: {title}. {reason} No changes were proposed.")
+            raise RuntimeError(reason)
+        try:
+            proposed = tools.submit_proposals(title)
+        except ApiError as exc:
+            ctx.log(f"The Change Set was refused: {exc.message}")
+            self._post(
+                conversation_id,
+                f"Job failed: {title}. The proposed changes were refused: {exc.message} "
+                "No changes were proposed.",
+            )
+            raise RuntimeError(exc.message) from exc
+        summary = redact_text(finished.text).strip() or "The job has finished."
+        outcome = f"Job finished: {summary}"
+        if proposed:
+            ctx.log(f"Proposed one Change Set with {proposed} items.")
+            outcome += f"\n\nIt proposed {proposed} changes for your review."
+        self._post(conversation_id, outcome)
+
+    def _post(self, conversation_id: uuid.UUID | None, content: str) -> None:
+        """Add the job's outcome to the conversation it came from, as an assistant message."""
+        if conversation_id is None:
+            return
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            conversation = db.scalars(
+                sa.select(ConversationRecord)
+                .where(ConversationRecord.id == conversation_id)
+                .with_for_update()
+            ).first()
+            if conversation is None:
+                return
+            db.add(
+                MessageRecord(
+                    id=uuid.uuid4(),
+                    conversation_id=conversation_id,
+                    position=self._next_position(db, conversation_id),
+                    role="assistant",
+                    content=content[:MESSAGE_MAX_LENGTH],
+                    created_at=now,
+                )
+            )
+            conversation.updated_at = now
 
     # -- the run ---------------------------------------------------------------------
 

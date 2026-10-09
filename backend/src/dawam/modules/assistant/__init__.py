@@ -12,18 +12,23 @@ Public interface. Other modules import only what is re-exported here:
   workspaces module's ``can`` as the requesting user (a viewer's chat can only use read
   tools) and respects the Workspace's data-sharing level. Tool results, page context and
   everything read from the Workspace reach the model as quoted data.
+- Long tasks as jobs (story 153): the ``start_job`` tool hands a task to an ``assistant_task``
+  background job (``ASSISTANT_JOB``), run by ``AssistantService.run_job`` with a higher tool-call
+  cap; it logs progress, ends in at most one Change Set, and reports into the conversation.
+  ``build_assistant_service`` assembles the service for both the API and the worker.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/assistant/conversations``,
   ``GET|PATCH .../conversations/{conversation_id}``, ``POST .../conversations/{id}/messages``
   (answers over Server-Sent Events) and ``POST .../conversations/{id}/stop``.
 
 Owns the ``assistant_conversations``, ``assistant_messages`` and ``assistant_runs`` tables.
-Imports ``auth``, ``workspaces``, ``llm``, ``files``, ``kpis``, ``changesets``, ``notifications``,
-``sources`` and ``warehouse``.
+Imports ``auth``, ``workspaces``, ``jobs``, ``llm``, ``files``, ``kpis``, ``changesets``,
+``notifications``, ``sources`` and ``warehouse``.
 """
 
 from .api import router
-from .internal.agent import DEFAULT_MAX_TOOL_CALLS
-from .internal.tools import ToolRegistry, ToolServices
+from .assembly import build_assistant_service
+from .internal.agent import DEFAULT_MAX_JOB_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS
+from .internal.tools import ASSISTANT_JOB, ToolRegistry, ToolServices
 from .service import (
     AssistantService,
     ChatMessage,
@@ -38,6 +43,8 @@ from .service import (
 )
 
 __all__ = [
+    "ASSISTANT_JOB",
+    "DEFAULT_MAX_JOB_TOOL_CALLS",
     "DEFAULT_MAX_TOOL_CALLS",
     "AssistantService",
     "ChatMessage",
@@ -50,6 +57,7 @@ __all__ = [
     "ToolCallView",
     "ToolRegistry",
     "ToolServices",
+    "build_assistant_service",
     "readable_conversations",
     "router",
 ]
