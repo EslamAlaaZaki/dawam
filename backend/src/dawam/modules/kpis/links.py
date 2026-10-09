@@ -31,7 +31,7 @@ from dawam.modules.warehouse import (
 )
 from dawam.platform.errors import ApiError
 
-from .tables import MAX_LINKS, KpiLinkRecord
+from .tables import MAX_LINKS, KpiLinkRecord, KpiRecord
 
 WRITING = (exp.DML, exp.DDL, exp.Into, exp.Lock, exp.Command, exp.Copy)
 """Nodes that write or lock, which a SELECT can still hide: a data-modifying CTE
@@ -163,3 +163,17 @@ def drop_links(db: Session, kpi_id: uuid.UUID) -> None:
 
 def described(db: Session, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> list[SchemaColumn]:
     return describe_columns(db, workspace_id, link_ids(db, kpi_id))
+
+
+def kpi_names(
+    db: Session, workspace_id: uuid.UUID, kpi_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """The name of each given id that is a KPI of the Workspace (others are left out)."""
+    if not kpi_ids:
+        return {}
+    rows = db.execute(
+        sa.select(KpiRecord.id, KpiRecord.name).where(
+            KpiRecord.id.in_(kpi_ids), KpiRecord.workspace_id == workspace_id
+        )
+    )
+    return {kpi_id: name for kpi_id, name in rows}

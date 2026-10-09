@@ -23,6 +23,7 @@ from tests.authz.matrix import (
     colleague_id,
     credentials_of,
     describe,
+    dw_column_id,
     ensure_data_warehouse,
     linked_file_id,
     outcome_of,
@@ -765,6 +766,21 @@ ROWS: list[Row] = [
         "Open Workspace content (a column's lineage)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    # Lineage graph and impact report (stories 79, 110, 111, 112).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage",
+        "View lineage, scores, AI evaluation findings, exports, audit log (a node's lineage)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        query=lambda roles: {"node": dw_column_id(roles)},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/impact",
+        "View lineage, scores, AI evaluation findings, exports, audit log (a node's impact)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        query=lambda roles: {"node": dw_column_id(roles)},
+    ),
     # DDL export (story 97).
     Row(
         "GET",
@@ -823,6 +839,13 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations/{evaluation_id}/findings/{index}/change-set",
         "Accept / reject Change Set items (a finding becomes a Change Set)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/stars",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the star health cards)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=_set_up_data_warehouse,
     ),
     # Mapping sheet export (story 108).

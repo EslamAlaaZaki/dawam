@@ -23,6 +23,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .mapping_service import SYSTEM_ROLES
+from .score_checks import is_date_dimension
 from .score_checks import registry as default_registry
 from .scoring import (
     ALL_LAYERS,
@@ -116,6 +117,41 @@ class ScoreRunView:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class StarDimension:
+    table_id: uuid.UUID
+    name: str
+    column_id: uuid.UUID
+    column_name: str
+    conformed: bool
+    link: str
+
+
+@dataclass(frozen=True)
+class StarMeasure:
+    column_id: uuid.UUID
+    name: str
+    additivity: str | None
+    link: str
+
+
+@dataclass(frozen=True)
+class StarCard:
+    """One fact table's health: what the star is made of, and the checks that failed on it."""
+
+    table_id: uuid.UUID
+    layer: str
+    name: str
+    fact_type: str | None
+    grain: str | None
+    score: float
+    dimensions: list[StarDimension]
+    measures: list[StarMeasure]
+    date_dimension: StarDimension | None
+    failed_checks: list[FailedCheck]
+    link: str
+
+
 def _not_set_up() -> ApiError:
     return ApiError(404, "not_found", "The Data Warehouse is not set up yet.")
 
@@ -201,6 +237,67 @@ class ScoreService:
             ScoreRunView(r.id, r.score, r.grade, _layer_views(r.per_layer), r.created_at)
             for r in reversed(runs)
         ]
+
+    def stars(self, user: User, workspace_id: uuid.UUID) -> list[StarCard]:
+        """One health card per fact table of Core and Mart (any member), worst first: grain,
+        linked dimensions (conformed or not), measures with their additivity, the date
+        dimension and the failed checks with links to the objects at fault. 404
+        ``not_found`` before set up."""
+        score = self.current(user, workspace_id)
+        scores = {t.table_id: t.score for t in score.tables}
+        failures: dict[uuid.UUID, list[FailedCheck]] = defaultdict(list)
+        for check in score.failed_checks:
+            failures[check.table_id].append(check)
+        with Session(self._engine) as db:
+            warehouse_id = self._warehouse_id(db, workspace_id)
+            warehouse = db.get(DataWarehouseRecord, warehouse_id)
+            assert warehouse is not None
+            design = self._design(db, warehouse)
+        cards = [
+            self._card(t, design, scores.get(t.id, 100.0), failures.get(t.id, []))
+            for t in design.tables
+            if t.kind == "fact" and t.layer in ("core", "mart")
+        ]
+        cards.sort(key=lambda c: (c.score, c.name.lower()))
+        return cards
+
+    @staticmethod
+    def _card(
+        table: DesignTable, design: Design, score: float, failed: list[FailedCheck]
+    ) -> StarCard:
+        dimensions: list[StarDimension] = []
+        for c in table.columns:
+            target = design.table(c.references_table_id) if c.role == "fk" else None
+            if target is not None and target.kind in ("dimension", "generated"):
+                dimensions.append(
+                    StarDimension(
+                        target.id,
+                        target.name,
+                        c.id,
+                        c.name,
+                        target.is_conformed,
+                        link_to(table.id, "column", c.id),
+                    )
+                )
+        return StarCard(
+            table_id=table.id,
+            layer=table.layer,
+            name=table.name,
+            fact_type=table.fact_type,
+            grain=(table.grain or "").strip() or None,
+            score=score,
+            dimensions=dimensions,
+            measures=[
+                StarMeasure(c.id, c.name, c.additivity, link_to(table.id, "column", c.id))
+                for c in table.columns
+                if c.role == "measure"
+            ],
+            date_dimension=next(
+                (d for d in dimensions if is_date_dimension(design.by_id[d.table_id])), None
+            ),
+            failed_checks=failed,
+            link=link_to(table.id, "table", table.id),
+        )
 
     # --- recalculating ---------------------------------------------------------------
 

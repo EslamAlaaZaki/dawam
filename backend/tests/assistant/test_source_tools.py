@@ -473,6 +473,7 @@ METADATA_TOOLS = {
     "run_validation",
     "get_score",
     "evaluate_dw",
+    "get_lineage",
 }
 LEVELS = [
     ("metadata", METADATA_TOOLS),

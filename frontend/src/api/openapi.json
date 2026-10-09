@@ -3724,6 +3724,61 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/stars": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Get Star Health Cards",
+        "description": "One health card per fact table of Core and Mart (any member): grain, linked\ndimensions with the conformed ones marked, measures with their additivity, the date\ndimension, and the failed checks with links to the objects at fault. Built from the\nlatest check results. 404 before the Data Warehouse is set up.",
+        "operationId": "getStarHealthCards",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StarCards"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
       "get": {
         "tags": [
@@ -9351,6 +9406,165 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/KpiLinks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage": {
+      "get": {
+        "tags": [
+          "lineage"
+        ],
+        "summary": "Get Lineage",
+        "description": "The lineage graph around a node (any member): every node and edge on a path of at\nmost `depth` edges to it (`upstream`), from it (`downstream`) or both. `uses` and\n`lookup` edges point at the table they steer.",
+        "operationId": "getLineage",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "A source or DW column, a DW table or a KPI.",
+              "title": "Node"
+            },
+            "description": "A source or DW column, a DW table or a KPI."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "upstream",
+                "downstream",
+                "both"
+              ],
+              "type": "string",
+              "default": "both",
+              "title": "Direction"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 64,
+              "minimum": 1,
+              "default": 64,
+              "title": "Depth"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeLineage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/impact": {
+      "get": {
+        "tags": [
+          "lineage"
+        ],
+        "summary": "Get Impact",
+        "description": "What depends on a node, typically a source column (any member): the DW columns,\nDW tables and KPIs downstream of it.",
+        "operationId": "getLineageImpact",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "A source or DW column, a DW table or a KPI.",
+              "title": "Node"
+            },
+            "description": "A source or DW column, a DW table or a KPI."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactReport"
                 }
               }
             }
@@ -16943,6 +17157,42 @@
         ],
         "title": "ForgotPasswordRequest"
       },
+      "ImpactReport": {
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/LineageNode"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Kpis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "columns",
+          "tables",
+          "kpis"
+        ],
+        "title": "ImpactReport"
+      },
       "ImportIssue": {
         "properties": {
           "sheet": {
@@ -17853,6 +18103,85 @@
           "edges"
         ],
         "title": "LineageGraph"
+      },
+      "LineageGraphEdge": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "value",
+              "uses",
+              "lookup",
+              "kpi"
+            ],
+            "title": "Kind"
+          },
+          "from_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Id"
+          },
+          "to_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "from_id",
+          "to_id"
+        ],
+        "title": "LineageGraphEdge"
+      },
+      "LineageNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "src_column",
+              "dw_column",
+              "dw_table",
+              "kpi"
+            ],
+            "title": "Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "source",
+              "staging",
+              "core",
+              "mart",
+              "kpi"
+            ],
+            "title": "Layer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "label",
+          "layer"
+        ],
+        "title": "LineageNode"
       },
       "LinkDocumentRequest": {
         "properties": {
@@ -19173,6 +19502,34 @@
           "expected"
         ],
         "title": "NamingViolation"
+      },
+      "NodeLineage": {
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/LineageNode"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/LineageGraphEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "nodes",
+          "edges"
+        ],
+        "title": "NodeLineage"
       },
       "Notification": {
         "properties": {
@@ -22646,6 +23003,210 @@
           "flags"
         ],
         "title": "StagingResult"
+      },
+      "StarCard": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "fact_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Type"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain",
+            "description": "null: no grain statement yet."
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "The fact's own score, 0-100."
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/StarDimension"
+            },
+            "type": "array",
+            "title": "Dimensions",
+            "description": "Dimensions the fact links to."
+          },
+          "measures": {
+            "items": {
+              "$ref": "#/components/schemas/StarMeasure"
+            },
+            "type": "array",
+            "title": "Measures"
+          },
+          "date_dimension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StarDimension"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: no link to a date dimension."
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/FailedCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks",
+            "description": "Errors first; each links to its object."
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "layer",
+          "name",
+          "fact_type",
+          "grain",
+          "score",
+          "dimensions",
+          "measures",
+          "date_dimension",
+          "failed_checks",
+          "link"
+        ],
+        "title": "StarCard"
+      },
+      "StarCards": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StarCard"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Worst score first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "StarCards"
+      },
+      "StarDimension": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id",
+            "description": "The fact's foreign key column."
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "conformed": {
+            "type": "boolean",
+            "title": "Conformed",
+            "description": "Shared by several facts, with one meaning."
+          },
+          "link": {
+            "type": "string",
+            "title": "Link",
+            "description": "An app path to the foreign key."
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "name",
+          "column_id",
+          "column_name",
+          "conformed",
+          "link"
+        ],
+        "title": "StarDimension"
+      },
+      "StarMeasure": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "additivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "additive",
+                  "semi_additive",
+                  "non_additive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additivity",
+            "description": "null: not declared yet."
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "name",
+          "additivity",
+          "link"
+        ],
+        "title": "StarMeasure"
       },
       "StartProfilingRequest": {
         "properties": {

@@ -27,6 +27,7 @@ from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
 from dawam.modules.jobs import JobService
 from dawam.modules.kpis import KpiService, KpiSuggestion
+from dawam.modules.lineage import LineageService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
@@ -70,6 +71,7 @@ class ToolServices:
     documents: DocumentSearchService
     scores: ScoreService
     evaluations: EvaluationService
+    lineage: LineageService
     validation: ValidationService
     source_queries: SourceQueryService
     jobs: JobService
@@ -158,6 +160,21 @@ class _GetSnapshotDiff(BaseModel):
 class _GetPiiFindings(BaseModel):
     system_id: uuid.UUID = Field(description=SYSTEM_ID)
     status: Literal["suggested", "confirmed", "dismissed"] | None = None
+
+
+class _GetLineage(BaseModel):
+    node_id: uuid.UUID = Field(
+        description="A source column, DW column, DW table or KPI id to start from."
+    )
+    direction: Literal["upstream", "downstream", "both"] = Field(
+        default="upstream",
+        description="upstream: where it comes from; downstream: what depends on it.",
+    )
+    depth: int = Field(default=64, ge=1, le=64, description="At most this many edges away.")
+
+
+LINEAGE_NODE_LIMIT = 200
+"""The most nodes a ``get_lineage`` result names; the rest are counted."""
 
 
 class _GetScore(BaseModel):
@@ -741,6 +758,24 @@ def _get_pii_findings(ctx: ToolContext, args: _GetPiiFindings) -> Any:
     ]
 
 
+def _get_lineage(ctx: ToolContext, args: _GetLineage) -> Any:
+    graph = ctx.services.lineage.graph(
+        ctx.user, ctx.workspace_id, args.node_id, args.direction, args.depth
+    )
+    nodes = graph.nodes[:LINEAGE_NODE_LIMIT]
+    named = {n.id: f"{n.label} ({n.layer})" for n in nodes}
+    return {
+        "start": named.get(graph.start.id, graph.start.label),
+        "nodes": [{"id": n.id, "type": n.type, "label": n.label, "layer": n.layer} for n in nodes],
+        "edges": [
+            {"kind": e.kind, "from": named[e.from_id], "to": named[e.to_id]}
+            for e in graph.edges
+            if e.from_id in named and e.to_id in named
+        ],
+        "nodes_left_out": len(graph.nodes) - len(nodes),
+    }
+
+
 def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
     score = ctx.services.scores.current(ctx.user, ctx.workspace_id)
     return {
@@ -1052,6 +1087,17 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.REVIEW_PII,
         _get_pii_findings,
+    ),
+    Tool(
+        "get_lineage",
+        "Column-level lineage of a node (source column, DW column or table, KPI): the nodes "
+        "and edges upstream (where it comes from) or downstream (what depends on it). Edge "
+        "kinds: value (feeds the value), uses (a join, filter or GROUP BY steers the table), "
+        "lookup (fact key to dimension), kpi (column a KPI links).",
+        _GetLineage,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _get_lineage,
     ),
     Tool(
         "get_score",

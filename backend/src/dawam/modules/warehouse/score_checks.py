@@ -184,7 +184,7 @@ def no_fact_to_fact_fk(column: DesignColumn, table: DesignTable, design: Design)
     return PASS
 
 
-def _is_date_dimension(table: DesignTable) -> bool:
+def is_date_dimension(table: DesignTable) -> bool:
     return (
         table.kind == "generated"
         or table.name.lower() == "dim_date"
@@ -211,7 +211,7 @@ def _time_based(table: DesignTable) -> bool:
 def time_fact_has_date_dimension(table: DesignTable, design: Design) -> Outcome | None:
     if not _time_based(table):
         return None
-    if any(_is_date_dimension(t) for t in _foreign_keys(table, design)):
+    if any(is_date_dimension(t) for t in _foreign_keys(table, design)):
         return PASS
     return fail(f"{table.name} has time-based measures but no foreign key to a date dimension.")
 
