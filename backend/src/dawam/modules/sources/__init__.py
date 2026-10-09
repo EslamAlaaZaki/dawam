@@ -64,6 +64,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``StagingSourceService``: for the warehouse module (it authorizes first), ``read`` the tables
   staging generation covers (base tables, and views opted in with ``include_view_in_staging``)
   and ``assign_placeholders`` (the stable ``placeholder_no`` of non-Latin names).
+  ``source_column_labels`` (in the caller's session, no permission check) names a
+  Workspace's source columns ``SYSTEM.schema.table.column`` for the lineage graph.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
@@ -139,6 +141,7 @@ from .staging_source_service import (
     StagingSourceService,
     StagingSystem,
     StagingTable,
+    source_column_labels,
 )
 from .summary_service import SourceSummary, SourceSummaryService
 
@@ -201,5 +204,6 @@ __all__ = [
     "is_protected",
     "load_guard_catalog",
     "router",
+    "source_column_labels",
     "untraceable_views",
 ]

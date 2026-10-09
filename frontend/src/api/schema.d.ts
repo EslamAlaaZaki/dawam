@@ -2482,6 +2482,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Lineage
+         * @description The lineage graph around a node (any member): every node and edge on a path of at
+         *     most `depth` edges to it (`upstream`), from it (`downstream`) or both. `uses` and
+         *     `lookup` edges point at the table they steer.
+         */
+        get: operations["getLineage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Impact
+         * @description What depends on a node, typically a source column (any member): the DW columns,
+         *     DW tables and KPIs downstream of it.
+         */
+        get: operations["getLineageImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/comments": {
         parameters: {
             query?: never;
@@ -5092,6 +5135,16 @@ export interface components {
             /** Email */
             email: string;
         };
+        /** ImpactReport */
+        ImpactReport: {
+            start: components["schemas"]["LineageNode"];
+            /** Columns */
+            columns: components["schemas"]["LineageNode"][];
+            /** Tables */
+            tables: components["schemas"]["LineageNode"][];
+            /** Kpis */
+            kpis: components["schemas"]["LineageNode"][];
+        };
         /** ImportIssue */
         ImportIssue: {
             /**
@@ -5519,6 +5572,49 @@ export interface components {
         LineageGraph: {
             /** Edges */
             edges: components["schemas"]["LineageEdge"][];
+        };
+        /** LineageGraphEdge */
+        LineageGraphEdge: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "value" | "uses" | "lookup" | "kpi";
+            /**
+             * From Id
+             * Format: uuid
+             */
+            from_id: string;
+            /**
+             * To Id
+             * Format: uuid
+             */
+            to_id: string;
+        };
+        /** LineageNode */
+        LineageNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "src_column" | "dw_column" | "dw_table" | "kpi";
+            /** Label */
+            label: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "source" | "staging" | "core" | "mart" | "kpi";
         };
         /** LinkDocumentRequest */
         LinkDocumentRequest: {
@@ -6124,6 +6220,14 @@ export interface components {
              * @description The prefix, or the case style, the name should follow.
              */
             expected: string;
+        };
+        /** NodeLineage */
+        NodeLineage: {
+            start: components["schemas"]["LineageNode"];
+            /** Nodes */
+            nodes: components["schemas"]["LineageNode"][];
+            /** Edges */
+            edges: components["schemas"]["LineageGraphEdge"][];
         };
         /** Notification */
         Notification: {
@@ -14342,6 +14446,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KpiLinks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLineage: {
+        parameters: {
+            query: {
+                /** @description A source or DW column, a DW table or a KPI. */
+                node: string;
+                direction?: "upstream" | "downstream" | "both";
+                depth?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLineage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLineageImpact: {
+        parameters: {
+            query: {
+                /** @description A source or DW column, a DW table or a KPI. */
+                node: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactReport"];
                 };
             };
             /** @description Validation error */

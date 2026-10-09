@@ -121,8 +121,10 @@ class Row:
     """A request body that would succeed for an allowed role."""
     files: Body | None = field(default=None, kw_only=True)
     """Multipart form files (``{"file": (name, bytes, type)}``) for an upload route."""
-    query: Mapping[str, str] | None = field(default=None, kw_only=True)
-    """Query parameters a route requires."""
+    query: Mapping[str, str] | Callable[[RoleClients], Mapping[str, str]] | None = field(
+        default=None, kw_only=True
+    )
+    """Query parameters a route requires (or a function of the clients that makes them)."""
     setup: Callable[[RoleClients], object] | None = field(default=None, kw_only=True)
     """Run before the request, for state an allowed role needs to succeed (e.g. a
     second owner, so the owner may leave)."""
@@ -656,7 +658,8 @@ def send(row: Row, role: Role, roles: RoleClients) -> Any:
     path = request_path(row, roles)
     json = row.json(roles) if row.json is not None else None
     files = row.files(roles) if row.files is not None else None
-    return client.request(row.method, path, json=json, files=files, params=row.query)
+    query = row.query(roles) if callable(row.query) else row.query
+    return client.request(row.method, path, json=json, files=files, params=query)
 
 
 _IGNORED_METHODS = frozenset({"HEAD", "OPTIONS"})
