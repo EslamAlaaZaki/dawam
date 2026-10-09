@@ -26,7 +26,7 @@ from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
 from dawam.modules.jobs import JobService
-from dawam.modules.kpis import KpiService
+from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
@@ -36,6 +36,7 @@ from dawam.modules.sources import (
     SnapshotService,
     SourceQueryService,
 )
+from dawam.modules.warehouse import ValidationService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
@@ -61,6 +62,7 @@ class ToolServices:
     profiling: ProfilingService
     pii: PiiService
     documents: DocumentSearchService
+    validation: ValidationService
     source_queries: SourceQueryService
     jobs: JobService
 
@@ -173,6 +175,28 @@ class _GenerateFile(BaseModel):
     system_id: uuid.UUID = Field(description="The Source System whose file area gets the file.")
     name: str = Field(min_length=1, max_length=200, description="File name, e.g. `notes.md`.")
     content: str = Field(max_length=200_000, description="The file's text.")
+
+
+class _KpiIdea(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="The KPI's name.")
+    rationale: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="Why this KPI fits: which tables, columns or documents point to it.",
+    )
+    definition: str = Field(default="", max_length=4000, description="The business definition.")
+    formula_text: str = Field(default="", max_length=4000, description="The formula in words.")
+    unit: str = Field(default="", max_length=50)
+    aggregation: str = Field(default="", max_length=50)
+
+
+class _SuggestKpis(BaseModel):
+    suggestions: list[_KpiIdea] = Field(min_length=1, max_length=20)
+    system_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Source System the KPIs are documented under; leave out for the "
+        "Data Warehouse.",
+    )
 
 
 class _RunSourceQuery(BaseModel):
@@ -596,6 +620,21 @@ def _read_file(ctx: ToolContext, args: _ReadFile) -> Any:
     return {"name": text.file.name, "content": content}
 
 
+class _RunValidation(BaseModel):
+    pass
+
+
+def _run_validation(ctx: ToolContext, args: _RunValidation) -> Any:
+    report = ctx.services.validation.run_validation(ctx.user, ctx.workspace_id)
+    return {
+        "error_count": report.error_count,
+        "warning_count": report.warning_count,
+        "problems": report.problems,
+        "coverage": report.coverage,
+        "link": f"/workspaces/{ctx.workspace_id}/data-warehouse",
+    }
+
+
 def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     # Model-written text may quote a value it saw: validator-detectable PII is redacted.
     return ctx.services.files.save_generated(
@@ -605,6 +644,31 @@ def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
         name=redact_text(args.name),
         data=redact_text(args.content).encode(),
     )
+
+
+def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
+    result = ctx.services.kpis.suggest(
+        ctx.user,
+        ctx.workspace_id,
+        [KpiSuggestion(**idea.model_dump()) for idea in args.suggestions],
+        source_system_id=args.system_id,
+    )
+    folder = "dw" if args.system_id is None else f"systems/{args.system_id}"
+    return {
+        "created": [
+            {
+                "id": kpi.id,
+                "name": kpi.name,
+                "status": kpi.status,
+                "origin": kpi.origin,
+                "link": f"?folder={folder}/kpis",
+            }
+            for kpi in result.created
+        ],
+        "skipped": result.skipped,
+        "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
+        "existing KPIs are never changed.",
+    }
 
 
 def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
@@ -783,6 +847,16 @@ TOOLS: tuple[Tool, ...] = (
         level=DataSharingLevel.DOCUMENTS,
     ),
     Tool(
+        "run_validation",
+        "Validate the Core and Mart mappings of the Data Warehouse: errors (SQL that does not "
+        "parse, GROUP BY gaps), warnings (unmapped columns, data-type truncation) and the "
+        "mapping coverage per table, Layer and Data Warehouse.",
+        _RunValidation,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _run_validation,
+    ),
+    Tool(
         "run_source_query",
         "Run one read-only SELECT on a Source System that has a live Connection, to check a "
         "hunch (e.g. a COUNT(*) overlap between two columns). At most 100 rows come back, "
@@ -800,6 +874,17 @@ TOOLS: tuple[Tool, ...] = (
         "write",
         Action.UPLOAD_FILE,
         _generate_file,
+    ),
+    Tool(
+        "suggest_kpis",
+        "After reading a Source System's schema, profiles and documents, propose KPIs. They "
+        "are created as AI-labelled drafts with your rationale; a name that already exists "
+        "is skipped and existing KPIs are never changed. Never put sample values or "
+        "personal data in the text.",
+        _SuggestKpis,
+        "write",
+        Action.EDIT_KPI,
+        _suggest_kpis,
     ),
     Tool(
         "propose_changes",

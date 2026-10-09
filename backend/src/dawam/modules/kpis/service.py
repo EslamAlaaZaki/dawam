@@ -17,6 +17,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
+from dawam.platform.pii_validators import redact_text
 
 from .tables import (
     AGGREGATION_MAX_LENGTH,
@@ -79,6 +80,8 @@ class Kpi:
     refresh_frequency: str
     targets: list[KpiTarget]
     origin: str
+    rationale: str | None
+    """Why the AI suggested it (``origin == "ai"``); ``None`` otherwise."""
     status: str
     version: int
     created_at: datetime
@@ -89,6 +92,29 @@ class Kpi:
 class KpiPage:
     items: list[Kpi]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class KpiSuggestion:
+    """One KPI the AI proposes."""
+
+    name: str
+    rationale: str
+    definition: str = ""
+    formula_text: str = ""
+    unit: str = ""
+    aggregation: str = ""
+
+
+@dataclass(frozen=True)
+class SuggestedKpis:
+    created: list[Kpi]
+    skipped: list[str]
+    """Names of suggestions left out because a KPI of that name already exists."""
+
+
+def _name_key(name: str) -> str:
+    return " ".join(name.lower().split())
 
 
 def _view(record: KpiRecord) -> Kpi:
@@ -106,6 +132,7 @@ def _view(record: KpiRecord) -> Kpi:
         refresh_frequency=record.refresh_frequency,
         targets=[KpiTarget(label=t["label"], value=t["value"]) for t in record.targets],
         origin=record.origin,
+        rationale=record.rationale,
         status=record.status,
         version=record.version,
         created_at=record.created_at,
@@ -243,6 +270,91 @@ class KpiService:
             )
             self._record_activity(db, user, "kpi.created", record)
             return _view(record)
+
+    def suggest(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        suggestions: Sequence[KpiSuggestion],
+        *,
+        source_system_id: uuid.UUID | None = None,
+    ) -> SuggestedKpis:
+        """Create the AI's suggestions as draft KPIs (``origin`` ``ai``, with a rationale),
+        under a Source System or the Data Warehouse. Create-only: a suggestion whose name
+        matches an existing KPI of the Workspace (ignoring case and spaces), or an earlier
+        suggestion, is skipped; no KPI is ever updated or deleted. One audit entry
+        ``via=ai`` per KPI. Every text is checked with the PII validators and matches are
+        redacted. 404 if the Source System is not in the Workspace; 422 ``invalid_kpi``
+        (nothing is created)."""
+        self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
+        if source_system_id is not None:
+            self._systems.get(user, workspace_id, source_system_id)
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            taken = {
+                _name_key(name)
+                for name in db.scalars(
+                    sa.select(KpiRecord.name).where(KpiRecord.workspace_id == workspace_id)
+                )
+            }
+            created: list[KpiRecord] = []
+            skipped: list[str] = []
+            for suggestion in suggestions:
+                name = _clean(
+                    redact_text(suggestion.name), "name", "name", NAME_MAX_LENGTH, required=True
+                )
+                if _name_key(name) in taken:
+                    skipped.append(name)
+                    continue
+                taken.add(_name_key(name))
+                texts = {
+                    field: _clean(redact_text(value), label, field, limit)
+                    for field, value in (
+                        ("definition", suggestion.definition),
+                        ("formula_text", suggestion.formula_text),
+                        ("unit", suggestion.unit),
+                        ("aggregation", suggestion.aggregation),
+                    )
+                    for label, limit in (_TEXT_FIELDS[field],)
+                }
+                record = KpiRecord(
+                    id=uuid.uuid4(),
+                    workspace_id=workspace_id,
+                    source_system_id=source_system_id,
+                    name=name,
+                    owner="",
+                    refresh_frequency="",
+                    targets=[],
+                    formula_sql=None,
+                    origin="ai",
+                    rationale=_clean(
+                        redact_text(suggestion.rationale), "rationale", "rationale", TEXT_MAX_LENGTH
+                    )
+                    or None,
+                    status="draft",
+                    created_by=user.id,
+                    created_at=now,
+                    updated_at=now,
+                    version=1,
+                    **texts,
+                )
+                db.add(record)
+                created.append(record)
+            db.flush()
+            for record in created:
+                record_audit(
+                    db,
+                    workspace_id=workspace_id,
+                    actor_id=user.id,
+                    entity_type="kpi",
+                    entity_id=record.id,
+                    old=None,
+                    new={**_snapshot(record), "origin": "ai", "rationale": record.rationale},
+                    at=now,
+                    via="ai",
+                )
+                self._record_activity(db, user, "kpi.created", record, details={"via": "ai"})
+            return SuggestedKpis(created=[_view(r) for r in created], skipped=skipped)
 
     def list(
         self,
