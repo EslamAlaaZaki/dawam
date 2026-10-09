@@ -18,29 +18,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from dawam.modules.auth import CurrentUser
-from dawam.modules.changesets import ChangeSetService
-from dawam.modules.files import FileService
-from dawam.modules.kpis import KpiService
-from dawam.modules.llm import ProviderService, RoleService, WorkspaceAiService
-from dawam.modules.notifications import NotificationService
-from dawam.modules.sources import (
-    PiiService,
-    ProfilingService,
-    SnapshotService,
-    SourceQueryService,
-    SourceSystemService,
-)
-from dawam.modules.warehouse import (
-    DataWarehouseService,
-    MappingService,
-    ScoreService,
-    ValidationService,
-)
-from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pii_validators import redact_json
 
+from .assembly import build_assistant_service
 from .internal.agent import Text, ToolFinished
-from .internal.tools import ToolRegistry, ToolServices
 from .service import (
     AssistantService,
     ChatMessage,
@@ -51,7 +32,6 @@ from .service import (
     RunView,
     Started,
     StreamEvent,
-    readable_conversations,
 )
 from .tables import MESSAGE_MAX_LENGTH, TITLE_MAX_LENGTH
 
@@ -60,78 +40,15 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/assistant", tags=["assista
 
 def assistant_service(request: Request) -> AssistantService:
     state = request.app.state
-    clock = state.services.clock
-    engine = state.engine
-    workspaces = WorkspaceService(engine, clock=clock)
-    systems = SourceSystemService(engine, workspaces=workspaces, clock=clock)
-    providers = ProviderService(
-        engine,
-        encryption_key=state.settings.encryption_key.get_secret_value(),
-        clock=clock,
-        **({"adapters": state.services.llm_adapters} if state.services.llm_adapters else {}),
-    )
-    encryption_key = state.settings.encryption_key.get_secret_value()
-    tools = ToolRegistry(
-        workspaces,
-        ToolServices(
-            kpis=KpiService(engine, workspaces=workspaces, systems=systems, clock=clock),
-            change_sets=ChangeSetService(
-                engine,
-                workspaces=workspaces,
-                handlers=state.change_set_handlers,
-                notifications=NotificationService(engine, clock=clock),
-                clock=clock,
-                conversations=readable_conversations(engine),
-            ),
-            files=FileService(
-                engine,
-                workspaces=workspaces,
-                systems=systems,
-                warehouses=DataWarehouseService(engine, workspaces=workspaces, clock=clock),
-                storage=state.storage,
-                search=state.document_search,
-                clock=clock,
-                max_upload_bytes=state.settings.upload_max_bytes,
-            ),
-            snapshots=SnapshotService(
-                engine,
-                workspaces=workspaces,
-                jobs=state.services.jobs,
-                encryption_key=encryption_key,
-                clock=clock,
-            ),
-            profiling=ProfilingService(
-                engine,
-                workspaces=workspaces,
-                jobs=state.services.jobs,
-                encryption_key=encryption_key,
-                clock=clock,
-            ),
-            pii=PiiService(engine, workspaces=workspaces, clock=clock),
-            documents=state.document_search,
-            scores=ScoreService(engine, workspaces=workspaces, clock=clock),
-            validation=ValidationService(
-                engine,
-                workspaces=workspaces,
-                mappings=MappingService(engine, workspaces=workspaces, clock=clock),
-            ),
-            source_queries=SourceQueryService(
-                engine,
-                workspaces=workspaces,
-                encryption_key=encryption_key,
-                clock=clock,
-            ),
-        ),
-        source_query_seconds=state.settings.assistant_source_query_seconds,
-    )
-    return AssistantService(
-        engine,
-        workspaces=workspaces,
-        roles=RoleService(engine, providers=providers, clock=clock),
-        ai=WorkspaceAiService(engine, workspaces=workspaces, clock=clock),
-        tools=tools,
-        clock=clock,
-        max_tool_calls=state.settings.assistant_max_tool_calls,
+    return build_assistant_service(
+        state.engine,
+        state.settings,
+        state.services.clock,
+        jobs=state.services.jobs,
+        storage=state.storage,
+        document_search=state.document_search,
+        change_set_handlers=state.change_set_handlers,
+        llm_adapters=state.services.llm_adapters,
     )
 
 
