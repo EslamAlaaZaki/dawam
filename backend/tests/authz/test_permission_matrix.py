@@ -810,6 +810,13 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=_set_up_data_warehouse,
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/stars",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the star health cards)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
     # Mapping sheet export (story 108).
     Row(
         "GET",

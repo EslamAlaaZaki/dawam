@@ -1047,6 +1047,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/stars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Star Health Cards
+         * @description One health card per fact table of Core and Mart (any member): grain, linked
+         *     dimensions with the conformed ones marked, measures with their additivity, the date
+         *     dimension, and the failed checks with links to the objects at fault. Built from the
+         *     latest check results. 404 before the Data Warehouse is set up.
+         */
+        get: operations["getStarHealthCards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
         parameters: {
             query?: never;
@@ -7709,6 +7732,102 @@ export interface components {
              */
             flags: components["schemas"]["StagingFlag"][];
         };
+        /** StarCard */
+        StarCard: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Name */
+            name: string;
+            /** Fact Type */
+            fact_type: string | null;
+            /**
+             * Grain
+             * @description null: no grain statement yet.
+             */
+            grain: string | null;
+            /**
+             * Score
+             * @description The fact's own score, 0-100.
+             */
+            score: number;
+            /**
+             * Dimensions
+             * @description Dimensions the fact links to.
+             */
+            dimensions: components["schemas"]["StarDimension"][];
+            /** Measures */
+            measures: components["schemas"]["StarMeasure"][];
+            /** @description null: no link to a date dimension. */
+            date_dimension: components["schemas"]["StarDimension"] | null;
+            /**
+             * Failed Checks
+             * @description Errors first; each links to its object.
+             */
+            failed_checks: components["schemas"]["FailedCheck"][];
+            /** Link */
+            link: string;
+        };
+        /** StarCards */
+        StarCards: {
+            /**
+             * Items
+             * @description Worst score first.
+             */
+            items: components["schemas"]["StarCard"][];
+        };
+        /** StarDimension */
+        StarDimension: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Column Id
+             * Format: uuid
+             * @description The fact's foreign key column.
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /**
+             * Conformed
+             * @description Shared by several facts, with one meaning.
+             */
+            conformed: boolean;
+            /**
+             * Link
+             * @description An app path to the foreign key.
+             */
+            link: string;
+        };
+        /** StarMeasure */
+        StarMeasure: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Additivity
+             * @description null: not declared yet.
+             */
+            additivity: ("additive" | "semi_additive" | "non_additive") | null;
+            /** Link */
+            link: string;
+        };
         /** StartProfilingRequest */
         StartProfilingRequest: {
             /**
@@ -10982,6 +11101,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoreHistory"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getStarHealthCards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarCards"];
                 };
             };
             /** @description Validation error */
