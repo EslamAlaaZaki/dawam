@@ -21,6 +21,7 @@ from . import service as svc
 from .ddl_api import router as ddl_router
 from .mapping_api import lineage_router
 from .mapping_api import router as mapping_router
+from .mapping_export_api import router as mapping_export_router
 from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .service import CaseStyle, DataWarehouseService, Weekday
@@ -32,6 +33,7 @@ router.include_router(model_router)
 router.include_router(mapping_router)
 router.include_router(lineage_router)
 router.include_router(ddl_router)
+router.include_router(mapping_export_router)
 router.include_router(validation_router)
 router.include_router(staging_router)
 
