@@ -52,8 +52,8 @@ from .platforms import (
     platform_profile,
 )
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
-from .validation_service import ValidationReport, ValidationService
 from .staging_service import StagingFlag, StagingResult, StagingService
+from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
     "PLATFORM_PROFILES",

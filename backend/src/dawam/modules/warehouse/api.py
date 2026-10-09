@@ -24,8 +24,8 @@ from .mapping_api import router as mapping_router
 from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .service import CaseStyle, DataWarehouseService, Weekday
-from .validation_api import router as validation_router
 from .staging_api import router as staging_router
+from .validation_api import router as validation_router
 
 router = APIRouter(tags=["data-warehouse"])
 router.include_router(model_router)
