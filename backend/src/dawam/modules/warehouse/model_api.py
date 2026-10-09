@@ -112,6 +112,10 @@ class DwColumn(BaseModel):
     review_flags: list[ReviewFlag] = Field(
         description="What staging generation flagged on a staging column (empty otherwise)."
     )
+    status: Literal["present", "source_removed"] = Field(
+        default="present",
+        description="`source_removed`: the source column is gone; the column stays, flagged.",
+    )
 
 
 class DwTableSummary(BaseModel):
@@ -131,6 +135,10 @@ class DwTableSummary(BaseModel):
     version: int
     naming_violation_count: int = Field(
         description="How many naming rules the table's own name breaks."
+    )
+    status: Literal["present", "source_removed"] = Field(
+        default="present",
+        description="`source_removed`: the source table is gone; the Staging Table stays, flagged.",
     )
 
 
@@ -155,6 +163,10 @@ class DwTable(BaseModel):
     naming_violations: list[NamingViolation]
     review_flags: list[ReviewFlag] = Field(
         description="What staging generation flagged on a Staging Table (empty otherwise)."
+    )
+    status: Literal["present", "source_removed"] = Field(
+        default="present",
+        description="`source_removed`: the source table is gone; the Staging Table stays, flagged.",
     )
 
 

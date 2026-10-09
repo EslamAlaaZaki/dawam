@@ -3979,6 +3979,126 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/sync": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-staging"
+        ],
+        "summary": "Sync Staging",
+        "description": "Propose a **sync** Change Set for one Source System from its latest Snapshot (owners\nand editors). It also runs by itself after every new Snapshot. Staging only: new tables\nand columns are created, changed columns updated, tables and columns dropped in the source\nkept and flagged `source_removed`. Tables an editor deleted are not proposed again, and a\nfield a user overrode is a conflict item. Nothing changes until the Change Set is\naccepted; it replaces a pending sync of the same Source System. 404 `not_found`.",
+        "operationId": "syncStaging",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposedChangeSet"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/drop-removed": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-staging"
+        ],
+        "summary": "Drop Removed Staging",
+        "description": "Propose a **drop removed** Change Set (owners and editors may ask; only an owner can\naccept its items): delete the `source_removed` staging tables and columns that no mapping\nreads. A Staging Table deleted this way keeps a Tombstone. 404 `not_set_up` before the Data\nWarehouse is set up.",
+        "operationId": "dropRemovedStaging",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposedChangeSet"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/data-warehouse/platforms": {
       "get": {
         "tags": [
@@ -12522,6 +12642,7 @@
           "assistant.ask",
           "data_warehouse.change_platform",
           "dw_schema.edit",
+          "dw_schema.retire_staging",
           "source_system.create",
           "source_system.edit",
           "source_system.change_code",
@@ -15767,6 +15888,16 @@
             "type": "array",
             "title": "Review Flags",
             "description": "What staging generation flagged on a staging column (empty otherwise)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed"
+            ],
+            "title": "Status",
+            "description": "`source_removed`: the source column is gone; the column stays, flagged.",
+            "default": "present"
           }
         },
         "type": "object",
@@ -15964,6 +16095,16 @@
             "type": "array",
             "title": "Review Flags",
             "description": "What staging generation flagged on a Staging Table (empty otherwise)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed"
+            ],
+            "title": "Status",
+            "description": "`source_removed`: the source table is gone; the Staging Table stays, flagged.",
+            "default": "present"
           }
         },
         "type": "object",
@@ -16091,6 +16232,16 @@
             "type": "integer",
             "title": "Naming Violation Count",
             "description": "How many naming rules the table's own name breaks."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed"
+            ],
+            "title": "Status",
+            "description": "`source_removed`: the source table is gone; the Staging Table stays, flagged.",
+            "default": "present"
           }
         },
         "type": "object",
@@ -19429,6 +19580,40 @@
         ],
         "title": "ProfilingStarted"
       },
+      "ProposedChangeSet": {
+        "properties": {
+          "change_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Set Id",
+            "description": "The pending Change Set, to review at `/change-sets/{id}`; null when there is nothing to change."
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items",
+            "description": "How many changes it proposes."
+          },
+          "conflicts": {
+            "type": "integer",
+            "title": "Conflicts",
+            "description": "Items that would overwrite a field a user overrode."
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set_id",
+          "items",
+          "conflicts"
+        ],
+        "title": "ProposedChangeSet"
+      },
       "ReassignOwnerRequest": {
         "properties": {
           "user_id": {
@@ -22188,6 +22373,20 @@
           "status"
         ],
         "title": "SuspectedPiiColumn"
+      },
+      "SyncRequest": {
+        "properties": {
+          "source_system_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source System Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_system_id"
+        ],
+        "title": "SyncRequest"
       },
       "SystemProgress": {
         "properties": {

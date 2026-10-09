@@ -50,6 +50,7 @@ const MART: DwTable = {
   columns: [],
   naming_violations: [],
   review_flags: [],
+  status: "present",
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
   version: 1,

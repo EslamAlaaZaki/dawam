@@ -1142,6 +1142,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Staging
+         * @description Propose a **sync** Change Set for one Source System from its latest Snapshot (owners
+         *     and editors). It also runs by itself after every new Snapshot. Staging only: new tables
+         *     and columns are created, changed columns updated, tables and columns dropped in the source
+         *     kept and flagged `source_removed`. Tables an editor deleted are not proposed again, and a
+         *     field a user overrode is a conflict item. Nothing changes until the Change Set is
+         *     accepted; it replaces a pending sync of the same Source System. 404 `not_found`.
+         */
+        post: operations["syncStaging"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/drop-removed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drop Removed Staging
+         * @description Propose a **drop removed** Change Set (owners and editors may ask; only an owner can
+         *     accept its items): delete the `source_removed` staging tables and columns that no mapping
+         *     reads. A Staging Table deleted this way keeps a Tombstone. 404 `not_set_up` before the Data
+         *     Warehouse is set up.
+         */
+        post: operations["dropRemovedStaging"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -3281,7 +3329,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -4748,6 +4796,13 @@ export interface components {
              * @description What staging generation flagged on a staging column (empty otherwise).
              */
             review_flags: components["schemas"]["ReviewFlag"][];
+            /**
+             * Status
+             * @description `source_removed`: the source column is gone; the column stays, flagged.
+             * @default present
+             * @enum {string}
+             */
+            status: "present" | "source_removed";
         };
         /**
          * DwDataType
@@ -4829,6 +4884,13 @@ export interface components {
              * @description What staging generation flagged on a Staging Table (empty otherwise).
              */
             review_flags: components["schemas"]["ReviewFlag"][];
+            /**
+             * Status
+             * @description `source_removed`: the source table is gone; the Staging Table stays, flagged.
+             * @default present
+             * @enum {string}
+             */
+            status: "present" | "source_removed";
         };
         /** DwTableList */
         DwTableList: {
@@ -4872,6 +4934,13 @@ export interface components {
              * @description How many naming rules the table's own name breaks.
              */
             naming_violation_count: number;
+            /**
+             * Status
+             * @description `source_removed`: the source table is gone; the Staging Table stays, flagged.
+             * @default present
+             * @enum {string}
+             */
+            status: "present" | "source_removed";
         };
         /** DwUnknownMember */
         DwUnknownMember: {
@@ -6390,6 +6459,24 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
+        /** ProposedChangeSet */
+        ProposedChangeSet: {
+            /**
+             * Change Set Id
+             * @description The pending Change Set, to review at `/change-sets/{id}`; null when there is nothing to change.
+             */
+            change_set_id: string | null;
+            /**
+             * Items
+             * @description How many changes it proposes.
+             */
+            items: number;
+            /**
+             * Conflicts
+             * @description Items that would overwrite a field a user overrode.
+             */
+            conflicts: number;
+        };
         /** ReassignOwnerRequest */
         ReassignOwnerRequest: {
             /**
@@ -7672,6 +7759,14 @@ export interface components {
              * @enum {string}
              */
             status: "suggested" | "confirmed";
+        };
+        /** SyncRequest */
+        SyncRequest: {
+            /**
+             * Source System Id
+             * Format: uuid
+             */
+            source_system_id: string;
         };
         /** SystemProgress */
         SystemProgress: {
@@ -11053,6 +11148,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StagingResult"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    syncStaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposedChangeSet"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    dropRemovedStaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposedChangeSet"];
                 };
             };
             /** @description Validation error */

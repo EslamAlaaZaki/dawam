@@ -37,6 +37,7 @@ function column(n: number, tableId: string, name: string, over: Partial<DwColumn
     is_system: false,
     naming_violations: [],
     review_flags: [],
+    status: "present",
     version: 1,
     ...over,
   };
@@ -58,6 +59,7 @@ function table(n: number, name: string, over: Partial<DwTable>): DwTable {
     columns: [],
     naming_violations: [],
     review_flags: [],
+    status: "present",
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
     version: 1,

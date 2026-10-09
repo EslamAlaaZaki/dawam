@@ -31,6 +31,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
+from dawam.platform.hooks import SnapshotCreatedHook, notify_snapshot_created
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
@@ -256,6 +257,7 @@ class SnapshotService:
         encryption_key: bytes,
         clock: Clock,
         connectors: Callable[[str, ConnectionParams], Connector] = connector_for,
+        on_snapshot: SnapshotCreatedHook | None = None,
     ) -> None:
         self._engine = engine
         self._workspaces = workspaces
@@ -263,6 +265,7 @@ class SnapshotService:
         self._box = SecretBox(encryption_key)
         self._clock = clock
         self._connectors = connectors
+        self._on_snapshot = on_snapshot
 
     # -- for users ----------------------------------------------------------------------
 
@@ -500,9 +503,11 @@ class SnapshotService:
                 at=snapshot.taken_at,
             )
             snapshot_id = snapshot.id
+            workspace_id = system.workspace_id
             # A cancellation while the Snapshot was being written discards it.
             ctx.raise_if_cancelled()
         ctx.log(f"Created Snapshot {snapshot_id}.")
+        notify_snapshot_created(self._on_snapshot, workspace_id, system_id, requested_by)
 
     # -- internals ----------------------------------------------------------------------
 

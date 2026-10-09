@@ -29,7 +29,10 @@ def import_service(request: Request) -> SchemaImportService:
     state = request.app.state
     clock = state.services.clock
     return SchemaImportService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        on_snapshot=getattr(state, "on_snapshot_created", None),
     )
 
 

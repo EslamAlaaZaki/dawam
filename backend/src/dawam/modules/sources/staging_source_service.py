@@ -35,6 +35,8 @@ class StagingColumn:
     is_nullable: bool
     ordinal: int
     placeholder_no: int | None
+    status: str = "present"
+    """``source_removed`` only when a read asked for removed objects."""
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class StagingTable:
     kind: str
     placeholder_no: int | None
     columns: list[StagingColumn]
+    status: str = "present"
 
 
 @dataclass(frozen=True)
@@ -63,9 +66,17 @@ class StagingSourceService:
     def __init__(self, engine: sa.Engine) -> None:
         self._engine = engine
 
-    def read(self, workspace_id: uuid.UUID) -> list[StagingSystem]:
-        """Present Source Systems with the tables staging covers: base tables, and views
-        with ``include_view_in_staging``; only objects still present in the source."""
+    def read(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        system_id: uuid.UUID | None = None,
+        include_removed: bool = False,
+    ) -> list[StagingSystem]:
+        """Present Source Systems (or just ``system_id``) with the tables staging covers:
+        base tables, and views with ``include_view_in_staging``; only objects still present
+        in the source, plus the ``source_removed`` ones when ``include_removed`` (sync needs
+        them to flag their Staging Tables)."""
         with Session(self._engine) as db:
             systems = db.execute(
                 sa.select(SourceSystemRecord.id, SourceSystemRecord.code, ConnectionRecord.engine)
@@ -75,16 +86,20 @@ class StagingSourceService:
                 .where(
                     SourceSystemRecord.workspace_id == workspace_id,
                     SourceSystemRecord.status == "present",
+                    *([SourceSystemRecord.id == system_id] if system_id else []),
                 )
                 .order_by(SourceSystemRecord.code)
             ).all()
             result: list[StagingSystem] = []
             for system_id, code, engine in systems:
-                tables = self._tables(db, system_id)
+                tables = self._tables(db, system_id, include_removed)
                 result.append(StagingSystem(system_id, code, engine, tables))
             return result
 
-    def _tables(self, db: Session, system_id: uuid.UUID) -> list[StagingTable]:
+    def _tables(
+        self, db: Session, system_id: uuid.UUID, include_removed: bool
+    ) -> list[StagingTable]:
+        wanted = ("present", "source_removed") if include_removed else ("present",)
         table_rows = db.execute(
             sa.select(
                 SrcTableRecord.id,
@@ -93,12 +108,13 @@ class StagingSourceService:
                 SrcTableRecord.name,
                 SrcTableRecord.kind,
                 SrcTableRecord.placeholder_no,
+                SrcTableRecord.status,
             )
             .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
             .where(
                 SrcDbSchemaRecord.source_system_id == system_id,
-                SrcDbSchemaRecord.status == "present",
-                SrcTableRecord.status == "present",
+                SrcDbSchemaRecord.status.in_(wanted),
+                SrcTableRecord.status.in_(wanted),
                 sa.or_(SrcTableRecord.kind == "table", SrcTableRecord.include_view_in_staging),
             )
             .order_by(SrcDbSchemaRecord.name, SrcTableRecord.name, SrcTableRecord.id)
@@ -116,6 +132,7 @@ class StagingSourceService:
                 SrcColumnRecord.name,
                 SrcColumnRecord.current_definition,
                 SrcColumnRecord.placeholder_no,
+                SrcColumnRecord.status,
                 SnapshotColumnRecord.ordinal,
             )
             .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
@@ -129,7 +146,7 @@ class StagingSourceService:
             )
             .where(
                 SrcDbSchemaRecord.source_system_id == system_id,
-                SrcColumnRecord.status == "present",
+                SrcColumnRecord.status.in_(wanted),
             )
         ):
             definition = row.current_definition
@@ -141,6 +158,7 @@ class StagingSourceService:
                     is_nullable=bool(definition.get("is_nullable", True)),
                     ordinal=row.ordinal if row.ordinal is not None else 1_000_000,
                     placeholder_no=row.placeholder_no,
+                    status=row.status,
                 )
             )
         return [
@@ -152,8 +170,9 @@ class StagingSourceService:
                 kind=kind,
                 placeholder_no=placeholder_no,
                 columns=sorted(columns.get(table_id, []), key=lambda c: (c.ordinal, c.name)),
+                status=status,
             )
-            for table_id, schema_id, schema_name, name, kind, placeholder_no in table_rows
+            for table_id, schema_id, schema_name, name, kind, placeholder_no, status in table_rows
         ]
 
     def assign_placeholders(

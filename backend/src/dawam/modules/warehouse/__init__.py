@@ -27,7 +27,15 @@ Public interface. Other modules import only what is re-exported here:
   (software only): one Staging Table per source base table (and per opted-in view), named
   ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
   mappings and lineage; ``StagingResult`` lists what was flagged for review.
-  ``POST .../data-warehouse/staging/generate``.
+  ``POST .../data-warehouse/staging/generate``. ``sync`` proposes what a new Snapshot changes
+  as a ``sync`` Change Set (staging only: new tables and columns created, changed columns
+  updated, dropped ones kept and flagged ``source_removed``; a deleted Staging Table keeps a
+  Tombstone and is never re-proposed; an overridden field is a conflict item) and alerts the
+  owners and editors; ``drop_removed`` proposes owner-only deletes of ``source_removed``
+  staging objects nothing reads. ``POST .../data-warehouse/staging/sync`` and
+  ``.../staging/drop-removed``.
+- ``StagingTableHandler`` / ``StagingColumnHandler``: the ``changesets`` engine's handlers for
+  ``staging_table`` and ``staging_column`` items; the composition root registers them.
 - ``read_schema`` / ``describe_columns`` / ``mart_columns_reading`` and ``replace_kpi_edges`` /
   ``clear_kpi_edges`` (in the caller's session, no permission check): the Core and Mart
   tables a KPI's formula SQL and links refer to, and the ``kpi`` lineage edges this module
@@ -47,7 +55,8 @@ Public interface. Other modules import only what is re-exported here:
   ``/workspaces/{workspace_id}/data-warehouse/lineage``.
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
-``column_mappings``, ``lineage_edges``, ``score_runs`` and ``score_check_results`` tables.
+``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs`` and
+``score_check_results`` tables.
 """
 
 from .api import router
@@ -82,6 +91,7 @@ from .score_trigger import install as install_score_recalculation
 from .score_trigger import uninstall as uninstall_score_recalculation
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .staging_service import StagingFlag, StagingResult, StagingService
+from .staging_sync import StagingColumnHandler, StagingTableHandler
 from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
@@ -110,9 +120,11 @@ __all__ = [
     "ScoreService",
     "SheetFormat",
     "SheetLayer",
+    "StagingColumnHandler",
     "StagingFlag",
     "StagingResult",
     "StagingService",
+    "StagingTableHandler",
     "TargetPlatform",
     "ValidationReport",
     "ValidationService",

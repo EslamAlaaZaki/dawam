@@ -39,6 +39,8 @@ TABLE_NAME_UNIQUE = "uq_dw_tables_layer_name"
 """Violated by a table name (any case) another table of the same Layer already has."""
 STAGING_SOURCE_UNIQUE = "uq_dw_tables_staging_source_table"
 """Violated by a second Staging Table for one Source Table."""
+TOMBSTONE_SOURCE_UNIQUE = "uq_tombstones_staging_source"
+"""Violated by a second Tombstone for one Source Table."""
 COLUMN_NAME_UNIQUE = "uq_dw_columns_table_name"
 """Violated by a column name (any case) another column of the same table already has."""
 
@@ -59,6 +61,7 @@ COLUMN_ROLES = (
     "row_hash",
 )
 ADDITIVITIES = ("additive", "semi_additive", "non_additive")
+OBJECT_STATUSES = ("present", "source_removed", "deleted")
 DESCRIPTION_MAX_LENGTH = 4000
 GRAIN_MAX_LENGTH = 1000
 NAME_MAX_LENGTH = 128
@@ -89,6 +92,7 @@ class DwTableRecord(Base):
             f"fact_type IS NULL OR fact_type IN ({_in(FACT_TYPES)})", name="fact_type"
         ),
         sa.CheckConstraint("scd_type IS NULL OR scd_type IN (0, 1, 2)", name="scd_type"),
+        sa.CheckConstraint(f"status IN ({_in(OBJECT_STATUSES)})", name="status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -113,6 +117,13 @@ class DwTableRecord(Base):
         sa.JSON, default=list, server_default=sa.text("'[]'")
     )
     """What generation flagged for review: ``[{"code", "message"}]`` (spec §6.7)."""
+    status: Mapped[str] = mapped_column(sa.String(16), default="present", server_default="present")
+    """``source_removed``: a Staging Table whose source is gone; kept, flagged and scored."""
+    edited_fields: Mapped[list[str]] = mapped_column(
+        sa.JSON, default=list, server_default=sa.text("'[]'")
+    )
+    """The fields a user overrode on a Staging Table; sync reports a change to one as a
+    conflict instead of overwriting it (spec §6.9)."""
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -135,6 +146,7 @@ class DwColumnRecord(Base):
         sa.CheckConstraint(
             "scd_type_override IS NULL OR scd_type_override IN (0, 1, 2)", name="scd_type_override"
         ),
+        sa.CheckConstraint(f"status IN ({_in(OBJECT_STATUSES)})", name="status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -165,6 +177,13 @@ class DwColumnRecord(Base):
         sa.JSON, default=list, server_default=sa.text("'[]'")
     )
     """What generation flagged for review: ``[{"code", "message"}]``."""
+    status: Mapped[str] = mapped_column(sa.String(16), default="present", server_default="present")
+    """``source_removed``: a staging column whose source column is gone."""
+    edited_fields: Mapped[list[str]] = mapped_column(
+        sa.JSON, default=list, server_default=sa.text("'[]'")
+    )
+    """The fields a user overrode on a staging column (``name``, ``data_type``,
+    ``is_nullable``)."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
@@ -285,6 +304,36 @@ class LineageEdgeRecord(Base):
         sa.ForeignKey("mapping_branches.id", ondelete="CASCADE"), index=True
     )
     """Set on the ``uses`` edges of a branch's own joins, filters, GROUP BY and HAVING."""
+
+
+class TombstoneRecord(Base):
+    """A deleted Staging Table (or generated object) that sync and regeneration never
+    propose again (spec §6.9 ``Tombstone``)."""
+
+    __tablename__ = "tombstones"
+    __table_args__ = (
+        sa.Index(
+            TOMBSTONE_SOURCE_UNIQUE,
+            "data_warehouse_id",
+            "src_object_id",
+            unique=True,
+            postgresql_where=sa.text("object_type = 'staging_table'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE"), index=True
+    )
+    object_type: Mapped[str] = mapped_column(sa.String(16))
+    """``staging_table`` for now."""
+    generation_key: Mapped[str | None] = mapped_column(sa.String(128))
+    src_object_id: Mapped[uuid.UUID | None] = mapped_column()
+    """The Staging Table's Source Table (``src_tables.id``)."""
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    deleted_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
 class ScoreRunRecord(Base):

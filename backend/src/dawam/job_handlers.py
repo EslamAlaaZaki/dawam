@@ -24,7 +24,6 @@ from dawam.modules.files import (
     RegisteredEmbeddingModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
-from dawam.modules.kpis import KpiLinkHandler
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
 from dawam.modules.sources import (
     EXTRACT_JOB,
@@ -35,23 +34,19 @@ from dawam.modules.sources import (
     ProfilingService,
     RelationshipService,
     SnapshotService,
-    SourceEnhancementHandler,
 )
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
 from dawam.platform.storage import create_storage
+from dawam.wiring import change_set_handlers, staging_sync_after_snapshot
 
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
 
 
 def build_change_set_handlers() -> ObjectHandlers:
     """Each module that owns objects a Change Set may change registers its handlers here."""
-    return ObjectHandlers(
-        SourceEnhancementHandler("source_table"),
-        SourceEnhancementHandler("source_column"),
-        KpiLinkHandler(),
-    )
+    return change_set_handlers()
 
 
 def build_document_search(
@@ -99,6 +94,7 @@ def _service_handlers(
         jobs=runner,
         encryption_key=settings.encryption_key.get_secret_value(),
         clock=clock,
+        on_snapshot=staging_sync_after_snapshot(engine, settings, clock),
     )
     profiling = ProfilingService(
         engine,
