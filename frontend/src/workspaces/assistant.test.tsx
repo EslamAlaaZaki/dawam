@@ -180,6 +180,52 @@ describe("the assistant's chat panel", () => {
     });
   });
 
+  it("shows a source query's row count and warns when the connection user can write", async () => {
+    const query = {
+      name: "run_source_query",
+      arguments: { sql: "SELECT COUNT(*) FROM s.t" },
+      status: "ok",
+      duration_ms: 12,
+      result: { columns: ["n"], row_count: 1, duration_ms: 12, can_write: true },
+    };
+    renderApp(
+      backend({
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", query),
+            frame("text", { text: "Counted." }),
+            frame("done", { run: run({ tool_calls: [query] }), message_id: "a" }),
+          ]),
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Count them",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [query] }),
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Counted.",
+              created_at: "2026-01-05T10:00:01Z",
+              run: null,
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+
+    await ask("Count them");
+
+    expect(await screen.findByText(/can change data/)).toBeInTheDocument();
+    expect(screen.getAllByText(/1 rows/).length).toBeGreaterThan(0);
+  });
+
   it("stops the running answer with the Stop button", async () => {
     let finish: () => void = () => {};
     const stream = new ReadableStream<Uint8Array>({

@@ -3602,6 +3602,116 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Run Validation",
+        "description": "Validate every Core and Mart mapping (any member): errors (SQL that does not parse,\na missing GROUP BY column) and warnings (unmapped columns, a multi-branch table without\nan integration rule, data-type compatibility such as truncation between a direct\nmapping's input and its target), with the mapping coverage. Computed on read. 404\n`not_set_up` before the Data Warehouse is set up.",
+        "operationId": "runValidation",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/coverage": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Get Coverage",
+        "description": "Mapping coverage per table, per Layer and for the whole Data Warehouse (any member),\nbranch-aware: a column is covered when every branch maps it or marks it not available.",
+        "operationId": "getMappingCoverage",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
       "post": {
         "tags": [
@@ -11978,6 +12088,7 @@
           "source_system.extract",
           "source_schema.enhance",
           "source_system.profile",
+          "source_system.query",
           "source_table.top_n",
           "pii.review",
           "pii.manage_rules",
@@ -14120,6 +14231,54 @@
           "updated_at"
         ],
         "title": "ConversationOut"
+      },
+      "CoverageOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Columns that need a mapping (system columns excluded)."
+          },
+          "covered": {
+            "type": "integer",
+            "title": "Covered",
+            "description": "Of those, mapped in every branch (or not available there)."
+          },
+          "percent": {
+            "type": "integer",
+            "title": "Percent",
+            "description": "`covered` of `total`, 0-100; 0 when `total` is 0."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "covered",
+          "percent"
+        ],
+        "title": "CoverageOut"
+      },
+      "CoverageReport": {
+        "properties": {
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/LayerCoverageOut"
+            },
+            "type": "array",
+            "title": "Layers",
+            "description": "Core, then Mart."
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageOut",
+            "description": "The whole Data Warehouse."
+          }
+        },
+        "type": "object",
+        "required": [
+          "layers",
+          "coverage"
+        ],
+        "title": "CoverageReport"
       },
       "CreateConversationRequest": {
         "properties": {
@@ -16366,6 +16525,35 @@
         ],
         "title": "KpiProgress"
       },
+      "LayerCoverageOut": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableCoverageOut"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "tables",
+          "coverage"
+        ],
+        "title": "LayerCoverageOut"
+      },
       "LayerProgress": {
         "properties": {
           "layer": {
@@ -18464,6 +18652,104 @@
           "items"
         ],
         "title": "PlatformList"
+      },
+      "ProblemOut": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`unparsed_sql`, `not_in_group_by` or another mapping error code (errors); `unmapped_column`, `missing_integration_rule`, `may_truncate`, `may_lose_precision`, `may_fail_conversion` or `nullable_into_required` (warnings)."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "column_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Id"
+          },
+          "column_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Name"
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "branch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "code",
+          "message",
+          "table_id",
+          "table_name",
+          "layer",
+          "column_id",
+          "column_name",
+          "branch_id",
+          "branch_name"
+        ],
+        "title": "ProblemOut"
       },
       "ProfilingStarted": {
         "properties": {
@@ -21154,6 +21440,38 @@
         ],
         "title": "TableChange"
       },
+      "TableCoverageOut": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "layer",
+          "coverage"
+        ],
+        "title": "TableCoverageOut"
+      },
       "TableEnhancements": {
         "properties": {
           "id": {
@@ -21517,6 +21835,19 @@
           "duration_ms": {
             "type": "integer",
             "title": "Duration Ms"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "What the tool kept of its result. A source query: `columns`, `row_count`, `duration_ms` and `can_write` (the Connection user could change data: warn), never a row."
           }
         },
         "type": "object",
@@ -22684,6 +23015,37 @@
           "version"
         ],
         "title": "UpdateWorkspaceRequest"
+      },
+      "ValidationReport": {
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemOut"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "Errors first, then by Layer and table."
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count"
+          },
+          "warning_count": {
+            "type": "integer",
+            "title": "Warning Count"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageReport"
+          }
+        },
+        "type": "object",
+        "required": [
+          "problems",
+          "error_count",
+          "warning_count",
+          "coverage"
+        ],
+        "title": "ValidationReport"
       },
       "VersionInfo": {
         "properties": {

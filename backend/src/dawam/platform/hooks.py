@@ -37,6 +37,20 @@ class SourceAnalysisProvider(Protocol):
         ``sources`` module imports ``workspaces``, so ``workspaces`` asks through this port."""
 
 
+@dataclass(frozen=True)
+class ModelingProgress:
+    """DW Modeling progress of one Layer."""
+
+    layer: Literal["staging", "core", "mart"]
+    status: Literal["not_started", "in_progress", "complete"]
+
+
+class ModelingProgressProvider(Protocol):
+    def __call__(self, workspace_id: uuid.UUID) -> list[ModelingProgress]:
+        """The DW Modeling progress of each Layer of the Workspace. The ``warehouse`` module
+        imports ``workspaces``, so ``workspaces`` asks through this port."""
+
+
 class WorkspaceCreatedHook(Protocol):
     def __call__(self, db: Session, workspace_id: uuid.UUID, at: datetime) -> None:
         """Called inside the transaction that creates the Workspace (after its row and its

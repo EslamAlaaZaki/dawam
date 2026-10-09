@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -48,6 +49,13 @@ class MatchRatio:
         return self.matched / self.total
 
 
+def _ascii_digits(text: str) -> str:
+    """Arabic-Indic and other Unicode decimal digits as ASCII ones (Saudi data uses them)."""
+    if text.isascii():
+        return text
+    return "".join(str(d) if (d := unicodedata.decimal(c, -1)) >= 0 else c for c in text)
+
+
 def _text(value: Any) -> str | None:
     """The value as text, or ``None`` if it cannot be an identifier."""
     if isinstance(value, bool):
@@ -55,7 +63,7 @@ def _text(value: Any) -> str | None:
     if isinstance(value, int):
         return str(value) if value >= 0 else None
     if isinstance(value, str) and len(value) <= MAX_VALUE_LENGTH:
-        return value.strip()
+        return _ascii_digits(value.strip())
     return None
 
 
@@ -108,8 +116,8 @@ def _iban(value: Any, today: date) -> bool:
 
 
 _EMAIL = re.compile(
-    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
-    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}"
+    r"[\w.%+\-]+@[^\W_](?:[\w\-]*[^\W_])?"
+    r"(?:\.[^\W_](?:[\w\-]*[^\W_])?)*\.[^\W\d_]{2,}"
 )
 
 
@@ -226,37 +234,112 @@ def match_ratio(
     return MatchRatio(matched, total) if total else None
 
 
-_WORD = re.compile(r"\S+")
-_EDGE_PUNCTUATION = ",.;:!?()[]{}\"'"
-MAX_REDACTED_WORDS = 8
-"""The most words one value may span in text (a grouped IBAN or card number)."""
+# -- query-time checks and redaction (spec §6.8) -------------------------------------------
+
+STRONG_RULES: tuple[str, ...] = tuple(rule for rule, v in VALIDATORS.items() if v.weight >= 1.0)
+"""The rules whose match is conclusive on its own (a checksum or a distinctive shape): the
+ones that mask a result column and redact model-written text. A bare date or 10-digit number
+would mask half of any query result."""
 
 
-def redact_text(text: str, *, today: date | None = None) -> str:
-    """``text`` with every value a distinctive validator (weight 1) accepts replaced by
-    ``[redacted: <rule>]``. Values may span several words (``SA03 8000 ...``). Weaker
-    validators (a 10-digit number, a date) are left alone: in prose they are mostly not PII."""
+def first_match(value: Any, *, today: date | None = None) -> str | None:
+    """The first strong rule ``value`` passes, or ``None``. Only the rule id leaves."""
     day = today or date.today()
-    strong = [v for v in VALIDATORS.values() if v.weight >= 1.0]
-    words = list(_WORD.finditer(text))
-    out: list[str] = []
-    cursor = 0
-    index = 0
-    while index < len(words):
-        for length in range(min(MAX_REDACTED_WORDS, len(words) - index), 0, -1):
-            first, last = words[index], words[index + length - 1]
-            raw = text[first.start() : last.end()]
-            candidate = raw.strip(_EDGE_PUNCTUATION)
-            rule = next((v.id for v in strong if validate(v.id, candidate, today=day)), None)
-            if rule is None:
+    for rule in STRONG_RULES:
+        if validate(rule, value, today=day):
+            return rule
+    return None
+
+
+_INVISIBLE = "​‌‍⁠﻿­"
+"""Zero-width characters a writer can slip into an identifier to defeat a pattern."""
+_JOINER = rf"[\s\-().{_INVISIBLE}]?"
+_EMAIL_IN_TEXT = re.compile(_EMAIL.pattern)
+_IPV4_IN_TEXT = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\w|\.\d)")
+_IPV6_IN_TEXT = re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])")
+_IBAN_IN_TEXT = re.compile(
+    rf"(?<![A-Za-z0-9])[Ss][Aa](?:{_JOINER}[0-9A-Za-z]){{22}}(?![A-Za-z0-9])"
+)
+MIN_NUMBER_DIGITS = 9
+MAX_NUMBER_DIGITS = 19
+_NUMBER_RULES = ("national_id", "iqama", "phone", "card_number")
+_DIGITS_IN_TEXT = re.compile(rf"(?<!\d)\+?\d(?:{_JOINER}\d){{{MIN_NUMBER_DIGITS - 1},}}(?!\d)")
+
+
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def _strip_invisible(text: str) -> str:
+    return text.translate(dict.fromkeys(map(ord, _INVISIBLE)))
+
+
+def redact_text(text: str, *, today: date | None = None, found: list[str] | None = None) -> str:
+    """``text`` with every IBAN, email, ID/Iqama number, mobile number or card number the
+    validators recognise replaced by ``[redacted: <rule>]``. Pure; a model-written string
+    goes through here before it is saved (ADR 0002). ``found`` collects the rules that hit."""
+    day = today or date.today()
+
+    def mark(rule: str) -> str:
+        if found is not None:
+            found.append(rule)
+        return f"[redacted: {rule}]"
+
+    def hit(rules: tuple[str, ...], candidate: str) -> str | None:
+        candidate = _strip_invisible(candidate)
+        compact = _SEPARATORS.sub("", candidate)
+        for rule in rules:
+            if validate(rule, candidate, today=day) or validate(rule, compact, today=day):
+                return rule
+        return None
+
+    def whole(rules: tuple[str, ...]) -> Callable[[re.Match[str]], str]:
+        def replace(matched: re.Match[str]) -> str:
+            rule = hit(rules, matched.group(0))
+            return mark(rule) if rule else matched.group(0)
+
+        return replace
+
+    def numbers(matched: re.Match[str]) -> str:
+        """Numbers written with separators, and several in a row ("1000000008 2000000008"):
+        try every window of digit groups, longest first."""
+        run = matched.group(0)
+        groups = list(re.finditer(r"\+?\d+", run))
+        out: list[str] = []
+        position = i = 0
+        while i < len(groups):
+            best: tuple[int, str] | None = None
+            digits = 0
+            for j in range(i, len(groups)):
+                digits += len(groups[j].group().lstrip("+"))
+                if digits > MAX_NUMBER_DIGITS:
+                    break
+                if digits >= MIN_NUMBER_DIGITS:
+                    candidate = run[groups[i].start() : groups[j].end()]
+                    if rule := hit(_NUMBER_RULES, candidate):
+                        best = (j, rule)
+            if best is None:
+                i += 1
                 continue
-            start = first.start() + raw.index(candidate)
-            out.append(text[cursor:start])
-            out.append(f"[redacted: {rule}]")
-            cursor = start + len(candidate)
-            index += length
-            break
-        else:
-            index += 1
-    out.append(text[cursor:])
-    return "".join(out)
+            out.append(run[position : groups[i].start()])
+            out.append(mark(best[1]))
+            position = groups[best[0]].end()
+            i = best[0] + 1
+        out.append(run[position:])
+        return "".join(out)
+
+    text = _EMAIL_IN_TEXT.sub(whole(("email",)), text)
+    text = _IBAN_IN_TEXT.sub(whole(("iban",)), text)
+    text = _IPV4_IN_TEXT.sub(whole(("ip_address",)), text)
+    text = _IPV6_IN_TEXT.sub(whole(("ip_address",)), text)
+    return _DIGITS_IN_TEXT.sub(numbers, text)
+
+
+def redact_json(value: Any) -> Any:
+    """``value`` (JSON-like) with ``redact_text`` applied to every string, keys included."""
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {redact_text(str(k)): redact_json(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [redact_json(v) for v in value]
+    return value
