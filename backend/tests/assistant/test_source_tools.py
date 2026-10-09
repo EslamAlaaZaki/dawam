@@ -465,7 +465,13 @@ def test_read_file_returns_the_document_text_at_the_documents_level(roles, model
 
 # -- every tool, every role, every level ---------------------------------------------------
 
-METADATA_TOOLS = {"search_catalog", "get_object", "get_snapshot_diff", "list_files"}
+METADATA_TOOLS = {
+    "search_catalog",
+    "get_object",
+    "get_snapshot_diff",
+    "list_files",
+    "run_validation",
+}
 LEVELS = [
     ("metadata", METADATA_TOOLS),
     ("profiles", METADATA_TOOLS | {"get_profile"}),
@@ -491,3 +497,32 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
     if value == "samples" and role != "viewer":
         extra.add("run_source_query")  # sample rows and a role that may query a source
     assert offered == expected | extra
+
+
+# -- run_validation ------------------------------------------------------------------------
+
+
+def test_run_validation_returns_problems_and_coverage(roles, model, fake_llm):
+    dw = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse"
+    editor = roles.client("editor")
+    assert editor.post(dw, json={"target_platform": "postgresql"}).status_code == 201
+    table = editor.post(
+        f"{dw}/tables", json={"layer": "core", "name": "dim_customer", "kind": "dimension"}
+    ).json()
+    editor.post(
+        f"{dw}/tables/{table['id']}/columns",
+        json={"name": "name", "data_type": {"type": "string"}, "role": "attribute"},
+    )
+
+    status, seen = use(roles, fake_llm, "run_validation")
+
+    result = payload(seen)
+    assert status == "ok"
+    assert result["coverage"]["coverage"] == {"total": 1, "covered": 0, "percent": 0}
+    assert [p["code"] for p in result["problems"]] == ["unmapped_column"]
+
+
+def test_run_validation_reports_a_missing_data_warehouse(roles, model, fake_llm):
+    status, seen = use(roles, fake_llm, "run_validation")
+
+    assert status == "error" and "not_set_up" in seen
