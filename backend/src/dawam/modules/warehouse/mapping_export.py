@@ -83,6 +83,17 @@ def _append(sheet: Worksheet, values: list[object]) -> None:
             cell.data_type = "s"
 
 
+_FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: object) -> object:
+    """Neutralize spreadsheet formula injection: a text cell a spreadsheet would read as a
+    formula gets a leading single quote."""
+    if isinstance(value, str) and value.startswith(_FORMULA_STARTS):
+        return "'" + value
+    return value
+
+
 class MappingExportService:
     """Authorizes through the services it wraps (any member reads)."""
 
@@ -218,7 +229,7 @@ class MappingExportService:
         out = io.StringIO()
         writer = csv.writer(out, lineterminator="\r\n")
         writer.writerow(MAPPING_HEADER)
-        writer.writerows(rows)
+        writer.writerows([_csv_safe(v) for v in row] for row in rows)
         return b"\xef\xbb\xbf" + out.getvalue().encode()
 
     @staticmethod

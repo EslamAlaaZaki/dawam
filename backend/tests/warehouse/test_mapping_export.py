@@ -155,6 +155,32 @@ def test_a_formula_like_rule_stays_text_in_the_workbook(warehouse, model):
     assert row["transformation_rule"] == "=1+1"
 
 
+def test_csv_cells_that_look_like_formulas_are_prefixed_with_a_quote(warehouse, model):
+    crm, _ = two_branches(warehouse, model)
+    response = put_branch_column(
+        warehouse,
+        model,
+        crm,
+        "name",
+        version=1,
+        mapping_type="direct",
+        sql_expression="crm_customer.full_name",
+        rule_text='=HYPERLINK("http://evil")',
+    )
+    assert response.status_code == 200, response.text
+
+    csv_response = warehouse.client("viewer").get(sheet_url(warehouse), params={"format": "csv"})
+
+    rows = list(csv.DictReader(io.StringIO(csv_response.content.decode("utf-8-sig"))))
+    [row] = [r for r in rows if r["branch"] == "CRM" and r["target_column"] == "name"]
+    assert row["transformation_rule"] == '\'=HYPERLINK("http://evil")'
+    from dawam.modules.warehouse.mapping_export import _csv_safe
+
+    for text in ("=1", "+1", "-1", "@x", "\tx", "\rx"):
+        assert _csv_safe(text) == "'" + text
+    assert _csv_safe("plain") == "plain"
+
+
 def test_an_editor_saves_the_sheet_to_the_file_area(warehouse, model):
     merged(warehouse, model)
 
