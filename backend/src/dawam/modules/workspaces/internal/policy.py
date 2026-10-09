@@ -96,6 +96,9 @@ class Action(StrEnum):
     RUN_PROFILING = "source_system.profile"
     """Profile selected tables of a Source System through its Connection (owners and
     editors; spec §4.3 "Run extraction / Schema Import / profiling", story 55)."""
+    RUN_SOURCE_QUERY = "source_system.query"
+    """Have the assistant run guarded read-only queries on a Source System's live Connection
+    (owners and editors; the Workspace must also share sample rows; spec §6.8, story 68)."""
     ENABLE_TOP_N = "source_table.top_n"
     """Switch top-N value capture on or off for one table (owners only; spec §6.5)."""
     REVIEW_PII = "pii.review"
@@ -217,6 +220,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.RUN_EXTRACTION: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_ENHANCEMENTS: _WorkspaceRule(min_role="editor"),
     Action.RUN_PROFILING: _WorkspaceRule(min_role="editor"),
+    Action.RUN_SOURCE_QUERY: _WorkspaceRule(min_role="editor"),
     Action.ENABLE_TOP_N: _WorkspaceRule(min_role="owner"),
     Action.REVIEW_PII: _WorkspaceRule(min_role="editor"),
     Action.MANAGE_PII_RULES: _WorkspaceRule(min_role="owner"),

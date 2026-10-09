@@ -64,6 +64,8 @@ class ChatGateway(Protocol):
 class ToolOutcome:
     content: str
     status: ToolStatus
+    saved: dict[str, Any] | None = None
+    """What of the result may be kept on the run (never row values); ``None``: nothing."""
 
 
 class ToolSet(Protocol):
@@ -84,6 +86,8 @@ class ToolCallRecord:
     arguments: dict[str, Any]
     status: ToolStatus
     duration_ms: int
+    result: dict[str, Any] | None = None
+    """``ToolOutcome.saved``."""
 
 
 @dataclass(frozen=True)
@@ -227,7 +231,7 @@ def run_agent(
                     duration = round((timer() - started) * 1000)
                     executed += 1
                 record = ToolCallRecord(
-                    call.id, call.name, call.arguments, outcome.status, duration
+                    call.id, call.name, call.arguments, outcome.status, duration, outcome.saved
                 )
                 run.calls.append(record)
                 yield ToolFinished(record)

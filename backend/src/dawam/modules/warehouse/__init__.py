@@ -14,6 +14,12 @@ Public interface. Other modules import only what is re-exported here:
   inserts and the seed rows of generated tables; ``files`` saves it, plus ``seed_files``
   (CSV and ``INSERT`` script per generated table), to the file area. ``GET
   .../data-warehouse/ddl`` downloads it.
+- ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
+  (errors: unparsable SQL, GROUP BY gaps; warnings: unmapped columns, a missing integration
+  rule, data-type compatibility such as truncation, see ``type_compat``) and reads ``coverage``
+  per table, per Layer and for the whole Data Warehouse (branch-aware). ``modeling_progress``
+  fills the DW Modeling part of the stage-progress port. ``GET .../data-warehouse/validation``
+  and ``GET .../data-warehouse/coverage``.
 - ``StagingService``: owners and editors ``generate`` the Staging Layer from the Source Schema
   (software only): one Staging Table per source base table (and per opted-in view), named
   ``stg_<system code>_<database schema>_<table>``, translated types, audit columns, ``direct``
@@ -39,6 +45,7 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .mapping_service import MappingService
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -54,6 +61,7 @@ from .score_trigger import install as install_score_recalculation
 from .score_trigger import uninstall as uninstall_score_recalculation
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .staging_service import StagingFlag, StagingResult, StagingService
+from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
     "PLATFORM_PROFILES",
@@ -66,6 +74,7 @@ __all__ = [
     "DdlService",
     "DdlServiceDep",
     "LayerSchemas",
+    "MappingService",
     "NamingRules",
     "PlatformProfile",
     "Score",
@@ -75,6 +84,8 @@ __all__ = [
     "StagingResult",
     "StagingService",
     "TargetPlatform",
+    "ValidationReport",
+    "ValidationService",
     "install_score_recalculation",
     "is_reserved_word",
     "max_identifier_length",

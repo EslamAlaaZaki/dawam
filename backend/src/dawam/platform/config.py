@@ -173,6 +173,9 @@ class Settings(DatabaseSettings):
     score_debounce_seconds: float = Field(default=2.0, ge=0)
     """How long after a design change the Data Warehouse score is recalculated, so a burst of
     edits is scored once; 0 scores at once."""
+    assistant_source_query_seconds: float = Field(default=120, gt=0)
+    """Total seconds of source queries the assistant may run while answering one message
+    (spec §6.8)."""
 
     @property
     def upload_max_bytes(self) -> int:

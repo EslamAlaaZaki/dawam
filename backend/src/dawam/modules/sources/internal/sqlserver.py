@@ -479,7 +479,7 @@ class SqlServerConnector:
         for name in self._schemas_outside_scope():
             if re.search(rf"(?i)(?<![\w$])(\[{re.escape(name)}\]|{re.escape(name)})\s*\.", text):
                 raise ScopeError()
-        return self._run(text, limit)
+        return self._run(text, limit, rolled_back=True)
 
     def _schemas_outside_scope(self) -> list[str]:
         with self._session() as conn:
@@ -487,12 +487,21 @@ class SqlServerConnector:
             cur.execute("SELECT name FROM sys.schemas WHERE name NOT IN %s", (self._in_scope(),))
             return [row[0] for row in cur.fetchall()]
 
-    def _run(self, statement: str, limit: int) -> QueryResult:
+    def _run(self, statement: str, limit: int, *, rolled_back: bool = False) -> QueryResult:
+        """``rolled_back``: SQL Server has no read-only session, so a query a model can reach
+        runs inside a transaction that is always rolled back."""
         with self._session() as conn:
             cur = conn.cursor()
-            cur.execute(statement)
-            names = tuple(d[0] for d in cur.description or ())
-            rows = cur.fetchmany(limit + 1)
+            if rolled_back:
+                cur.execute("BEGIN TRANSACTION")
+            try:
+                cur.execute(statement)
+                names = tuple(d[0] for d in cur.description or ())
+                rows = cur.fetchmany(limit + 1)
+            finally:
+                if rolled_back:
+                    with suppress(pymssql.Error):
+                        cur.execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
         return QueryResult(
             columns=names, rows=tuple(tuple(r) for r in rows[:limit]), truncated=len(rows) > limit
         )

@@ -31,8 +31,10 @@ from dawam.modules.llm import AdapterFactory, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceEnhancementHandler, SourceSummaryService
 from dawam.modules.warehouse import (
+    MappingService,
     ScoreScheduler,
     ScoreService,
+    ValidationService,
     install_score_recalculation,
     uninstall_score_recalculation,
 )
@@ -175,6 +177,13 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.source_analysis = SourceSummaryService(
         engine, workspaces=WorkspaceService(engine, clock=services.clock)
     ).source_analysis
+    # The same for DW Modeling per Layer: warehouse computes it from the mappings' coverage.
+    modeling_workspaces = WorkspaceService(engine, clock=services.clock)
+    app.state.modeling_progress = ValidationService(
+        engine,
+        workspaces=modeling_workspaces,
+        mappings=MappingService(engine, workspaces=modeling_workspaces, clock=services.clock),
+    ).modeling_progress
 
     # A new Workspace gets its AI settings (llm) as it is created: workspaces cannot import llm.
     app.state.on_workspace_created = on_workspace_created

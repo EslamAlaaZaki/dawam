@@ -17,7 +17,7 @@ import json
 import logging
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -27,10 +27,18 @@ from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
 from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
-from dawam.modules.sources import PiiService, ProfilingService, SnapshotService
-from dawam.modules.warehouse import ScoreService
+from dawam.modules.sources import (
+    DEFAULT_BUDGET_SECONDS,
+    PiiService,
+    ProfilingService,
+    QueryBudget,
+    SnapshotService,
+    SourceQueryService,
+)
+from dawam.modules.warehouse import ScoreService, ValidationService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
+from dawam.platform.pii_validators import redact_text
 
 from .agent import ToolOutcome
 
@@ -51,6 +59,8 @@ class ToolServices:
     pii: PiiService
     documents: DocumentSearchService
     scores: ScoreService
+    validation: ValidationService
+    source_queries: SourceQueryService
 
 
 @dataclass(frozen=True)
@@ -62,6 +72,17 @@ class ToolContext:
     """What the Workspace lets the model see; a tool that may send more or less than its own
     ``level`` asks it."""
     conversation_id: uuid.UUID | None = None
+    budget: QueryBudget = field(default_factory=QueryBudget)
+    """The source-query seconds this run has left (one budget per run)."""
+
+
+@dataclass(frozen=True)
+class Reported:
+    """A tool result with the part of it that may be saved on the run: for a source query,
+    never the rows."""
+
+    content: Any
+    saved: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -173,6 +194,16 @@ class _SuggestKpis(BaseModel):
         default=None,
         description="The Source System the KPIs are documented under; leave out for the "
         "Data Warehouse.",
+    )
+
+
+class _RunSourceQuery(BaseModel):
+    system_id: uuid.UUID = Field(description=SYSTEM_ID)
+    sql: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="One SELECT over the Source System's tables, e.g. a COUNT(*) overlap check. "
+        "Name tables as schema.table. Protected columns can be counted and joined on, not shown.",
     )
 
 
@@ -564,9 +595,29 @@ def _read_file(ctx: ToolContext, args: _ReadFile) -> Any:
     return {"name": text.file.name, "content": content}
 
 
+class _RunValidation(BaseModel):
+    pass
+
+
+def _run_validation(ctx: ToolContext, args: _RunValidation) -> Any:
+    report = ctx.services.validation.run_validation(ctx.user, ctx.workspace_id)
+    return {
+        "error_count": report.error_count,
+        "warning_count": report.warning_count,
+        "problems": report.problems,
+        "coverage": report.coverage,
+        "link": f"/workspaces/{ctx.workspace_id}/data-warehouse",
+    }
+
+
 def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
+    # Model-written text may quote a value it saw: validator-detectable PII is redacted.
     return ctx.services.files.save_generated(
-        ctx.user, ctx.workspace_id, args.system_id, name=args.name, data=args.content.encode()
+        ctx.user,
+        ctx.workspace_id,
+        args.system_id,
+        name=redact_text(args.name),
+        data=redact_text(args.content).encode(),
     )
 
 
@@ -593,6 +644,34 @@ def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
         "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
         "existing KPIs are never changed.",
     }
+
+
+def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
+    result = ctx.services.source_queries.run(
+        ctx.user, ctx.workspace_id, args.system_id, args.sql, budget=ctx.budget
+    )
+    content: dict[str, Any] = {
+        "columns": result.columns,
+        "rows": result.rows,
+        "row_count": result.row_count,
+        "truncated": result.truncated,
+        "duration_ms": result.duration_ms,
+        "source_query_seconds_left": round(ctx.budget.remaining),
+    }
+    if result.truncated:
+        content["note"] = f"Only the first {result.row_count} rows are shown."
+    if result.masked_columns:
+        content["masked_columns"] = result.masked_columns
+        content["masked_note"] = (
+            "These columns hold personal data and are masked; count and join on them instead."
+        )
+    saved = {
+        "columns": result.columns,
+        "row_count": result.row_count,
+        "duration_ms": result.duration_ms,
+        "can_write": result.can_write,
+    }
+    return Reported(content, saved)
 
 
 def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
@@ -708,6 +787,27 @@ TOOLS: tuple[Tool, ...] = (
         level=DataSharingLevel.DOCUMENTS,
     ),
     Tool(
+        "run_validation",
+        "Validate the Core and Mart mappings of the Data Warehouse: errors (SQL that does not "
+        "parse, GROUP BY gaps), warnings (unmapped columns, data-type truncation) and the "
+        "mapping coverage per table, Layer and Data Warehouse.",
+        _RunValidation,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _run_validation,
+    ),
+    Tool(
+        "run_source_query",
+        "Run one read-only SELECT on a Source System that has a live Connection, to check a "
+        "hunch (e.g. a COUNT(*) overlap between two columns). At most 100 rows come back, "
+        "values of personal-data columns are masked, and each run draws on a time budget.",
+        _RunSourceQuery,
+        "read",
+        Action.RUN_SOURCE_QUERY,
+        _run_source_query,
+        level=DataSharingLevel.SAMPLES,
+    ),
+    Tool(
         "generate_file",
         "Save a new text file in a Source System's file area (overwrites one of the same name).",
         _GenerateFile,
@@ -800,9 +900,12 @@ class ToolRegistry:
         workspaces: WorkspaceService,
         services: ToolServices,
         tools: Sequence[Tool] = TOOLS,
+        *,
+        source_query_seconds: float = DEFAULT_BUDGET_SECONDS,
     ) -> None:
         self._workspaces = workspaces
         self._services = services
+        self._source_query_seconds = source_query_seconds
         self._tools = {tool.name: tool for tool in tools}
 
     def bind(
@@ -812,7 +915,14 @@ class ToolRegistry:
         policy: DataSharingPolicy,
         conversation_id: uuid.UUID | None = None,
     ) -> BoundTools:
-        ctx = ToolContext(user, workspace_id, self._services, policy, conversation_id)
+        ctx = ToolContext(
+            user,
+            workspace_id,
+            self._services,
+            policy,
+            conversation_id,
+            QueryBudget(self._source_query_seconds),
+        )
         return BoundTools(self, ctx, policy)
 
     def allowed(self, ctx: ToolContext, policy: DataSharingPolicy, tool: Tool) -> ApiError | None:
@@ -869,7 +979,10 @@ class BoundTools:
             )
             return ToolOutcome(f"Invalid arguments for `{name}`: {problems}", "error")
         try:
-            return ToolOutcome(_json(tool.run(self._ctx, args)), "ok")
+            result = tool.run(self._ctx, args)
+            if isinstance(result, Reported):
+                return ToolOutcome(_json(result.content), "ok", result.saved)
+            return ToolOutcome(_json(result), "ok")
         except ApiError as exc:
             status = "refused" if exc.status_code in (401, 403) else "error"
             return ToolOutcome(f"{exc.code}: {exc.message}", status)
