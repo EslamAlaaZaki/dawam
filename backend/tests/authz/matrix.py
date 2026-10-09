@@ -43,6 +43,7 @@ from dawam.modules.mail import MailService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import EXTRACT_JOB, SnapshotService
 from dawam.modules.sources.internal.connector import ColumnInfo, SourceCatalog, TableInfo
+from dawam.modules.warehouse import EvaluationService, Finding, FindingItem, ModelService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.email import EmailMessage, OneTimeLink
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
@@ -421,6 +422,30 @@ def change_set_id(roles: RoleClients) -> uuid.UUID:
     return detail.change_set.id
 
 
+def evaluation_id(roles: RoleClients) -> uuid.UUID:
+    """A stored AI evaluation of Core whose one finding proposes a description change."""
+    ensure_data_warehouse(roles)
+    table = table_id(roles)
+    state = roles.app.state
+    clock = state.services.clock
+    workspaces = WorkspaceService(state.engine, clock=clock)
+    roles.client("editor")  # makes the user a member
+    service = EvaluationService(
+        state.engine,
+        workspaces=workspaces,
+        model=ModelService(state.engine, workspaces=workspaces, clock=clock),
+        clock=clock,
+    )
+    finding = Finding(
+        title="Describe the table",
+        detail="The table has no description.",
+        items=[
+            FindingItem("source_table", "update", {"description": "Described"}, uuid.UUID(table))
+        ],
+    )
+    return service.store(roles.user("editor"), roles.workspace_id, "core", [finding]).id
+
+
 def ensure_data_warehouse(roles: RoleClients) -> None:
     """Sets the Data Warehouse up through the API unless it already is."""
     owner = roles.client("owner")
@@ -617,6 +642,8 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
     "change_set_id": change_set_id,
+    "evaluation_id": evaluation_id,
+    "index": lambda roles: 0,
     "comment_id": comment_id,
     "file_id": file_id,
     "snapshot_id": snapshot_id,

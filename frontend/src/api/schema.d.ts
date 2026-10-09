@@ -1047,6 +1047,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evaluations
+         * @description The stored AI evaluations, newest first (any member). 404 before the Data Warehouse
+         *     is set up.
+         */
+        get: operations["listAiEvaluations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations/{evaluation_id}/findings/{index}/change-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Change Set
+         * @description Turn a finding's concrete changes into a pending Change Set (owners and editors).
+         *     404 for an unknown evaluation or finding; 422 `no_changes` for advice only.
+         */
+        post: operations["createChangeSetFromFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
         parameters: {
             query?: never;
@@ -3531,6 +3573,39 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** AiEvaluation */
+        AiEvaluation: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /**
+             * Findings
+             * @description Advisory: they never change the score or the gate.
+             */
+            findings: components["schemas"]["Finding"][];
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AiEvaluationList */
+        AiEvaluationList: {
+            /**
+             * Items
+             * @description Newest first.
+             */
+            items: components["schemas"]["AiEvaluation"][];
+        };
         /** ApplyResult */
         ApplyResult: {
             change_set: components["schemas"]["ChangeSetDetail"];
@@ -5077,6 +5152,62 @@ export interface components {
         FileObjectLinkList: {
             /** Items */
             items: components["schemas"]["FileObjectLink"][];
+        };
+        /** Finding */
+        Finding: {
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "ambiguous_grain" | "scd2_candidate" | "missing_conformed_dimension" | "uncomputable_kpi" | "other";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /** Table Id */
+            table_id: string | null;
+            /** Suggestion */
+            suggestion: string;
+            /**
+             * Items
+             * @description Concrete changes the finding proposes; empty: advice only.
+             */
+            items: components["schemas"]["FindingItem"][];
+        };
+        /** FindingChangeSet */
+        FindingChangeSet: {
+            /**
+             * Change Set Id
+             * Format: uuid
+             */
+            change_set_id: string;
+            /** Title */
+            title: string;
+            /** Item Count */
+            item_count: number;
+        };
+        /** FindingItem */
+        FindingItem: {
+            /** Object Type */
+            object_type: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "create" | "update" | "delete";
+            /** Object Id */
+            object_id: string | null;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string;
         };
         /** ForcedReset */
         ForcedReset: {
@@ -10982,6 +11113,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoreHistory"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAiEvaluations: {
+        parameters: {
+            query?: {
+                layer?: ("staging" | "core" | "mart") | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiEvaluationList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createChangeSetFromFinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                evaluation_id: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingChangeSet"];
                 };
             };
             /** @description Validation error */

@@ -44,6 +44,9 @@ Public interface. Other modules import only what is re-exported here:
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
+- ``EvaluationService`` (``review``, ``store``, ``list``, ``propose_change_set``): the advisory AI
+  evaluation of a Layer behind the assistant's ``evaluate_dw`` tool (spec §6.11, story 122);
+  ``GET .../data-warehouse/evaluations`` and ``POST .../evaluations/{id}/findings/{n}/change-set``.
 - ``ScoreService`` (``current``, ``history``; ``recalculate`` for the system): the rule-based DW
   score (spec §6.11) from the checks in ``score_checks`` run by the engine in ``scoring``;
   ``install_score_recalculation`` (the composition root) rescores after every committed design
@@ -56,16 +59,18 @@ Public interface. Other modules import only what is re-exported here:
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 ``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs`` and
-``score_check_results`` tables.
+``score_check_results`` and ``ai_evaluations`` tables.
 """
 
 from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
 from .lineage_sql import DIALECTS as SQL_DIALECTS
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_service import MappingService
+from .model_service import ModelService
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -98,6 +103,7 @@ __all__ = [
     "PLATFORM_PROFILES",
     "SQL_DIALECTS",
     "TARGET_PLATFORMS",
+    "AiEvaluation",
     "DataWarehouse",
     "DataWarehouseService",
     "DateDimension",
@@ -106,11 +112,15 @@ __all__ = [
     "DdlService",
     "DdlServiceDep",
     "DwSchema",
+    "EvaluationService",
+    "Finding",
+    "FindingItem",
     "LayerSchemas",
     "MappingExportService",
     "MappingExportServiceDep",
     "MappingService",
     "MappingSheet",
+    "ModelService",
     "NamingRules",
     "PlatformProfile",
     "SchemaColumn",

@@ -3724,6 +3724,168 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "evaluations"
+        ],
+        "summary": "List Evaluations",
+        "description": "The stored AI evaluations, newest first (any member). 404 before the Data Warehouse\nis set up.",
+        "operationId": "listAiEvaluations",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "staging",
+                    "core",
+                    "mart"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Layer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiEvaluationList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations/{evaluation_id}/findings/{index}/change-set": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "evaluations"
+        ],
+        "summary": "Create Change Set",
+        "description": "Turn a finding's concrete changes into a pending Change Set (owners and editors).\n404 for an unknown evaluation or finding; 422 `no_changes` for advice only.",
+        "operationId": "createChangeSetFromFinding",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingChangeSet"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
       "get": {
         "tags": [
@@ -13100,6 +13262,75 @@
         ],
         "title": "AdminWorkspacePage"
       },
+      "AiEvaluation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "staging",
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Advisory: they never change the score or the gate."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "layer",
+          "findings",
+          "created_by",
+          "created_at"
+        ],
+        "title": "AiEvaluation"
+      },
+      "AiEvaluationList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AiEvaluation"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Newest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AiEvaluationList"
+      },
       "ApplyResult": {
         "properties": {
           "change_set": {
@@ -16540,6 +16771,144 @@
           "items"
         ],
         "title": "FileObjectLinkList"
+      },
+      "Finding": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ambiguous_grain",
+              "scd2_candidate",
+              "missing_conformed_dimension",
+              "uncomputable_kpi",
+              "other"
+            ],
+            "title": "Category"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity"
+          },
+          "table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Id"
+          },
+          "suggestion": {
+            "type": "string",
+            "title": "Suggestion"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FindingItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Concrete changes the finding proposes; empty: advice only."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "detail",
+          "category",
+          "severity",
+          "table_id",
+          "suggestion",
+          "items"
+        ],
+        "title": "Finding"
+      },
+      "FindingChangeSet": {
+        "properties": {
+          "change_set_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Change Set Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "item_count": {
+            "type": "integer",
+            "title": "Item Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set_id",
+          "title",
+          "item_count"
+        ],
+        "title": "FindingChangeSet"
+      },
+      "FindingItem": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "title": "Object Type"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ],
+            "title": "Operation"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_type",
+          "operation",
+          "object_id",
+          "payload",
+          "label"
+        ],
+        "title": "FindingItem"
       },
       "ForcedReset": {
         "properties": {

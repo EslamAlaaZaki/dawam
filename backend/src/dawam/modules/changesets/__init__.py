@@ -24,7 +24,7 @@ Owns the ``change_sets`` and ``change_set_items`` tables. Imports ``auth``, ``au
 ``activity``, ``notifications`` and ``workspaces``.
 """
 
-from .api import router
+from .api import change_set_service, router
 from .handlers import AppliedChange, ObjectHandler, ObjectHandlers
 from .service import (
     MAX_ITEMS,
@@ -52,6 +52,7 @@ __all__ = [
     "ObjectHandlers",
     "ProposedItem",
     "SkippedItem",
+    "change_set_service",
     "reject_pending_change_sets",
     "router",
 ]
