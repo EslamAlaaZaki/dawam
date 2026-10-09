@@ -7,12 +7,15 @@ composition root fills.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceArchivedHook(Protocol):
@@ -52,3 +55,32 @@ class ReadableConversations(Protocol):
         Workspace). ``assistant`` imports ``changesets``, so ``changesets`` asks through this
         port."""
         ...
+
+
+class SnapshotCreatedHook(Protocol):
+    def __call__(
+        self, workspace_id: uuid.UUID, source_system_id: uuid.UUID, actor_id: uuid.UUID | None
+    ) -> None:
+        """Called after a new Snapshot of a Source System is committed (an extraction or a
+        Schema Import), outside its transaction. ``sources`` cannot import ``warehouse``,
+        which follows the Snapshot with a staging sync; a failing hook is logged and never
+        fails the Snapshot."""
+        ...
+
+
+def notify_snapshot_created(
+    hook: SnapshotCreatedHook | None,
+    workspace_id: uuid.UUID,
+    source_system_id: uuid.UUID,
+    actor_id: uuid.UUID | None,
+) -> None:
+    """Call ``hook`` (if any) after a Snapshot was committed; whatever it raises is logged,
+    since the Snapshot stands either way."""
+    if hook is None:
+        return
+    try:
+        hook(workspace_id, source_system_id, actor_id)
+    except Exception:
+        logger.exception(
+            "following a new Snapshot failed", extra={"source_system_id": str(source_system_id)}
+        )

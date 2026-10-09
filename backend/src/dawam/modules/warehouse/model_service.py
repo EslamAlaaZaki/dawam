@@ -47,6 +47,7 @@ from .tables import (
     DataWarehouseRecord,
     DwColumnRecord,
     DwTableRecord,
+    TombstoneRecord,
 )
 
 MODEL_LAYERS = ("core", "mart")
@@ -111,6 +112,9 @@ COLUMN_FIELDS = (
     "semantic_type",
 )
 
+SYNCED_FIELDS = ("data_type", "is_nullable")
+"""The fields of a staging column a sync can change, so a user edit of one is an override."""
+
 _HOUSEKEEPING: tuple[tuple[str, dict[str, Any], bool], ...] = (
     ("scd_valid_from", {"type": "timestamp"}, False),
     ("scd_valid_to", {"type": "timestamp"}, True),
@@ -139,6 +143,7 @@ class ModelColumn:
     version: int
     naming_violations: list[NamingViolation]
     review_flags: list[dict[str, str]]
+    status: str = "present"
 
 
 @dataclass(frozen=True)
@@ -156,6 +161,7 @@ class ModelTableSummary:
     column_count: int
     version: int
     naming_violation_count: int
+    status: str = "present"
 
 
 @dataclass(frozen=True)
@@ -177,6 +183,7 @@ class ModelTable:
     version: int
     naming_violations: list[NamingViolation]
     review_flags: list[dict[str, str]]
+    status: str = "present"
 
 
 def _invalid(field: str, message: str) -> ApiError:
@@ -290,6 +297,7 @@ def _column_view(record: DwColumnRecord, layer: str, rules: NamingRules) -> Mode
             rules, layer=layer, name=record.name, is_system=record.is_system
         ),
         review_flags=list(record.review_flags or []),
+        status=record.status,
     )
 
 
@@ -318,6 +326,7 @@ def _table_view(
             rules, layer=record.layer, kind=record.kind, name=record.name
         ),
         review_flags=list(record.review_flags or []),
+        status=record.status,
     )
 
 
@@ -375,6 +384,7 @@ class ModelService:
                 naming_violation_count=len(
                     check_table_name(rules, layer=t.layer, kind=t.kind, name=t.name)
                 ),
+                status=t.status,
             )
             for t, n in rows
         ]
@@ -586,6 +596,17 @@ class ModelService:
                 at=now,
             )
             self._activity(db, user, workspace_id, "dw_table.deleted", table)
+            if table.layer == "staging" and table.source_table_id is not None:
+                # Sync and generation never bring a deleted Staging Table back.
+                db.add(
+                    TombstoneRecord(
+                        data_warehouse_id=warehouse.id,
+                        object_type="staging_table",
+                        src_object_id=table.source_table_id,
+                        deleted_by=user.id,
+                        deleted_at=now,
+                    )
+                )
             db.delete(table)
 
     # --- columns ---------------------------------------------------------------------
@@ -652,6 +673,10 @@ class ModelService:
                 after = _column_snapshot(column)
                 changed = [f for f in COLUMN_FIELDS if before[f] != after[f]]
                 if changed:
+                    if table.layer == "staging":
+                        column.edited_fields = sorted(
+                            {*column.edited_fields, *(f for f in changed if f in SYNCED_FIELDS)}
+                        )
                     if "name" in changed:
                         self._rename_default(table, before["name"], column.name)
                     column.version += 1

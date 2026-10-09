@@ -36,6 +36,7 @@ from dawam.modules.sources import (
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
+from dawam.wiring import staging_sync_after_snapshot
 
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
 
@@ -85,6 +86,7 @@ def _service_handlers(
         jobs=runner,
         encryption_key=settings.encryption_key.get_secret_value(),
         clock=clock,
+        on_snapshot=staging_sync_after_snapshot(engine, settings, clock),
     )
     profiling = ProfilingService(
         engine,

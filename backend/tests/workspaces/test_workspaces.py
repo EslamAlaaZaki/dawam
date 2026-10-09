@@ -45,6 +45,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
             "data_warehouse.change_platform",
             "data_warehouse.set_up",
             "dw_schema.edit",
+            "dw_schema.retire_staging",
             "file.upload",
             "job.cancel_any",
             "job.cancel_own",

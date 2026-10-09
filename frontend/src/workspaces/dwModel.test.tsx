@@ -62,6 +62,7 @@ const KEY: DwColumn = {
   version: 1,
   naming_violations: [],
   review_flags: [],
+  status: "present",
 };
 
 const HASH: DwColumn = {
@@ -92,6 +93,7 @@ const CUSTOMER: DwTable = {
   version: 1,
   naming_violations: [],
   review_flags: [],
+  status: "present",
 };
 
 const SALES: DwTable = {

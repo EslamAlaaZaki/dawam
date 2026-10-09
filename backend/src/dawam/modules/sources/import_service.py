@@ -27,6 +27,7 @@ from dawam.modules.notifications import NotificationService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.hooks import SnapshotCreatedHook, notify_snapshot_created
 
 from .internal.schema_import import ImportReport, build_template, read_catalog
 from .internal.snapshots import store_catalog
@@ -81,7 +82,9 @@ class SchemaImportService:
         workspaces: WorkspaceService,
         clock: Clock,
         notifications: NotificationService | None = None,
+        on_snapshot: SnapshotCreatedHook | None = None,
     ) -> None:
+        self._on_snapshot = on_snapshot
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
@@ -177,7 +180,12 @@ class SchemaImportService:
                 details={"origin": "import", "tables": snapshot.table_count},
                 at=snapshot.taken_at,
             )
-            return ImportResult(report, imported=True, unchanged=False, snapshot=_summary(snapshot))
+            result = ImportResult(
+                report, imported=True, unchanged=False, snapshot=_summary(snapshot)
+            )
+            workspace_for_hook = system.workspace_id
+        notify_snapshot_created(self._on_snapshot, workspace_for_hook, system_id, user.id)
+        return result
 
     def status(self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID) -> ImportStatus:
         """Whether the Source System works from imports, and what that disables (any

@@ -695,6 +695,22 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=ensure_data_warehouse,
     ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/sync",
+        "Edit KPIs, DW Schema, mappings (propose the staging sync Change Set)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+        json=lambda roles: {"source_system_id": str(system_id(roles))},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/drop-removed",
+        "Edit KPIs, DW Schema, mappings (propose dropping removed staging objects; "
+        "accepting its items is owner-only)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=ensure_data_warehouse,
+    ),
     # Column mappings and lineage (stories 99, 100, 104).
     Row(
         "GET",

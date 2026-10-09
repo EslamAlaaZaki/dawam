@@ -6,16 +6,16 @@ it in), named ``stg_<system code>_<database schema>_<table>``, with the source's
 the target platform's types plus the audit columns, and a ``direct`` mapping (and lineage
 edge) from every source column to its staging column.
 
-Generation only adds: a Source Table that already has a Staging Table is left alone (syncing
-changes of a later Snapshot is a Change Set, not this). Every method authorizes through the
-workspaces policy first. The batch is audited and recorded in the activity feed once.
+Generation only adds: a Source Table that already has a Staging Table, or whose Staging Table
+a user deleted (a Tombstone), is left alone (syncing changes of a later Snapshot is a Change
+Set, see ``staging_sync``). Every method authorizes through the workspaces policy first. The
+batch is audited and recorded in the activity feed once.
 """
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Any
 
 import sqlalchemy as sa
@@ -25,39 +25,24 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import StagingSourceService, StagingSystem, StagingTable
+from dawam.modules.changesets import ChangeSetDetail, ChangeSetService
+from dawam.modules.notifications import NotificationService
+from dawam.modules.sources import StagingSourceService, StagingSystem
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
-from .platforms import SAFE_IDENTIFIER, TargetPlatform
+from .platforms import TargetPlatform
 from .service import NamingRules
-from .staging_naming import Flag, NameInput, column_names, needs_placeholder, table_names
-from .staging_types import translate_type
+from .staging_naming import needs_placeholder
+from .staging_rows import StagingFlag, build_staging, write_rows
+from .staging_sync import plan_drop_removed, plan_sync
 from .tables import (
-    NAME_MAX_LENGTH,
-    ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
     DwTableRecord,
-    LineageEdgeRecord,
-    TableMappingRecord,
+    TombstoneRecord,
 )
-
-_NEW_VALIDATION: dict[str, Any] = {"unparsed": False, "errors": []}
-_SOURCE_SYSTEM_LENGTH = 24
-
-
-@dataclass(frozen=True)
-class StagingFlag:
-    """One thing generation flagged for review."""
-
-    table_id: uuid.UUID
-    table_name: str
-    column_name: str | None
-    """``None`` for a flag on the table itself."""
-    code: str
-    message: str
 
 
 @dataclass(frozen=True)
@@ -69,14 +54,6 @@ class StagingResult:
     flags: list[StagingFlag]
 
 
-def _dict(flags: list[Flag] | tuple[Flag, ...]) -> list[dict[str, str]]:
-    return [{"code": f.code, "message": f.message} for f in flags]
-
-
-def _quote(part: str) -> str:
-    return part if SAFE_IDENTIFIER.fullmatch(part) else '"' + part.replace('"', '""') + '"'
-
-
 class StagingService:
     def __init__(
         self,
@@ -85,7 +62,11 @@ class StagingService:
         workspaces: WorkspaceService,
         clock: Clock,
         sources: StagingSourceService | None = None,
+        change_sets: ChangeSetService | None = None,
+        notifications: NotificationService | None = None,
     ) -> None:
+        self._change_sets = change_sets
+        self._notifications = notifications or NotificationService(engine, clock=clock)
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
@@ -113,6 +94,15 @@ class StagingService:
                     )
                 )
             }
+            tombstoned = set(
+                db.scalars(
+                    sa.select(TombstoneRecord.src_object_id).where(
+                        TombstoneRecord.data_warehouse_id == warehouse.id,
+                        TombstoneRecord.object_type == "staging_table",
+                        TombstoneRecord.src_object_id.is_not(None),
+                    )
+                )
+            )
             taken = set(
                 db.scalars(
                     sa.select(sa.func.lower(DwTableRecord.name)).where(
@@ -124,7 +114,7 @@ class StagingService:
             platform: TargetPlatform = warehouse.target_platform  # type: ignore[assignment]
             rules = NamingRules(**warehouse.naming_rules)
             warehouse_id = warehouse.id
-        systems, existing = self._read(workspace_id, staged)
+        systems, existing = self._read(workspace_id, staged, tombstoned)
         try:
             with Session(self._engine) as db, db.begin():
                 result = self._insert(
@@ -146,14 +136,157 @@ class StagingService:
             ) from None
         return result
 
+    def sync(
+        self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID
+    ) -> ChangeSetDetail | None:
+        """Propose the staging changes the Source System's latest Snapshot calls for, as a
+        ``sync`` Change Set (owners and editors; spec §6.7). It replaces a pending sync of
+        the same Source System, touches nothing until confirmed, and alerts the owners and
+        editors. ``None`` when staging is already in line (or the Data Warehouse is not set up).
+        404 ``not_found`` for another Workspace's Source System."""
+        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        found = self._sources.read(workspace_id, system_id=system_id, include_removed=True)
+        if not found:
+            raise ApiError(404, "not_found", "Source System not found.")
+        with Session(self._engine) as db:
+            warehouse = db.scalars(
+                sa.select(DataWarehouseRecord).where(
+                    DataWarehouseRecord.workspace_id == workspace_id
+                )
+            ).first()
+            if warehouse is None:
+                return None
+            db.expunge(warehouse)
+        system = self._with_placeholders(workspace_id, system_id, warehouse, found[0])
+        with Session(self._engine) as db:
+            taken = {
+                n.lower()
+                for n in db.scalars(
+                    sa.select(DwTableRecord.name).where(
+                        DwTableRecord.data_warehouse_id == warehouse.id,
+                        DwTableRecord.layer == "staging",
+                    )
+                )
+            }
+            items = plan_sync(
+                db, warehouse=warehouse, system=system, taken=taken, now=self._clock()
+            )
+        if not items:
+            return None
+        detail = self._propose(
+            user,
+            workspace_id,
+            origin="sync",
+            scope={"source_system_id": str(system_id)},
+            title=f"Sync staging with {system.code}",
+            items=items,
+        )
+        creates = sum(1 for i in items if i.operation == "create")
+        self._notifications.notify(
+            self._workspaces.reviewer_ids(workspace_id),
+            kind="sync_alert",
+            message=(
+                f"A new Snapshot of {system.code} changes staging: {len(items)} proposed "
+                f"change(s), {creates} new. Review the sync Change Set."
+            ),
+            workspace_id=workspace_id,
+            ref_type="change_set",
+            ref_id=detail.change_set.id,
+        )
+        return detail
+
+    def drop_removed(self, user: User, workspace_id: uuid.UUID) -> ChangeSetDetail | None:
+        """Propose deleting the ``source_removed`` staging tables and columns nothing
+        downstream reads, as a Change Set whose items only an owner can accept (owners and
+        editors may propose it). ``None`` when there is nothing to drop. 404 ``not_set_up``
+        before the Data Warehouse exists."""
+        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        with Session(self._engine) as db:
+            warehouse = db.scalars(
+                sa.select(DataWarehouseRecord).where(
+                    DataWarehouseRecord.workspace_id == workspace_id
+                )
+            ).first()
+            if warehouse is None:
+                raise ApiError(404, "not_set_up", "The Data Warehouse has not been set up yet.")
+            items = plan_drop_removed(db, warehouse)
+        if not items:
+            return None
+        return self._propose(
+            user,
+            workspace_id,
+            origin="sync",
+            scope={"kind": "drop_removed"},
+            title="Drop removed staging objects",
+            items=items,
+        )
+
+    def _propose(self, user: User, workspace_id: uuid.UUID, **proposal: Any) -> ChangeSetDetail:
+        if self._change_sets is None:  # pragma: no cover - a programming error
+            raise RuntimeError("StagingService needs a ChangeSetService to propose")
+        return self._change_sets.propose(user, workspace_id, **proposal)
+
+    def _with_placeholders(
+        self,
+        workspace_id: uuid.UUID,
+        system_id: uuid.UUID,
+        warehouse: DataWarehouseRecord,
+        system: StagingSystem,
+    ) -> StagingSystem:
+        """``system`` with placeholder numbers given to the non-Latin names it will stage."""
+        with Session(self._engine) as db:
+            staged = set(
+                db.scalars(
+                    sa.select(DwTableRecord.source_table_id).where(
+                        DwTableRecord.data_warehouse_id == warehouse.id,
+                        DwTableRecord.layer == "staging",
+                        DwTableRecord.source_table_id.is_not(None),
+                    )
+                )
+            )
+            staged_columns = set(
+                db.scalars(
+                    sa.select(DwColumnRecord.source_column_id)
+                    .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+                    .where(
+                        DwTableRecord.data_warehouse_id == warehouse.id,
+                        DwColumnRecord.source_column_id.is_not(None),
+                    )
+                )
+            )
+        tables = [
+            t.id
+            for t in system.tables
+            if t.status == "present"
+            and t.id not in staged
+            and t.placeholder_no is None
+            and needs_placeholder(t.name)
+        ]
+        columns = [
+            c.id
+            for t in system.tables
+            if t.status == "present"
+            for c in t.columns
+            if c.status == "present"
+            and c.id not in staged_columns
+            and c.placeholder_no is None
+            and needs_placeholder(c.name)
+        ]
+        if not tables and not columns:
+            return system
+        self._sources.assign_placeholders(workspace_id, tables=tables, columns=columns)
+        return self._sources.read(workspace_id, system_id=system_id, include_removed=True)[0]
+
     def _read(
-        self, workspace_id: uuid.UUID, staged: set[uuid.UUID]
+        self, workspace_id: uuid.UUID, staged: set[uuid.UUID], tombstoned: set[uuid.UUID]
     ) -> tuple[list[StagingSystem], int]:
         """The tables still to stage (with placeholder numbers given to their non-Latin
-        names) and how many source tables already had a Staging Table."""
+        names; never one a user deleted: its Tombstone stays) and how many source tables
+        already had a Staging Table."""
         found = self._sources.read(workspace_id)
         existing = sum(1 for s in found for t in s.tables if t.id in staged)
-        systems = self._pending(found, staged)
+        skip = staged | tombstoned
+        systems = self._pending(found, skip)
         tables = [
             t.id
             for s in systems
@@ -169,7 +302,7 @@ class StagingService:
         ]
         if tables or columns:
             self._sources.assign_placeholders(workspace_id, tables=tables, columns=columns)
-            systems = self._pending(self._sources.read(workspace_id), staged)
+            systems = self._pending(self._sources.read(workspace_id), skip)
         return systems, existing
 
     @staticmethod
@@ -192,51 +325,10 @@ class StagingService:
         existing: int,
     ) -> StagingResult:
         now = self._clock()
-        names = table_names(
-            platform,
-            tables=[
-                (
-                    system.code,
-                    NameInput(str(table.db_schema_id), table.db_schema),
-                    NameInput(str(table.id), table.name, table.placeholder_no),
-                )
-                for system in systems
-                for table in system.tables
-            ],
-            taken=taken,
-            max_length=NAME_MAX_LENGTH,
+        rows, flags = build_staging(
+            user.id, warehouse_id, platform, audit_names, systems, taken, now
         )
-        rows = _Rows()
-        flags: list[StagingFlag] = []
-        for system in systems:
-            for table in system.tables:
-                named = names[str(table.id)]
-                self._stage_table(
-                    rows,
-                    flags,
-                    user,
-                    warehouse_id,
-                    platform,
-                    audit_names,
-                    system,
-                    table,
-                    named,
-                    now,
-                )
-        for model, items in (
-            (DwTableRecord, rows.tables),
-            (TableMappingRecord, rows.table_mappings),
-            (DwColumnRecord, rows.columns),
-            (ColumnMappingRecord, rows.column_mappings),
-            (LineageEdgeRecord, rows.edges),
-        ):
-            if not items:
-                continue
-            # One multi-row INSERT per chunk (a round trip per row is what made it slow),
-            # kept under the driver's 65 535 bind parameters.
-            step = max(1, 30_000 // len(items[0]))
-            for start in range(0, len(items), step):
-                db.execute(sa.insert(model.__table__).values(items[start : start + step]))
+        write_rows(db, rows)
         if rows.tables:
             record_audit(
                 db,
@@ -266,167 +358,3 @@ class StagingService:
                 at=now,
             )
         return StagingResult(len(rows.tables), len(rows.columns), existing, flags)
-
-    def _stage_table(
-        self,
-        rows: _Rows,
-        flags: list[StagingFlag],
-        user: User,
-        warehouse_id: uuid.UUID,
-        platform: TargetPlatform,
-        audit_names: tuple[str, str],
-        system: StagingSystem,
-        table: StagingTable,
-        named: Any,
-        now: datetime,
-    ) -> None:
-        table_id = uuid.uuid4()
-        rows.tables.append(
-            {
-                "id": table_id,
-                "data_warehouse_id": warehouse_id,
-                "layer": "staging",
-                "name": named.name,
-                "kind": "staging",
-                "is_aggregate": False,
-                "is_conformed": False,
-                "description": "",
-                "source_table_id": table.id,
-                "review_flags": _dict(named.flags),
-                "created_by": user.id,
-                "created_at": now,
-                "updated_at": now,
-                "version": 1,
-            }
-        )
-        mapping_id = uuid.uuid4()
-        rows.table_mappings.append(
-            {
-                "id": mapping_id,
-                "dw_table_id": table_id,
-                "match_keys": [],
-                "notes": "",
-                "created_at": now,
-                "updated_at": now,
-                "version": 1,
-            }
-        )
-        for flag in named.flags:
-            flags.append(StagingFlag(table_id, named.name, None, flag.code, flag.message))
-        load_ts, source_system = audit_names
-        column_named = column_names(
-            platform,
-            columns=[NameInput(str(c.id), c.name, c.placeholder_no) for c in table.columns],
-            taken={load_ts, source_system},
-            max_length=NAME_MAX_LENGTH,
-        )
-        source_prefix = ".".join(_quote(p) for p in (table.db_schema, table.name))
-        ordinal = 0
-
-        def add_column(
-            name: str,
-            data_type: dict[str, Any],
-            nullable: bool,
-            *,
-            role: str,
-            source_column_id: uuid.UUID | None,
-            review: list[dict[str, str]],
-            mapping_type: str,
-            sql: str,
-        ) -> uuid.UUID:
-            nonlocal ordinal
-            ordinal += 1
-            column_id = uuid.uuid4()
-            rows.columns.append(
-                {
-                    "id": column_id,
-                    "table_id": table_id,
-                    "name": name,
-                    "ordinal": ordinal,
-                    "data_type": data_type,
-                    "is_nullable": nullable,
-                    "role": role,
-                    "description": "",
-                    "is_system": role == "audit",
-                    "source_column_id": source_column_id,
-                    "review_flags": review,
-                    "created_at": now,
-                    "updated_at": now,
-                    "version": 1,
-                }
-            )
-            rows.column_mappings.append(
-                {
-                    "id": (mapping := uuid.uuid4()),
-                    "table_mapping_id": mapping_id,
-                    "dw_column_id": column_id,
-                    "mapping_type": mapping_type,
-                    "rule_text": "",
-                    "sql_expression": sql,
-                    "validation": _NEW_VALIDATION,
-                    "updated_by": user.id,
-                    "updated_at": now,
-                    "version": 1,
-                }
-            )
-            if source_column_id is not None:
-                rows.edges.append(
-                    {
-                        "id": uuid.uuid4(),
-                        "kind": "value",
-                        "from_type": "src_column",
-                        "from_id": source_column_id,
-                        "to_type": "dw_column",
-                        "to_id": column_id,
-                        "mapping_id": mapping,
-                    }
-                )
-            return column_id
-
-        for column in table.columns:
-            translated = translate_type(platform, column.data_type, engine=system.engine)
-            column_name = column_named[str(column.id)]
-            all_flags = [*column_name.flags, *translated.flags]
-            add_column(
-                column_name.name,
-                translated.data_type,
-                column.is_nullable,
-                role="attribute",
-                source_column_id=column.id,
-                review=_dict(all_flags),
-                mapping_type="direct",
-                sql=f"{source_prefix}.{_quote(column.name)}",
-            )
-            for flag in all_flags:
-                flags.append(
-                    StagingFlag(table_id, named.name, column_name.name, flag.code, flag.message)
-                )
-        add_column(
-            load_ts,
-            {"type": "timestamp", "length": None, "precision": None, "scale": None},
-            False,
-            role="audit",
-            source_column_id=None,
-            review=[],
-            mapping_type="system",
-            sql="CURRENT_TIMESTAMP",
-        )
-        add_column(
-            source_system,
-            {"type": "string", "length": _SOURCE_SYSTEM_LENGTH, "precision": None, "scale": None},
-            False,
-            role="audit",
-            source_column_id=None,
-            review=[],
-            mapping_type="system",
-            sql="'" + system.code.replace("'", "''") + "'",
-        )
-
-
-@dataclass
-class _Rows:
-    tables: list[dict[str, Any]] = field(default_factory=list)
-    table_mappings: list[dict[str, Any]] = field(default_factory=list)
-    columns: list[dict[str, Any]] = field(default_factory=list)
-    column_mappings: list[dict[str, Any]] = field(default_factory=list)
-    edges: list[dict[str, Any]] = field(default_factory=list)

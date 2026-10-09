@@ -363,6 +363,19 @@ class WorkspaceService:
                 )
             )
 
+    def reviewer_ids(self, workspace_id: uuid.UUID) -> list[uuid.UUID]:
+        """The owners and editors of the Workspace: who reviews what DAWAM proposes (e.g. a
+        sync Change Set). Authorizes nothing: callers have."""
+        with Session(self._engine) as db:
+            return list(
+                db.scalars(
+                    sa.select(MemberRecord.user_id).where(
+                        MemberRecord.workspace_id == workspace_id,
+                        MemberRecord.role.in_(("owner", "editor")),
+                    )
+                )
+            )
+
     def member_ids_among(
         self, workspace_id: uuid.UUID, user_ids: Iterable[uuid.UUID]
     ) -> set[uuid.UUID]:

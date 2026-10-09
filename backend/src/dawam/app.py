@@ -24,12 +24,12 @@ from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
-from dawam.modules.changesets import ObjectHandlers, reject_pending_change_sets
+from dawam.modules.changesets import reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.llm import AdapterFactory, on_workspace_created
 from dawam.modules.mail import MailService
-from dawam.modules.sources import SourceEnhancementHandler, SourceSummaryService
+from dawam.modules.sources import SourceSummaryService
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
@@ -45,6 +45,7 @@ from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 from dawam.platform.storage import create_storage
+from dawam.wiring import change_set_handlers, staging_sync_after_snapshot
 
 API_PREFIX = "/api/v1"
 
@@ -147,9 +148,9 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # Change Sets proposed in a private conversation are hidden from everyone else.
     app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
-    app.state.change_set_handlers = ObjectHandlers(
-        SourceEnhancementHandler("source_table"), SourceEnhancementHandler("source_column")
-    )
+    app.state.change_set_handlers = change_set_handlers(engine)
+    # A new Snapshot (Schema Import) is followed by a staging sync: sources cannot import warehouse.
+    app.state.on_snapshot_created = staging_sync_after_snapshot(engine, settings, services.clock)
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot
     # import sources, which computes it.
     app.state.source_analysis = SourceSummaryService(
