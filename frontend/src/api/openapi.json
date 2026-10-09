@@ -16418,6 +16418,18 @@
             ],
             "title": "Origin"
           },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale",
+            "description": "Why the AI suggested the KPI; null unless `origin` is `ai`."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -16458,6 +16470,7 @@
           "refresh_frequency",
           "targets",
           "origin",
+          "rationale",
           "status",
           "version",
           "created_at",

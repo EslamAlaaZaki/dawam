@@ -5110,6 +5110,11 @@ export interface components {
              */
             origin: "user" | "ai" | "rule";
             /**
+             * Rationale
+             * @description Why the AI suggested the KPI; null unless `origin` is `ai`.
+             */
+            rationale: string | null;
+            /**
              * Status
              * @enum {string}
              */

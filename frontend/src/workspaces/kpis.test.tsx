@@ -75,10 +75,19 @@ const NIM: Kpi = {
   refresh_frequency: "monthly",
   targets: [{ label: "FY2027", value: "3.2%" }],
   origin: "user",
+  rationale: null,
   status: "draft",
   version: 1,
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
+};
+
+const AI_KPI: Kpi = {
+  ...NIM,
+  id: "55555555-5555-4555-8555-555555555555",
+  name: "Cost to income",
+  origin: "ai",
+  rationale: "The ledger holds cost and income columns.",
 };
 
 const SYSTEM_FOLDER = `${PATH}?folder=systems/${CBS.id}/kpis`;
@@ -149,6 +158,23 @@ describe("the KPIs folders", () => {
     renderApp(backend("viewer", { system: [], dw: [] }), SYSTEM_FOLDER);
 
     expect(await screen.findByText(/No KPIs yet/)).toBeInTheDocument();
+  });
+
+  it("labels an AI-suggested KPI in the list and shows its rationale on the KPI page", async () => {
+    renderApp(backend("editor", { system: [NIM, AI_KPI], dw: [] }), SYSTEM_FOLDER);
+
+    const ai = await screen.findByRole("row", { name: /Cost to income/ });
+    expect(ai).toHaveTextContent("AI-generated");
+    expect(screen.getByRole("row", { name: /Net interest margin/ })).not.toHaveTextContent(
+      "AI-generated",
+    );
+    fireEvent.click(within(ai).getByRole("button", { name: "Cost to income" }));
+
+    const page = screen.getByRole("form", { name: "KPI Cost to income" });
+    expect(within(page).getByLabelText("AI rationale")).toHaveTextContent(
+      "The ledger holds cost and income columns.",
+    );
+    expect(within(page).getByRole("button", { name: "Delete KPI" })).toBeInTheDocument();
   });
 
   it("shows a viewer a KPI read-only", async () => {

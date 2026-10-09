@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService
-from dawam.modules.kpis import KpiService
+from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
@@ -166,6 +166,28 @@ class _GenerateFile(BaseModel):
     system_id: uuid.UUID = Field(description="The Source System whose file area gets the file.")
     name: str = Field(min_length=1, max_length=200, description="File name, e.g. `notes.md`.")
     content: str = Field(max_length=200_000, description="The file's text.")
+
+
+class _KpiIdea(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="The KPI's name.")
+    rationale: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="Why this KPI fits: which tables, columns or documents point to it.",
+    )
+    definition: str = Field(default="", max_length=4000, description="The business definition.")
+    formula_text: str = Field(default="", max_length=4000, description="The formula in words.")
+    unit: str = Field(default="", max_length=50)
+    aggregation: str = Field(default="", max_length=50)
+
+
+class _SuggestKpis(BaseModel):
+    suggestions: list[_KpiIdea] = Field(min_length=1, max_length=20)
+    system_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Source System the KPIs are documented under; leave out for the "
+        "Data Warehouse.",
+    )
 
 
 class _RunSourceQuery(BaseModel):
@@ -561,6 +583,31 @@ def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     )
 
 
+def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
+    result = ctx.services.kpis.suggest(
+        ctx.user,
+        ctx.workspace_id,
+        [KpiSuggestion(**idea.model_dump()) for idea in args.suggestions],
+        source_system_id=args.system_id,
+    )
+    folder = "dw" if args.system_id is None else f"systems/{args.system_id}"
+    return {
+        "created": [
+            {
+                "id": kpi.id,
+                "name": kpi.name,
+                "status": kpi.status,
+                "origin": kpi.origin,
+                "link": f"?folder={folder}/kpis",
+            }
+            for kpi in result.created
+        ],
+        "skipped": result.skipped,
+        "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
+        "existing KPIs are never changed.",
+    }
+
+
 def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     result = ctx.services.source_queries.run(
         ctx.user, ctx.workspace_id, args.system_id, args.sql, budget=ctx.budget
@@ -720,6 +767,17 @@ TOOLS: tuple[Tool, ...] = (
         "write",
         Action.UPLOAD_FILE,
         _generate_file,
+    ),
+    Tool(
+        "suggest_kpis",
+        "After reading a Source System's schema, profiles and documents, propose KPIs. They "
+        "are created as AI-labelled drafts with your rationale; a name that already exists "
+        "is skipped and existing KPIs are never changed. Never put sample values or "
+        "personal data in the text.",
+        _SuggestKpis,
+        "write",
+        Action.EDIT_KPI,
+        _suggest_kpis,
     ),
     Tool(
         "propose_changes",

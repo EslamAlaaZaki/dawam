@@ -71,6 +71,7 @@ def test_an_editor_documents_a_kpi_under_a_source_system(roles: RoleClients, clo
         "refresh_frequency": "monthly",
         "targets": [{"label": "FY2027", "value": "3.2%"}],
         "origin": "user",
+        "rationale": None,
         "status": "draft",
         "version": 1,
         "created_at": clock().isoformat().replace("+00:00", "Z"),
