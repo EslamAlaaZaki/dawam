@@ -55,7 +55,8 @@ Public interface. Other modules import only what is re-exported here:
   ``/workspaces/{workspace_id}/data-warehouse/lineage``.
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
-``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs`` and ``score_check_results`` tables.
+``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs`` and
+``score_check_results`` tables.
 """
 
 from .api import router
