@@ -387,3 +387,58 @@ def test_get_score_before_the_data_warehouse_is_set_up_is_an_error_not_a_crash(
     status, _ = use(roles, fake_llm, "get_score")
 
     assert status == "error"
+
+
+def add_foreign_key(roles: RoleClients, source: dict, target: dict) -> None:
+    response = roles.client("editor").post(
+        f"{base(roles)}/tables/{source['id']}/columns",
+        json={
+            "name": "customer_key",
+            "data_type": {"type": "bigint"},
+            "role": "fk",
+            "references_table_id": target["id"],
+        },
+    )
+    assert response.status_code == 201, response.text
+
+
+def stars(roles: RoleClients, role="viewer") -> list[dict]:
+    response = roles.client(role).get(f"{base(roles)}/score/stars")
+    assert response.status_code == 200, response.text
+    return response.json()["items"]
+
+
+def test_the_star_cards_need_a_data_warehouse(roles: RoleClients):
+    assert roles.client("viewer").get(f"{base(roles)}/score/stars").status_code == 404
+
+
+def test_a_star_card_shows_the_star_and_links_to_what_is_at_fault(warehouse: RoleClients):
+    customers = table(warehouse, "dim_customer", "core")
+    table(warehouse, "dim_unused", "core")
+    sales = fact(warehouse)
+    add_foreign_key(warehouse, sales, customers)
+    amount = column(warehouse, sales["id"], "amount", "decimal", role="measure")
+
+    [card] = stars(warehouse)  # dimensions have no card
+
+    assert card["name"] == "fact_sales" and card["layer"] == "core"
+    assert card["grain"] == GRAIN
+    assert [(d["name"], d["column_name"]) for d in card["dimensions"]] == [
+        ("dim_customer", "customer_key")
+    ]
+    assert card["dimensions"][0]["conformed"] is False
+    assert card["date_dimension"] is None
+    [measure] = card["measures"]
+    assert measure["column_id"] == amount["id"] and measure["additivity"] is None
+    [missing] = [c for c in card["failed_checks"] if c["check_code"] == "measure_has_additivity"]
+    assert missing["link"] == f"?table={sales['id']}&column={amount['id']}"
+    assert card["link"] == f"?table={sales['id']}"
+    assert card["score"] < 100
+
+
+def test_star_cards_list_the_worst_star_first(warehouse: RoleClients):
+    customers = table(warehouse, "dim_customer", "core")
+    add_foreign_key(warehouse, fact(warehouse, "fact_good"), customers)
+    fact(warehouse, "fact_bad")
+
+    assert [c["name"] for c in stars(warehouse)] == ["fact_bad", "fact_good"]

@@ -3724,6 +3724,61 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/stars": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Get Star Health Cards",
+        "description": "One health card per fact table of Core and Mart (any member): grain, linked\ndimensions with the conformed ones marked, measures with their additivity, the date\ndimension, and the failed checks with links to the objects at fault. Built from the\nlatest check results. 404 before the Data Warehouse is set up.",
+        "operationId": "getStarHealthCards",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StarCards"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
       "get": {
         "tags": [
@@ -22277,6 +22332,210 @@
           "flags"
         ],
         "title": "StagingResult"
+      },
+      "StarCard": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "fact_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Type"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain",
+            "description": "null: no grain statement yet."
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "The fact's own score, 0-100."
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/StarDimension"
+            },
+            "type": "array",
+            "title": "Dimensions",
+            "description": "Dimensions the fact links to."
+          },
+          "measures": {
+            "items": {
+              "$ref": "#/components/schemas/StarMeasure"
+            },
+            "type": "array",
+            "title": "Measures"
+          },
+          "date_dimension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StarDimension"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: no link to a date dimension."
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/FailedCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks",
+            "description": "Errors first; each links to its object."
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "layer",
+          "name",
+          "fact_type",
+          "grain",
+          "score",
+          "dimensions",
+          "measures",
+          "date_dimension",
+          "failed_checks",
+          "link"
+        ],
+        "title": "StarCard"
+      },
+      "StarCards": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StarCard"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Worst score first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "StarCards"
+      },
+      "StarDimension": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id",
+            "description": "The fact's foreign key column."
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "conformed": {
+            "type": "boolean",
+            "title": "Conformed",
+            "description": "Shared by several facts, with one meaning."
+          },
+          "link": {
+            "type": "string",
+            "title": "Link",
+            "description": "An app path to the foreign key."
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "name",
+          "column_id",
+          "column_name",
+          "conformed",
+          "link"
+        ],
+        "title": "StarDimension"
+      },
+      "StarMeasure": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "additivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "additive",
+                  "semi_additive",
+                  "non_additive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additivity",
+            "description": "null: not declared yet."
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "name",
+          "additivity",
+          "link"
+        ],
+        "title": "StarMeasure"
       },
       "StartProfilingRequest": {
         "properties": {

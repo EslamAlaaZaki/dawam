@@ -123,3 +123,56 @@ def get_score_history(
     return ScoreHistory(
         items=[ScoreRun.model_validate(r) for r in scores.history(user, workspace_id, limit=limit)]
     )
+
+
+class StarDimension(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    table_id: uuid.UUID
+    name: str
+    column_id: uuid.UUID = Field(description="The fact's foreign key column.")
+    column_name: str
+    conformed: bool = Field(description="Shared by several facts, with one meaning.")
+    link: str = Field(description="An app path to the foreign key.")
+
+
+class StarMeasure(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_id: uuid.UUID
+    name: str
+    additivity: Literal["additive", "semi_additive", "non_additive"] | None = Field(
+        description="null: not declared yet."
+    )
+    link: str
+
+
+class StarCard(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    table_id: uuid.UUID
+    layer: Literal["core", "mart"]
+    name: str
+    fact_type: str | None
+    grain: str | None = Field(description="null: no grain statement yet.")
+    score: float = Field(description="The fact's own score, 0-100.")
+    dimensions: list[StarDimension] = Field(description="Dimensions the fact links to.")
+    measures: list[StarMeasure]
+    date_dimension: StarDimension | None = Field(description="null: no link to a date dimension.")
+    failed_checks: list[FailedCheck] = Field(description="Errors first; each links to its object.")
+    link: str
+
+
+class StarCards(BaseModel):
+    items: list[StarCard] = Field(description="Worst score first.")
+
+
+@router.get("/stars", operation_id="getStarHealthCards", response_model=StarCards)
+def get_star_health_cards(
+    workspace_id: uuid.UUID, user: CurrentUser, scores: ScoreServiceDep
+) -> StarCards:
+    """One health card per fact table of Core and Mart (any member): grain, linked
+    dimensions with the conformed ones marked, measures with their additivity, the date
+    dimension, and the failed checks with links to the objects at fault. Built from the
+    latest check results. 404 before the Data Warehouse is set up."""
+    return StarCards(items=[StarCard.model_validate(c) for c in scores.stars(user, workspace_id)])
