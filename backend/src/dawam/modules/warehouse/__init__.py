@@ -31,6 +31,10 @@ Public interface. Other modules import only what is re-exported here:
 - ``calendar`` (pure): the generated date dimension (Gregorian, optional Umm al-Qura Hijri and
   fiscal attributes, configurable weekend) and time dimension. ``POST .../tables/generated``
   adds them as ``generated`` tables.
+- ``ScoreService`` (``current``, ``history``; ``recalculate`` for the system): the rule-based DW
+  score (spec §6.11) from the checks in ``score_checks`` run by the engine in ``scoring``;
+  ``install_score_recalculation`` (the composition root) rescores after every committed design
+  change, debounced. ``GET .../data-warehouse/score`` and ``.../score/history``.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
@@ -38,7 +42,7 @@ Public interface. Other modules import only what is re-exported here:
   ``/workspaces/{workspace_id}/data-warehouse/lineage``.
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
-``column_mappings`` and ``lineage_edges`` tables.
+``column_mappings``, ``lineage_edges``, ``score_runs`` and ``score_check_results`` tables.
 """
 
 from .api import router
@@ -56,6 +60,10 @@ from .platforms import (
     max_identifier_length,
     platform_profile,
 )
+from .score_service import Score, ScoreService
+from .score_trigger import ScoreScheduler
+from .score_trigger import install as install_score_recalculation
+from .score_trigger import uninstall as uninstall_score_recalculation
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .staging_service import StagingFlag, StagingResult, StagingService
 from .validation_service import ValidationReport, ValidationService
@@ -77,6 +85,9 @@ __all__ = [
     "MappingSheet",
     "NamingRules",
     "PlatformProfile",
+    "Score",
+    "ScoreScheduler",
+    "ScoreService",
     "SheetFormat",
     "SheetLayer",
     "StagingFlag",
@@ -85,8 +96,10 @@ __all__ = [
     "TargetPlatform",
     "ValidationReport",
     "ValidationService",
+    "install_score_recalculation",
     "is_reserved_word",
     "max_identifier_length",
     "platform_profile",
     "router",
+    "uninstall_score_recalculation",
 ]

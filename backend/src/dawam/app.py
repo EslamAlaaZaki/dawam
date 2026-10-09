@@ -30,7 +30,14 @@ from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.llm import AdapterFactory, adapter_for, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceSummaryService
-from dawam.modules.warehouse import MappingService, ValidationService
+from dawam.modules.warehouse import (
+    MappingService,
+    ScoreScheduler,
+    ScoreService,
+    ValidationService,
+    install_score_recalculation,
+    uninstall_score_recalculation,
+)
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
@@ -92,6 +99,19 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         document_ai=services.document_ai,
     )
 
+    # Every committed design change rescores the Data Warehouse, debounced (warehouse).
+    install_score_recalculation(
+        engine,
+        ScoreScheduler(
+            ScoreService(
+                engine,
+                workspaces=WorkspaceService(engine, clock=services.clock),
+                clock=services.clock,
+            ).recalculate,
+            debounce_seconds=settings.score_debounce_seconds,
+        ),
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.run_migrations_on_startup:
@@ -104,6 +124,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
             )
             raise
         yield
+        uninstall_score_recalculation(engine)
         engine.dispose()
 
     app = FastAPI(

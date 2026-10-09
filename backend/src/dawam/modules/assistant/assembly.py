@@ -22,7 +22,12 @@ from dawam.modules.sources import (
     SourceQueryService,
     SourceSystemService,
 )
-from dawam.modules.warehouse import DataWarehouseService, MappingService, ValidationService
+from dawam.modules.warehouse import (
+    DataWarehouseService,
+    MappingService,
+    ScoreService,
+    ValidationService,
+)
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -102,6 +107,7 @@ def build_assistant_service(
                 clock=clock,
             ),
             jobs=JobService(engine, runner=jobs, clock=clock),
+            scores=ScoreService(engine, workspaces=workspaces, clock=clock),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )

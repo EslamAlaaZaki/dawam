@@ -471,6 +471,7 @@ METADATA_TOOLS = {
     "get_snapshot_diff",
     "list_files",
     "run_validation",
+    "get_score",
 }
 LEVELS = [
     ("metadata", METADATA_TOOLS),

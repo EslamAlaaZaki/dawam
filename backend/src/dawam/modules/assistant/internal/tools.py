@@ -36,7 +36,7 @@ from dawam.modules.sources import (
     SnapshotService,
     SourceQueryService,
 )
-from dawam.modules.warehouse import ValidationService
+from dawam.modules.warehouse import ScoreService, ValidationService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
@@ -62,6 +62,7 @@ class ToolServices:
     profiling: ProfilingService
     pii: PiiService
     documents: DocumentSearchService
+    scores: ScoreService
     validation: ValidationService
     source_queries: SourceQueryService
     jobs: JobService
@@ -150,6 +151,12 @@ class _GetSnapshotDiff(BaseModel):
 class _GetPiiFindings(BaseModel):
     system_id: uuid.UUID = Field(description=SYSTEM_ID)
     status: Literal["suggested", "confirmed", "dismissed"] | None = None
+
+
+class _GetScore(BaseModel):
+    limit: int = Field(
+        default=30, ge=1, le=100, description="At most this many failed checks, errors first."
+    )
 
 
 class _SearchDocuments(BaseModel):
@@ -588,6 +595,37 @@ def _get_pii_findings(ctx: ToolContext, args: _GetPiiFindings) -> Any:
     ]
 
 
+def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
+    score = ctx.services.scores.current(ctx.user, ctx.workspace_id)
+    return {
+        "score": score.score,
+        "grade": score.grade,
+        "capped_at_c_by_errors": score.capped,
+        "calculated_at": score.calculated_at,
+        "layers": [
+            {
+                "layer": item.layer,
+                "score": item.score if item.scored else "not scored",
+                "grade": item.grade,
+            }
+            for item in score.layers
+        ],
+        "checks_failed": score.checks_failed,
+        "failed_checks": [
+            {
+                "check": f.check_code,
+                "severity": f.severity,
+                "layer": f.layer,
+                "object": f.object_name,
+                "problem": f.message,
+                "fix_hint": f.fix_hint,
+                "link": f.link,
+            }
+            for f in score.failed_checks[: args.limit]
+        ],
+    }
+
+
 def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
     passages = ctx.services.documents.search(
         ctx.user, ctx.workspace_id, args.query, system_id=args.system_id, limit=args.limit
@@ -819,6 +857,15 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.REVIEW_PII,
         _get_pii_findings,
+    ),
+    Tool(
+        "get_score",
+        "The Data Warehouse's rule-based design score (0-100) and grade, each Layer's score, "
+        "and the failed checks with severity, the object at fault and a fix hint.",
+        _GetScore,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _get_score,
     ),
     Tool(
         "search_documents",

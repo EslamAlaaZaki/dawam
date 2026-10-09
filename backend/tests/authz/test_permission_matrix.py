@@ -779,6 +779,21 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=_set_up_data_warehouse,
     ),
+    # DW score (stories 114-118, 121).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the DW score)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/history",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the score trend)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
     # Mapping sheet export (story 108).
     Row(
         "GET",
