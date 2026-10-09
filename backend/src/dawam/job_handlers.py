@@ -14,6 +14,8 @@ from collections.abc import Mapping
 
 import sqlalchemy as sa
 
+from dawam.modules.assistant import ASSISTANT_JOB, build_assistant_service
+from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
     REINDEX_JOB,
     DocumentAiPolicy,
@@ -36,9 +38,15 @@ from dawam.modules.sources import (
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
-from dawam.wiring import staging_sync_after_snapshot
+from dawam.platform.storage import create_storage
+from dawam.wiring import change_set_handlers, staging_sync_after_snapshot
 
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
+
+
+def build_change_set_handlers() -> ObjectHandlers:
+    """Each module that owns objects a Change Set may change registers its handlers here."""
+    return change_set_handlers()
 
 
 def build_document_search(
@@ -112,7 +120,18 @@ def _service_handlers(
     documents = build_document_search(
         runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
     )
+    assistant = build_assistant_service(
+        engine,
+        settings,
+        clock,
+        jobs=runner,
+        storage=create_storage(settings),
+        document_search=documents,
+        change_set_handlers=build_change_set_handlers(),
+        llm_adapters=llm_adapters,
+    )
     return {
+        ASSISTANT_JOB: assistant.run_job,
         EXTRACT_JOB: snapshots.run_extraction,
         PROFILE_JOB: profiling.run_profiling,
         PII_SCAN_JOB: pii_scans.run_scan,

@@ -54,6 +54,8 @@ class KpiRecord(Base):
     targets: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     """A list of ``{"label": ..., "value": ...}``."""
     origin: Mapped[str] = mapped_column(sa.String(8))
+    rationale: Mapped[str | None] = mapped_column(sa.String(TEXT_MAX_LENGTH))
+    """Why the AI suggested the KPI; ``None`` for any other origin."""
     status: Mapped[str] = mapped_column(sa.String(16))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
@@ -62,3 +64,19 @@ class KpiRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
     """Starts at 1 and goes up by one on every edit (optimistic concurrency, spec §8.3)."""
+
+
+MAX_LINKS = 100
+
+
+class KpiLinkRecord(Base):
+    """A KPI's use of a DW column (spec §6.13): the highest Layer holding the measure."""
+
+    __tablename__ = "kpi_links"
+
+    kpi_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("kpis.id", ondelete="CASCADE"), primary_key=True
+    )
+    dw_column_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("dw_columns.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

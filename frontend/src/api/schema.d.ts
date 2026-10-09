@@ -1003,6 +1003,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score
+         * @description The Data Warehouse score and grade (any member), a score per Layer ("not scored"
+         *     for a Layer with no tables) and per table, and the failed checks with severity, a link
+         *     to the object and a fix hint. It is recalculated after every design change. 404 before
+         *     the Data Warehouse is set up.
+         */
+        get: operations["getScore"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score History
+         * @description The score trend (any member): one summary per recalculation, oldest first, the
+         *     latest `limit` of them.
+         */
+        get: operations["getScoreHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Mapping Sheet
+         * @description The Core and Mart mappings as a mapping sheet (any member): one row per target column
+         *     (per branch) with its type, inputs as `table.column` separated by `;`, rule, SQL,
+         *     mapping type and lookup dimension. XLSX adds a `Branches` sheet with each branch's join
+         *     path, filters, group-by, integration rule and match keys; CSV holds the first sheet.
+         *     404 before the Data Warehouse is set up. To keep a copy, save it to the file area with
+         *     `POST .../files/mapping-sheet`.
+         */
+        get: operations["downloadMappingSheet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Validation
+         * @description Validate every Core and Mart mapping (any member): errors (SQL that does not parse,
+         *     a missing GROUP BY column) and warnings (unmapped columns, a multi-branch table without
+         *     an integration rule, data-type compatibility such as truncation between a direct
+         *     mapping's input and its target), with the mapping coverage. Computed on read. 404
+         *     `not_set_up` before the Data Warehouse is set up.
+         */
+        get: operations["runValidation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Coverage
+         * @description Mapping coverage per table, per Layer and for the whole Data Warehouse (any member),
+         *     branch-aware: a column is covered when every branch maps it or marks it not available.
+         */
+        get: operations["getMappingCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate": {
         parameters: {
             query?: never;
@@ -2341,6 +2455,33 @@ export interface paths {
         patch: operations["updateKpi"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Links
+         * @description The DW columns a KPI uses (any member), by Layer, table and position.
+         */
+        get: operations["getKpiLinks"];
+        /**
+         * Set Links
+         * @description Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage
+         *     edge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`
+         *     without a Data Warehouse; 409 `version_conflict` if `version` is stale; 422
+         *     `invalid_kpi_link`.
+         */
+        put: operations["setKpiLinks"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/comments": {
         parameters: {
             query?: never;
@@ -2475,6 +2616,29 @@ export interface paths {
          *     404 before the Data Warehouse is set up.
          */
         post: operations["saveDdl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/mapping-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Mapping Sheet
+         * @description Export the mapping sheet into the Data Warehouse's file area as
+         *     `mapping-sheet-<layer>.<format>` (or `mapping-sheet-data-warehouse.<format>`),
+         *     overwriting the previous one (owners and editors). 404 before the Data Warehouse is
+         *     set up.
+         */
+        post: operations["saveMappingSheet"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4151,6 +4315,34 @@ export interface components {
              */
             updated_at: string;
         };
+        /** CoverageOut */
+        CoverageOut: {
+            /**
+             * Total
+             * @description Columns that need a mapping (system columns excluded).
+             */
+            total: number;
+            /**
+             * Covered
+             * @description Of those, mapped in every branch (or not available there).
+             */
+            covered: number;
+            /**
+             * Percent
+             * @description `covered` of `total`, 0-100; 0 when `total` is 0.
+             */
+            percent: number;
+        };
+        /** CoverageReport */
+        CoverageReport: {
+            /**
+             * Layers
+             * @description Core, then Mart.
+             */
+            layers: components["schemas"]["LayerCoverageOut"][];
+            /** @description The whole Data Warehouse. */
+            coverage: components["schemas"]["CoverageOut"];
+        };
         /** CreateConversationRequest */
         CreateConversationRequest: {
             /**
@@ -4803,6 +4995,51 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
+        /** FailedCheck */
+        FailedCheck: {
+            /** Check Code */
+            check_code: string;
+            /** Title */
+            title: string;
+            /** Category */
+            category: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /**
+             * Object Type
+             * @enum {string}
+             */
+            object_type: "table" | "column";
+            /**
+             * Object Id
+             * Format: uuid
+             */
+            object_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Object Name */
+            object_name: string;
+            /** Message */
+            message: string;
+            /** Fix Hint */
+            fix_hint: string;
+            /**
+             * Link
+             * @description An app path to the object at fault.
+             */
+            link: string;
+        };
         /** FieldChange */
         FieldChange: {
             /** Field */
@@ -5106,6 +5343,11 @@ export interface components {
              */
             origin: "user" | "ai" | "rule";
             /**
+             * Rationale
+             * @description Why the AI suggested the KPI; null unless `origin` is `ai`.
+             */
+            rationale: string | null;
+            /**
              * Status
              * @enum {string}
              */
@@ -5126,6 +5368,40 @@ export interface components {
              */
             updated_at: string;
         };
+        /** KpiLink */
+        KpiLink: {
+            /**
+             * Dw Column Id
+             * Format: uuid
+             */
+            dw_column_id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Table Name */
+            table_name: string;
+            /** Column Name */
+            column_name: string;
+            /** Role */
+            role: string;
+        };
+        /** KpiLinks */
+        KpiLinks: {
+            /**
+             * Version
+             * @description The KPI's version; send it back with the next edit.
+             */
+            version: number;
+            /** Items */
+            items: components["schemas"]["KpiLink"][];
+        };
         /** KpiPage */
         KpiPage: {
             /** Items */
@@ -5143,6 +5419,17 @@ export interface components {
              * @enum {string}
              */
             status: "not_started" | "in_progress" | "complete";
+        };
+        /** LayerCoverageOut */
+        LayerCoverageOut: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Tables */
+            tables: components["schemas"]["TableCoverageOut"][];
+            coverage: components["schemas"]["CoverageOut"];
         };
         /** LayerProgress */
         LayerProgress: {
@@ -5174,6 +5461,25 @@ export interface components {
              * @default mart
              */
             mart: string;
+        };
+        /** LayerScore */
+        LayerScore: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /**
+             * Score
+             * @description 0-100; null: the Layer is not scored.
+             */
+            score: number | null;
+            /** Grade */
+            grade: ("A" | "B" | "C" | "D" | "F") | null;
+            /** Scored */
+            scored: boolean;
+            /** Table Count */
+            table_count: number;
         };
         /** LineageEdge */
         LineageEdge: {
@@ -6104,6 +6410,41 @@ export interface components {
             /** Items */
             items: components["schemas"]["Platform"][];
         };
+        /** ProblemOut */
+        ProblemOut: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+            /**
+             * Code
+             * @description `unparsed_sql`, `not_in_group_by` or another mapping error code (errors); `unmapped_column`, `missing_integration_rule`, `may_truncate`, `may_lose_precision`, `may_fail_conversion` or `nullable_into_required` (warnings).
+             */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Column Id */
+            column_id: string | null;
+            /** Column Name */
+            column_name: string | null;
+            /** Branch Id */
+            branch_id: string | null;
+            /** Branch Name */
+            branch_name: string | null;
+        };
         /** ProfilingStarted */
         ProfilingStarted: {
             /**
@@ -6472,6 +6813,69 @@ export interface components {
              */
             version: number;
         };
+        /** Score */
+        Score: {
+            /**
+             * Score
+             * @description The Data Warehouse score (Core and Mart), 0-100; null: nothing to score.
+             */
+            score: number | null;
+            /** Grade */
+            grade: ("A" | "B" | "C" | "D" | "F") | null;
+            /**
+             * Capped
+             * @description An unresolved error holds the grade at C.
+             */
+            capped: boolean;
+            /**
+             * Calculated At
+             * Format: date-time
+             */
+            calculated_at: string;
+            /**
+             * Layers
+             * @description Staging is scored apart and is not part of the Data Warehouse score.
+             */
+            layers: components["schemas"]["LayerScore"][];
+            /** Tables */
+            tables: components["schemas"]["TableScore"][];
+            /**
+             * Failed Checks
+             * @description Errors first.
+             */
+            failed_checks: components["schemas"]["FailedCheck"][];
+            /** Checks Passed */
+            checks_passed: number;
+            /** Checks Failed */
+            checks_failed: number;
+        };
+        /** ScoreHistory */
+        ScoreHistory: {
+            /**
+             * Items
+             * @description Oldest first.
+             */
+            items: components["schemas"]["ScoreRun"][];
+        };
+        /** ScoreRun */
+        ScoreRun: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Score */
+            score: number | null;
+            /** Grade */
+            grade: ("A" | "B" | "C" | "D" | "F") | null;
+            /** Layers */
+            layers: components["schemas"]["LayerScore"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -6579,6 +6983,19 @@ export interface components {
              * @enum {string}
              */
             delivery: "sent" | "link_for_admin" | "not_sent";
+        };
+        /** SetKpiLinksRequest */
+        SetKpiLinksRequest: {
+            /**
+             * Version
+             * @description The KPI's `version` you last saw.
+             */
+            version: number;
+            /**
+             * Dw Column Ids
+             * @description Every DW column the KPI uses (replaces the current links): Core or Mart columns, at the highest Layer that holds the measure.
+             */
+            dw_column_ids: string[];
         };
         /** SetUpRequest */
         SetUpRequest: {
@@ -7397,6 +7814,22 @@ export interface components {
              */
             columns: components["schemas"]["ColumnChange"][];
         };
+        /** TableCoverageOut */
+        TableCoverageOut: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            coverage: components["schemas"]["CoverageOut"];
+        };
         /** TableEnhancements */
         TableEnhancements: {
             /**
@@ -7494,6 +7927,23 @@ export interface components {
             profiled_at: string | null;
             /** Columns */
             columns: components["schemas"]["ColumnProfileView"][];
+        };
+        /** TableScore */
+        TableScore: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "staging" | "core" | "mart";
+            /** Name */
+            name: string;
+            /** Score */
+            score: number;
         };
         /** Target */
         Target: {
@@ -7903,6 +8353,19 @@ export interface components {
             description?: string | null;
             /** Domain */
             domain?: string | null;
+        };
+        /** ValidationReport */
+        ValidationReport: {
+            /**
+             * Problems
+             * @description Errors first, then by Layer and table.
+             */
+            problems: components["schemas"]["ProblemOut"][];
+            /** Error Count */
+            error_count: number;
+            /** Warning Count */
+            warning_count: number;
+            coverage: components["schemas"]["CoverageReport"];
         };
         /** VersionInfo */
         VersionInfo: {
@@ -10437,6 +10900,214 @@ export interface operations {
                 };
                 content: {
                     "application/sql": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getScore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Score"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getScoreHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreHistory"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    downloadMappingSheet: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
+                format?: "xlsx" | "csv";
+                /** @description One Layer's mappings; omit for Core and Mart. */
+                layer?: ("core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mapping sheet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    runValidation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMappingCoverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageReport"];
                 };
             };
             /** @description Validation error */
@@ -13607,6 +14278,92 @@ export interface operations {
             };
         };
     };
+    getKpiLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiLinks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setKpiLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetKpiLinksRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiLinks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listComments: {
         parameters: {
             query: {
@@ -13913,6 +14670,51 @@ export interface operations {
             query?: {
                 /** @description One Layer's package; omit for the whole Data Warehouse. */
                 layer?: ("staging" | "core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveMappingSheet: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
+                format?: "xlsx" | "csv";
+                /** @description One Layer's mappings; omit for Core and Mart. */
+                layer?: ("core" | "mart") | null;
             };
             header?: never;
             path: {

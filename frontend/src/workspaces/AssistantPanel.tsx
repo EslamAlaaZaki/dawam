@@ -16,6 +16,7 @@ import {
   type ToolCall,
 } from "../api/assistant";
 import { ApiError } from "../api/client";
+import { isActive, useCancelJob, useJob } from "../api/jobs";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConversationChangeSets } from "./ChangeSetReview";
 
@@ -26,20 +27,89 @@ interface Draft {
   tools: ToolCall[];
 }
 
+/** A long task the assistant handed to a background job: its status and progress, live. */
+function JobProgress({
+  workspaceId,
+  jobId,
+  title,
+}: {
+  workspaceId: string;
+  jobId: string;
+  title: string;
+}) {
+  const job = useJob(jobId);
+  const cancel = useCancelJob(workspaceId);
+  const current = job.data;
+  return (
+    <div className="assistant-job" role="status" aria-label={`Job: ${title}`}>
+      <strong>{title}</strong>{" "}
+      {current ? (
+        <>
+          <span>{current.status}</span>
+          <progress
+            max={100}
+            value={current.progress}
+            aria-label="Job progress"
+          />
+          {isActive(current) && (
+            <button type="button" onClick={() => cancel.mutate(jobId)}>
+              Cancel job
+            </button>
+          )}
+          {current.error && (
+            <p className="assistant-failure">{current.error}</p>
+          )}
+        </>
+      ) : (
+        <span>starting</span>
+      )}
+    </div>
+  );
+}
+
+function jobsOf(tools: readonly ToolCall[]) {
+  return tools.flatMap((tool) =>
+    tool.name === "start_job" && typeof tool.result?.job_id === "string"
+      ? [
+          {
+            id: tool.result.job_id,
+            title: String(tool.result.title ?? "Assistant job"),
+          },
+        ]
+      : [],
+  );
+}
+
 /** Which tools an answer used, with their arguments and how long each took (story 144). */
-function ToolList({ tools }: { tools: readonly ToolCall[] }) {
+function ToolList({
+  tools,
+  workspaceId,
+}: {
+  tools: readonly ToolCall[];
+  workspaceId: string;
+}) {
   if (tools.length === 0) {
     return null;
   }
   const canWrite = tools.some(
-    (tool) => tool.name === "run_source_query" && tool.result?.can_write === true,
+    (tool) =>
+      tool.name === "run_source_query" && tool.result?.can_write === true,
   );
   return (
     <>
+      {jobsOf(tools).map((job) => (
+        <JobProgress
+          key={job.id}
+          workspaceId={workspaceId}
+          jobId={job.id}
+          title={job.title}
+        />
+      ))}
       {canWrite && (
         <p role="alert" className="assistant-failure">
-          Warning: the database user of this Connection can change data. The assistant only runs
-          read-only SELECT queries, but an owner should give DAWAM a read-only user.
+          Warning: the database user of this Connection can change data. The
+          assistant only runs read-only SELECT queries, but an owner should give
+          DAWAM a read-only user.
         </p>
       )}
       <details className="assistant-tools">
@@ -53,8 +123,7 @@ function ToolList({ tools }: { tools: readonly ToolCall[] }) {
               {typeof tool.result?.row_count === "number"
                 ? `, ${tool.result.row_count} rows`
                 : ""}
-              )
-              <code>{JSON.stringify(tool.arguments)}</code>
+              )<code>{JSON.stringify(tool.arguments)}</code>
             </li>
           ))}
         </ul>
@@ -79,15 +148,17 @@ function FailureNote({ run }: { run: Run }) {
 function Turn({
   message,
   answer,
+  workspaceId,
 }: {
   message: ChatMessage;
   answer: ChatMessage | undefined;
+  workspaceId: string;
 }) {
   const run = message.run;
   return (
     <li className="assistant-turn">
       <p className="assistant-question">{message.content}</p>
-      {run && <ToolList tools={run.tool_calls} />}
+      {run && <ToolList tools={run.tool_calls} workspaceId={workspaceId} />}
       {answer && <p className="assistant-answer">{answer.content}</p>}
       {run?.status === "cancelled" && (
         <p className="assistant-note">Stopped.</p>
@@ -251,13 +322,14 @@ export function AssistantPanel({
           <Turn
             key={message.id}
             message={message}
+            workspaceId={workspace.id}
             answer={answer?.role === "assistant" ? answer : undefined}
           />
         ))}
         {draft && (
           <li className="assistant-turn" aria-busy="true">
             <p className="assistant-question">{draft.question}</p>
-            <ToolList tools={draft.tools} />
+            <ToolList tools={draft.tools} workspaceId={workspace.id} />
             <p className="assistant-answer">{draft.text || "Thinking…"}</p>
           </li>
         )}

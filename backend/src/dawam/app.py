@@ -27,9 +27,17 @@ from dawam.modules.auth import AuthService
 from dawam.modules.changesets import reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
-from dawam.modules.llm import AdapterFactory, on_workspace_created
+from dawam.modules.llm import AdapterFactory, adapter_for, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceSummaryService
+from dawam.modules.warehouse import (
+    MappingService,
+    ScoreScheduler,
+    ScoreService,
+    ValidationService,
+    install_score_recalculation,
+    uninstall_score_recalculation,
+)
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
@@ -45,7 +53,7 @@ from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 from dawam.platform.storage import create_storage
-from dawam.wiring import change_set_handlers, staging_sync_after_snapshot
+from dawam.wiring import staging_sync_after_snapshot
 
 API_PREFIX = "/api/v1"
 
@@ -87,8 +95,22 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         engine=engine,
         settings=settings,
         clock=services.clock,
-        llm_adapters=services.llm_adapters,
+        # Looked up when a job runs: tests swap in a fake provider after the app is built.
+        llm_adapters=lambda kind, config: (services.llm_adapters or adapter_for)(kind, config),
         document_ai=services.document_ai,
+    )
+
+    # Every committed design change rescores the Data Warehouse, debounced (warehouse).
+    install_score_recalculation(
+        engine,
+        ScoreScheduler(
+            ScoreService(
+                engine,
+                workspaces=WorkspaceService(engine, clock=services.clock),
+                clock=services.clock,
+            ).recalculate,
+            debounce_seconds=settings.score_debounce_seconds,
+        ),
     )
 
     @asynccontextmanager
@@ -103,6 +125,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
             )
             raise
         yield
+        uninstall_score_recalculation(engine)
         engine.dispose()
 
     app = FastAPI(
@@ -148,7 +171,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # Change Sets proposed in a private conversation are hidden from everyone else.
     app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
-    app.state.change_set_handlers = change_set_handlers(engine)
+    app.state.change_set_handlers = job_handlers.build_change_set_handlers()
     # A new Snapshot (Schema Import) is followed by a staging sync: sources cannot import warehouse.
     app.state.on_snapshot_created = staging_sync_after_snapshot(engine, settings, services.clock)
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot
@@ -156,6 +179,13 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.source_analysis = SourceSummaryService(
         engine, workspaces=WorkspaceService(engine, clock=services.clock)
     ).source_analysis
+    # The same for DW Modeling per Layer: warehouse computes it from the mappings' coverage.
+    modeling_workspaces = WorkspaceService(engine, clock=services.clock)
+    app.state.modeling_progress = ValidationService(
+        engine,
+        workspaces=modeling_workspaces,
+        mappings=MappingService(engine, workspaces=modeling_workspaces, clock=services.clock),
+    ).modeling_progress
 
     # A new Workspace gets its AI settings (llm) as it is created: workspaces cannot import llm.
     app.state.on_workspace_created = on_workspace_created

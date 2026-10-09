@@ -14,6 +14,7 @@ import sqlalchemy as sa
 
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ChangeSetService, ObjectHandlers
+from dawam.modules.kpis import KpiLinkHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import SourceEnhancementHandler
 from dawam.modules.warehouse import StagingColumnHandler, StagingService, StagingTableHandler
@@ -23,13 +24,14 @@ from dawam.platform.config import Settings
 from dawam.platform.hooks import SnapshotCreatedHook
 
 
-def change_set_handlers(engine: sa.Engine) -> ObjectHandlers:
+def change_set_handlers() -> ObjectHandlers:
     """One handler per object type a Change Set may change."""
     return ObjectHandlers(
         SourceEnhancementHandler("source_table"),
         SourceEnhancementHandler("source_column"),
         StagingTableHandler(),
         StagingColumnHandler(),
+        KpiLinkHandler(),
     )
 
 
@@ -55,7 +57,7 @@ def staging_sync_after_snapshot(
             change_sets=ChangeSetService(
                 engine,
                 workspaces=workspaces,
-                handlers=change_set_handlers(engine),
+                handlers=change_set_handlers(),
                 notifications=notifications,
                 clock=clock,
             ),
