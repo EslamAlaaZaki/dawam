@@ -19,6 +19,12 @@ jobs:
       run:
         working-directory: backend
     steps:
+      # Docker Hub rate-limits anonymous pulls from shared runners; mirror.gcr.io serves Hub images
+      # without credentials (the daemon falls back to Hub for anything it lacks).
+      - name: Use mirror.gcr.io as Docker registry mirror
+        run: |
+          echo '{"registry-mirrors":["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
@@ -42,6 +48,12 @@ jobs:
       run:
         working-directory: backend
     steps:
+      # Docker Hub rate-limits anonymous pulls from shared runners; mirror.gcr.io serves Hub images
+      # without credentials (the daemon falls back to Hub for anything it lacks).
+      - name: Use mirror.gcr.io as Docker registry mirror
+        run: |
+          echo '{"registry-mirrors":["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
