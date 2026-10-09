@@ -22,6 +22,7 @@ import { ConnectionPanel } from "./ConnectionPanel";
 import { FolderTree } from "./FolderTree";
 import { JobsPanel } from "./JobsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
+import { LineagePanel } from "./LineagePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { findFolder, workspaceFolders } from "./folders";
 import { SourceErDiagram } from "./SourceErDiagram";
@@ -187,6 +188,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               workspace={workspace.data}
               layer={modelLayer}
             />
+          ) : folder.id === "dw/lineage" ? (
+            <LineagePanel workspace={workspace.data} />
           ) : folder.id === "dw/files" ? (
             <DocumentsPanel
               workspace={workspace.data}
