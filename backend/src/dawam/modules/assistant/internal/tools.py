@@ -183,6 +183,11 @@ class _GetScore(BaseModel):
     )
 
 
+class _ExplainCheck(BaseModel):
+    check_code: str = Field(min_length=1, max_length=100, description="The failed check's code.")
+    object_id: uuid.UUID = Field(description="The table or column the check failed on.")
+
+
 class _FindingChange(BaseModel):
     object_type: str = Field(description="A Change Set object type, e.g. `kpi`.")
     operation: Literal["create", "update", "delete"]
@@ -208,6 +213,13 @@ class _EvaluationFinding(BaseModel):
         default_factory=list,
         max_length=50,
         description="Concrete Change Set items, only when you can name them exactly.",
+    )
+
+
+class _ProposeCheckFix(_ExplainCheck):
+    title: str = Field(min_length=1, max_length=200, description="What the fix does.")
+    changes: list[_FindingChange] = Field(
+        min_length=1, max_length=50, description="The exact Change Set items that fix the check."
     )
 
 
@@ -795,6 +807,7 @@ def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
         "failed_checks": [
             {
                 "check": f.check_code,
+                "object_id": f.object_id,
                 "severity": f.severity,
                 "layer": f.layer,
                 "object": f.object_name,
@@ -804,6 +817,72 @@ def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
             }
             for f in score.failed_checks[: args.limit]
         ],
+    }
+
+
+def _failed_check(ctx: ToolContext, args: _ExplainCheck) -> Any:
+    score = ctx.services.scores.current(ctx.user, ctx.workspace_id)
+    for check in score.failed_checks:
+        if check.check_code == args.check_code and check.object_id == args.object_id:
+            return check
+    raise ApiError(
+        404,
+        "not_found",
+        "That check does not fail on that object (any more); call get_score for the current ones.",
+    )
+
+
+def _explain_check(ctx: ToolContext, args: _ExplainCheck) -> Any:
+    check = _failed_check(ctx, args)
+    return {
+        "check": check.check_code,
+        "title": check.title,
+        "category": check.category,
+        "severity": check.severity,
+        "layer": check.layer,
+        "object_type": check.object_type,
+        "object": check.object_name,
+        "object_id": check.object_id,
+        "table_id": check.table_id,
+        "problem": check.message,
+        "fix_hint": check.fix_hint,
+        "link": check.link,
+        "note": "Explain what the check measures, why it failed here and how it is fixed. "
+        "Never quote sample values.",
+    }
+
+
+def _propose_check_fix(ctx: ToolContext, args: _ProposeCheckFix) -> Any:
+    """The fix is not made: it becomes a Change Set the user reviews."""
+    check = _failed_check(ctx, args)
+    detail = ctx.services.change_sets.propose(
+        ctx.user,
+        ctx.workspace_id,
+        origin="ai",
+        scope={
+            "kind": "check_fix",
+            "check_code": check.check_code,
+            "object_id": str(check.object_id),
+        },
+        title=args.title,
+        conversation_id=ctx.conversation_id,
+        items=[
+            ProposedItem(
+                key=f"fix{n}",
+                object_type=c.object_type,
+                operation=c.operation,
+                object_id=c.object_id,
+                payload=c.payload,
+                label=c.label,
+            )
+            for n, c in enumerate(args.changes)
+        ],
+    )
+    return {
+        "change_set_id": detail.change_set.id,
+        "status": "proposed",
+        "note": "The user reviews these changes; nothing has been changed yet.",
+        "items": len(detail.items),
     }
 
 
@@ -1107,6 +1186,24 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _get_score,
+    ),
+    Tool(
+        "explain_check",
+        "Read one failed score check (by `check_code` and `object_id` from get_score) to "
+        "explain what it measures and why it failed.",
+        _ExplainCheck,
+        "read",
+        Action.ASK_ASSISTANT,
+        _explain_check,
+    ),
+    Tool(
+        "propose_check_fix",
+        "Propose the exact changes that fix a failed score check. Nothing changes until an "
+        "editor accepts the proposal as a Change Set. Explain first with explain_check.",
+        _ProposeCheckFix,
+        "write",
+        Action.REVIEW_CHANGE_SETS,
+        _propose_check_fix,
     ),
     Tool(
         "evaluate_dw",

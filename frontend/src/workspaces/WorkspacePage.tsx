@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import { useDataWarehouse } from "../api/dataWarehouse";
@@ -18,6 +18,7 @@ import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { AssistantPanel } from "./AssistantPanel";
+import { FailedChecksPanel, type AssistantRequest } from "./FailedChecksPanel";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { FolderTree } from "./FolderTree";
 import { JobsPanel } from "./JobsPanel";
@@ -48,6 +49,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const searchParams = useSearchParams();
   const warehouse = useDataWarehouse(workspaceId);
   const systems = useSourceSystems(workspaceId);
+  const [request, setRequest] = useState<AssistantRequest | null>(null);
 
   if (workspace.isPending) {
     return <Loading />;
@@ -188,6 +190,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               workspace={workspace.data}
               layer={modelLayer}
             />
+          ) : folder.id === "dw/checks" ? (
+            <FailedChecksPanel
+              workspace={workspace.data}
+              onAsk={(asked) =>
+                setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }))
+              }
+            />
           ) : folder.id === "dw/lineage" ? (
             <LineagePanel workspace={workspace.data} />
           ) : folder.id === "dw/files" ? (
@@ -232,6 +241,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           <JobsPanel workspace={workspace.data} />
           <AssistantPanel
             workspace={workspace.data}
+            request={request}
             context={
               openSystem
                 ? { type: "source_system", id: openSystem.id, label: openSystem.name }

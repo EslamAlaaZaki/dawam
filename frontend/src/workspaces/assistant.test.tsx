@@ -453,3 +453,77 @@ describe("splitFrames", () => {
     expect(first.rest).toBe("event: te");
   });
 });
+
+describe("explaining and fixing a failed check", () => {
+  const CHECK = {
+    check_code: "fact_has_dimension_fk",
+    title: "Fact has a dimension key",
+    category: "structure",
+    severity: "error",
+    layer: "core",
+    object_type: "table",
+    object_id: "55555555-5555-4555-8555-555555555555",
+    table_id: "55555555-5555-4555-8555-555555555555",
+    object_name: "fact_loan",
+    message: "No dimension key.",
+    fix_hint: "Add one.",
+    link: "/",
+  };
+
+  function withChecks(permissions: string[]) {
+    const base = backend({
+      answer: () =>
+        sse([
+          frame("started", { run_id: "r", message_id: "m" }),
+          frame("done", { run: run(), message_id: "a" }),
+        ]),
+    });
+    return (r: ApiRequest) => {
+      if (r.method === "GET" && r.path === API) {
+        return json({ ...workspace(), permissions });
+      }
+      if (r.method === "GET" && r.path === `${API}/data-warehouse`) {
+        return json({ set_up: true, version: 1 });
+      }
+      if (r.method === "GET" && r.path === `${API}/systems`) {
+        return json({ items: [], next_cursor: null });
+      }
+      if (r.path === `${API}/data-warehouse/score`) {
+        return json({ failed_checks: [CHECK] });
+      }
+      return base(r);
+    };
+  }
+
+  it("lets a viewer explain but not propose a fix, sending the check as context", async () => {
+    const requests = renderApp(
+      withChecks(["assistant.ask", "workspace.view"]),
+      `${PATH}?folder=dw/checks`,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Explain" }));
+
+    await waitFor(() =>
+      expect(
+        requests.some((r) => r.method === "POST" && r.path.endsWith("/messages")),
+      ).toBe(true),
+    );
+    const sent = requests.find((r) => r.method === "POST" && r.path.endsWith("/messages"));
+    expect(sent).toMatchObject({
+      body: {
+        content: expect.stringContaining("fact_loan"),
+        context: { type: "failed_check", id: CHECK.object_id },
+      },
+    });
+    expect(screen.queryByRole("button", { name: "Propose fix" })).toBeNull();
+  });
+
+  it("offers an editor a Propose fix action", async () => {
+    renderApp(
+      withChecks(["assistant.ask", "change_set.review", "workspace.view"]),
+      `${PATH}?folder=dw/checks`,
+    );
+
+    expect(await screen.findByRole("button", { name: "Propose fix" })).toBeInTheDocument();
+  });
+});

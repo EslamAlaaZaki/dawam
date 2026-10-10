@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
   useConversation,
@@ -19,6 +19,7 @@ import { ApiError } from "../api/client";
 import { isActive, useCancelJob, useJob } from "../api/jobs";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConversationChangeSets } from "./ChangeSetReview";
+import type { AssistantRequest } from "./FailedChecksPanel";
 
 /** What is being answered right now. */
 interface Draft {
@@ -181,9 +182,12 @@ function Turn({
 export function AssistantPanel({
   workspace,
   context,
+  request = null,
 }: {
   workspace: Workspace;
   context: PageContext | null;
+  /** A question to ask on the member's behalf (a page action), once per `nonce`. */
+  request?: AssistantRequest | null;
 }) {
   const conversations = useConversations(workspace.id);
   const create = useCreateConversation(workspace.id);
@@ -204,7 +208,11 @@ export function AssistantPanel({
   const mine = current?.mine ?? true;
   const running = draft !== null;
 
-  async function ask(conversationId: string, content: string) {
+  async function ask(
+    conversationId: string,
+    content: string,
+    asking: PageContext | null = context,
+  ) {
     setRefusal(null);
     setFailed(null);
     setDraft({ question: content, text: "", tools: [] });
@@ -212,7 +220,7 @@ export function AssistantPanel({
       await send.mutateAsync({
         conversationId,
         content,
-        context: context ?? undefined,
+        context: asking ?? undefined,
         onEvent: (event: AnswerEvent) => {
           if (event.type === "text") {
             setDraft((d) => d && { ...d, text: d.text + event.text });
@@ -249,6 +257,25 @@ export function AssistantPanel({
     }
     await ask(id, content);
   }
+
+  // Ask a page action's question once, in the current conversation or a new one.
+  const asked = useRef(0);
+  useEffect(() => {
+    if (!request || request.nonce === asked.current || !canAsk || archived || running) {
+      return;
+    }
+    asked.current = request.nonce;
+    void (async () => {
+      let id = selected;
+      if (id === null) {
+        const created = await create.mutateAsync();
+        id = created.id;
+        setChosen(id);
+      }
+      await ask(id, request.prompt, request.context);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
 
   const messages = detail.data?.messages ?? [];
   const turns = messages
@@ -336,7 +363,9 @@ export function AssistantPanel({
       </ol>
       {selected &&
         messages.some((m) =>
-          m.run?.tool_calls.some((t) => t.name === "propose_changes"),
+          m.run?.tool_calls.some(
+            (t) => t.name === "propose_changes" || t.name === "propose_check_fix",
+          ),
         ) && (
           <ConversationChangeSets
             workspace={workspace}
