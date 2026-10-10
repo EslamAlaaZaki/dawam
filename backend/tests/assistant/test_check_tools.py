@@ -84,4 +84,4 @@ def test_a_viewer_cannot_propose_a_fix(roles: RoleClients, model, warehouse, fak
         changes=[change],
     )
 
-    assert status == "error"
+    assert status == "refused"
