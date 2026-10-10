@@ -190,7 +190,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               workspace={workspace.data}
               layer={modelLayer}
             />
-          ) : folder.id === "dw/checks" ? (
+          ) : folder.id === "dw/score" ? (
             <FailedChecksPanel
               workspace={workspace.data}
               onAsk={(asked) =>

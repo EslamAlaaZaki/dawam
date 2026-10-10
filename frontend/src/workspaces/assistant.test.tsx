@@ -498,7 +498,7 @@ describe("explaining and fixing a failed check", () => {
   it("lets a viewer explain but not propose a fix, sending the check as context", async () => {
     const requests = renderApp(
       withChecks(["assistant.ask", "workspace.view"]),
-      `${PATH}?folder=dw/checks`,
+      `${PATH}?folder=dw/score`,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Explain" }));
@@ -521,7 +521,7 @@ describe("explaining and fixing a failed check", () => {
   it("offers an editor a Propose fix action", async () => {
     renderApp(
       withChecks(["assistant.ask", "change_set.review", "workspace.view"]),
-      `${PATH}?folder=dw/checks`,
+      `${PATH}?folder=dw/score`,
     );
 
     expect(await screen.findByRole("button", { name: "Propose fix" })).toBeInTheDocument();
