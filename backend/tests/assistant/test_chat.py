@@ -248,6 +248,7 @@ def test_a_viewer_can_still_use_read_tools(roles, model, fake_llm):
     assert tool_names(fake_llm) == {
         "get_object",
         "get_score",
+        "evaluate_dw",
         "get_lineage",
         "list_files",
         "search_catalog",

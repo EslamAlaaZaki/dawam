@@ -826,6 +826,21 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=_set_up_data_warehouse,
     ),
+    # AI evaluation (story 122): any member reads findings; editors turn them into Change Sets.
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations",
+        "View lineage, scores, AI evaluation findings, exports, audit log (AI evaluations)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations/{evaluation_id}/findings/{index}/change-set",
+        "Accept / reject Change Set items (a finding becomes a Change Set)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+    ),
     Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/data-warehouse/score/stars",
