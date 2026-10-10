@@ -122,12 +122,6 @@ export function workspaceFolders(
                 layer("core", "Core"),
                 layer("mart", "Mart"),
                 {
-                  id: "dw/checks",
-                  label: "Failed checks",
-                  children: [],
-                  empty: "Failed score checks appear here once there is a DW Schema.",
-                },
-                {
                   id: "dw/lineage",
                   label: "Lineage",
                   children: [],
