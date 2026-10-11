@@ -28,7 +28,7 @@ from dawam.modules.auth import AuthService
 from dawam.modules.changesets import reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
-from dawam.modules.kpis import kpis_for_score
+from dawam.modules.kpis import kpi_formulas_check, kpis_for_score
 from dawam.modules.llm import AdapterFactory, adapter_for, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceSummaryService
@@ -39,6 +39,7 @@ from dawam.modules.warehouse import (
     ValidationService,
     install_approval_clock,
     install_score_recalculation,
+    staged_system_check,
     uninstall_score_recalculation,
 )
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
@@ -187,6 +188,10 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.on_change_set_applied = after_change_set(
         propagation.after_change_set, app.state.document_search
     )
+    # A System Code change of a staged system is a Change Set: sources cannot import warehouse.
+    app.state.system_has_staging = staged_system_check(engine)
+    # A direct platform edit is refused while KPIs hold formula SQL: warehouse cannot read KPIs.
+    app.state.workspace_has_kpi_formulas = kpi_formulas_check(engine)
     # A new Snapshot (Schema Import) is followed by a staging sync: sources cannot import warehouse.
     app.state.on_snapshot_created = staging_sync_after_snapshot(engine, settings, services.clock)
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot

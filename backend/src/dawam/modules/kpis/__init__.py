@@ -33,6 +33,10 @@ Public interface. Other modules import only what is re-exported here:
   propagation (``KpiPlan``): formula SQL respelled after a rename, links and formula
   re-pointed from Core to the Mart column now mapped from it, and the KPIs a removal breaks.
   ``KpiPropagationHandler`` is the handler for its ``kpi_formula`` items.
+- ``plan_kpi_transpile`` (in the caller's session, no permission check): the ``kpi_formula``
+  items (and "manual" flags) that move KPI formulas to a new target platform's dialect, for
+  the warehouse's platform change; ``kpi_formulas_check`` fills the warehouse's port that
+  refuses a direct platform edit while a KPI holds formula SQL.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/kpis``,
   ``GET|PATCH|DELETE /workspaces/{workspace_id}/kpis/{kpi_id}``,
   ``GET|PUT /workspaces/{workspace_id}/kpis/{kpi_id}/links``,
@@ -45,6 +49,7 @@ Owns the ``kpis``, ``kpi_links`` and ``kpi_suggestion_dismissals`` tables.
 from .api import router
 from .link_changes import KpiLinkHandler
 from .links import kpi_names
+from .platform_change import kpi_formulas_check, plan_kpi_transpile
 from .propagation import KpiPlan, KpiPropagationHandler, plan_kpi_propagation
 from .score_feed import kpis_for_score
 from .service import (
@@ -76,8 +81,10 @@ __all__ = [
     "LinkCandidates",
     "RuleSuggestion",
     "SuggestedKpis",
+    "kpi_formulas_check",
     "kpi_names",
     "kpis_for_score",
     "plan_kpi_propagation",
+    "plan_kpi_transpile",
     "router",
 ]

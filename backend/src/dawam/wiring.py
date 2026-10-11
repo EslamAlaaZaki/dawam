@@ -25,15 +25,22 @@ from dawam.modules.files import DocumentSearchService, FileContentHandler
 from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.propagation import PropagationService
-from dawam.modules.sources import SourceEnhancementHandler, SourceRelationshipHandler
+from dawam.modules.sources import (
+    SourceEnhancementHandler,
+    SourceRelationshipHandler,
+    SourceSystemCodeHandler,
+)
 from dawam.modules.warehouse import (
     ColumnMappingHandler,
+    DataWarehouseHandler,
     DwColumnHandler,
     DwTableHandler,
+    ManualReviewHandler,
     MappingBranchHandler,
     StagingColumnHandler,
     StagingService,
     StagingTableHandler,
+    TranspiledMappingHandler,
 )
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
@@ -62,6 +69,10 @@ def change_set_handlers(settings: Settings | None = None) -> ObjectHandlers:
         ColumnMappingHandler(),
         MappingBranchHandler(),
         KpiPropagationHandler(),
+        SourceSystemCodeHandler(),
+        DataWarehouseHandler(),
+        TranspiledMappingHandler(),
+        ManualReviewHandler(),
         *files,
     )
 
