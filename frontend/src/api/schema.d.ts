@@ -1160,6 +1160,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Mapping Sheet
+         * @description Import a mapping sheet in the layout of the export (owners and editors). It reports
+         *     first: rows naming a table, column or branch that does not exist fail validation and
+         *     create nothing, Staging rows are ignored, and a `lookup`, `system` or `hashed` mapping
+         *     may only be repeated as it is. With `dry_run=false`, everything that differs from the Data
+         *     Warehouse becomes one pending Change Set (origin `import`) for review: mappings are
+         *     created or their type, rule and SQL changed, and branch join paths, filters, group-by and
+         *     having changed. Approval states are never changed by the import. An unreadable file is 422
+         *     `invalid_sheet`; 404 before the Data Warehouse is set up.
+         */
+        post: operations["importMappingSheet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
         parameters: {
             query?: never;
@@ -4134,6 +4161,14 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** Body_importMappingSheet */
+        Body_importMappingSheet: {
+            /**
+             * File
+             * @description The mapping sheet (.xlsx).
+             */
+            file: string;
+        };
         /** Body_replaceFile */
         Body_replaceFile: {
             /**
@@ -6676,6 +6711,55 @@ export interface components {
              * @description For an aggregate table, each plain output the GROUP BY does not cover.
              */
             errors: components["schemas"]["BranchError"][];
+        };
+        /** MappingImportIssue */
+        MappingImportIssue: {
+            /**
+             * Sheet
+             * @description `Mapping` or `Branches`.
+             */
+            sheet: string;
+            /**
+             * Row
+             * @description The row in the sheet (the header is row 1).
+             */
+            row: number | null;
+            /** Message */
+            message: string;
+        };
+        /** MappingImportOutcome */
+        MappingImportOutcome: {
+            report: components["schemas"]["MappingImportReportOut"];
+            /**
+             * Change Set Id
+             * @description The pending Change Set (origin `import`) to review at `/change-sets/{id}`; null on a dry run and when nothing differs.
+             */
+            change_set_id: string | null;
+        };
+        /** MappingImportReportOut */
+        MappingImportReportOut: {
+            /**
+             * Errors
+             * @description Rows that failed validation. They propose nothing; the rest still do.
+             */
+            errors: components["schemas"]["MappingImportIssue"][];
+            /**
+             * Rows
+             * @description Mapping and branch rows read.
+             */
+            rows: number;
+            /** Ignored Staging Rows */
+            ignored_staging_rows: number;
+            /**
+             * Unchanged
+             * @description Rows that already match the Data Warehouse.
+             */
+            unchanged: number;
+            /**
+             * Changes
+             * @description Items proposed, or that would be on a dry run.
+             */
+            changes: number;
         };
         /** MappingInput */
         MappingInput: {
@@ -12167,6 +12251,53 @@ export interface operations {
                 content: {
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
                     "text/csv": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    importMappingSheet: {
+        parameters: {
+            query?: {
+                /** @description Only validate and report; propose nothing. The default. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_importMappingSheet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MappingImportOutcome"];
                 };
             };
             /** @description Validation error */
