@@ -15,8 +15,9 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
+from dawam.modules.activity import record_activity
 from dawam.modules.changesets import AppliedChange
 from dawam.modules.workspaces import Action
 from dawam.platform.errors import ApiError
@@ -41,6 +42,7 @@ def _values(record: RelationshipRecord, fields: Sequence[str]) -> dict[str, Any]
 
 class SourceRelationshipHandler:
     object_type = RELATIONSHIP
+    wants_actor = True
 
     def required_action(self, operation: str) -> Action:
         if operation != "update":
@@ -64,8 +66,16 @@ class SourceRelationshipHandler:
             )
         if not isinstance(payload.get("ai_evidence", {}), dict):
             raise ApiError(422, "invalid_change_set", "`ai_evidence` is an object.")
-        if self._record(db, workspace_id, object_id) is None:
+        record = self._record(db, workspace_id, object_id)
+        if record is None:
             raise ApiError(422, "invalid_change_set", "The relationship does not exist.")
+        if record.status != "suggested":
+            raise ApiError(
+                422,
+                "invalid_change_set",
+                f"The relationship was already {record.status} by a member; only suggested "
+                "ones are decided here.",
+            )
 
     def in_scope(
         self,
@@ -104,17 +114,31 @@ class SourceRelationshipHandler:
         payload: Mapping[str, Any],
         *,
         at: datetime,
+        actor_id: uuid.UUID | None = None,
     ) -> AppliedChange:
         record = self._record(db, workspace_id, object_id, lock=True)
         if record is None:  # pragma: no cover - the engine checked staleness under the lock
             raise ApiError(409, "version_conflict", "The relationship no longer exists.")
         before = _values(record, FIELDS)
+        label = self.label(db, workspace_id, record.id)
         if "ai_evidence" in payload:
             # A new dict, so the JSON column sees the change.
             record.evidence = {**(record.evidence or {}), "ai": dict(payload["ai_evidence"])}
         if record.status != payload["status"]:
             record.status = payload["status"]
-            record.decided_at = at  # the actor is on the audit entry the engine writes
+            record.decided_by = actor_id
+            record.decided_at = at
+            record_activity(
+                db,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                verb=f"relationship.{record.status}",
+                object_type="relationship",
+                object_id=record.id,
+                object_label=label,
+                details={"origin": record.origin, "confidence": record.confidence, "via": "ai"},
+                at=at,
+            )
         after = _values(record, FIELDS)
         changed = [f for f in FIELDS if before[f] != after[f]]
         if changed:
@@ -125,7 +149,31 @@ class SourceRelationshipHandler:
             entity_id=record.id,
             old={f: before[f] for f in changed},
             new={f: after[f] for f in changed},
+            label=label,
         )
+
+    def label(self, db: Session, workspace_id: uuid.UUID, object_id: uuid.UUID) -> str:
+        """``schema.table.column -> schema.table.column``, or ``""`` if it is not found."""
+        to_column = aliased(SrcColumnRecord)
+        to_table = aliased(SrcTableRecord)
+        to_schema = aliased(SrcDbSchemaRecord)
+        row = db.execute(
+            self._query(workspace_id, object_id)
+            .join(to_column, to_column.id == RelationshipRecord.to_column_id)
+            .join(to_table, to_table.id == to_column.table_id)
+            .join(to_schema, to_schema.id == to_table.db_schema_id)
+            .with_only_columns(
+                SrcDbSchemaRecord.name,
+                SrcTableRecord.name,
+                SrcColumnRecord.name,
+                to_schema.name,
+                to_table.name,
+                to_column.name,
+            )
+        ).first()
+        if row is None:
+            return ""
+        return f"{'.'.join(row[:3])} -> {'.'.join(row[3:])}"
 
     def _query(self, workspace_id: uuid.UUID, object_id: uuid.UUID) -> sa.Select:
         return (

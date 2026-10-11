@@ -86,7 +86,8 @@ class CountEvidence:
     system_id: uuid.UUID
     sql: str
     """The model's SQL, validator-detectable PII redacted."""
-    counts: dict[str, int]
+    counts: list[dict[str, Any]]
+    """One ``{"column": name, "count": n}`` per COUNT column (names can repeat)."""
 
 
 @dataclass(frozen=True)
@@ -102,8 +103,9 @@ class ToolContext:
     """The source-query seconds this run has left (one budget per run)."""
     proposals: Proposals | None = None
     """Set for a job: ``propose_changes`` collects here instead of proposing at once."""
-    counts: dict[int, CountEvidence] = field(default_factory=dict)
-    """The run's count queries by ``query_ref``, citable as relationship evidence."""
+    counts: dict[str, CountEvidence] = field(default_factory=dict)
+    """The run's count queries by ``query_ref``, citable as relationship evidence. A ref is
+    unique, so one from an earlier message is refused rather than mistaken for another."""
 
 
 @dataclass(frozen=True)
@@ -335,11 +337,11 @@ class _RelationshipDecision(BaseModel):
         max_length=2000,
         description="Why: the names, profiles, documents or counts that confirm or refute it.",
     )
-    evidence_queries: list[int] = Field(
+    evidence_queries: list[str] = Field(
         default_factory=list,
         max_length=10,
-        description="`query_ref`s of your run_source_query count queries that support the "
-        "decision; their counts are attached as evidence.",
+        description="`query_ref`s of run_source_query COUNT queries made while answering this "
+        "message that support the decision; their counts are attached as evidence.",
     )
     label: str = Field(
         default="",
@@ -506,6 +508,15 @@ class Proposals:
             raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
 
 
+def new_query_ref() -> str:
+    """A ``query_ref`` no other run uses."""
+    return f"q{uuid.uuid4().hex[:8]}"
+
+
+def _dotted(ref: Any) -> str:
+    return f"{ref.db_schema}.{ref.table}.{ref.column}"
+
+
 def _redacted(value: Any) -> Any:
     """Model-written text with validator-detectable PII redacted, in strings, lists and
     objects alike (spec §6.8: every model-written string is checked before it is saved)."""
@@ -524,6 +535,14 @@ def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedIte
     did not make on this Source System, or that returned no counts."""
     if not args.items and not args.relationships:
         raise ApiError(422, "nothing_proposed", "Give at least one item or relationship.")
+    labels: dict[uuid.UUID, str] = {}
+    if any(not d.label for d in args.relationships):  # the reviewer sees which pair it is
+        labels = {
+            r.id: f"{_dotted(r.from_column)} -> {_dotted(r.to_column)}"
+            for r in ctx.services.relationships.list_relationships(
+                ctx.user, ctx.workspace_id, args.source_system_id, min_confidence=0
+            )
+        }
     proposed = [
         ProposedItem(
             key=item.key,
@@ -544,8 +563,8 @@ def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedIte
                 raise ApiError(
                     422,
                     "unknown_query_ref",
-                    f"No count query `{ref}` of this Source System in this run: cite the "
-                    "`query_ref` that run_source_query returned for a COUNT query.",
+                    f"No count query `{ref}` of this Source System while answering this "
+                    "message: run the COUNT query again and cite the `query_ref` it returns.",
                 )
             queries.append({"sql": found.sql, "counts": found.counts})
         evidence: dict[str, Any] = {"reason": redact_text(decision.reason)}
@@ -561,7 +580,7 @@ def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedIte
                     "status": "accepted" if decision.decision == "accept" else "rejected",
                     "ai_evidence": evidence,
                 },
-                label=redact_text(decision.label),
+                label=redact_text(decision.label or labels.get(decision.relationship_id, "")),
             )
         )
     return proposed
@@ -1157,15 +1176,15 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     if result.truncated:
         content["note"] = f"Only the first {result.row_count} rows are shown."
     # A one-row result's COUNT columns may be cited as evidence: counts, never values.
-    counts = {
-        result.columns[i]: cell
+    counts = [
+        {"column": result.columns[i], "count": cell}
         for i in result.count_ordinals
         if result.row_count == 1
         and isinstance(cell := result.rows[0][i], int)
         and not isinstance(cell, bool)
-    }
+    ]
     if counts:
-        ref = len(ctx.counts) + 1
+        ref = new_query_ref()
         ctx.counts[ref] = CountEvidence(args.system_id, redact_text(args.sql), counts)
         content["query_ref"] = ref
         content["query_ref_note"] = (

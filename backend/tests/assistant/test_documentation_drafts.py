@@ -12,11 +12,13 @@ where ``orders.customer_id`` and ``invoices.customer_id`` are undeclared relatio
 
 from __future__ import annotations
 
+import itertools
 import json
 from typing import Any
 
 import pytest
 
+from dawam.modules.assistant.internal import tools
 from dawam.modules.audit import AuditService
 from dawam.modules.llm import FakeAdapter, Reply
 from dawam.platform.config import Settings
@@ -76,18 +78,25 @@ def chat(
     return list(zip(statuses, seen, strict=True))
 
 
+@pytest.fixture(autouse=True)
+def numbered_refs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``query_ref``s q1, q2, ... in the order queries return counts, so a scripted call can
+    cite one; real refs are random, so these stay unique across messages too."""
+    numbers = itertools.count(1)
+    monkeypatch.setattr(tools, "new_query_ref", lambda: f"q{next(numbers)}")
+
+
 def propose(system: str, call_id: str = "p", **arguments: Any):
     arguments = {"title": "Document the orders", **arguments}
     return tool("propose_changes", call_id, source_system_id=system_id(system), **arguments)
 
 
-def decide(rel: dict[str, Any], decision: str, *queries: int, reason: str = "Names match"):
+def decide(rel: dict[str, Any], decision: str, *queries: str, reason: str = "Names match"):
     return {
         "relationship_id": rel["id"],
         "decision": decision,
         "reason": reason,
         "evidence_queries": list(queries),
-        "label": "orders -> customers",
     }
 
 
@@ -193,27 +202,36 @@ def test_a_confirmation_carries_the_counts_of_the_queries_it_cites(
     level(roles, "samples")
     orders = relationship(roles, source, ORDERS)
 
-    (query_status, query_seen), (status, seen) = chat(
+    (query_status, _), (status, seen) = chat(
         roles,
         fake_llm,
         tool("run_source_query", "q", system_id=system_id(source), sql=OVERLAP),
         propose(
             source,
-            relationships=[decide(orders, "accept", 1, reason="Every order's customer exists")],
+            relationships=[decide(orders, "accept", "q1", reason="Every order's customer exists")],
         ),
     )
 
-    assert query_status == "ok" and payload(query_seen)["query_ref"] == 1
+    assert query_status == "ok"
     assert status == "ok", seen
     detail = only_change_set(roles)
     [item] = detail["items"]
     assert item["object_type"] == "source_relationship" and item["object_id"] == orders["id"]
+    assert item["label"] == " -> ".join(ORDERS), "the reviewer sees which pair it is"
     assert item["base_values"] == {"status": "suggested", "ai_evidence": None}
     assert item["payload"] == {
         "status": "accepted",
         "ai_evidence": {
             "reason": "Every order's customer exists",
-            "queries": [{"sql": OVERLAP, "counts": {"total": 30, "matched": 30}}],
+            "queries": [
+                {
+                    "sql": OVERLAP,
+                    "counts": [
+                        {"column": "total", "count": 30},
+                        {"column": "matched", "count": 30},
+                    ],
+                }
+            ],
         },
     }
 
@@ -221,12 +239,15 @@ def test_a_confirmation_carries_the_counts_of_the_queries_it_cites(
 
     after = relationship(roles, source, ORDERS)
     assert after["status"] == "accepted" and after["version"] == orders["version"] + 1
+    assert after["decided_by"] == str(roles.user("editor").id), "the member who accepted it"
     assert after["evidence"]["ai"] == item["payload"]["ai_evidence"]
     assert after["evidence"]["signals"] == orders["evidence"]["signals"], "rules' evidence stays"
     [entry] = AuditService(app.state.engine).list(
         roles.workspace_id, entity_type="relationship", entity_id=orders["id"]
     )
     assert entry.via == "ai" and entry.new["status"] == "accepted"
+    run(roles, source)  # a new inference run keeps the AI's evidence
+    assert relationship(roles, source, ORDERS)["evidence"]["ai"] == item["payload"]["ai_evidence"]
 
 
 def test_only_the_count_columns_of_a_one_row_result_can_be_cited(roles, model, fake_llm, source):
@@ -242,20 +263,50 @@ def test_only_the_count_columns_of_a_one_row_result_can_be_cited(roles, model, f
             "run_source_query",
             "q2",
             system_id=sid,
-            sql="SELECT COUNT(*) AS n, MAX(o.quantity) AS top FROM public.orders o",
+            sql="SELECT COUNT(*) AS n, MAX(o.quantity) AS top, COUNT(*) AS n FROM public.orders o",
         ),
-        propose(source, "p1", relationships=[decide(orders, "accept", 2)]),
-        propose(source, "p2", relationships=[decide(orders, "accept", 1)]),
+        propose(source, "p1", relationships=[decide(orders, "accept", "q-from-elsewhere")]),
+        propose(source, "p2", relationships=[decide(orders, "accept", "q1")]),
     )
 
     assert (rows, mixed) == ("ok", "ok")
     assert "query_ref" not in payload(rows_seen), "rows are not counts"
-    assert payload(mixed_seen)["query_ref"] == 1
+    assert payload(mixed_seen)["query_ref"] == "q1"
     assert bad == "error" and "unknown_query_ref" in bad_seen
     assert good == "ok", good_seen
     [item] = only_change_set(roles)["items"]
     [cited] = item["payload"]["ai_evidence"]["queries"]
-    assert cited["counts"] == {"n": 30}, "the MAX is a value, not a count"
+    assert cited["counts"] == [{"column": "n", "count": 30}] * 2, "MAX is a value, not a count"
+
+
+def test_a_query_ref_from_an_earlier_message_is_not_mistaken_for_a_new_one(
+    roles, model, fake_llm, source
+):
+    level(roles, "samples")
+    orders = relationship(roles, source, ORDERS)
+    sid = system_id(source)
+    chat(roles, fake_llm, tool("run_source_query", "q", system_id=sid, sql=OVERLAP))  # q1
+
+    [(_, _), (status, seen)] = chat(
+        roles,
+        fake_llm,
+        tool("run_source_query", "q", system_id=sid, sql=OVERLAP.replace("orders", "invoices")),
+        propose(source, relationships=[decide(orders, "accept", "q1")]),
+    )
+
+    assert status == "error" and "unknown_query_ref" in seen
+
+
+def test_a_member_s_decision_is_not_reversed_by_the_ai(roles, model, fake_llm, source):
+    orders = relationship(roles, source, ORDERS)
+    rejected = roles.client("owner").post(f"{source}/relationships/{orders['id']}/reject")
+    assert rejected.status_code == 200, rejected.text
+
+    [(status, seen)] = chat(
+        roles, fake_llm, propose(source, relationships=[decide(orders, "accept")])
+    )
+
+    assert status == "error" and "already rejected" in seen
 
 
 def test_a_decision_works_without_sample_access(roles, model, fake_llm, source):
@@ -302,7 +353,7 @@ def test_a_relationship_outside_the_named_source_system_or_a_bad_proposal_is_ref
             relationships=[decide(orders, "accept")],
         ),
         propose(source, "p2"),  # neither items nor relationships
-        propose(source, "p3", relationships=[decide(orders, "accept", 7)]),
+        propose(source, "p3", relationships=[decide(orders, "accept", "q7")]),
         as_role="owner",
     )
 
