@@ -80,3 +80,22 @@ class KpiLinkRecord(Base):
     dw_column_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("dw_columns.id", ondelete="CASCADE"), primary_key=True, index=True
     )
+
+
+SUGGESTION_KEY_MAX_LENGTH = 200
+
+
+class KpiSuggestionDismissalRecord(Base):
+    """A rule-based KPI suggestion a user dismissed; it stays hidden (spec §6.13)."""
+
+    __tablename__ = "kpi_suggestion_dismissals"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    key: Mapped[str] = mapped_column(sa.String(SUGGESTION_KEY_MAX_LENGTH), primary_key=True)
+    """The suggestion's stable key (its kind and the Core measures it traces to)."""
+    dismissed_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    dismissed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

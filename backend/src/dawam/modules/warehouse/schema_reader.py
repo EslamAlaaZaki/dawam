@@ -16,7 +16,13 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from .tables import DataWarehouseRecord, DwColumnRecord, DwTableRecord, LineageEdgeRecord
+from .tables import (
+    ColumnMappingRecord,
+    DataWarehouseRecord,
+    DwColumnRecord,
+    DwTableRecord,
+    LineageEdgeRecord,
+)
 
 KPI_LAYERS = ("core", "mart")
 """The Layers a KPI formula or link may name (Staging holds raw copies)."""
@@ -31,6 +37,8 @@ class SchemaColumn:
     name: str
     role: str
     additivity: str | None
+    references_table_id: uuid.UUID | None = None
+    """A foreign key's dimension (a table of the same Layer)."""
 
 
 @dataclass(frozen=True)
@@ -68,6 +76,7 @@ def _column(row: tuple[DwColumnRecord, DwTableRecord]) -> SchemaColumn:
         name=column.name,
         role=column.role,
         additivity=column.additivity,
+        references_table_id=column.references_table_id,
     )
 
 
@@ -174,3 +183,53 @@ def clear_kpi_edges(db: Session, kpi_id: uuid.UUID) -> None:
             LineageEdgeRecord.kind == "kpi", LineageEdgeRecord.to_id == kpi_id
         )
     )
+
+
+UNMAPPED_TYPES = ("unmapped", "not_in_branch")
+"""Mapping types that fill nothing."""
+
+
+@dataclass(frozen=True)
+class MappingState:
+    """How the Core and Mart columns are filled, for the KPI suggestions (spec §6.13)."""
+
+    value_edges: tuple[tuple[uuid.UUID, uuid.UUID], ...]
+    """``(from column, to column)`` for every ``value`` edge into a Core or Mart column."""
+    mapped: frozenset[uuid.UUID]
+    """Core and Mart columns with a mapping that fills them, and every column of a Generated
+    Table (DAWAM fills those itself)."""
+
+
+def read_mapping_state(db: Session, workspace_id: uuid.UUID) -> MappingState:
+    """The ``value`` edges and mapped columns of the Core and Mart Layers (empty before the
+    Data Warehouse is set up)."""
+    warehouse = _warehouse(db, workspace_id)
+    if warehouse is None:
+        return MappingState((), frozenset())
+    in_scope = sa.and_(
+        DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer.in_(KPI_LAYERS)
+    )
+    edges = db.execute(
+        sa.select(LineageEdgeRecord.from_id, LineageEdgeRecord.to_id)
+        .join(DwColumnRecord, DwColumnRecord.id == LineageEdgeRecord.to_id)
+        .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+        .where(
+            in_scope,
+            LineageEdgeRecord.kind == "value",
+            LineageEdgeRecord.from_type == "dw_column",
+            LineageEdgeRecord.to_type == "dw_column",
+        )
+    ).all()
+    filled = db.scalars(
+        sa.select(DwColumnRecord.id)
+        .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+        .outerjoin(ColumnMappingRecord, ColumnMappingRecord.dw_column_id == DwColumnRecord.id)
+        .where(
+            in_scope,
+            sa.or_(
+                DwTableRecord.kind == "generated",
+                ColumnMappingRecord.mapping_type.not_in(UNMAPPED_TYPES),
+            ),
+        )
+    )
+    return MappingState(tuple((a, b) for a, b in edges), frozenset(filled))

@@ -13,7 +13,12 @@ from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
 from dawam.modules.sources import SourceSystemService
-from dawam.modules.warehouse import DwSchema, SchemaColumn, read_schema
+from dawam.modules.warehouse import (
+    DwSchema,
+    SchemaColumn,
+    read_mapping_state,
+    read_schema,
+)
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -28,6 +33,14 @@ from .links import (
     validate_formula,
     write_links,
 )
+from .suggestions import (
+    COMPUTABLE,
+    NEEDS_DATA,
+    RuleSuggestion,
+    feasibility_of,
+    formula_columns,
+    suggest,
+)
 from .tables import (
     AGGREGATION_MAX_LENGTH,
     MAX_TARGETS,
@@ -41,6 +54,7 @@ from .tables import (
     UNIT_MAX_LENGTH,
     KpiLinkRecord,
     KpiRecord,
+    KpiSuggestionDismissalRecord,
 )
 
 AUDITED_FIELDS = (
@@ -133,6 +147,16 @@ class LinkCandidates:
 
 
 MAX_CANDIDATES = 100
+
+
+@dataclass(frozen=True)
+class KpiFeasibility:
+    """Whether a KPI can be computed from the DW Schema (spec §6.13)."""
+
+    feasibility: str
+    """``computable``, ``needs_mapping`` or ``needs_data``."""
+    unmapped: list[str]
+    """``table.column`` of the inputs no mapping fills yet."""
 
 
 def _link_view(column: SchemaColumn) -> KpiLink:
@@ -412,6 +436,117 @@ class KpiService:
                 self._record_activity(db, user, "kpi.created", record, details={"via": "ai"})
             return SuggestedKpis(created=[_view(r) for r in created], skipped=skipped)
 
+    def rule_suggestions(self, user: User, workspace_id: uuid.UUID) -> list[RuleSuggestion]:
+        """The rule-based KPI suggestions for the DW Schema (any member): a computed list,
+        not KPIs. Left out are the dismissed ones and those whose name is already a KPI's
+        (an accepted one). Empty before the Data Warehouse is set up."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            return self._open_suggestions(db, workspace_id)[0]
+
+    def accept_suggestion(self, user: User, workspace_id: uuid.UUID, key: str) -> Kpi:
+        """Accept a rule-based suggestion: a draft Data Warehouse KPI (``origin`` ``rule``)
+        with its formula SQL and links to the measures, audited like any new KPI. 404 if no
+        such suggestion is open (it was dismissed, accepted or is gone)."""
+        self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            open_ones, schema = self._open_suggestions(db, workspace_id)
+            suggestion = next((s for s in open_ones if s.key == key), None)
+            if suggestion is None or schema is None:
+                raise ApiError(404, "not_found", "Suggestion not found.")
+            validate_formula(schema, suggestion.formula_sql)
+            record = KpiRecord(
+                id=uuid.uuid4(),
+                workspace_id=workspace_id,
+                source_system_id=None,
+                name=suggestion.name,
+                definition=suggestion.definition,
+                formula_text=suggestion.formula_text,
+                formula_sql=suggestion.formula_sql,
+                unit="",
+                aggregation=suggestion.aggregation,
+                owner="",
+                refresh_frequency="",
+                targets=[],
+                origin="rule",
+                rationale=None,
+                status="draft",
+                created_by=user.id,
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+            db.add(record)
+            db.flush()
+            write_links(db, record.id, suggestion.column_ids)
+            record_audit(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                entity_type="kpi",
+                entity_id=record.id,
+                old=None,
+                new={
+                    **_snapshot(record),
+                    "origin": "rule",
+                    "links": sorted(str(i) for i in suggestion.column_ids),
+                },
+                at=now,
+            )
+            self._record_activity(db, user, "kpi.created", record, details={"origin": "rule"})
+            return _view(record)
+
+    def dismiss_suggestion(self, user: User, workspace_id: uuid.UUID, key: str) -> None:
+        """Hide a rule-based suggestion for good (owners and editors); dismissing one that
+        is already hidden is fine. 404 if there is no such suggestion."""
+        self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            schema = read_schema(db, workspace_id)
+            known = schema is not None and any(
+                s.key == key for s in suggest(schema, read_mapping_state(db, workspace_id))
+            )
+            if not known:
+                raise ApiError(404, "not_found", "Suggestion not found.")
+            if db.get(KpiSuggestionDismissalRecord, (workspace_id, key)) is None:
+                db.add(
+                    KpiSuggestionDismissalRecord(
+                        workspace_id=workspace_id,
+                        key=key,
+                        dismissed_by=user.id,
+                        dismissed_at=self._clock(),
+                    )
+                )
+
+    def feasibility(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> KpiFeasibility:
+        """Whether a KPI (a rule or an AI suggestion, or any other) can be computed (any
+        member): *computable* when the DW columns its links and formula SQL read exist and
+        are mapped, *needs mapping* when some are unmapped, *needs data* when it has none
+        or the formula names what the DW Schema lacks."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            record = self._load(db, workspace_id, kpi_id)
+            schema = read_schema(db, workspace_id)
+            if schema is None:
+                return KpiFeasibility(NEEDS_DATA, [])
+            inputs = set(link_ids(db, kpi_id))
+            if record.formula_sql:
+                read = formula_columns(schema, record.formula_sql)
+                if read is None:
+                    return KpiFeasibility(NEEDS_DATA, [])
+                inputs |= read
+            if not inputs:
+                return KpiFeasibility(NEEDS_DATA, [])
+            mapped = read_mapping_state(db, workspace_id).mapped
+            columns = {c.id: c for t in schema.tables for c in t.columns}
+            state = feasibility_of(inputs, columns, mapped)
+            unmapped = sorted(
+                f"{columns[i].table_name}.{columns[i].name}"
+                for i in inputs
+                if i in columns and i not in mapped
+            )
+            return KpiFeasibility(state, unmapped if state != COMPUTABLE else [])
+
     def list(
         self,
         user: User,
@@ -613,6 +748,31 @@ class KpiService:
             return LinkCandidates(
                 kpis=[_view(r) for r in db.scalars(query)], schema=read_schema(db, workspace_id)
             )
+
+    def _open_suggestions(
+        self, db: Session, workspace_id: uuid.UUID
+    ) -> tuple[list[RuleSuggestion], DwSchema | None]:
+        schema = read_schema(db, workspace_id)
+        if schema is None:
+            return [], None
+        hidden = set(
+            db.scalars(
+                sa.select(KpiSuggestionDismissalRecord.key).where(
+                    KpiSuggestionDismissalRecord.workspace_id == workspace_id
+                )
+            )
+        )
+        taken = {
+            _name_key(name)
+            for name in db.scalars(
+                sa.select(KpiRecord.name).where(KpiRecord.workspace_id == workspace_id)
+            )
+        }
+        return [
+            s
+            for s in suggest(schema, read_mapping_state(db, workspace_id))
+            if s.key not in hidden and _name_key(s.name) not in taken
+        ], schema
 
     def _apply_links(
         self, db: Session, user: User, record: KpiRecord, columns: Sequence[SchemaColumn]

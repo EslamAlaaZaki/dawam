@@ -50,7 +50,9 @@ Public interface. Other modules import only what is re-exported here:
   ``clear_kpi_edges`` (in the caller's session, no permission check): the Core and Mart
   tables a KPI's formula SQL and links refer to, and the ``kpi`` lineage edges this module
   stores for them (``DwSchema``, ``SchemaTable``, ``SchemaColumn``; ``SQL_DIALECTS`` maps a
-  target platform to its sqlglot dialect).
+  target platform to its sqlglot dialect). ``read_mapping_state`` (``MappingState``) adds the
+  ``value`` edges between Core and Mart columns and which columns a mapping fills, for the
+  rule-based KPI suggestions; ``ident`` spells an identifier for a platform (bare when safe).
 - ``propagate_pii`` (in the caller's session, no permission check): the DW columns a set of
   confirmed PII source columns reaches through ``value`` edges and the tables it only steers
   (``PiiPropagation``), and which of those columns are pseudonymised (hashed, or fed by a
@@ -99,6 +101,7 @@ Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 """
 
 from .api import router
+from .ddl import ident
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
@@ -142,11 +145,13 @@ from .propagation import (
 from .propagation_handlers import ColumnMappingHandler, MappingBranchHandler
 from .schema_reader import (
     DwSchema,
+    MappingState,
     SchemaColumn,
     SchemaTable,
     clear_kpi_edges,
     describe_columns,
     mart_columns_reading,
+    read_mapping_state,
     read_schema,
     replace_kpi_edges,
 )
@@ -199,6 +204,7 @@ __all__ = [
     "MappingExportServiceDep",
     "MappingService",
     "MappingSheet",
+    "MappingState",
     "ModelService",
     "NamingRules",
     "PiiHashingService",
@@ -225,6 +231,7 @@ __all__ = [
     "ValidationService",
     "clear_kpi_edges",
     "describe_columns",
+    "ident",
     "install_score_recalculation",
     "is_reserved_word",
     "lineage_edges",
@@ -235,6 +242,7 @@ __all__ = [
     "plan_propagation",
     "platform_profile",
     "propagate_pii",
+    "read_mapping_state",
     "read_schema",
     "rename_in_sql",
     "replace_kpi_edges",
