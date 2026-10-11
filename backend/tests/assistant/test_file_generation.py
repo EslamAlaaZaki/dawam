@@ -178,3 +178,22 @@ def test_a_binary_file_cannot_be_updated(roles, model, warehouse, fake_llm):
     status, _ = use(roles, fake_llm, "update_file", "editor", file_id=sheet["id"], content="x")
 
     assert status == "error"
+
+
+def test_an_accepted_update_is_searchable_and_credits_the_accepting_user(
+    roles, model, warehouse, fake_llm
+):
+    file = a_file(roles, "# Notes\n\nold wording\n")
+    new = "# Notes\n\nzebracrossing\n"
+    use(roles, fake_llm, "update_file", "editor", file_id=file["id"], content=new)
+    [change_set] = change_set_ids(roles)
+
+    assert decide(roles, change_set, "accept").status_code == 200
+
+    found = roles.client("viewer").get(
+        f"{base(roles)}/documents/search", params={"q": "zebracrossing"}
+    )
+    assert found.status_code == 200, found.text
+    assert any(p["file_id"] == file["id"] for p in found.json()["items"])
+    updated = next(f for f in area_files(roles) if f["id"] == file["id"])
+    assert updated["updated_by"] == str(roles.user("editor").id)

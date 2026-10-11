@@ -56,8 +56,8 @@ from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 from dawam.platform.storage import create_storage
+from dawam.wiring import after_change_set, staging_sync_after_snapshot
 from dawam.wiring import propagation as propagation_service
-from dawam.wiring import staging_sync_after_snapshot
 
 API_PREFIX = "/api/v1"
 
@@ -184,7 +184,9 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # propagation: warehouse and changesets cannot import propagation, which imports them.
     propagation = propagation_service(engine, services.clock)
     app.state.on_structural_change = propagation.after_edit
-    app.state.on_change_set_applied = propagation.after_change_set
+    app.state.on_change_set_applied = after_change_set(
+        propagation.after_change_set, app.state.document_search
+    )
     # A new Snapshot (Schema Import) is followed by a staging sync: sources cannot import warehouse.
     app.state.on_snapshot_created = staging_sync_after_snapshot(engine, settings, services.clock)
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot

@@ -9,13 +9,19 @@ what follows a new Snapshot (a staging sync, which ``sources`` cannot call becau
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import sqlalchemy as sa
 
-from dawam.modules.auth import AuthService
-from dawam.modules.changesets import ChangeSetService, ObjectHandlers
-from dawam.modules.files import FileContentHandler
+from dawam.modules.auth import AuthService, User
+from dawam.modules.changesets import (
+    AppliedChangeSet,
+    ChangeSetAppliedHook,
+    ChangeSetService,
+    ObjectHandlers,
+)
+from dawam.modules.files import DocumentSearchService, FileContentHandler
 from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.propagation import PropagationService
@@ -58,6 +64,24 @@ def change_set_handlers(settings: Settings | None = None) -> ObjectHandlers:
         KpiPropagationHandler(),
         *files,
     )
+
+
+def after_change_set(
+    propagation_hook: ChangeSetAppliedHook, documents: DocumentSearchService
+) -> ChangeSetAppliedHook:
+    """What follows an accepted Change Set: its propagation, and a re-index of every file whose
+    text it changed (files cannot call the search index from inside the accept's transaction)."""
+
+    def hook(user: User, applied: AppliedChangeSet) -> None:
+        for change in applied.changes:
+            if change.entity_type == "file":
+                try:
+                    documents.index_file(applied.workspace_id, uuid.UUID(str(change.entity_id)))
+                except Exception:  # the save stands; a re-index repairs the search index
+                    logging.getLogger(__name__).exception("indexing document failed")
+        propagation_hook(user, applied)
+
+    return hook
 
 
 def propagation(engine: sa.Engine, clock: Clock) -> PropagationService:

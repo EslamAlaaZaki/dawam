@@ -4,7 +4,8 @@
 updates the text of an existing text file. The engine decides staleness (the file's text now
 against the text the proposal saw), role and audit; this class checks the new text and
 writes it. The bytes go to a fresh storage key so a rolled-back accept leaves the file as it
-was (the old key is left behind rather than risk deleting what a rollback restores).
+was (the old key is left behind rather than risk deleting what a rollback restores). The
+composition root re-indexes the file for search once the accept is committed.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ def _invalid(message: str) -> ApiError:
 
 class FileContentHandler:
     object_type = "file"
+    wants_actor = True
 
     def __init__(self, storage: FileStorage, *, max_bytes: int) -> None:
         self._storage = storage
@@ -81,6 +83,7 @@ class FileContentHandler:
         payload: Mapping[str, Any],
         *,
         at: datetime,
+        actor_id: uuid.UUID | None = None,
     ) -> AppliedChange:
         record = self._record(db, workspace_id, object_id, lock=True)
         if record is None:  # pragma: no cover - the engine checked staleness under the lock
@@ -96,6 +99,7 @@ class FileContentHandler:
         record.size = len(data)
         record.extracted_text = text
         record.text_status = text_status
+        record.updated_by = actor_id
         record.updated_at = at
         db.flush()
         return AppliedChange(
