@@ -19,6 +19,7 @@ from dawam.modules.warehouse.scoring import (
     Design,
     DesignBranch,
     DesignColumn,
+    DesignKpi,
     DesignTable,
     MappingFact,
     ScoreReport,
@@ -55,12 +56,16 @@ def table(name="fact_sales", kind="fact", layer="core", columns=(), **kw) -> Des
     )
 
 
-def design(*tables: DesignTable, platform="postgresql") -> Design:
-    return Design(platform=platform, naming_rules=NamingRules(), tables=tuple(tables))
+def design(*tables: DesignTable, platform="postgresql", kpis=()) -> Design:
+    return Design(platform=platform, naming_rules=NamingRules(), tables=tuple(tables), kpis=kpis)
 
 
-def run(*tables: DesignTable) -> ScoreReport:
-    return evaluate(design(*tables), product_registry)
+def run(*tables: DesignTable, kpis=()) -> ScoreReport:
+    return evaluate(design(*tables, kpis=kpis), product_registry)
+
+
+def kpi(name="Revenue", description="Net sales", linked=()) -> DesignKpi:
+    return DesignKpi(uuid.uuid4(), name, description, tuple(c.id for c in linked))
 
 
 def result(report: ScoreReport, code: str, *, name: str | None = None):
@@ -822,6 +827,56 @@ def test_every_measure_has_a_description():
     ]
 
 
+def test_every_kpi_has_a_description():
+    report = run(kpis=(kpi("Revenue"), kpi("Margin", description="  ")))
+    assert result(report, "kpi_has_description", name="Revenue").passed
+    failed = result(report, "kpi_has_description", name="Margin")
+    assert not failed.passed and failed.severity == "info"
+    assert failed.object_type == "kpi" and failed.layer == "dw"
+
+
+def _sales_with_measure():
+    customers = dim()
+    amount = col("amount", "measure", additivity="additive")
+    sales = fact(customers, columns=(col("customer_key", "fk"), amount))
+    return customers, sales, next(c for c in sales.columns if c.name == "amount")
+
+
+def test_every_kpi_links_to_at_least_one_measure():
+    customers, sales, amount = _sales_with_measure()
+    key = next(c for c in sales.columns if c.name == "customer_key")
+    linked, unlinked, to_key = (
+        kpi("Revenue", linked=(amount,)),
+        kpi("Orphan"),
+        kpi("Odd", linked=(key,)),
+    )
+    report = run(customers, sales, kpis=(linked, unlinked, to_key))
+    assert result(report, "kpi_links_measure", name="Revenue").passed
+    failed = result(report, "kpi_links_measure", name="Orphan")
+    assert not failed.passed and failed.severity == "warning"
+    assert failed.object_id == unlinked.id and "not linked" in failed.message
+    assert not result(report, "kpi_links_measure", name="Odd").passed  # a key is no measure
+
+
+def test_the_kpi_checks_count_towards_the_dw_score_only():
+    customers, sales, _ = _sales_with_measure()
+    without = run(customers, sales)
+    with_kpi = run(customers, sales, kpis=(kpi("Orphan", description=""),))
+    assert with_kpi.score is not None and without.score is not None
+    assert with_kpi.score < without.score
+    assert [(t.name, t.score) for t in with_kpi.tables] == [
+        (t.name, t.score) for t in without.tables
+    ]
+    assert with_kpi.layers == without.layers
+
+
+def test_kpi_checks_are_weighted_like_any_other():
+    assert run().score is None
+    report = run(kpis=(kpi("Orphan"),))  # description passes (info 1), no measure fails (warning 3)
+    assert report.score == 25.0
+    assert [layer.score for layer in report.layers] == [None, None, None]
+
+
 # --- performance readiness -----------------------------------------------------------
 
 
@@ -915,6 +970,8 @@ def test_every_check_in_the_spec_table_is_registered_with_its_layers_and_severit
         "fact_no_free_text": ("warning", ("core", "mart")),
         "fact_width": ("info", ("core", "mart")),
         "pii_in_mart": ("info", ("mart",)),
+        "kpi_links_measure": ("warning", ("dw",)),
+        "kpi_has_description": ("info", ("dw",)),
     }
     for code, (severity, layers) in expected.items():
         spec = product_registry.spec(code)

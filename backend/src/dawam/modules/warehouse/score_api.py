@@ -25,7 +25,10 @@ def score_service(request: Request) -> ScoreService:
     state = request.app.state
     clock = state.services.clock
     return ScoreService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        kpis=getattr(state, "score_kpis", None),
     )
 
 
@@ -60,8 +63,8 @@ class FailedCheck(BaseModel):
     title: str
     category: str
     severity: Literal["error", "warning", "info"]
-    layer: Literal["staging", "core", "mart"]
-    object_type: Literal["table", "column"]
+    layer: Literal["staging", "core", "mart", "dw"]
+    object_type: Literal["table", "column", "kpi"]
     object_id: uuid.UUID
     table_id: uuid.UUID
     object_name: str

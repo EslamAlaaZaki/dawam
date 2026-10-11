@@ -30,6 +30,7 @@ from .scoring import (
     CheckSpec,
     Design,
     DesignColumn,
+    DesignKpi,
     DesignTable,
     Finding,
     Outcome,
@@ -740,6 +741,36 @@ def measure_has_description(
     if column.role != "measure":
         return None
     return PASS if column.description.strip() else fail(f"{column.name} has no description.")
+
+
+@registry.kpi_check(
+    "kpi_has_description",
+    category="documentation",
+    severity="info",
+    hint="Write the KPI's business definition.",
+    title="Every KPI has a description",
+)
+def kpi_has_description(kpi: DesignKpi, design: Design) -> Outcome:
+    return PASS if kpi.description.strip() else fail(f"{kpi.name} has no description.")
+
+
+# --- DW-wide KPI completeness ---------------------------------------------------------
+
+
+@registry.kpi_check(
+    "kpi_links_measure",
+    category="completeness",
+    severity="warning",
+    hint="Link the KPI to the measure columns its formula uses.",
+    title="Every KPI links to at least one measure",
+)
+def kpi_links_measure(kpi: DesignKpi, design: Design) -> Outcome:
+    measures = {
+        c.id for t in design.tables if t.layer in MODEL for c in t.columns if c.role == "measure"
+    }
+    if any(i in measures for i in kpi.linked_column_ids):
+        return PASS
+    return fail(f"{kpi.name} is not linked to any measure.")
 
 
 # --- performance readiness -----------------------------------------------------------

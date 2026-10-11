@@ -5209,12 +5209,12 @@ export interface components {
              * Layer
              * @enum {string}
              */
-            layer: "staging" | "core" | "mart";
+            layer: "staging" | "core" | "mart" | "dw";
             /**
              * Object Type
              * @enum {string}
              */
-            object_type: "table" | "column";
+            object_type: "table" | "column" | "kpi";
             /**
              * Object Id
              * Format: uuid

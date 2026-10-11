@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -34,6 +34,7 @@ from .scoring import (
     Design,
     DesignBranch,
     DesignColumn,
+    DesignKpi,
     DesignTable,
     MappingFact,
     ScoreReport,
@@ -154,11 +155,17 @@ class StarCard:
     link: str
 
 
+KpiReader = Callable[[Session, uuid.UUID], Iterable[DesignKpi]]
+"""The KPIs of a Workspace (given the session and the Workspace id)."""
+
+
 def _not_set_up() -> ApiError:
     return ApiError(404, "not_found", "The Data Warehouse is not set up yet.")
 
 
 def link_to(finding_table: uuid.UUID, object_type: str, object_id: uuid.UUID) -> str:
+    if object_type == "kpi":
+        return f"?kpi={object_id}"
     column = f"&column={object_id}" if object_type == "column" else ""
     return f"?table={finding_table}{column}"
 
@@ -183,8 +190,13 @@ class ScoreService:
         workspaces: WorkspaceService,
         clock: Clock,
         registry: CheckRegistry = default_registry,
+        kpis: KpiReader | None = None,
     ) -> None:
+        """``kpis`` reads a Workspace's KPIs for the DW-wide KPI checks (the KPIs module
+        imports this one, so the composition root hands the reader in); without it there
+        are no KPIs to check."""
         self._engine = engine
+        self._kpis = kpis
         self._workspaces = workspaces
         self._clock = clock
         self._registry = registry
@@ -402,6 +414,7 @@ class ScoreService:
         return Design(
             platform=warehouse.target_platform,
             naming_rules=NamingRules(**warehouse.naming_rules),
+            kpis=tuple(self._kpis(db, warehouse.workspace_id)) if self._kpis else (),
             tables=tuple(
                 DesignTable(
                     id=t.id,
@@ -504,7 +517,8 @@ class ScoreService:
     def _view(self, run: ScoreRunRecord, rows: list[ScoreCheckResultRecord]) -> Score:
         by_table: dict[uuid.UUID, list[ScoreCheckResultRecord]] = defaultdict(list)
         for r in rows:
-            by_table[r.table_id].append(r)
+            if r.object_type != "kpi":  # a KPI belongs to no table
+                by_table[r.table_id].append(r)
         tables = []
         for table_id, items in by_table.items():
             total = sum(SEVERITY_WEIGHTS[r.severity] for r in items)
