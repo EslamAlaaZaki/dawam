@@ -3561,6 +3561,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/documentation-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Documentation Pack
+         * @description The documentation pack (any member, also in an archived Workspace): Source Schemas,
+         *     the DW Schema per Layer, mappings, KPIs and a lineage summary. `zip` holds one Markdown
+         *     page per Source System, Layer and topic with a `README.md`; `html` is the same content in
+         *     one self-contained file. Metadata only, never row values. To keep a copy, save it to
+         *     the file area with `POST .../data-warehouse/files/documentation-pack`.
+         */
+        get: operations["downloadDocumentationPack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/documentation-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Documentation Pack
+         * @description Save the documentation pack into the Data Warehouse's file area as one Markdown file,
+         *     `documentation-pack.md` (owners and editors), overwriting the previous one. The file
+         *     area holds no HTML or zip, so download those. 404 before the Data Warehouse is set up;
+         *     refused in an archived Workspace.
+         */
+        post: operations["saveDocumentationPack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7248,6 +7295,21 @@ export interface components {
              * @default 0
              */
             version: number;
+        };
+        /** SavedPack */
+        SavedPack: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Size
+             * @description Bytes.
+             */
+            size: number;
         };
         /** Score */
         Score: {
@@ -17631,6 +17693,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    downloadDocumentationPack: {
+        parameters: {
+            query?: {
+                /** @description `zip` (Markdown files) or `html` (a single self-contained file). */
+                format?: "zip" | "html";
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The documentation pack. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                    "text/html": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveDocumentationPack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPack"];
+                };
             };
             /** @description Validation error */
             422: {
