@@ -1061,6 +1061,14 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {},
     ),
+    # "Fix impacts" (story 113a) proposes a propagation Change Set.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/fix-impacts",
+        "Accept / reject Change Set items (Fix impacts: propose a propagation Change Set)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+    ),
     # Comments and mentions (stories 107, 125, 126; §4.3 "Comment": viewers too, admins not).
     Row(
         "GET",

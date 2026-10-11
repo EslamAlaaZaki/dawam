@@ -4,6 +4,10 @@ import type { PageContext } from "../api/assistant";
 import { useFailedChecks, type FailedCheck } from "../api/score";
 import { allows, type Workspace } from "../api/workspaces";
 import { Loading } from "../shell/Loading";
+import { FixImpacts } from "./FixImpacts";
+
+/** Checks a propagation fixes: a mapping reading an input renamed, deleted or removed. */
+export const IMPACT_CHECKS = new Set(["inputs_exist", "no_source_removed_inputs"]);
 
 /** A question for the assistant, with the object it is about. */
 export interface AssistantRequest {
@@ -23,7 +27,8 @@ export function fixPrompt(check: FailedCheck): string {
 
 /**
  * The failed score checks, each with an Explain action (every member) and a Propose fix
- * action (editors), which open the assistant with the check as context.
+ * action (editors), which open the assistant with the check as context. When a check
+ * fails because of a change's impacts, editors are offered "Fix impacts".
  */
 export function FailedChecksPanel({
   workspace,
@@ -34,7 +39,8 @@ export function FailedChecksPanel({
 }) {
   const checks = useFailedChecks(workspace.id);
   const canAsk = allows(workspace, "assistant.ask") && workspace.status !== "archived";
-  const canPropose = canAsk && allows(workspace, "change_set.review");
+  const canReview = allows(workspace, "change_set.review") && workspace.status !== "archived";
+  const canPropose = canAsk && canReview;
 
   if (checks.isPending) {
     return <Loading />;
@@ -51,6 +57,9 @@ export function FailedChecksPanel({
   return (
     <section aria-labelledby="checks-title">
       <h3 id="checks-title">Failed checks</h3>
+      {canReview && checks.data.some((check) => IMPACT_CHECKS.has(check.check_code)) && (
+        <FixImpacts workspace={workspace} />
+      )}
       {checks.data.length === 0 ? (
         <p className="empty-state">No check fails.</p>
       ) : (

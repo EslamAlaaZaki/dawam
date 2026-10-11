@@ -2667,6 +2667,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/fix-impacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fix Impacts
+         * @description Recompute the propagation Change Set from whatever is broken now: the open validation
+         *     errors propagation can fix (a mapping reading a renamed, removed or `source_removed`
+         *     input). Owners and editors; 409 `workspace_archived` while the Workspace is archived.
+         *     Expired items are never revived: a new Change Set is proposed, and a newer "Fix
+         *     impacts" supersedes a pending one.
+         */
+        post: operations["fixImpacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage": {
         parameters: {
             query?: never;
@@ -5544,6 +5568,19 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** FixImpactsResult */
+        FixImpactsResult: {
+            /**
+             * Change Set Id
+             * @description The new `propagation` Change Set; null when nothing broken can be fixed by propagation (what is left stays a validation error to fix by hand).
+             */
+            change_set_id: string | null;
+            /**
+             * Impacts
+             * @description Every impacted Asset, grouped by Layer.
+             */
+            impacts: components["schemas"]["ImpactOut"][];
+        };
         /** ForcedReset */
         ForcedReset: {
             /**
@@ -5557,6 +5594,29 @@ export interface components {
         ForgotPasswordRequest: {
             /** Email */
             email: string;
+        };
+        /** ImpactOut */
+        ImpactOut: {
+            /**
+             * Layer
+             * @description `staging`, `core`, `mart` or `kpi`.
+             */
+            layer: string;
+            /**
+             * Object Type
+             * @description `dw_table`, `dw_column` or `kpi`.
+             */
+            object_type: string;
+            /**
+             * Object Id
+             * Format: uuid
+             */
+            object_id: string;
+            /**
+             * Label
+             * @description `table.column`, the table name or the KPI name.
+             */
+            label: string;
         };
         /** ImpactReport */
         ImpactReport: {
@@ -15482,6 +15542,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KpiLinks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    fixImpacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixImpactsResult"];
                 };
             };
             /** @description Validation error */

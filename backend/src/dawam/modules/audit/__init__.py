@@ -10,6 +10,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``audit_context(db)``: who made the latest audited change of ``db``'s transaction and
   how (``AuditContext``), for code that reacts to that change in the same transaction.
 - ``AuditService.list``: the entries of one entity, oldest first.
+- ``AuditService.field_changes``: the Workspace's entries that changed one field of some
+  entity types (e.g. every rename of a DW table or column), oldest first.
 - ``AuditService.page``: the Workspace's trail, newest first, filterable by entity,
   object, actor, channel and date, cursor-paginated (``AuditPage``). Connection entries
   never carry secrets, and carry host and username only for owners. Neither method

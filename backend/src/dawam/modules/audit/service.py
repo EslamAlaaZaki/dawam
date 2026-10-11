@@ -7,7 +7,7 @@ the change. They never touch the table.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -199,6 +199,25 @@ class AuditService:
         )
         with Session(self._engine) as db:
             return [_entry(r, see_connection_details=True) for r in db.scalars(query)]
+
+    def field_changes(
+        self, workspace_id: uuid.UUID, *, entity_types: Sequence[str], field: str
+    ) -> list[AuditEntry]:
+        """The Workspace's entries of ``entity_types`` that changed ``field`` from one value
+        to another (not a create or a delete), oldest first: e.g. every rename."""
+        query = (
+            sa.select(AuditEntryRecord)
+            .where(
+                AuditEntryRecord.workspace_id == workspace_id,
+                AuditEntryRecord.entity_type.in_(list(entity_types)),
+                AuditEntryRecord.old.has_key(field),
+                AuditEntryRecord.new.has_key(field),
+            )
+            .order_by(AuditEntryRecord.created_at, AuditEntryRecord.id)
+        )
+        with Session(self._engine) as db:
+            entries = [_entry(r, see_connection_details=False) for r in db.scalars(query)]
+        return [e for e in entries if e.old and e.new and e.old[field] != e.new[field]]
 
 
 def _redact(
