@@ -37,6 +37,7 @@ from .mapping_service import purge_edges_reading
 from .naming import NamingViolation, check_column_name, check_table_name
 from .pii_propagation import propagate_pii
 from .platforms import SAFE_IDENTIFIER, is_reserved_word, max_identifier_length
+from .propagation import StructuralChange, StructuralChangeHook, notify_structural_change
 from .service import NamingRules
 from .tables import (
     ADDITIVITIES,
@@ -360,10 +361,20 @@ def _constraint(exc: IntegrityError) -> str | None:
 class ModelService:
     """The DW Schema's Core and Mart tables and columns."""
 
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        on_structural_change: StructuralChangeHook | None = None,
+    ) -> None:
+        """``on_structural_change`` hears of every rename, retype, nullability change and
+        delete once it is committed, to propagate it (spec §6.10)."""
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._on_structural_change = on_structural_change
 
     # --- reading ---------------------------------------------------------------------
 
@@ -575,9 +586,17 @@ class ModelService:
                 mark_edited(table, before, _table_snapshot(table), GENERATED_TABLE_FIELDS)
                 self._sync_scd2(db, user, workspace_id, table, now)
                 self._finish_table_edit(db, user, workspace_id, table, before, now)
-                return _table_view(table, self._columns(db, table.id), _rules(warehouse))
+                view = _table_view(table, self._columns(db, table.id), _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
+        if before["name"] != view.name:
+            notify_structural_change(
+                self._on_structural_change,
+                user,
+                workspace_id,
+                [StructuralChange("dw_table", table_id, "rename", before["name"], view.name)],
+            )
+        return view
 
     def delete_table(self, user: User, workspace_id: uuid.UUID, table_id: uuid.UUID) -> None:
         """Delete a table and its columns. 409 ``table_referenced`` while another table's
@@ -603,6 +622,9 @@ class ModelService:
                     {"referencing_columns": referencing},
                 )
             now = self._clock()
+            removed = StructuralChange(
+                "dw_table", table.id, "removed", layer=table.layer, table_name=table.name
+            )
             purge_edges_reading(db, [c.id for c in self._columns(db, table.id)])
             record_audit(
                 db,
@@ -639,6 +661,7 @@ class ModelService:
                     )
                 )
             db.delete(table)
+        notify_structural_change(self._on_structural_change, user, workspace_id, [removed])
 
     # --- columns ---------------------------------------------------------------------
 
@@ -701,6 +724,7 @@ class ModelService:
                     _uuid(final["references_table_id"]) if final["references_table_id"] else None
                 )
                 self._check_column(db, warehouse, table, siblings, final)
+                structural: list[StructuralChange] = []
                 if final["pii_note"] and final["pii_note"] != before["pii_note"]:
                     self._ensure_pii_derived(db, workspace_id, column)
                 for field in COLUMN_FIELDS:
@@ -739,9 +763,12 @@ class ModelService:
                     )
                     self._sync_scd2(db, user, workspace_id, table, now)
                     self._finish_table_edit(db, user, workspace_id, table, before_table, now)
-                return _column_view(column, table.layer, _rules(warehouse))
+                    structural = _structural(column.id, before, after)
+                view = _column_view(column, table.layer, _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
+        notify_structural_change(self._on_structural_change, user, workspace_id, structural)
+        return view
 
     def delete_column(
         self,
@@ -784,6 +811,14 @@ class ModelService:
                         deleted_at=now,
                     )
                 )
+            removed = StructuralChange(
+                "dw_column",
+                column.id,
+                "removed",
+                layer=table.layer,
+                table_name=table.name,
+                column_name=name,
+            )
             purge_edges_reading(db, [column.id])
             db.delete(column)
             db.flush()
@@ -792,6 +827,7 @@ class ModelService:
                 remaining.ordinal = ordinal
             self._sync_scd2(db, user, workspace_id, table, now)
             self._finish_table_edit(db, user, workspace_id, table, before_table, now)
+        notify_structural_change(self._on_structural_change, user, workspace_id, [removed])
 
     # --- loading ---------------------------------------------------------------------
 
@@ -1384,6 +1420,31 @@ class ModelService:
         if constraint == COLUMN_NAME_UNIQUE:
             return _name_taken("column in this table")
         return exc
+
+
+def _structural(
+    column_id: uuid.UUID, before: Mapping[str, Any], after: Mapping[str, Any]
+) -> list[StructuralChange]:
+    """The structural part of a column edit: what propagation follows (descriptions and the
+    like never raise an alert)."""
+    found: list[StructuralChange] = []
+    if before["name"] != after["name"]:
+        found.append(
+            StructuralChange("dw_column", column_id, "rename", before["name"], after["name"])
+        )
+    if before["data_type"] != after["data_type"]:
+        found.append(
+            StructuralChange(
+                "dw_column", column_id, "retype", before["data_type"], after["data_type"]
+            )
+        )
+    if before["is_nullable"] != after["is_nullable"]:
+        found.append(
+            StructuralChange(
+                "dw_column", column_id, "nullability", before["is_nullable"], after["is_nullable"]
+            )
+        )
+    return found
 
 
 def _not_pii_derived() -> ApiError:

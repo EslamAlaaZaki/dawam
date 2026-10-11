@@ -29,7 +29,10 @@ def model_service(request: Request) -> ModelService:
     state = request.app.state
     clock = state.services.clock
     return ModelService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        on_structural_change=getattr(state, "on_structural_change", None),
     )
 
 

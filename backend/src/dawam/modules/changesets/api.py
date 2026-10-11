@@ -35,6 +35,7 @@ def change_set_service(request: Request) -> ChangeSetService:
         notifications=NotificationService(state.engine, clock=clock),
         clock=clock,
         conversations=getattr(state, "readable_conversations", None),
+        on_applied=getattr(state, "on_change_set_applied", None),
     )
 
 
