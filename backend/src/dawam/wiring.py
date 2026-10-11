@@ -24,6 +24,7 @@ from dawam.modules.warehouse import (
     DwColumnHandler,
     DwTableHandler,
     MappingBranchHandler,
+    MappingDraftHandler,
     StagingColumnHandler,
     StagingService,
     StagingTableHandler,
@@ -47,6 +48,7 @@ def change_set_handlers() -> ObjectHandlers:
         KpiLinkHandler(),
         ColumnMappingHandler(),
         MappingBranchHandler(),
+        MappingDraftHandler(),
         KpiPropagationHandler(),
     )
 
