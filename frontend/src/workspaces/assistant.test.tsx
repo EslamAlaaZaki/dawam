@@ -470,7 +470,7 @@ describe("explaining and fixing a failed check", () => {
     link: "/",
   };
 
-  function withChecks(permissions: string[]) {
+  function withChecks(permissions: string[], checks: object[] = [CHECK]) {
     const base = backend({
       answer: () =>
         sse([
@@ -489,7 +489,20 @@ describe("explaining and fixing a failed check", () => {
         return json({ items: [], next_cursor: null });
       }
       if (r.path === `${API}/data-warehouse/score`) {
-        return json({ failed_checks: [CHECK] });
+        return json({ failed_checks: checks });
+      }
+      if (r.method === "POST" && r.path === `${API}/fix-impacts`) {
+        return json({
+          change_set_id: "77777777-7777-4777-8777-777777777777",
+          impacts: [
+            {
+              layer: "mart",
+              object_type: "dw_column",
+              object_id: "88888888-8888-4888-8888-888888888888",
+              label: "dim_customer_m.customer_name",
+            },
+          ],
+        });
       }
       return base(r);
     };
@@ -525,5 +538,36 @@ describe("explaining and fixing a failed check", () => {
     );
 
     expect(await screen.findByRole("button", { name: "Propose fix" })).toBeInTheDocument();
+    // This check is not about a change's impacts: nothing for propagation to fix.
+    expect(screen.queryByRole("button", { name: "Fix impacts" })).toBeNull();
+  });
+
+  it("offers an editor Fix impacts for a check a change's impacts fail", async () => {
+    const broken = { ...CHECK, check_code: "inputs_exist", title: "All mapped input columns exist" };
+    const requests = renderApp(
+      withChecks(["assistant.ask", "change_set.review", "workspace.view"], [broken]),
+      `${PATH}?folder=dw/score`,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fix impacts" }));
+
+    expect(await screen.findByRole("link", { name: "Review it" })).toHaveAttribute(
+      "href",
+      `/workspaces/${WORKSPACE_ID}/change-sets/77777777-7777-4777-8777-777777777777`,
+    );
+    expect(screen.getByText(/1 impacted Asset\./)).toBeInTheDocument();
+    expect(
+      requests.find((r) => r.method === "POST" && r.path === `${API}/fix-impacts`),
+    ).toMatchObject({ csrf: CSRF_TOKEN });
+  });
+
+  it("does not offer Fix impacts to a viewer", async () => {
+    renderApp(
+      withChecks(["assistant.ask", "workspace.view"], [{ ...CHECK, check_code: "inputs_exist" }]),
+      `${PATH}?folder=dw/score`,
+    );
+
+    await screen.findByRole("button", { name: "Explain" });
+    expect(screen.queryByRole("button", { name: "Fix impacts" })).toBeNull();
   });
 });

@@ -27,6 +27,7 @@ const ADA: Me = {
 };
 
 const ACTIVE_OWNER: Workspace["permissions"] = [
+  "change_set.review",
   "workspace.archive",
   "workspace.delete",
   "workspace.edit",
@@ -85,6 +86,8 @@ function backend(initial: { archived: boolean; permissions?: Workspace["permissi
       case `POST ${API}/unarchive`:
         state.archived = false;
         return noContent();
+      case `POST ${API}/fix-impacts`:
+        return json({ change_set_id: null, impacts: [] });
       case `DELETE ${API}`:
         return (r.body as { name: string }).name === "Retail DW"
           ? noContent()
@@ -123,6 +126,27 @@ describe("archiving a Workspace", () => {
 
     expect(await screen.findByRole("button", { name: "Archive Workspace" })).toBeInTheDocument();
     expect(screen.queryByText(/archived and read-only/)).not.toBeInTheDocument();
+  });
+
+  it("offers Fix impacts once unarchived, to those who review Change Sets", async () => {
+    const requests = renderApp(backend({ archived: true }), PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Unarchive Workspace" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Fix impacts" }));
+
+    expect(
+      await screen.findByText("Nothing broken can be fixed by propagation."),
+    ).toBeInTheDocument();
+    expect(
+      requests.find((r) => r.method === "POST" && r.path === `${API}/fix-impacts`),
+    ).toMatchObject({ csrf: CSRF_TOKEN });
+  });
+
+  it("does not offer Fix impacts before unarchiving", async () => {
+    renderApp(backend({ archived: true }), PATH);
+
+    await screen.findByRole("button", { name: "Unarchive Workspace" });
+    expect(screen.queryByRole("button", { name: "Fix impacts" })).not.toBeInTheDocument();
   });
 
   it("offers neither to a member the API gives no such permission", async () => {
