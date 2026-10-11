@@ -7,8 +7,9 @@ import json
 from dawam.modules.assistant.internal.tools import GENERATION_TASK, _GenerateDwSchema
 from dawam.modules.llm import Message, ToolCall, ToolSpec
 from dawam.modules.llm.gateway import TextDelta, ToolCallEvent
-from dawam.modules.llm.internal.adapters import AdapterConfig, adapter_for
+from dawam.modules.llm.internal.adapters import AdapterConfig, fake_adapter_factory
 from dawam.modules.llm.internal.e2e import E2eAdapter
+from dawam.platform.config import Settings
 
 TOOLS = [ToolSpec("generate_dw_schema", "", {"type": "object"})]
 INPUTS = json.dumps(
@@ -41,9 +42,11 @@ def test_a_tool_result_that_is_not_the_inputs_ends_the_turn_with_text():
     assert [e.text for e in events if isinstance(e, TextDelta)] == ["Done."]
 
 
-def test_the_env_switch_replaces_every_provider_kind(monkeypatch):
-    monkeypatch.setenv("DAWAM_FAKE_LLM", "true")
-
-    adapter = adapter_for("openai_compatible", AdapterConfig("http://x", None, 5))
+def test_the_fake_factory_replaces_every_provider_kind():
+    adapter = fake_adapter_factory("openai_compatible", AdapterConfig("http://x", None, 5))
 
     assert isinstance(adapter, E2eAdapter)
+
+
+def test_the_setting_is_off_unless_asked_for():
+    assert Settings.model_fields["fake_llm"].default is False

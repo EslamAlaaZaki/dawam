@@ -168,7 +168,7 @@ test("the main path: sign in to lineage", async ({ page }) => {
     const column = detail.columns.find((c: { name: string }) => c.name === "name");
 
     await page.goto(`/workspaces/${workspaceId}?folder=dw/lineage&node=${column.id}`);
-    await expect(page.getByRole("heading", { name: "Lineage" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Lineage", exact: true })).toBeVisible();
     await page.getByText("Edges as a list").click();
     await expect(page.getByRole("list", { name: "Lineage edges" })).toContainText(
       `${STAGING_CUSTOMERS}.name`,

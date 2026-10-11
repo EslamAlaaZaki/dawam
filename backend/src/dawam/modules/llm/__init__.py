@@ -56,7 +56,7 @@ from .gateway import (
     ToolSpec,
     Usage,
 )
-from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for
+from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, fake_adapter_factory
 from .internal.fake import FakeAdapter, Reply
 from .role_service import (
     MeteredGateway,
@@ -121,6 +121,7 @@ __all__ = [
     "WorkspaceAiSettings",
     "WorkspaceAiView",
     "adapter_for",
+    "fake_adapter_factory",
     "on_workspace_created",
     "router",
 ]

@@ -9,7 +9,6 @@ plugin that fails to load is skipped (it must not take the gateway down).
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -68,13 +67,17 @@ def plugin_factories() -> dict[str, PluginAdapterFactory]:
     return found
 
 
+def fake_adapter_factory(kind: str, config: AdapterConfig) -> Adapter:
+    """For ``DAWAM_FAKE_LLM``: every provider kind is the rule-based fake of the browser
+    end-to-end suite, so no model is ever called."""
+    return E2eAdapter()
+
+
 def adapter_kinds() -> tuple[str, ...]:
     return ADAPTER_KINDS + tuple(sorted(plugin_factories()))
 
 
 def adapter_for(kind: str, config: AdapterConfig, transport: Transport | None = None) -> Adapter:
-    if os.environ.get("DAWAM_FAKE_LLM", "").lower() in ("1", "true", "yes"):
-        return E2eAdapter()  # the browser end-to-end suite: no provider is ever called
     transport = transport or UrllibTransport()
     if kind in BUILTIN_ADAPTERS:
         return BUILTIN_ADAPTERS[kind](
