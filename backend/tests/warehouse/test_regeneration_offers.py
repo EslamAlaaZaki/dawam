@@ -5,12 +5,20 @@ propagation. Pure: the offers themselves are tested in ``tests/assistant/test_re
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.orm import Session
 
-from dawam.modules.audit import AuditedChange
-from dawam.modules.warehouse.regeneration import mandatory_input, offer_reasons
+from dawam.modules.audit import AuditedChange, audited_changes, record_audit
+from dawam.modules.warehouse.regeneration import (
+    _TABLES,
+    mandatory_input,
+    note_new_inputs,
+    offer_reasons,
+)
 
 WORKSPACE = uuid.uuid4()
 
@@ -87,3 +95,35 @@ def test_reasons_are_gathered_per_workspace():
     ]
 
     assert offer_reasons(changes) == {WORKSPACE: ["kpi"], other: ["source_schema"]}
+
+
+# -- what a transaction noted lives exactly as long as the transaction ----------------------
+
+
+def test_a_savepoint_rollback_keeps_the_outer_notes_and_a_real_rollback_drops_them():
+    engine = sa.create_engine("sqlite://")
+    table_id = uuid.uuid4()
+    with Session(engine) as db:
+        db.execute(sa.text("select 1"))
+        record_audit(
+            db,
+            workspace_id=WORKSPACE,
+            actor_id=None,
+            entity_type="kpi",
+            entity_id=uuid.uuid4(),
+            old=None,
+            new={"name": "Revenue"},
+            at=datetime.now(UTC),
+        )
+        db.expunge_all()  # no tables here: only what the session noted matters
+        note_new_inputs(db, WORKSPACE, table_id)
+        nested = db.begin_nested()
+        nested.rollback()
+
+        assert [c.entity_type for c in audited_changes(db)] == ["kpi"]
+        assert db.info[_TABLES] == {(WORKSPACE, table_id)}
+
+        db.rollback()
+
+        assert audited_changes(db) == []
+        assert _TABLES not in db.info

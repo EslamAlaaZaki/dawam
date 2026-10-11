@@ -220,7 +220,8 @@ def _before_commit(session: Session) -> None:
 
 
 def _forget(session: Session) -> None:
-    session.info.pop(_TABLES, None)
+    if not session.in_transaction():  # a SAVEPOINT's rollback keeps the outer notes
+        session.info.pop(_TABLES, None)
 
 
 sa.event.listen(Session, "before_commit", _before_commit)

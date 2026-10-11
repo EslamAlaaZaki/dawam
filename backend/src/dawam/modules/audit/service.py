@@ -275,8 +275,16 @@ def _entry(record: AuditEntryRecord, *, see_connection_details: bool) -> AuditEn
 
 def _forget_context(session: Session) -> None:
     session.info.pop(_CONTEXT, None)
-    session.info.pop(_CHANGES, None)
+
+
+def _forget_changes(session: Session) -> None:
+    """The transaction ended: commit, or a rollback of the whole transaction (not a
+    SAVEPOINT's, whose outer transaction keeps what it audited)."""
+    if not session.in_transaction():
+        session.info.pop(_CHANGES, None)
 
 
 sa.event.listen(Session, "after_commit", _forget_context)
 sa.event.listen(Session, "after_soft_rollback", lambda session, _previous: _forget_context(session))
+sa.event.listen(Session, "after_commit", _forget_changes)
+sa.event.listen(Session, "after_soft_rollback", lambda session, _previous: _forget_changes(session))
