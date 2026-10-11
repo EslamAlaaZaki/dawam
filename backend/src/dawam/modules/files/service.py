@@ -163,8 +163,13 @@ class FileService:
         self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID, *, name: str, data: bytes
     ) -> WorkspaceFile:
         """Save a file an exporter produced into a Source System's file area (owners and
-        editors), overwriting one of the same name (spec §6.15: every export can be saved)."""
-        return self.upload(user, workspace_id, system_id, filename=name, content=io.BytesIO(data))
+        editors), overwriting one of the same name (spec §6.15: every export can be saved).
+        The file is marked ``generated``, so it belongs to the system's Outputs."""
+        self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
+        area = self._system_area(user, workspace_id, system_id)
+        return self._put(
+            user, workspace_id, area, filename=name, content=io.BytesIO(data), kind="generated"
+        )
 
     def upload_to_warehouse(
         self, user: User, workspace_id: uuid.UUID, *, filename: str, content: BinaryIO
@@ -198,6 +203,7 @@ class FileService:
         *,
         filename: str,
         content: BinaryIO,
+        kind: str = "uploaded",
     ) -> WorkspaceFile:
         name = clean_file_name(filename)
         data = read_limited(content, self.max_upload_bytes)
@@ -234,7 +240,7 @@ class FileService:
                     db.add(record)
                 else:
                     replaced_key = record.storage_key
-                record.kind = "uploaded"
+                record.kind = kind
                 self._store(db, record, user, file_type.mime, key, data, text, text_status)
                 record_activity(
                     db,
