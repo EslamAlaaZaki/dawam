@@ -24,6 +24,7 @@ from .evaluation_api import router as evaluation_router
 from .mapping_api import lineage_router
 from .mapping_api import router as mapping_router
 from .mapping_export_api import router as mapping_export_router
+from .mapping_import_api import router as mapping_import_router
 from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .score_api import router as score_router
@@ -41,6 +42,7 @@ router.include_router(score_router)
 router.include_router(score_export_router)
 router.include_router(evaluation_router)
 router.include_router(mapping_export_router)
+router.include_router(mapping_import_router)
 router.include_router(validation_router)
 router.include_router(staging_router)
 router.include_router(approval_router)
@@ -50,7 +52,10 @@ def data_warehouse_service(request: Request) -> DataWarehouseService:
     state = request.app.state
     clock = state.services.clock
     return DataWarehouseService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        has_formulas=getattr(state, "workspace_has_kpi_formulas", None),
     )
 
 

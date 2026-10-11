@@ -17,6 +17,10 @@ Public interface. Other modules import only what is re-exported here:
 - ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
   sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
   .../data-warehouse/mapping-sheet`` downloads it.
+- ``MappingImportService``: an Editor imports a filled-in mapping sheet (``POST
+  .../mapping-sheet/import``): a validation report first (unknown tables, columns and branches
+  fail and create nothing; Staging rows are ignored), then one Change Set of origin ``import``
+  for what differs. It never changes approval states.
 - ``ScoreExportService``: any member exports the latest score as a Markdown or XLSX report
   (story 124); ``GET .../data-warehouse/score/report`` downloads it.
 - ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
@@ -107,6 +111,17 @@ Public interface. Other modules import only what is re-exported here:
   cause; text fields never revoke and staging changes revoke nothing. ``install_approval_clock``
   (the composition root) times those revocations. ``GET .../data-warehouse/approvals`` and
   ``PUT .../approvals/{layer}``.
+- ``DwChangeService``: owners ``propose_system_code_change`` (the code plus a rename of every
+  affected Staging Table and the ``source_system`` audit constant, origin ``system_code_change``)
+  and ``propose_platform_change`` (the platform, Staging column types translated again, and every
+  Core and Mart mapping and branch transpiled with sqlglot; untranslatable SQL gets a
+  ``manual_review`` item, ``ManualNote``; origin ``platform_change``), each as one Change Set
+  (``ProposedChange``); modules add planners (``PlatformPlan``, ``manual_item``,
+  ``transpile_sql``) for SQL the warehouse cannot read, e.g. KPI formulas. A direct platform
+  edit of a Data Warehouse with tables is 409 ``use_change_set``. ``DataWarehouseHandler``,
+  ``TranspiledMappingHandler`` and ``ManualReviewHandler`` handle the ``data_warehouse``,
+  ``column_mapping_sql`` and ``manual_review`` items; ``staged_system_check`` fills the
+  ``sources`` port that sends a staged system's code change there.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
@@ -122,9 +137,19 @@ from .api import router
 from .approvals import REVOKING as REVOKING_FIELDS
 from .approvals import ApprovalService, LayerApproval
 from .approvals import install_clock as install_approval_clock
+from .change_service import DwChangeService, ProposedChange, staged_system_check
 from .ddl import ident
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .dw_changes import (
+    PLATFORM_KEY,
+    DataWarehouseHandler,
+    ManualNote,
+    ManualReviewHandler,
+    PlatformPlan,
+    TranspiledMappingHandler,
+    manual_item,
+)
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
 from .fix_impacts import RENAMED_ENTITY_TYPES, open_impacts
 from .generation import SCOPE as GENERATION_SCOPE
@@ -152,6 +177,7 @@ from .mapping_draft import (
 )
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
+from .mapping_import import MappingImportReport, MappingImportResult, MappingImportService
 from .mapping_service import MappingService
 from .model_service import ModelService
 from .pii_hashing import PiiHashingService
@@ -196,6 +222,8 @@ from .score_trigger import touch as touch_score
 from .score_trigger import uninstall as uninstall_score_recalculation
 from .scoring import DesignKpi
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
+from .sql_transpile import Transpiled
+from .sql_transpile import transpile as transpile_sql
 from .staging_service import StagingFlag, StagingResult, StagingService
 from .staging_sync import StagingColumnHandler, StagingTableHandler
 from .validation_service import ValidationReport, ValidationService
@@ -203,6 +231,7 @@ from .validation_service import ValidationReport, ValidationService
 __all__ = [
     "GENERATION_SCOPE",
     "MAPPING_DRAFT_SCOPE_KIND",
+    "PLATFORM_KEY",
     "PLATFORM_PROFILES",
     "RENAMED_ENTITY_TYPES",
     "REVOKING_FIELDS",
@@ -212,6 +241,7 @@ __all__ = [
     "ApprovalService",
     "ColumnMappingHandler",
     "DataWarehouse",
+    "DataWarehouseHandler",
     "DataWarehouseService",
     "DateDimension",
     "DdlLayer",
@@ -223,6 +253,7 @@ __all__ = [
     "DraftColumn",
     "DraftNote",
     "DraftTable",
+    "DwChangeService",
     "DwColumnHandler",
     "DwSchema",
     "DwTableHandler",
@@ -242,12 +273,17 @@ __all__ = [
     "LayerSchemas",
     "LineageEdge",
     "LineageNode",
+    "ManualNote",
+    "ManualReviewHandler",
     "MappingBranchHandler",
     "MappingDraftHandler",
     "MappingDraftPlan",
     "MappingDraftService",
     "MappingExportService",
     "MappingExportServiceDep",
+    "MappingImportReport",
+    "MappingImportResult",
+    "MappingImportService",
     "MappingService",
     "MappingSheet",
     "MappingState",
@@ -255,8 +291,10 @@ __all__ = [
     "NamingRules",
     "PiiHashingService",
     "PiiPropagation",
+    "PlatformPlan",
     "PlatformProfile",
     "Propagation",
+    "ProposedChange",
     "Renames",
     "SchemaColumn",
     "SchemaTable",
@@ -277,6 +315,8 @@ __all__ = [
     "StructuralChange",
     "StructuralChangeHook",
     "TargetPlatform",
+    "Transpiled",
+    "TranspiledMappingHandler",
     "ValidationReport",
     "ValidationService",
     "clear_kpi_edges",
@@ -287,6 +327,7 @@ __all__ = [
     "is_reserved_word",
     "lineage_edges",
     "lineage_nodes",
+    "manual_item",
     "mart_columns_reading",
     "max_identifier_length",
     "open_impacts",
@@ -301,6 +342,8 @@ __all__ = [
     "replace_kpi_edges",
     "router",
     "sql_reads",
+    "staged_system_check",
     "touch_score",
+    "transpile_sql",
     "uninstall_score_recalculation",
 ]

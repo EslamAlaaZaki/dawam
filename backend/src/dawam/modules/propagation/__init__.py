@@ -16,7 +16,10 @@ Public interface. Other modules import only what is re-exported here:
   the open validation errors propagation can fix (the warehouse's ``open_impacts``);
   expired items are never revived.
 - ``structural_changes``: what an applied Change Set changed structurally.
-- ``router``: ``POST /workspaces/{workspace_id}/fix-impacts``.
+- ``router``: ``POST /workspaces/{workspace_id}/fix-impacts``, and, owner-only (they compose
+  the warehouse's ``DwChangeService`` with the KPI formulas), ``POST .../systems/{system_id}/
+  code-change`` and ``POST .../data-warehouse/platform-change``, which propose a System Code or
+  target platform change as one Change Set.
 
 Owns no tables. Imports ``audit``, ``auth``, ``changesets``, ``kpis``, ``notifications``,
 ``warehouse`` and ``workspaces``.

@@ -41,6 +41,9 @@ Public interface. Other modules import only what is re-exported here:
   text, and (live Connection and profiling only) value overlap; those at or above the
   threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
   Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
+- ``SourceSystemCodeHandler``: the ``changesets`` engine's handler for ``source_system`` items
+  (a System Code change, owner-only); ``SourceSystemService`` takes a ``SystemStagedCheck`` and
+  refuses a direct code change (409 ``use_change_set``) for a system that has Staging Tables.
 - ``SourceRelationshipHandler``: the ``changesets`` engine's handler for
   ``source_relationship`` items: accepting or rejecting a relationship through a Change Set
   (the AI's proposals), with the AI's evidence (reason and query counts) kept on it.
@@ -131,7 +134,7 @@ from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .relationship_changes import SourceRelationshipHandler
 from .relationship_service import INFER_JOB, Relationship, RelationshipService
 from .rename_service import RenameCandidate, RenamedObject, RenameService
-from .service import SourceSystem, SourceSystemPage, SourceSystemService
+from .service import SourceSystem, SourceSystemPage, SourceSystemService, SystemStagedCheck
 from .snapshot_service import (
     EXTRACT_JOB,
     SearchHit,
@@ -154,6 +157,7 @@ from .staging_source_service import (
     source_column_labels,
 )
 from .summary_service import SourceSummary, SourceSummaryService
+from .system_code_change import SourceSystemCodeHandler
 
 router = APIRouter()
 router.include_router(_systems_router)
@@ -204,12 +208,14 @@ __all__ = [
     "SourceSummary",
     "SourceSummaryService",
     "SourceSystem",
+    "SourceSystemCodeHandler",
     "SourceSystemPage",
     "SourceSystemService",
     "StagingColumn",
     "StagingSourceService",
     "StagingSystem",
     "StagingTable",
+    "SystemStagedCheck",
     "TableProfile",
     "UntraceableView",
     "check_query",
