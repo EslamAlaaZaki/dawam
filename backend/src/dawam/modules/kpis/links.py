@@ -31,6 +31,7 @@ from dawam.modules.warehouse import (
 )
 from dawam.platform.errors import ApiError
 
+from .score_feed import touch_kpi_links
 from .tables import MAX_LINKS, KpiLinkRecord, KpiRecord
 
 WRITING = (exp.DML, exp.DDL, exp.Into, exp.Lock, exp.Command, exp.Copy)
@@ -155,6 +156,7 @@ def write_links(db: Session, kpi_id: uuid.UUID, column_ids: Sequence[uuid.UUID])
     db.add_all(KpiLinkRecord(kpi_id=kpi_id, dw_column_id=i) for i in column_ids)
     db.flush()
     replace_kpi_edges(db, kpi_id, column_ids)
+    touch_kpi_links(db, kpi_id)
 
 
 def drop_links(db: Session, kpi_id: uuid.UUID) -> None:

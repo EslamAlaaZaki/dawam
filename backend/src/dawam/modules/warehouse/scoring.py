@@ -16,8 +16,9 @@ that yields ``Finding`` objects itself (for checks that look across the whole de
 Formula (spec §6.11): severity weights error 10, warning 3, info 1. A table's score is the
 weighted pass percentage of the findings about it (its columns' included); a Layer's score is
 the average of its tables' scores weighted by column count; the Data Warehouse score is the
-weighted pass percentage over the Core and Mart findings. Staging is scored on its own and
-never counts towards the Data Warehouse. Nothing to score is ``None`` ("not scored"), never
+weighted pass percentage over the Core and Mart findings plus the DW-wide KPI checks (Layer
+``dw``, about a KPI, not a table). Staging is scored on its own and never counts towards the
+Data Warehouse. Nothing to score is ``None`` ("not scored"), never
 0 or 100. An unresolved error caps a grade at C.
 """
 
@@ -47,6 +48,10 @@ ERROR_CAP: Grade = "C"
 DW_LAYERS: tuple[str, ...] = ("core", "mart")
 """The Layers that make up the Data Warehouse score."""
 ALL_LAYERS: tuple[str, ...] = ("staging", "core", "mart")
+DW_WIDE = "dw"
+"""The pseudo-Layer of the checks about the Data Warehouse as a whole (its KPIs): they count
+towards the Data Warehouse score and towards no Layer or table."""
+DW_SCORED: tuple[str, ...] = (*DW_LAYERS, DW_WIDE)
 
 
 def grade_of(score: float, *, has_errors: bool = False) -> Grade:
@@ -67,6 +72,8 @@ class MappingFact:
     branch_id: uuid.UUID | None
     mapping_type: str
     sql_expression: str = ""
+    lookup_inputs: tuple[str, ...] = ()
+    """A lookup's natural-key (and as-of) inputs, as ``table.column``; it has no SQL."""
 
 
 @dataclass(frozen=True)
@@ -94,6 +101,15 @@ class DesignColumn:
     needs_no_mapping: bool = False
     """A system column (surrogate key, SCD housekeeping, audit): always covered."""
     mappings: tuple[MappingFact, ...] = ()
+    description: str = ""
+    status: str = "present"
+    """``source_removed``: a staging column whose source column is gone (still scored)."""
+    review_flags: tuple[Mapping[str, Any], ...] = ()
+    """What staging generation flagged for review: ``{"code", "message"}``."""
+    edited_fields: tuple[str, ...] = ()
+    """The fields a user overrode (a staging column)."""
+    pii_derived: bool = False
+    """Fed by a confirmed PII source column through value edges (spec §6.12)."""
 
 
 @dataclass(frozen=True)
@@ -110,6 +126,22 @@ class DesignTable:
     description: str = ""
     columns: tuple[DesignColumn, ...] = ()
     branches: tuple[DesignBranch, ...] = ()
+    status: str = "present"
+    """``source_removed``: a Staging Table whose source is gone (still scored)."""
+    review_flags: tuple[Mapping[str, Any], ...] = ()
+    edited_fields: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DesignKpi:
+    """A KPI of the Workspace, as the DW-wide checks see it."""
+
+    id: uuid.UUID
+    name: str
+    description: str = ""
+    """The business definition."""
+    linked_column_ids: tuple[uuid.UUID, ...] = ()
+    """The DW columns it uses (its links)."""
 
 
 @dataclass(frozen=True)
@@ -120,10 +152,17 @@ class Design:
     naming_rules: Any
     """A ``NamingRulesLike`` (see ``naming``)."""
     tables: tuple[DesignTable, ...] = ()
+    kpis: tuple[DesignKpi, ...] = ()
     by_id: dict[uuid.UUID, DesignTable] = field(init=False, compare=False, repr=False)
+    by_name: dict[str, tuple[DesignTable, ...]] = field(init=False, compare=False, repr=False)
+    """The tables by lower-cased name (one per Layer at most)."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "by_id", {t.id: t for t in self.tables})
+        by_name: dict[str, list[DesignTable]] = {}
+        for t in self.tables:
+            by_name.setdefault(t.name.lower(), []).append(t)
+        object.__setattr__(self, "by_name", {k: tuple(v) for k, v in by_name.items()})
 
     def table(self, table_id: uuid.UUID | None) -> DesignTable | None:
         return self.by_id.get(table_id) if table_id else None
@@ -166,9 +205,10 @@ class Finding:
     code: str
     severity: Severity
     layer: str
-    object_type: Literal["table", "column"]
+    object_type: Literal["table", "column", "kpi"]
     object_id: uuid.UUID
     table_id: uuid.UUID
+    """The table the object is, or belongs to (a KPI's own id for a KPI)."""
     object_name: str
     passed: bool
     message: str = ""
@@ -177,9 +217,10 @@ class Finding:
 CheckFunction = Callable[[Design, CheckSpec], Iterable[Finding]]
 
 
-def _finding(
+def finding(
     spec: CheckSpec, outcome: Outcome, table: DesignTable, column: DesignColumn | None
 ) -> Finding:
+    """The finding of ``spec`` on the table (or one of its columns), for a general check."""
     return Finding(
         code=spec.code,
         severity=outcome.severity or spec.severity,
@@ -250,7 +291,7 @@ class CheckRegistry:
                         continue
                     outcome = function(table, design)
                     if outcome is not None:
-                        yield _finding(spec, outcome, table, None)
+                        yield finding(spec, outcome, table, None)
 
             self.check(
                 code,
@@ -287,13 +328,53 @@ class CheckRegistry:
                     for column in table.columns:
                         outcome = function(column, table, design)
                         if outcome is not None:
-                            yield _finding(spec, outcome, table, column)
+                            yield finding(spec, outcome, table, column)
 
             self.check(
                 code,
                 category=category,
                 severity=severity,
                 layers=layers,
+                hint=hint,
+                title=title or function.__doc__,
+            )(run)
+            return function
+
+        return register
+
+    def kpi_check(
+        self,
+        code: str,
+        *,
+        category: Category,
+        severity: Severity,
+        hint: str,
+        title: str | None = None,
+    ) -> Callable[[Callable[[DesignKpi, Design], Outcome | None]], Any]:
+        """Register a DW-wide check run on each KPI (Layer ``dw``)."""
+
+        def register(function: Callable[[DesignKpi, Design], Outcome | None]) -> Any:
+            def run(design: Design, spec: CheckSpec) -> Iterator[Finding]:
+                for kpi in design.kpis:
+                    outcome = function(kpi, design)
+                    if outcome is not None:
+                        yield Finding(
+                            code=spec.code,
+                            severity=outcome.severity or spec.severity,
+                            layer=DW_WIDE,
+                            object_type="kpi",
+                            object_id=kpi.id,
+                            table_id=kpi.id,
+                            object_name=kpi.name,
+                            passed=outcome.passed,
+                            message=outcome.message,
+                        )
+
+            self.check(
+                code,
+                category=category,
+                severity=severity,
+                layers=(DW_WIDE,),
                 hint=hint,
                 title=title or function.__doc__,
             )(run)
@@ -404,7 +485,7 @@ def evaluate(
         layers.append(
             LayerScore(name, score, grade, sum(1 for t in design.tables if t.layer == name))
         )
-    dw_findings = [f for f in findings if f.layer in DW_LAYERS]
+    dw_findings = [f for f in findings if f.layer in DW_SCORED]
     score = _percentage(dw_findings)
     grade, capped = _scored(score, dw_findings)
     return ScoreReport(

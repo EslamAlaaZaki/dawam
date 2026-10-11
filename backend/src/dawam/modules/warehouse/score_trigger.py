@@ -111,8 +111,8 @@ def _hint_of(obj: Any) -> Hint | None:
 
 def touch(session: Session, kind: str, id: uuid.UUID) -> None:
     """Note that the session changed design that belongs to a warehouse (``kind``
-    ``warehouse``), a table or a table mapping: for a writer that cannot be seen to flush
-    (a bulk statement)."""
+    ``warehouse``), a table, a table mapping or a Workspace (``workspace``, its KPIs): for a
+    writer that cannot be seen to flush (a bulk statement)."""
     session.info.setdefault(_HINTS, set()).add((kind, id))
 
 
@@ -129,7 +129,16 @@ def _warehouses_of(engine: sa.Engine, hints: set[Hint]) -> set[uuid.UUID]:
     found = {id for kind, id in hints if kind == "warehouse"}
     tables = [id for kind, id in hints if kind == "table"]
     mappings = [id for kind, id in hints if kind == "mapping"]
+    workspaces = [id for kind, id in hints if kind == "workspace"]
     with engine.connect() as conn:
+        if workspaces:
+            found.update(
+                conn.scalars(
+                    sa.select(DataWarehouseRecord.id).where(
+                        DataWarehouseRecord.workspace_id.in_(workspaces)
+                    )
+                )
+            )
         if tables:
             found.update(
                 conn.scalars(
