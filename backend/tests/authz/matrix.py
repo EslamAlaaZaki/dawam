@@ -556,6 +556,30 @@ def pii_finding_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/pii-findings").json()["items"][0]["id"]
 
 
+def pii_staging_column_id(roles: RoleClients) -> str:
+    """The staging column of the stand-in table's ``national_id``, its finding confirmed (the
+    owner confirms it and generates the Staging Layer through the API)."""
+    finding = pii_finding_id(roles)
+    owner = roles.client("owner")
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    response = owner.post(f"{system}/pii-findings/{finding}/confirm")
+    assert response.status_code == 200, response.text
+    ensure_data_warehouse(roles)
+    staging = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/staging"
+    response = owner.post(f"{staging}/generate")
+    assert response.status_code == 200, response.text
+    with roles.app.state.engine.connect() as connection:
+        return str(
+            connection.execute(
+                sa.text(
+                    "select c.id from dw_columns c join pii_findings f"
+                    " on f.src_column_id = c.source_column_id where f.id = :f"
+                ),
+                {"f": finding},
+            ).scalar_one()
+        )
+
+
 def pii_rule_id(roles: RoleClients) -> str:
     """A fresh custom PII rule (so deleting one does not affect the next request)."""
     response = roles.client("owner").post(

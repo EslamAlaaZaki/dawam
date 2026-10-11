@@ -8,7 +8,8 @@ Public interface. Other modules import only what is re-exported here:
   (``Graph``, ``Node``, ``Edge``); ``impact`` lists the DW columns, DW tables and KPIs
   downstream of a node (``Impact``). Every call authorizes through the workspaces policy.
 - ``LineageService.pii_view``: the PII-derived DW columns and, separately, the PII-influenced
-  DW tables (``PiiView``, spec §6.12) from the confirmed findings and the lineage edges.
+  DW tables (``PiiView``, spec §6.12) from the confirmed findings and the lineage edges;
+  each column says whether it is pseudonymised and carries its handling note (``PiiColumn``).
 - ``router``: ``GET /workspaces/{workspace_id}/data-warehouse/lineage?node=&direction=&depth=``
   and ``GET /workspaces/{workspace_id}/data-warehouse/impact?node=`` and
   ``GET /workspaces/{workspace_id}/data-warehouse/pii``.
@@ -17,6 +18,6 @@ Owns no tables: the ``warehouse`` module stores the edges.
 """
 
 from .api import router
-from .service import Edge, Graph, Impact, LineageService, Node, PiiView
+from .service import Edge, Graph, Impact, LineageService, Node, PiiColumn, PiiView
 
-__all__ = ["Edge", "Graph", "Impact", "LineageService", "Node", "PiiView", "router"]
+__all__ = ["Edge", "Graph", "Impact", "LineageService", "Node", "PiiColumn", "PiiView", "router"]

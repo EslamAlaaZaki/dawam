@@ -19,7 +19,13 @@ from sqlalchemy.orm import Session
 from dawam.modules.auth import User
 from dawam.modules.kpis import kpi_names
 from dawam.modules.sources import confirmed_pii_column_ids, source_column_labels
-from dawam.modules.warehouse import LineageEdge, lineage_edges, lineage_nodes, propagate_pii
+from dawam.modules.warehouse import (
+    LineageEdge,
+    lineage_edges,
+    lineage_nodes,
+    pii_notes,
+    propagate_pii,
+)
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 
@@ -68,8 +74,19 @@ class Impact:
 
 
 @dataclass(frozen=True)
+class PiiColumn:
+    id: uuid.UUID
+    type: NodeType
+    label: str
+    layer: str
+    pseudonymised: bool
+    """Hashed in staging, or fed by a hashed column: still personal data (PDPL)."""
+    pii_note: str | None
+
+
+@dataclass(frozen=True)
 class PiiView:
-    columns: list[Node]
+    columns: list[PiiColumn]
     """PII-derived DW columns: fed by a confirmed PII column through value edges."""
     tables: list[Node]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
@@ -123,17 +140,29 @@ class LineageService:
         )
 
     def pii_view(self, user: User, workspace_id: uuid.UUID) -> PiiView:
-        """The PII-derived DW columns and, separately, the PII-influenced DW tables (spec
-        §6.12, story 137), computed from the lineage edges as they stand now."""
+        """The PII-derived DW columns (each marked pseudonymised or not, with its handling
+        note) and, separately, the PII-influenced DW tables (spec §6.12, stories 137 and
+        138), computed from the lineage edges and mappings as they stand now."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
             result = propagate_pii(db, confirmed_pii_column_ids(db, workspace_id))
             nodes = lineage_nodes(
                 db, workspace_id, result.derived_columns | result.influenced_tables
             )
+            notes = pii_notes(db, result.derived_columns)
         found = [Node(n.id, n.type, n.label, n.layer) for n in nodes.values()]  # type: ignore[arg-type]
         return PiiView(
-            columns=sorted((n for n in found if n.type == "dw_column"), key=_order),
+            columns=[
+                PiiColumn(
+                    n.id,
+                    n.type,
+                    n.label,
+                    n.layer,
+                    pseudonymised=n.id in result.pseudonymised_columns,
+                    pii_note=notes.get(n.id),
+                )
+                for n in sorted((n for n in found if n.type == "dw_column"), key=_order)
+            ],
             tables=sorted((n for n in found if n.type == "dw_table"), key=_order),
         )
 

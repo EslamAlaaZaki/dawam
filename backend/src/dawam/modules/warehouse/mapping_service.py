@@ -698,8 +698,14 @@ class MappingService:
         self, fields: Mapping[str, Any], *, in_branch: bool, column: DwColumnRecord
     ) -> tuple[str, str, str]:
         mapping_type = fields.get("mapping_type")
+        if mapping_type == "hashed":
+            raise _invalid(
+                "mapping_type", "Only a confirmed PII column's staging mapping is hashed."
+            )
         if mapping_type not in MAPPING_TYPES or (mapping_type == "not_in_branch" and not in_branch):
-            allowed = [t for t in MAPPING_TYPES if in_branch or t != "not_in_branch"]
+            allowed = [
+                t for t in MAPPING_TYPES if t != "hashed" and (in_branch or t != "not_in_branch")
+            ]
             raise _invalid("mapping_type", f"The type must be one of {', '.join(allowed)}.")
         rule_text = _text(fields.get("rule_text"), "rule_text", "rule", MAPPING_TEXT_MAX_LENGTH)
         sql = _text(fields.get("sql_expression"), "sql_expression", "SQL", SQL_MAX_LENGTH)

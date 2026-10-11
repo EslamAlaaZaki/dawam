@@ -63,6 +63,7 @@ COLUMN_ROLES = (
 ADDITIVITIES = ("additive", "semi_additive", "non_additive")
 OBJECT_STATUSES = ("present", "source_removed", "deleted")
 DESCRIPTION_MAX_LENGTH = 4000
+PII_NOTE_MAX_LENGTH = 1000
 GRAIN_MAX_LENGTH = 1000
 NAME_MAX_LENGTH = 128
 
@@ -169,6 +170,8 @@ class DwColumnRecord(Base):
     role_name: Mapped[str | None] = mapped_column(sa.String(NAME_MAX_LENGTH))
     description: Mapped[str] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH), default="")
     semantic_type: Mapped[str | None] = mapped_column(sa.String(64))
+    pii_note: Mapped[str | None] = mapped_column(sa.String(PII_NOTE_MAX_LENGTH))
+    """An optional handling note on a PII-derived column (spec §6.12, story 138)."""
     is_system: Mapped[bool] = mapped_column(default=False)
     """DAWAM maintains it (SCD2 housekeeping): not edited or deleted by hand."""
     source_column_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
@@ -189,7 +192,17 @@ class DwColumnRecord(Base):
     version: Mapped[int] = mapped_column()
 
 
-MAPPING_TYPES = ("direct", "derived", "constant", "lookup", "system", "not_in_branch", "unmapped")
+MAPPING_TYPES = (
+    "direct",
+    "hashed",
+    "derived",
+    "constant",
+    "lookup",
+    "system",
+    "not_in_branch",
+    "unmapped",
+)
+"""``hashed``: a confirmed PII column's staging mapping, salted SHA-256 (§6.12)."""
 BRANCH_NAME_MAX_LENGTH = 128
 EDGE_KINDS = ("value", "uses", "lookup", "kpi")
 EDGE_NODE_TYPES = ("src_column", "dw_column", "dw_table", "branch", "kpi")

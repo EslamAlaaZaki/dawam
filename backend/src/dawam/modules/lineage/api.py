@@ -97,10 +97,17 @@ def get_impact(
     return ImpactReport.model_validate(lineage.impact(user, workspace_id, node))
 
 
+class PiiColumn(LineageNode):
+    pseudonymised: bool
+    """Hashed in its staging mapping, or fed by a hashed column; still personal data."""
+    pii_note: str | None
+    """The column's optional handling note."""
+
+
 class PiiViewReport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    columns: list[LineageNode]
+    columns: list[PiiColumn]
     """PII-derived DW columns: fed by a confirmed PII column through value edges."""
     tables: list[LineageNode]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
