@@ -236,6 +236,24 @@ def cap_rows(sql: str, *, engine: str, catalog: GuardCatalog, limit: int) -> str
     return again.sql if isinstance(again, SafeQuery) else None
 
 
+def count_ordinals(sql: str, *, engine: str) -> tuple[int, ...]:
+    """The output columns of ``sql`` (a ``SafeQuery.sql``) that are a bare ``COUNT(...)``: the
+    numbers that may be kept as relationship evidence. Empty for anything but a plain
+    ``SELECT`` (a set operation's columns are not one count each) or if it does not parse."""
+    try:
+        tree = sqlglot.parse_one(sql, read=_DIALECTS[engine])
+    except Exception:
+        return ()
+    if not isinstance(tree, exp.Select):
+        return ()
+    found: list[int] = []
+    for ordinal, projection in enumerate(tree.expressions):
+        inner = projection.this if isinstance(projection, exp.Alias) else projection
+        if isinstance(_unparen(inner), exp.Count):
+            found.append(ordinal)
+    return tuple(found)
+
+
 def untraceable_views(*, engine: str, catalog: GuardCatalog) -> tuple[UntraceableView, ...]:
     """Views in the allowed schemas the guard cannot trace (not queryable; shown as untraceable)."""
     try:

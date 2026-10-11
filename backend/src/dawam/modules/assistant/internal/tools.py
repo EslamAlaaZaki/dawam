@@ -34,6 +34,7 @@ from dawam.modules.sources import (
     PiiService,
     ProfilingService,
     QueryBudget,
+    RelationshipService,
     SnapshotService,
     SourceQueryService,
 )
@@ -75,6 +76,17 @@ class ToolServices:
     validation: ValidationService
     source_queries: SourceQueryService
     jobs: JobService
+    relationships: RelationshipService
+
+
+@dataclass(frozen=True)
+class CountEvidence:
+    """What a run keeps of a source query that returned counts: the counts, never a row."""
+
+    system_id: uuid.UUID
+    sql: str
+    """The model's SQL, validator-detectable PII redacted."""
+    counts: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -90,6 +102,8 @@ class ToolContext:
     """The source-query seconds this run has left (one budget per run)."""
     proposals: Proposals | None = None
     """Set for a job: ``propose_changes`` collects here instead of proposing at once."""
+    counts: dict[int, CountEvidence] = field(default_factory=dict)
+    """The run's count queries by ``query_ref``, citable as relationship evidence."""
 
 
 @dataclass(frozen=True)
@@ -313,10 +327,43 @@ class _ChangeItem(BaseModel):
     )
 
 
+class _RelationshipDecision(BaseModel):
+    relationship_id: uuid.UUID = Field(description="The relationship's id from get_relationships.")
+    decision: Literal["accept", "reject"]
+    reason: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="Why: the names, profiles, documents or counts that confirm or refute it.",
+    )
+    evidence_queries: list[int] = Field(
+        default_factory=list,
+        max_length=10,
+        description="`query_ref`s of your run_source_query count queries that support the "
+        "decision; their counts are attached as evidence.",
+    )
+    label: str = Field(
+        default="",
+        max_length=200,
+        description="E.g. `sales.orders.customer_id -> sales.customers.id`.",
+    )
+
+
 class _ProposeChanges(BaseModel):
     title: str = Field(min_length=1, max_length=200, description="What the changes are for.")
     source_system_id: uuid.UUID = Field(description="The Source System the objects belong to.")
-    items: list[_ChangeItem] = Field(min_length=1, max_length=MAX_PROPOSED_ITEMS)
+    items: list[_ChangeItem] = Field(default_factory=list, max_length=MAX_PROPOSED_ITEMS)
+    relationships: list[_RelationshipDecision] = Field(
+        default_factory=list,
+        max_length=MAX_PROPOSED_ITEMS,
+        description="Accept or reject inferred relationships.",
+    )
+
+
+class _GetRelationships(BaseModel):
+    system_id: uuid.UUID = Field(description=SYSTEM_ID)
+    status: Literal["suggested", "accepted", "rejected"] | None = Field(
+        default="suggested", description="Only relationships in this state; null for all."
+    )
 
 
 class _GetKpiLinkCandidates(BaseModel):
@@ -435,15 +482,15 @@ class Proposals:
 
     def __init__(self) -> None:
         self.source_system_id: uuid.UUID | None = None
-        self.items: list[_ChangeItem] = []
+        self.items: list[ProposedItem] = []
 
-    def add(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> int:
+    def add(self, source_system_id: uuid.UUID, items: Sequence[ProposedItem]) -> int:
         self.check(source_system_id, items)
         self.source_system_id = source_system_id
         self.items.extend(items)
         return len(self.items)
 
-    def check(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> None:
+    def check(self, source_system_id: uuid.UUID, items: Sequence[ProposedItem]) -> None:
         if self.source_system_id not in (None, source_system_id):
             raise ApiError(
                 422,
@@ -459,19 +506,65 @@ class Proposals:
             raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
 
 
-def _proposed_items(items: Sequence[_ChangeItem]) -> list[ProposedItem]:
-    return [
+def _redacted(value: Any) -> Any:
+    """Model-written text with validator-detectable PII redacted, in strings, lists and
+    objects alike (spec §6.8: every model-written string is checked before it is saved)."""
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, list):
+        return [_redacted(v) for v in value]
+    if isinstance(value, dict):
+        return {key: _redacted(v) for key, v in value.items()}
+    return value
+
+
+def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedItem]:
+    """The items of a ``propose_changes`` call, model-written text redacted; a relationship
+    decision carries the counts of the queries it cites. 422 for a ``query_ref`` this run
+    did not make on this Source System, or that returned no counts."""
+    if not args.items and not args.relationships:
+        raise ApiError(422, "nothing_proposed", "Give at least one item or relationship.")
+    proposed = [
         ProposedItem(
             key=item.key,
             object_type=item.object_type,
             operation="update",
             object_id=item.object_id,
-            payload=item.changes,
-            label=item.label,
+            payload=_redacted(item.changes),
+            label=redact_text(item.label),
             depends_on=item.depends_on,
         )
-        for item in items
+        for item in args.items
     ]
+    for decision in args.relationships:
+        queries = []
+        for ref in decision.evidence_queries:
+            found = ctx.counts.get(ref)
+            if found is None or found.system_id != args.source_system_id:
+                raise ApiError(
+                    422,
+                    "unknown_query_ref",
+                    f"No count query `{ref}` of this Source System in this run: cite the "
+                    "`query_ref` that run_source_query returned for a COUNT query.",
+                )
+            queries.append({"sql": found.sql, "counts": found.counts})
+        evidence: dict[str, Any] = {"reason": redact_text(decision.reason)}
+        if queries:
+            evidence["queries"] = queries
+        proposed.append(
+            ProposedItem(
+                key=f"relationship:{decision.relationship_id}",
+                object_type="source_relationship",
+                operation="update",
+                object_id=decision.relationship_id,
+                payload={
+                    "status": "accepted" if decision.decision == "accept" else "rejected",
+                    "ai_evidence": evidence,
+                },
+                label=redact_text(decision.label),
+            )
+        )
+    return proposed
 
 
 def _link(system_id: uuid.UUID, kind: str, id: uuid.UUID, table_id: uuid.UUID | None = None) -> str:
@@ -746,6 +839,37 @@ def _withhold_definitions(fields: list[dict[str, Any]], shown: bool) -> None:
         if change["field"] in ("view_definition", "definition"):
             change["before"] = change["after"] = None
             change["note"] = WITHHELD
+
+
+def _get_relationships(ctx: ToolContext, args: _GetRelationships) -> Any:
+    found = ctx.services.relationships.list_relationships(
+        ctx.user, ctx.workspace_id, args.system_id, status=args.status
+    )
+
+    def column(ref: Any) -> dict[str, Any]:
+        return {
+            "id": ref.column_id,
+            "name": f"{ref.db_schema}.{ref.table}.{ref.column}",
+            "link": _link(args.system_id, "column", ref.column_id, ref.table_id),
+        }
+
+    return {
+        "relationships": [
+            {
+                "id": r.id,
+                "from": column(r.from_column),
+                "to": column(r.to_column),
+                "origin": r.origin,
+                "confidence": r.confidence,
+                "status": r.status,
+                "evidence": r.evidence,  # names and ratios, never a value
+            }
+            for r in found
+        ],
+        "note": "Confirm or refute a suggested relationship with what the data-sharing level "
+        "allows (names, profiles, documents, or COUNT queries with run_source_query), then "
+        "accept or reject it in propose_changes `relationships`.",
+    }
 
 
 def _get_pii_findings(ctx: ToolContext, args: _GetPiiFindings) -> Any:
@@ -1032,6 +1156,21 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     }
     if result.truncated:
         content["note"] = f"Only the first {result.row_count} rows are shown."
+    # A one-row result's COUNT columns may be cited as evidence: counts, never values.
+    counts = {
+        result.columns[i]: cell
+        for i in result.count_ordinals
+        if result.row_count == 1
+        and isinstance(cell := result.rows[0][i], int)
+        and not isinstance(cell, bool)
+    }
+    if counts:
+        ref = len(ctx.counts) + 1
+        ctx.counts[ref] = CountEvidence(args.system_id, redact_text(args.sql), counts)
+        content["query_ref"] = ref
+        content["query_ref_note"] = (
+            "Cite this query_ref in propose_changes to attach its counts as evidence."
+        )
     if result.masked_columns:
         content["masked_columns"] = result.masked_columns
         content["masked_note"] = (
@@ -1048,9 +1187,10 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
 
 def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     """The changes are not made: they become a Change Set the user reviews."""
+    items = _proposed_items(ctx, args)
     if ctx.proposals is not None:  # in a job: one Change Set when the job succeeds
         proposals = ctx.proposals
-        proposals.check(args.source_system_id, args.items)
+        proposals.check(args.source_system_id, items)
         # Validated now, so a bad object is reported to the model rather than failing the job.
         ctx.services.change_sets.validate(
             ctx.user,
@@ -1059,10 +1199,10 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
                 "kind": "source_enhancements",
                 "source_system_id": str(args.source_system_id),
             },
-            items=_proposed_items(args.items),
+            items=items,
             earlier_keys=[item.key for item in proposals.items],
         )
-        total = proposals.add(args.source_system_id, args.items)
+        total = proposals.add(args.source_system_id, items)
         return {
             "status": "collected",
             "note": "These changes join the job's Change Set, which the user reviews when the "
@@ -1074,20 +1214,9 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
         ctx.workspace_id,
         origin="ai",
         scope={"kind": "source_enhancements", "source_system_id": str(args.source_system_id)},
-        title=args.title,
+        title=redact_text(args.title),
         conversation_id=ctx.conversation_id,
-        items=[
-            ProposedItem(
-                key=item.key,
-                object_type=item.object_type,
-                operation="update",
-                object_id=item.object_id,
-                payload=item.changes,
-                label=item.label,
-                depends_on=item.depends_on,
-            )
-            for item in args.items
-        ],
+        items=items,
     )
     return {
         "change_set_id": detail.change_set.id,
@@ -1157,6 +1286,15 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _get_snapshot_diff,
+    ),
+    Tool(
+        "get_relationships",
+        "List a Source System's inferred relationships (default: the suggested ones) with "
+        "their confidence and evidence, to confirm or reject them.",
+        _GetRelationships,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _get_relationships,
     ),
     Tool(
         "get_pii_findings",
@@ -1283,9 +1421,11 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "propose_changes",
-        "Propose descriptions, tags, sensitivity flags, classifications and SCD hints for "
-        "a Source System's tables and columns. Nothing changes until the user accepts the "
-        "proposal as a Change Set.",
+        "Propose descriptions (what a table or column means, including the meaning of its "
+        "codes and statuses), tags, sensitivity flags, classifications and SCD hints for a "
+        "Source System's tables and columns, and accept or reject its inferred "
+        "relationships. Nothing changes until the user accepts the proposal as a Change Set. "
+        "Never put sample values or personal data in the text.",
         _ProposeChanges,
         "write",
         Action.REVIEW_CHANGE_SETS,
@@ -1469,20 +1609,9 @@ class BoundTools:
                 "kind": "source_enhancements",
                 "source_system_id": str(proposals.source_system_id),
             },
-            title=title,
+            title=redact_text(title),
             conversation_id=self._ctx.conversation_id,
-            items=[
-                ProposedItem(
-                    key=item.key,
-                    object_type=item.object_type,
-                    operation="update",
-                    object_id=item.object_id,
-                    payload=item.changes,
-                    label=item.label,
-                    depends_on=item.depends_on,
-                )
-                for item in proposals.items
-            ],
+            items=proposals.items,
         )
         return len(detail.items)
 

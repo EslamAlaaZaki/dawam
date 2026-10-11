@@ -16,7 +16,7 @@ from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ChangeSetService, ObjectHandlers
 from dawam.modules.kpis import KpiLinkHandler
 from dawam.modules.notifications import NotificationService
-from dawam.modules.sources import SourceEnhancementHandler
+from dawam.modules.sources import SourceEnhancementHandler, SourceRelationshipHandler
 from dawam.modules.warehouse import StagingColumnHandler, StagingService, StagingTableHandler
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
@@ -29,6 +29,7 @@ def change_set_handlers() -> ObjectHandlers:
     return ObjectHandlers(
         SourceEnhancementHandler("source_table"),
         SourceEnhancementHandler("source_column"),
+        SourceRelationshipHandler(),
         StagingTableHandler(),
         StagingColumnHandler(),
         KpiLinkHandler(),
