@@ -1,13 +1,14 @@
-"""``/api/v1/workspaces/{id}/data-warehouse/staging``: generate the Staging Layer (spec §6.7).
+"""``/api/v1/workspaces/{id}/data-warehouse/staging``: generate the Staging Layer (spec §6.7),
+and hash a confirmed PII column in its staging mapping (spec §6.12, story 138).
 
-Handlers only translate HTTP to ``StagingService`` calls; the service authorizes every
-call through the workspaces policy, so no handler looks at roles.
+Handlers only translate HTTP to ``StagingService`` and ``PiiHashingService`` calls; the
+services authorize every call through the workspaces policy, so no handler looks at roles.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,6 +18,7 @@ from dawam.modules.changesets import ChangeSetDetail, ChangeSetService, ObjectHa
 from dawam.modules.notifications import NotificationService
 from dawam.modules.workspaces import WorkspaceService
 
+from .pii_hashing import PiiHashingService
 from .staging_service import StagingService
 
 router = APIRouter(
@@ -46,6 +48,17 @@ def staging_service(request: Request) -> StagingService:
 
 
 StagingServiceDep = Annotated[StagingService, Depends(staging_service)]
+
+
+def pii_hashing_service(request: Request) -> PiiHashingService:
+    state = request.app.state
+    clock = state.services.clock
+    return PiiHashingService(
+        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+    )
+
+
+PiiHashingServiceDep = Annotated[PiiHashingService, Depends(pii_hashing_service)]
 
 
 class StagingFlag(BaseModel):
@@ -129,3 +142,62 @@ def drop_removed_staging(
     reads. A Staging Table deleted this way keeps a Tombstone. 404 `not_set_up` before the Data
     Warehouse is set up."""
     return _proposed(staging.drop_removed(user, workspace_id))
+
+
+class StagingColumnMappingRequest(BaseModel):
+    mapping_type: Literal["direct", "hashed"] = Field(
+        description="`hashed` for a column whose source column is confirmed PII; `direct` "
+        "undoes it. There is no salt field: the salt is supplied at load time."
+    )
+    version: int = Field(description="The mapping's `version` you last saw.")
+
+
+class StagingColumnMapping(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_id: uuid.UUID
+    column_name: str
+    mapping_type: Literal["direct", "hashed"]
+    sql_expression: str = Field(
+        description="In the target dialect; a hashed one reads the salt from `:pii_salt`."
+    )
+    version: int
+
+
+@router.get("/columns/{dw_column_id}/mapping", operation_id="getStagingColumnMapping")
+def get_staging_column_mapping(
+    workspace_id: uuid.UUID,
+    dw_column_id: uuid.UUID,
+    user: CurrentUser,
+    hashing: PiiHashingServiceDep,
+) -> StagingColumnMapping:
+    """A staging column's mapping from its source column (any member): `direct`, or `hashed`
+    for a confirmed PII column. 404 `not_found` for anything but a source-fed staging column."""
+    return StagingColumnMapping.model_validate(
+        hashing.get_staging_mapping(user, workspace_id, dw_column_id)
+    )
+
+
+@router.put("/columns/{dw_column_id}/mapping", operation_id="setStagingColumnMapping")
+def set_staging_column_mapping(
+    workspace_id: uuid.UUID,
+    dw_column_id: uuid.UUID,
+    body: StagingColumnMappingRequest,
+    user: CurrentUser,
+    hashing: PiiHashingServiceDep,
+) -> StagingColumnMapping:
+    """Hash a confirmed PII column in its staging mapping, or map it `direct` again (owners
+    and editors). A hashed mapping is a salted SHA-256 of the source column with a
+    `:pii_salt` placeholder; the salt is never stored. The column and everything downstream
+    stay PII-derived and are marked pseudonymised in the PII view. 404 `not_found` for
+    anything but a staging column fed by a source column; 422 `invalid_mapping` to hash a
+    column that is not confirmed PII; 409 `version_conflict`."""
+    return StagingColumnMapping.model_validate(
+        hashing.set_staging_mapping(
+            user,
+            workspace_id,
+            dw_column_id,
+            mapping_type=body.mapping_type,
+            version=body.version,
+        )
+    )

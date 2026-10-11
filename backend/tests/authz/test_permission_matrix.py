@@ -27,6 +27,7 @@ from tests.authz.matrix import (
     ensure_data_warehouse,
     linked_file_id,
     outcome_of,
+    pii_staging_column_id,
     public,
     registered_routes,
     rename_pair,
@@ -711,6 +712,22 @@ ROWS: list[Row] = [
         "accepting its items is owner-only)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=ensure_data_warehouse,
+    ),
+    # Hashing a confirmed PII column in its staging mapping (story 138).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/columns/{dw_column_id}/mapping",
+        "Open Workspace content (a staging column's mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        path_params={"dw_column_id": pii_staging_column_id},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/columns/{dw_column_id}/mapping",
+        "Edit KPIs, DW Schema, mappings (hash a PII column in its staging mapping)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        path_params={"dw_column_id": pii_staging_column_id},
+        json=lambda roles: {"mapping_type": "hashed", "version": 1},
     ),
     # Column mappings and lineage (stories 99, 100, 104).
     Row(

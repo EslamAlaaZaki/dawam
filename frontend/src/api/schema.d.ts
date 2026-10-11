@@ -1255,6 +1255,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/columns/{dw_column_id}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Staging Column Mapping
+         * @description A staging column's mapping from its source column (any member): `direct`, or `hashed`
+         *     for a confirmed PII column. 404 `not_found` for anything but a source-fed staging column.
+         */
+        get: operations["getStagingColumnMapping"];
+        /**
+         * Set Staging Column Mapping
+         * @description Hash a confirmed PII column in its staging mapping, or map it `direct` again (owners
+         *     and editors). A hashed mapping is a salted SHA-256 of the source column with a
+         *     `:pii_salt` placeholder; the salt is never stored. The column and everything downstream
+         *     stay PII-derived and are marked pseudonymised in the PII view. 404 `not_found` for
+         *     anything but a staging column fed by a source column; 422 `invalid_mapping` to hash a
+         *     column that is not confirmed PII; 409 `version_conflict`.
+         */
+        put: operations["setStagingColumnMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -4965,6 +4995,11 @@ export interface components {
              * @enum {string}
              */
             status: "present" | "source_removed";
+            /**
+             * Pii Note
+             * @description An optional handling note on a PII-derived column.
+             */
+            pii_note?: string | null;
         };
         /**
          * DwDataType
@@ -6496,6 +6531,30 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /** PiiColumn */
+        PiiColumn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "src_column" | "dw_column" | "dw_table" | "kpi";
+            /** Label */
+            label: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "source" | "staging" | "core" | "mart" | "kpi";
+            /** Pseudonymised */
+            pseudonymised: boolean;
+            /** Pii Note */
+            pii_note: string | null;
+        };
         /** PiiFinding */
         PiiFinding: {
             /**
@@ -6661,7 +6720,7 @@ export interface components {
         /** PiiViewReport */
         PiiViewReport: {
             /** Columns */
-            columns: components["schemas"]["LineageNode"][];
+            columns: components["schemas"]["PiiColumn"][];
             /** Tables */
             tables: components["schemas"]["LineageNode"][];
         };
@@ -7953,6 +8012,42 @@ export interface components {
              */
             dw_modeling: components["schemas"]["LayerProgress"][];
         };
+        /** StagingColumnMapping */
+        StagingColumnMapping: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            /**
+             * Mapping Type
+             * @enum {string}
+             */
+            mapping_type: "direct" | "hashed";
+            /**
+             * Sql Expression
+             * @description In the target dialect; a hashed one reads the salt from `:pii_salt`.
+             */
+            sql_expression: string;
+            /** Version */
+            version: number;
+        };
+        /** StagingColumnMappingRequest */
+        StagingColumnMappingRequest: {
+            /**
+             * Mapping Type
+             * @description `hashed` for a column whose source column is confirmed PII; `direct` undoes it. There is no salt field: the salt is supplied at load time.
+             * @enum {string}
+             */
+            mapping_type: "direct" | "hashed";
+            /**
+             * Version
+             * @description The mapping's `version` you last saw.
+             */
+            version: number;
+        };
         /** StagingFlag */
         StagingFlag: {
             /**
@@ -8539,6 +8634,11 @@ export interface components {
             description?: string | null;
             /** Semantic Type */
             semantic_type?: string | null;
+            /**
+             * Pii Note
+             * @description A handling note; only on a PII-derived column. Null clears it.
+             */
+            pii_note?: string | null;
         };
         /** UpdateDwTableRequest */
         UpdateDwTableRequest: {
@@ -11739,6 +11839,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposedChangeSet"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getStagingColumnMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagingColumnMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setStagingColumnMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StagingColumnMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagingColumnMapping"];
                 };
             };
             /** @description Validation error */

@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
+from dawam.modules.sources import confirmed_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -34,6 +35,7 @@ from dawam.platform.errors import ApiError
 from .calendar import date_columns, date_dimension_of, time_columns
 from .mapping_service import purge_edges_reading
 from .naming import NamingViolation, check_column_name, check_table_name
+from .pii_propagation import propagate_pii
 from .platforms import SAFE_IDENTIFIER, is_reserved_word, max_identifier_length
 from .service import NamingRules
 from .tables import (
@@ -43,6 +45,7 @@ from .tables import (
     FACT_TYPES,
     GRAIN_MAX_LENGTH,
     NAME_MAX_LENGTH,
+    PII_NOTE_MAX_LENGTH,
     TABLE_NAME_UNIQUE,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -110,6 +113,7 @@ COLUMN_FIELDS = (
     "role_name",
     "description",
     "semantic_type",
+    "pii_note",
 )
 
 SYNCED_FIELDS = ("data_type", "is_nullable")
@@ -144,6 +148,7 @@ class ModelColumn:
     naming_violations: list[NamingViolation]
     review_flags: list[dict[str, str]]
     status: str = "present"
+    pii_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -298,6 +303,7 @@ def _column_view(record: DwColumnRecord, layer: str, rules: NamingRules) -> Mode
         ),
         review_flags=list(record.review_flags or []),
         status=record.status,
+        pii_note=record.pii_note,
     )
 
 
@@ -621,7 +627,8 @@ class ModelService:
     ) -> ModelColumn:
         """Add a column to a table. ``fields``: ``name``, ``data_type`` and ``role`` and,
         as the role needs, ``additivity``, ``references_table_id``, ``role_name``,
-        ``scd_type_override``; also ``is_nullable``, ``description``, ``semantic_type``."""
+        ``scd_type_override``; also ``is_nullable``, ``description``, ``semantic_type``.
+        A new column is never PII-derived, so it has no ``pii_note``."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
         try:
             with Session(self._engine) as db, db.begin():
@@ -645,7 +652,8 @@ class ModelService:
         version: int,
         changes: Mapping[str, Any],
     ) -> ModelColumn:
-        """Change a column; ``changes`` holds only the fields to change. A stale
+        """Change a column; ``changes`` holds only the fields to change. A ``pii_note`` (the
+        handling note) is set only on a PII-derived column, else 422; null clears it. A stale
         ``version`` is 409 ``version_conflict``; a housekeeping column is 422
         ``system_column``."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
@@ -668,6 +676,8 @@ class ModelService:
                     _uuid(final["references_table_id"]) if final["references_table_id"] else None
                 )
                 self._check_column(db, warehouse, table, siblings, final)
+                if final["pii_note"] and final["pii_note"] != before["pii_note"]:
+                    self._ensure_pii_derived(db, workspace_id, column)
                 for field in COLUMN_FIELDS:
                     setattr(column, field, final[field])
                 after = _column_snapshot(column)
@@ -1042,6 +1052,12 @@ class ModelService:
                     if value is None
                     else _text(value, field, "semantic type", SEMANTIC_TYPE_MAX_LENGTH) or None
                 )
+            elif field == "pii_note":
+                out[field] = (
+                    None
+                    if value is None
+                    else _text(value, field, "handling note", PII_NOTE_MAX_LENGTH) or None
+                )
             else:  # pragma: no cover - a programming error
                 raise ValueError(f"cannot change column field {field!r}")
         if not partial:
@@ -1049,6 +1065,13 @@ class ModelService:
                 if required not in out:
                     raise _invalid(required, f"The {required.replace('_', ' ')} is required.")
         return out
+
+    @staticmethod
+    def _ensure_pii_derived(db: Session, workspace_id: uuid.UUID, column: DwColumnRecord) -> None:
+        """A handling note goes only on a PII-derived column (spec §6.12, story 138)."""
+        derived = propagate_pii(db, confirmed_pii_column_ids(db, workspace_id)).derived_columns
+        if column.id not in derived:
+            raise _not_pii_derived()
 
     def _check_column(
         self,
@@ -1139,9 +1162,12 @@ class ModelService:
             "role_name": None,
             "description": "",
             "semantic_type": None,
+            "pii_note": None,
             "is_nullable": True,
             **given,
         }
+        if final["pii_note"]:
+            raise _not_pii_derived()
         if final["references_table_id"] is not None:
             final["references_table_id"] = _uuid(final["references_table_id"])
         existing = self._columns(db, table.id)
@@ -1285,6 +1311,10 @@ class ModelService:
         if constraint == COLUMN_NAME_UNIQUE:
             return _name_taken("column in this table")
         return exc
+
+
+def _not_pii_derived() -> ApiError:
+    return _invalid("pii_note", "Only a PII-derived column has a handling note.")
 
 
 def _system_column() -> ApiError:
