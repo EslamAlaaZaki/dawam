@@ -6,6 +6,7 @@ runner, ...) the app uses; tests pass their own ``Services``.
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 import uuid
@@ -221,6 +222,20 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # them through X-Forwarded-For / X-Forwarded-Proto; anyone else's are ignored.
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.forwarded_allow_ips)
 
+    app.include_router(_api_router())
+    app.include_router(health.router)
+    install_api_docs(app, f"{API_PREFIX}/docs")
+    return app
+
+
+@functools.cache
+def _api_router() -> APIRouter:
+    """Every module's routes under /api/v1, built once per process.
+
+    The routes hold no per-app state, and FastAPI caches what it derives from them on
+    this router: a new app (one per test) then includes them for free instead of
+    re-deriving every route, about half a second each time.
+    """
     # Every state-changing API request needs the double-submit CSRF token.
     api = APIRouter(
         prefix=API_PREFIX, responses=ERROR_RESPONSES, dependencies=[Depends(require_csrf)]
@@ -230,7 +245,4 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         router = getattr(module, "router", None)
         if router is not None:
             api.include_router(router)
-    app.include_router(api)
-    app.include_router(health.router)
-    install_api_docs(app, f"{API_PREFIX}/docs")
-    return app
+    return api
