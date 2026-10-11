@@ -35,7 +35,10 @@ def mapping_service(request: Request) -> MappingService:
     state = request.app.state
     clock = state.services.clock
     return MappingService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        on_structural_change=getattr(state, "on_structural_change", None),
     )
 
 

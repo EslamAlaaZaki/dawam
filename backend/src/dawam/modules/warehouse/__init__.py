@@ -36,6 +36,16 @@ Public interface. Other modules import only what is re-exported here:
   ``.../staging/drop-removed``.
 - ``StagingTableHandler`` / ``StagingColumnHandler``: the ``changesets`` engine's handlers for
   ``staging_table`` and ``staging_column`` items; the composition root registers them.
+- ``plan_propagation`` (in the caller's session, no permission check): what already-applied
+  ``StructuralChange``s (rename, retype, nullability, removal; a Mart column newly mapped)
+  call for downstream through lineage, per the propagation rule table of spec §6.10: Change
+  Set items, the impacted Assets (``Impact``) and what the KPIs need (``KpiRename``,
+  ``KpiRemoval``, re-pointing pairs), as a ``Propagation``. ``ModelService`` and
+  ``MappingService`` report committed structural changes through a ``StructuralChangeHook``.
+  ``DwColumnHandler``, ``ColumnMappingHandler`` and ``MappingBranchHandler`` are the handlers
+  for the ``dw_column``, ``column_mapping`` and ``mapping_branch`` items it proposes.
+  ``Renames`` / ``rename_in_sql`` / ``sql_reads`` respell or find renamed identifiers in SQL
+  text, in place.
 - ``read_schema`` / ``describe_columns`` / ``mart_columns_reading`` and ``replace_kpi_edges`` /
   ``clear_kpi_edges`` (in the caller's session, no permission check): the Core and Mart
   tables a KPI's formula SQL and links refer to, and the ``kpi`` lineage edges this module
@@ -75,6 +85,7 @@ from .ddl_service import DdlPackage, DdlService
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
 from .lineage_graph import LineageEdge, LineageNode, lineage_edges, lineage_nodes
 from .lineage_sql import DIALECTS as SQL_DIALECTS
+from .lineage_sql import Renames, rename_in_sql, sql_reads
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_service import MappingService
@@ -89,6 +100,16 @@ from .platforms import (
     max_identifier_length,
     platform_profile,
 )
+from .propagation import (
+    Impact,
+    KpiRemoval,
+    KpiRename,
+    Propagation,
+    StructuralChange,
+    StructuralChangeHook,
+    plan_propagation,
+)
+from .propagation_handlers import ColumnMappingHandler, DwColumnHandler, MappingBranchHandler
 from .schema_reader import (
     DwSchema,
     SchemaColumn,
@@ -113,6 +134,7 @@ __all__ = [
     "SQL_DIALECTS",
     "TARGET_PLATFORMS",
     "AiEvaluation",
+    "ColumnMappingHandler",
     "DataWarehouse",
     "DataWarehouseService",
     "DateDimension",
@@ -120,13 +142,18 @@ __all__ = [
     "DdlPackage",
     "DdlService",
     "DdlServiceDep",
+    "DwColumnHandler",
     "DwSchema",
     "EvaluationService",
     "Finding",
     "FindingItem",
+    "Impact",
+    "KpiRemoval",
+    "KpiRename",
     "LayerSchemas",
     "LineageEdge",
     "LineageNode",
+    "MappingBranchHandler",
     "MappingExportService",
     "MappingExportServiceDep",
     "MappingService",
@@ -135,6 +162,8 @@ __all__ = [
     "NamingRules",
     "PiiPropagation",
     "PlatformProfile",
+    "Propagation",
+    "Renames",
     "SchemaColumn",
     "SchemaTable",
     "Score",
@@ -147,6 +176,8 @@ __all__ = [
     "StagingResult",
     "StagingService",
     "StagingTableHandler",
+    "StructuralChange",
+    "StructuralChangeHook",
     "TargetPlatform",
     "ValidationReport",
     "ValidationService",
@@ -158,10 +189,13 @@ __all__ = [
     "lineage_nodes",
     "mart_columns_reading",
     "max_identifier_length",
+    "plan_propagation",
     "platform_profile",
     "propagate_pii",
     "read_schema",
+    "rename_in_sql",
     "replace_kpi_edges",
     "router",
+    "sql_reads",
     "uninstall_score_recalculation",
 ]

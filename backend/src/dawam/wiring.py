@@ -3,7 +3,8 @@
 Modules never import each other's internals, so what one module must tell another is wired
 here: the Change Set object handlers every module that owns changeable objects registers, and
 what follows a new Snapshot (a staging sync, which ``sources`` cannot call because
-``warehouse`` imports it).
+``warehouse`` imports it) and what follows a structural change (its propagation, which
+``warehouse`` and ``changesets`` cannot call because ``propagation`` imports them).
 """
 
 from __future__ import annotations
@@ -14,10 +15,18 @@ import sqlalchemy as sa
 
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ChangeSetService, ObjectHandlers
-from dawam.modules.kpis import KpiLinkHandler
+from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
 from dawam.modules.notifications import NotificationService
+from dawam.modules.propagation import PropagationService
 from dawam.modules.sources import SourceEnhancementHandler
-from dawam.modules.warehouse import StagingColumnHandler, StagingService, StagingTableHandler
+from dawam.modules.warehouse import (
+    ColumnMappingHandler,
+    DwColumnHandler,
+    MappingBranchHandler,
+    StagingColumnHandler,
+    StagingService,
+    StagingTableHandler,
+)
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -32,6 +41,29 @@ def change_set_handlers() -> ObjectHandlers:
         StagingTableHandler(),
         StagingColumnHandler(),
         KpiLinkHandler(),
+        DwColumnHandler(),
+        ColumnMappingHandler(),
+        MappingBranchHandler(),
+        KpiPropagationHandler(),
+    )
+
+
+def propagation(engine: sa.Engine, clock: Clock) -> PropagationService:
+    """The service that follows every structural change with its propagation (its
+    ``after_edit`` and ``after_change_set`` are the warehouse's and the changesets' hooks)."""
+    workspaces = WorkspaceService(engine, clock=clock)
+    notifications = NotificationService(engine, clock=clock)
+    return PropagationService(
+        engine,
+        workspaces=workspaces,
+        notifications=notifications,
+        change_sets=ChangeSetService(
+            engine,
+            workspaces=workspaces,
+            handlers=change_set_handlers(),
+            notifications=notifications,
+            clock=clock,
+        ),
     )
 
 

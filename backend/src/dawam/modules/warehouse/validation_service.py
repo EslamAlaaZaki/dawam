@@ -2,7 +2,9 @@
 
 ``run_validation`` reads every Core and Mart mapping of the Data Warehouse and returns the
 problems an Editor must fix (``error``: SQL that does not parse, inputs outside the Layer
-below, a non-aggregated output missing from the GROUP BY) or should look at (``warning``:
+below, a non-aggregated output missing from the GROUP BY, and the impacts of a change no
+propagation fixed: SQL naming a table or column that no longer exists, ``broken_reference``,
+or one flagged ``source_removed``, ``removed_input``) or should look at (``warning``:
 unmapped columns, a multi-branch table without an integration rule, and data-type
 compatibility between a direct mapping's input and its target, see ``type_compat``).
 Coverage is counted per table, per Layer and for the whole Data Warehouse, branch-aware as
@@ -24,7 +26,8 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.hooks import ModelingProgress
 
-from .mapping_service import SYSTEM_ROLES, MappingService, TableMappingView
+from .lineage_sql import ColumnRef, Unparsable, parse_branch, parse_expression
+from .mapping_service import SOURCE_LAYER, SYSTEM_ROLES, MappingService, TableMappingView
 from .tables import (
     ColumnMappingRecord,
     DataWarehouseRecord,
@@ -278,6 +281,147 @@ class ValidationService:
             if view.kind == "generated":
                 continue
             problems.extend(self._table_problems(view, columns))
+        problems.extend(self._impact_problems(workspace_id))
+        return problems
+
+    def _impact_problems(self, workspace_id: uuid.UUID) -> list[Problem]:
+        """What a rename, delete or ``source_removed`` left behind in the mappings: the SQL
+        text is the master, so it is read again against the Layer below as it is now."""
+        with Session(self._engine) as db:
+            warehouse = db.scalars(
+                sa.select(DataWarehouseRecord).where(
+                    DataWarehouseRecord.workspace_id == workspace_id
+                )
+            ).first()
+            if warehouse is None:
+                return []
+            tables: dict[tuple[str, str], tuple[str, uuid.UUID]] = {}
+            columns: dict[tuple[str, str, str], str] = {}
+            for table, column in db.execute(
+                sa.select(DwTableRecord, DwColumnRecord)
+                .outerjoin(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
+                .where(DwTableRecord.data_warehouse_id == warehouse.id)
+            ):
+                tables[(table.layer, table.name.lower())] = (table.status, table.id)
+                if column is not None:
+                    removed = "source_removed" in (table.status, column.status)
+                    columns[(table.layer, table.name.lower(), column.name.lower())] = (
+                        "source_removed" if removed else "present"
+                    )
+            mappings = db.execute(
+                sa.select(ColumnMappingRecord, DwColumnRecord, DwTableRecord, MappingBranchRecord)
+                .join(DwColumnRecord, DwColumnRecord.id == ColumnMappingRecord.dw_column_id)
+                .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+                .outerjoin(
+                    MappingBranchRecord, MappingBranchRecord.id == ColumnMappingRecord.branch_id
+                )
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.layer.in_(("core", "mart")),
+                    DwTableRecord.kind != "generated",
+                    ColumnMappingRecord.mapping_type != "unmapped",
+                )
+                .order_by(DwTableRecord.name, DwColumnRecord.ordinal)
+            ).all()
+            branches = db.execute(
+                sa.select(MappingBranchRecord, DwTableRecord)
+                .join(
+                    TableMappingRecord,
+                    TableMappingRecord.id == MappingBranchRecord.table_mapping_id,
+                )
+                .join(DwTableRecord, DwTableRecord.id == TableMappingRecord.dw_table_id)
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.layer.in_(("core", "mart")),
+                )
+                .order_by(DwTableRecord.name, MappingBranchRecord.ordinal)
+            ).all()
+        platform = warehouse.target_platform
+
+        def check(refs, below: str) -> list[tuple[str, str]]:
+            found: list[tuple[str, str]] = []
+            for ref in refs:
+                if ref.table is None:
+                    continue
+                status = columns.get((below, ref.table, ref.column))
+                name = f"{ref.table}.{ref.column}"
+                if status is None:
+                    found.append(
+                        ("broken_reference", f"Reads {name}, which no longer exists in {below}.")
+                    )
+                elif status == "source_removed":
+                    found.append(
+                        ("removed_input", f"Reads {name}, which was removed from the source.")
+                    )
+            return found
+
+        problems: list[Problem] = []
+        for record, column, table, branch in mappings:
+            if record.validation.get("unparsed") or record.validation.get("errors"):
+                continue  # already reported with the mapping
+            below = SOURCE_LAYER[table.layer]
+            refs: list[ColumnRef] = []
+            texts = [record.sql_expression] if record.sql_expression else []
+            texts += _lookup_texts(record.lookup)
+            for text in texts:
+                try:
+                    parsed = parse_expression(text, platform)
+                except Unparsable:
+                    continue
+                refs += [*parsed.value, *parsed.uses]
+            for code, message in dict.fromkeys(check(refs, below)):
+                problems.append(
+                    Problem(
+                        "error",
+                        code,
+                        f"{column.name}: {message}",
+                        table.id,
+                        table.name,
+                        table.layer,
+                        column_id=column.id,
+                        column_name=column.name,
+                        branch_id=branch.id if branch else None,
+                        branch_name=branch.name if branch else None,
+                    )
+                )
+        for branch, table in branches:
+            below = SOURCE_LAYER[table.layer]
+            try:
+                parts = parse_branch(
+                    branch.driving_input,
+                    branch.joins,
+                    branch.filters,
+                    branch.group_by,
+                    branch.having,
+                    platform,
+                )
+            except Unparsable:
+                continue
+            found = [
+                ("broken_reference", f"Reads {name}, which no longer exists in {below}.")
+                for name in parts.tables
+                if (below, name) not in tables
+            ]
+            found += [
+                ("removed_input", f"Reads {name}, which was removed from the source.")
+                for name in parts.tables
+                if tables.get((below, name), ("present",))[0] == "source_removed"
+            ]
+            known = {name for name in parts.tables if (below, name) in tables}
+            found += check([r for r in parts.refs if r.table in known], below)
+            for code, message in dict.fromkeys(found):
+                problems.append(
+                    Problem(
+                        "error",
+                        code,
+                        message,
+                        table.id,
+                        table.name,
+                        table.layer,
+                        branch_id=branch.id,
+                        branch_name=branch.name,
+                    )
+                )
         return problems
 
     @staticmethod
@@ -350,6 +494,15 @@ class ValidationService:
                 )
             )
         return found
+
+
+def _lookup_texts(lookup) -> list[str]:
+    if not lookup:
+        return []
+    texts = [t for t in lookup.get("nk_inputs") or [] if isinstance(t, str)]
+    if isinstance(lookup.get("as_of_input"), str):
+        texts.append(lookup["as_of_input"])
+    return texts
 
 
 def _first_message(column) -> str:

@@ -14,11 +14,12 @@ failing item aborts all of it.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -33,7 +34,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.hooks import ReadableConversations
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
-from .handlers import ObjectHandlers
+from .handlers import AppliedChange, ObjectHandlers
 from .tables import (
     CHANGE_SET_STATUSES,
     LABEL_MAX_LENGTH,
@@ -44,6 +45,8 @@ from .tables import (
     ChangeSetItemRecord,
     ChangeSetRecord,
 )
+
+logger = logging.getLogger(__name__)
 
 MAX_ITEMS = 5000
 """Items in one Change Set (a first sync of 2,000 tables is about 2,000 items)."""
@@ -143,6 +146,27 @@ class ApplyResult:
     """Stale items and the items that depend on them: not applied, reported."""
     needs_owner: list[uuid.UUID] = field(default_factory=list)
     """Owner-only items (and what depends on them) still waiting for an owner."""
+
+
+@dataclass(frozen=True)
+class AppliedChangeSet:
+    """What one accept applied, for whoever follows applied changes (propagation)."""
+
+    change_set_id: uuid.UUID
+    workspace_id: uuid.UUID
+    origin: str
+    scope: dict[str, Any]
+    changes: list[AppliedChange]
+    """What each applied item did, in order (items that changed nothing are left out)."""
+
+
+class ChangeSetAppliedHook(Protocol):
+    def __call__(self, user: User, applied: AppliedChangeSet) -> None:
+        """Called after an accept that applied something was committed, outside its
+        transaction. Modules that import this one (``propagation``) reach it through this
+        port, which the composition root fills; a failing hook is logged and never fails
+        the accept."""
+        ...
 
 
 def _not_found() -> ApiError:
@@ -278,11 +302,14 @@ class ChangeSetService:
         notifications: NotificationService,
         clock: Clock,
         conversations: ReadableConversations | None = None,
+        on_applied: ChangeSetAppliedHook | None = None,
     ) -> None:
         """``conversations`` tells which assistant conversations a user may read; Change
         Sets proposed in a private one are hidden from everyone else (spec story 151).
-        Without it, every conversation counts as private."""
+        Without it, every conversation counts as private. ``on_applied`` hears of every
+        accept that applied something, once it is committed."""
         self._conversations = conversations
+        self._on_applied = on_applied
         self._engine = engine
         self._workspaces = workspaces
         self._handlers = handlers
@@ -641,10 +668,13 @@ class ChangeSetService:
 
             skipped = self._skip_stale(db, workspace_id, candidates, by_id)
             accepted: list[uuid.UUID] = []
+            changes: list[AppliedChange] = []
             for item in candidates:
                 if str(item.id) in skipped:
                     continue
-                self._apply_item(db, user, record, item, now)
+                change = self._apply_item(db, user, record, item, now)
+                if change is not None:
+                    changes.append(change)
                 item.status, item.status_reason = "accepted", None
                 accepted.append(item.id)
             for item_id in skipped:
@@ -688,12 +718,24 @@ class ChangeSetService:
                     db=db,
                 )
             db.flush()
-            return ApplyResult(
+            result = ApplyResult(
                 change_set=self._detail(db, record),
                 accepted=accepted,
                 skipped=list(skipped.values()),
                 needs_owner=[i.id for i in items if str(i.id) in waiting],
             )
+            applied = AppliedChangeSet(
+                record.id, workspace_id, record.origin, dict(record.scope), changes
+            )
+        if changes and self._on_applied is not None:
+            try:
+                self._on_applied(user, applied)
+            except Exception:
+                logger.exception(
+                    "following an applied Change Set failed",
+                    extra={"change_set_id": str(change_set_id)},
+                )
+        return result
 
     def reject(
         self,
@@ -787,13 +829,13 @@ class ChangeSetService:
         record: ChangeSetRecord,
         item: ChangeSetItemRecord,
         now: datetime,
-    ) -> None:
+    ) -> AppliedChange | None:
         handler = self._handlers.get(item.object_type)
         applied = handler.apply(
             db, record.workspace_id, item.operation, item.object_id, item.payload, at=now
         )
         if applied.old == applied.new:  # the object already had these values
-            return
+            return None
         record_audit(
             db,
             workspace_id=record.workspace_id,
@@ -806,3 +848,4 @@ class ChangeSetService:
             via=record.origin,
             change_set_id=record.id,
         )
+        return applied

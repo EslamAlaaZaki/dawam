@@ -10,7 +10,9 @@ Public interface. Other modules import only what is re-exported here:
   since) and their dependents are skipped and reported, owner-only items stay
   ``needs_owner`` (and notify the owners) unless an owner accepts, everything else is
   applied and audited. Closing a Change Set expires its remaining items. Every call
-  authorizes through the workspaces policy.
+  authorizes through the workspaces policy. ``on_applied`` (a ``ChangeSetAppliedHook`` the
+  composition root fills) hears of each committed accept (``AppliedChangeSet``), for
+  propagation.
 - ``ObjectHandler`` / ``ObjectHandlers`` / ``AppliedChange``: a module that owns objects a
   Change Set may change registers one handler per object type (the composition root
   builds ``ObjectHandlers`` and sets ``app.state.change_set_handlers``); the engine
@@ -28,8 +30,10 @@ from .api import change_set_service, router
 from .handlers import AppliedChange, ObjectHandler, ObjectHandlers
 from .service import (
     MAX_ITEMS,
+    AppliedChangeSet,
     ApplyResult,
     ChangeSet,
+    ChangeSetAppliedHook,
     ChangeSetDetail,
     ChangeSetItem,
     ChangeSetPage,
@@ -42,8 +46,10 @@ from .service import (
 __all__ = [
     "MAX_ITEMS",
     "AppliedChange",
+    "AppliedChangeSet",
     "ApplyResult",
     "ChangeSet",
+    "ChangeSetAppliedHook",
     "ChangeSetDetail",
     "ChangeSetItem",
     "ChangeSetPage",

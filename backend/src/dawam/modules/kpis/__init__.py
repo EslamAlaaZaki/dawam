@@ -19,6 +19,10 @@ Public interface. Other modules import only what is re-exported here:
   KPIs of a Workspace, for the lineage graph's ``kpi`` nodes.
 - ``KpiLinkHandler``: the Change Set handler for ``kpi`` objects (``formula_sql`` and
   ``links``); the composition root registers it.
+- ``plan_kpi_propagation`` (in the caller's session, no permission check): the KPI items of a
+  propagation (``KpiPlan``): formula SQL respelled after a rename, links and formula
+  re-pointed from Core to the Mart column now mapped from it, and the KPIs a removal breaks.
+  ``KpiPropagationHandler`` is the handler for its ``kpi_formula`` items.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/kpis``,
   ``GET|PATCH|DELETE /workspaces/{workspace_id}/kpis/{kpi_id}``,
   ``GET|PUT /workspaces/{workspace_id}/kpis/{kpi_id}/links``.
@@ -29,6 +33,7 @@ Owns the ``kpis`` and ``kpi_links`` tables.
 from .api import router
 from .link_changes import KpiLinkHandler
 from .links import kpi_names
+from .propagation import KpiPlan, KpiPropagationHandler, plan_kpi_propagation
 from .service import (
     Kpi,
     KpiLink,
@@ -47,11 +52,14 @@ __all__ = [
     "KpiLinkHandler",
     "KpiLinks",
     "KpiPage",
+    "KpiPlan",
+    "KpiPropagationHandler",
     "KpiService",
     "KpiSuggestion",
     "KpiTarget",
     "LinkCandidates",
     "SuggestedKpis",
     "kpi_names",
+    "plan_kpi_propagation",
     "router",
 ]

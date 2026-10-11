@@ -44,6 +44,7 @@ from .lineage_sql import (
     parse_branch,
     parse_expression,
 )
+from .propagation import StructuralChange, StructuralChangeHook, notify_structural_change
 from .score_trigger import touch
 from .tables import (
     BRANCH_NAME_MAX_LENGTH,
@@ -198,10 +199,20 @@ def purge_edges_reading(db: Session, column_ids: list[uuid.UUID]) -> None:
 class MappingService:
     """Column mappings, their derived lineage edges and graph queries over them."""
 
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        on_structural_change: StructuralChangeHook | None = None,
+    ) -> None:
+        """``on_structural_change`` hears of a Mart column newly mapped ``direct`` from a
+        Core column, so KPIs linked to that Core column can be re-pointed (spec §6.13)."""
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._on_structural_change = on_structural_change
 
     # --- reading ---------------------------------------------------------------------
 
@@ -403,7 +414,16 @@ class MappingService:
                     details={"layer": table.layer, "table_id": str(table.id)},
                     at=now,
                 )
-            return self._column_view(db, column, record)
+            view = self._column_view(db, column, record)
+            mapped = table.layer == "mart" and mapping_type == "direct"
+        if mapped:
+            notify_structural_change(
+                self._on_structural_change,
+                user,
+                workspace_id,
+                [StructuralChange("dw_column", column_id, "mapped")],
+            )
+        return view
 
     def update_table_mapping(
         self,
