@@ -72,7 +72,7 @@ def test_the_xlsx_report_has_overall_layer_table_and_failed_check_sheets(warehou
     assert [r["layer"] for r in sheets["Layers"]] == ["staging", "core", "mart"]
     assert [r["table"] for r in sheets["Tables"]] == ["fact_sales"]
     [missing] = [r for r in sheets["Failed checks"] if r["check"] == "measure_has_additivity"]
-    assert missing["object"] == "amount" and missing["fix_hint"] and missing["severity"]
+    assert missing["object"] == "fact_sales.amount" and missing["fix_hint"] and missing["severity"]
 
 
 def test_an_empty_model_reports_not_scored(warehouse: RoleClients):
