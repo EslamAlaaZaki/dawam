@@ -33,7 +33,7 @@ from dawam.platform.errors import ApiError
 
 from .platforms import TargetPlatform
 from .service import NamingRules
-from .staging_naming import NameInput, column_names, stable_hash
+from .staging_naming import TYPE_FLAGS, NameInput, column_names, stable_hash
 from .staging_rows import _quote, _Rows, build_staging, write_rows
 from .staging_types import translate_type
 from .tables import (
@@ -48,9 +48,6 @@ from .tables import (
 
 TABLE = "staging_table"
 COLUMN = "staging_column"
-
-_TYPE_FLAGS = ("lossy_type", "fallback_type")
-"""Review flags that come from the type translation (the rest come from the name)."""
 
 
 def _dicts(flags: Sequence[Any]) -> list[dict[str, str]]:
@@ -204,7 +201,7 @@ def plan_sync(
                 continue
             payload = dict(changes)
             if "data_type" in changes:
-                kept = [f for f in dwc.review_flags if f.get("code") not in _TYPE_FLAGS]
+                kept = [f for f in dwc.review_flags if f.get("code") not in TYPE_FLAGS]
                 payload["review_flags"] = [*kept, *_dicts(translated.flags)]
             items.append(
                 ProposedItem(

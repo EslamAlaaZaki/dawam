@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -18,11 +18,13 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
+from dawam.modules.sources import confirmed_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .mapping_service import SYSTEM_ROLES
+from .pii_propagation import propagate_pii
 from .score_checks import is_date_dimension
 from .score_checks import registry as default_registry
 from .scoring import (
@@ -32,6 +34,7 @@ from .scoring import (
     Design,
     DesignBranch,
     DesignColumn,
+    DesignKpi,
     DesignTable,
     MappingFact,
     ScoreReport,
@@ -152,11 +155,17 @@ class StarCard:
     link: str
 
 
+KpiReader = Callable[[Session, uuid.UUID], Iterable[DesignKpi]]
+"""The KPIs of a Workspace (given the session and the Workspace id)."""
+
+
 def _not_set_up() -> ApiError:
     return ApiError(404, "not_found", "The Data Warehouse is not set up yet.")
 
 
 def link_to(finding_table: uuid.UUID, object_type: str, object_id: uuid.UUID) -> str:
+    if object_type == "kpi":
+        return f"?kpi={object_id}"
     column = f"&column={object_id}" if object_type == "column" else ""
     return f"?table={finding_table}{column}"
 
@@ -181,8 +190,13 @@ class ScoreService:
         workspaces: WorkspaceService,
         clock: Clock,
         registry: CheckRegistry = default_registry,
+        kpis: KpiReader | None = None,
     ) -> None:
+        """``kpis`` reads a Workspace's KPIs for the DW-wide KPI checks (the KPIs module
+        imports this one, so the composition root hands the reader in); without it there
+        are no KPIs to check."""
         self._engine = engine
+        self._kpis = kpis
         self._workspaces = workspaces
         self._clock = clock
         self._registry = registry
@@ -252,7 +266,7 @@ class ScoreService:
             warehouse_id = self._warehouse_id(db, workspace_id)
             warehouse = db.get(DataWarehouseRecord, warehouse_id)
             assert warehouse is not None
-            design = self._design(db, warehouse)
+            design = self._design(db, warehouse, with_pii=False)
         cards = [
             self._card(t, design, scores.get(t.id, 100.0), failures.get(t.id, []))
             for t in design.tables
@@ -337,12 +351,18 @@ class ScoreService:
             .limit(1)
         ).first()
 
-    def _design(self, db: Session, warehouse: DataWarehouseRecord) -> Design:
-        """The model as the checks see it, read in a handful of queries whatever its size."""
+    def _design(
+        self, db: Session, warehouse: DataWarehouseRecord, *, with_pii: bool = True
+    ) -> Design:
+        """The model as the checks see it, read in a handful of queries whatever its size;
+        ``with_pii`` False skips the PII walk (for readers that only need the structure)."""
         tables = list(
             db.scalars(
                 sa.select(DwTableRecord)
-                .where(DwTableRecord.data_warehouse_id == warehouse.id)
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.status != "deleted",
+                )
                 .order_by(sa.func.lower(DwTableRecord.name), DwTableRecord.id)
             )
         )
@@ -350,7 +370,7 @@ class ScoreService:
         columns: dict[uuid.UUID, list[DwColumnRecord]] = defaultdict(list)
         for c in db.scalars(
             sa.select(DwColumnRecord)
-            .where(DwColumnRecord.table_id.in_(ids))
+            .where(DwColumnRecord.table_id.in_(ids), DwColumnRecord.status != "deleted")
             .order_by(DwColumnRecord.table_id, DwColumnRecord.ordinal)
         ):
             columns[c.table_id].append(c)
@@ -360,8 +380,17 @@ class ScoreService:
             .join(DwColumnRecord, DwColumnRecord.id == ColumnMappingRecord.dw_column_id)
             .where(DwColumnRecord.table_id.in_(ids))
         ):
+            lookup = m.lookup or {}
             column_mappings[m.dw_column_id].append(
-                MappingFact(m.branch_id, m.mapping_type, m.sql_expression)
+                MappingFact(
+                    m.branch_id,
+                    m.mapping_type,
+                    m.sql_expression,
+                    lookup_inputs=(
+                        *lookup.get("nk_inputs", ()),
+                        *([lookup["as_of_input"]] if lookup.get("as_of_input") else []),
+                    ),
+                )
             )
         branches: dict[uuid.UUID, list[DesignBranch]] = defaultdict(list)
         for table_id, b in db.execute(
@@ -377,9 +406,15 @@ class ScoreService:
                     b.id, b.name, b.driving_input, b.joins, b.filters, b.group_by, b.having
                 )
             )
+        pii_derived = (
+            propagate_pii(db, confirmed_pii_column_ids(db, warehouse.workspace_id)).derived_columns
+            if with_pii
+            else frozenset()
+        )
         return Design(
             platform=warehouse.target_platform,
             naming_rules=NamingRules(**warehouse.naming_rules),
+            kpis=tuple(self._kpis(db, warehouse.workspace_id)) if self._kpis else (),
             tables=tuple(
                 DesignTable(
                     id=t.id,
@@ -392,6 +427,9 @@ class ScoreService:
                     scd_type=t.scd_type,
                     is_conformed=t.is_conformed,
                     description=t.description,
+                    status=t.status,
+                    review_flags=tuple(t.review_flags or ()),
+                    edited_fields=tuple(t.edited_fields or ()),
                     columns=tuple(
                         DesignColumn(
                             id=c.id,
@@ -404,6 +442,11 @@ class ScoreService:
                             is_system=c.is_system,
                             needs_no_mapping=c.is_system or c.role in SYSTEM_ROLES,
                             mappings=tuple(column_mappings.get(c.id, ())),
+                            description=c.description,
+                            status=c.status,
+                            review_flags=tuple(c.review_flags or ()),
+                            edited_fields=tuple(c.edited_fields or ()),
+                            pii_derived=c.id in pii_derived,
                         )
                         for c in columns.get(t.id, ())
                     ),
@@ -440,22 +483,28 @@ class ScoreService:
                 ScoreCheckResultRecord.data_warehouse_id == warehouse_id
             )
         )
-        db.add_all(
-            ScoreCheckResultRecord(
-                id=uuid.uuid4(),
-                data_warehouse_id=warehouse_id,
-                check_code=f.code,
-                severity=f.severity,
-                layer=f.layer,
-                object_type=f.object_type,
-                object_id=f.object_id,
-                table_id=f.table_id,
-                object_name=f.object_name,
-                passed=f.passed,
-                message=f.message[:MESSAGE_MAX_LENGTH],
+        if report.findings:
+            # A Core insert of plain rows: building an ORM object per finding is the slow part
+            # of a run on a wide model.
+            db.execute(
+                sa.insert(ScoreCheckResultRecord),
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "data_warehouse_id": warehouse_id,
+                        "check_code": f.code,
+                        "severity": f.severity,
+                        "layer": f.layer,
+                        "object_type": f.object_type,
+                        "object_id": f.object_id,
+                        "table_id": f.table_id,
+                        "object_name": f.object_name,
+                        "passed": f.passed,
+                        "message": f.message[:MESSAGE_MAX_LENGTH],
+                    }
+                    for f in report.findings
+                ],
             )
-            for f in report.findings
-        )
         old = (
             sa.select(ScoreRunRecord.id)
             .where(ScoreRunRecord.data_warehouse_id == warehouse_id)
@@ -468,7 +517,8 @@ class ScoreService:
     def _view(self, run: ScoreRunRecord, rows: list[ScoreCheckResultRecord]) -> Score:
         by_table: dict[uuid.UUID, list[ScoreCheckResultRecord]] = defaultdict(list)
         for r in rows:
-            by_table[r.table_id].append(r)
+            if r.object_type != "kpi":  # a KPI belongs to no table
+                by_table[r.table_id].append(r)
         tables = []
         for table_id, items in by_table.items():
             total = sum(SEVERITY_WEIGHTS[r.severity] for r in items)

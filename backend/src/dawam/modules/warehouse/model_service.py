@@ -118,6 +118,9 @@ COLUMN_FIELDS = (
 
 SYNCED_FIELDS = ("data_type", "is_nullable")
 """The fields of a staging column a sync can change, so a user edit of one is an override."""
+OVERRIDABLE = (*SYNCED_FIELDS, "name")
+"""The fields of a staging object whose user edit is recorded; a name or type edit also
+resolves what generation flagged for review about it (the score's review-flags check)."""
 
 GENERATED_TABLE_FIELDS = (
     "name",
@@ -707,7 +710,7 @@ class ModelService:
                 if changed:
                     if table.layer == "staging":
                         column.edited_fields = sorted(
-                            {*column.edited_fields, *(f for f in changed if f in SYNCED_FIELDS)}
+                            {*column.edited_fields, *(f for f in changed if f in OVERRIDABLE)}
                         )
                     mark_edited(column, before, after, GENERATED_COLUMN_FIELDS)
                     if "name" in changed:
@@ -1058,6 +1061,8 @@ class ModelService:
         changed = [f for f in TABLE_FIELDS if before[f] != after[f]]
         if not changed:
             return
+        if table.layer == "staging" and "name" in changed:
+            table.edited_fields = sorted({*table.edited_fields, "name"})
         table.version += 1
         table.updated_at = now
         db.flush()
