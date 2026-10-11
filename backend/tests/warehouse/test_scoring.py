@@ -920,3 +920,61 @@ def test_every_check_in_the_spec_table_is_registered_with_its_layers_and_severit
         spec = product_registry.spec(code)
         assert spec is not None, code
         assert (spec.severity, spec.layers) == (severity, layers), code
+
+
+def test_staging_mappings_read_the_source_and_are_not_checked_as_dw_inputs():
+    generated = _staging(
+        columns=(col("amount", mappings=(MappingFact(None, "direct", '"dbo"."orders"."amount"'),)),)
+    )
+    report = run(generated)
+    assert not [f for f in report.findings if f.code in ("inputs_exist", "inputs_from_layer_below")]
+    assert result(report, "mapping_parses", name="stg_erp_dbo_orders").passed
+
+
+def test_a_cte_in_a_branch_is_not_a_missing_input():
+    orders = _staging()
+    branch = table(
+        "fact_branch",
+        "fact",
+        grain=GRAIN,
+        branches=(
+            DesignBranch(
+                uuid.uuid4(),
+                "erp",
+                "stg_erp_dbo_orders o",
+                joins="JOIN recent r ON r.order_id = o.order_id",
+            ),
+        ),
+    )
+    report = run(orders, branch)
+    failed = result(report, "inputs_exist", name="fact_branch")
+    assert "recent (in" not in failed.message  # only the column read through it is reported
+
+
+def test_an_unset_scale_is_the_same_type_as_scale_zero():
+    customers = dim()
+    a = fact(
+        customers,
+        columns=(
+            col(
+                "price",
+                "measure",
+                additivity="additive",
+                data_type={"type": "decimal", "precision": 10, "scale": None},
+            ),
+        ),
+    )
+    b = fact(
+        customers,
+        "fact_b",
+        columns=(
+            col(
+                "price",
+                "measure",
+                additivity="additive",
+                data_type={"type": "decimal", "precision": 10, "scale": 0},
+            ),
+        ),
+    )
+    report = run(customers, a, b)
+    assert result(report, "same_name_same_type", name="fact_sales.price").passed

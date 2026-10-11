@@ -20,6 +20,8 @@ from typing import Literal
 from .platforms import TargetPlatform, is_reserved_word, max_identifier_length
 
 FlagCode = Literal["placeholder", "truncated", "collision", "lossy_type", "fallback_type"]
+TYPE_FLAGS: tuple[FlagCode, ...] = ("lossy_type", "fallback_type")
+"""The flags about a column's translated type; the others are about a name."""
 
 HASH_LENGTH = 6
 RESERVED_SUFFIX = "_col"

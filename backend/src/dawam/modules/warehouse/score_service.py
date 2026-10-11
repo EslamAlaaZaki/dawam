@@ -254,7 +254,7 @@ class ScoreService:
             warehouse_id = self._warehouse_id(db, workspace_id)
             warehouse = db.get(DataWarehouseRecord, warehouse_id)
             assert warehouse is not None
-            design = self._design(db, warehouse)
+            design = self._design(db, warehouse, with_pii=False)
         cards = [
             self._card(t, design, scores.get(t.id, 100.0), failures.get(t.id, []))
             for t in design.tables
@@ -339,8 +339,11 @@ class ScoreService:
             .limit(1)
         ).first()
 
-    def _design(self, db: Session, warehouse: DataWarehouseRecord) -> Design:
-        """The model as the checks see it, read in a handful of queries whatever its size."""
+    def _design(
+        self, db: Session, warehouse: DataWarehouseRecord, *, with_pii: bool = True
+    ) -> Design:
+        """The model as the checks see it, read in a handful of queries whatever its size;
+        ``with_pii`` False skips the PII walk (for readers that only need the structure)."""
         tables = list(
             db.scalars(
                 sa.select(DwTableRecord)
@@ -391,7 +394,11 @@ class ScoreService:
                     b.id, b.name, b.driving_input, b.joins, b.filters, b.group_by, b.having
                 )
             )
-        pii = propagate_pii(db, confirmed_pii_column_ids(db, warehouse.workspace_id))
+        pii_derived = (
+            propagate_pii(db, confirmed_pii_column_ids(db, warehouse.workspace_id)).derived_columns
+            if with_pii
+            else frozenset()
+        )
         return Design(
             platform=warehouse.target_platform,
             naming_rules=NamingRules(**warehouse.naming_rules),
@@ -426,7 +433,7 @@ class ScoreService:
                             status=c.status,
                             review_flags=tuple(c.review_flags or ()),
                             edited_fields=tuple(c.edited_fields or ()),
-                            pii_derived=c.id in pii.derived_columns,
+                            pii_derived=c.id in pii_derived,
                         )
                         for c in columns.get(t.id, ())
                     ),

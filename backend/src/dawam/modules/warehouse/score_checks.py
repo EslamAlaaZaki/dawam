@@ -36,6 +36,7 @@ from .scoring import (
     fail,
     finding,
 )
+from .staging_naming import TYPE_FLAGS
 
 MODEL = ("core", "mart")
 STAGING = ("staging",)
@@ -174,8 +175,11 @@ def table_inputs(table: DesignTable, design: Design) -> Inputs:
             unparsed.append(f"{where}: {parts}")
             continue
         for name in parts.tables:
+            # A name that is no DW table may be a CTE or a derived table: only the columns
+            # read through it are checked, not the name itself.
             t, _ = _resolve(ColumnRef(name, ""), table.layer, design)
-            read.append(Input(name, where, t, None, whole_table=True))
+            if t is not None:
+                read.append(Input(name, where, t, None, whole_table=True))
         add(parts.refs, where)
     return Inputs(tuple(unparsed), tuple(read))
 
@@ -516,7 +520,11 @@ def _type_label(column: DesignColumn) -> str:
 
 
 def _type_key(column: DesignColumn) -> tuple:
-    return tuple(sorted((k, str(v)) for k, v in column.data_type.items()))
+    """The type as ``_type_label`` shows it: an unset scale is 0, empty fields don't count."""
+    t = dict(column.data_type)
+    if t.get("precision") is not None:
+        t["scale"] = t.get("scale") or 0
+    return tuple(sorted((k, str(v)) for k, v in t.items() if v is not None))
 
 
 @registry.check(
@@ -633,8 +641,8 @@ def mapping_parses(table: DesignTable, design: Design) -> Outcome | None:
     title="All mapped input columns exist",
 )
 def inputs_exist(table: DesignTable, design: Design) -> Outcome | None:
-    if _is_generated(table):
-        return None
+    if _is_generated(table) or table.layer == "staging":
+        return None  # staging reads the Source Schema; a source gone is source_removed
     read = table_inputs(table, design).read
     if not read:
         return None
@@ -671,17 +679,13 @@ def no_source_removed_inputs(table: DesignTable, design: Design) -> Outcome | No
     return PASS
 
 
-_FLAG_FIELDS = {"lossy_type": "data_type", "fallback_type": "data_type"}
-"""The field a review flag is about (the others are about the name)."""
-
-
 def _open_flags(flags, edited_fields) -> list[str]:
     """The flags not yet resolved: a flag is resolved once the user overrides the field it
     is about."""
     return [
         str(f.get("message") or f.get("code"))
         for f in flags
-        if _FLAG_FIELDS.get(str(f.get("code")), "name") not in edited_fields
+        if ("data_type" if f.get("code") in TYPE_FLAGS else "name") not in edited_fields
     ]
 
 
@@ -804,7 +808,7 @@ def fact_width(table: DesignTable, design: Design) -> Outcome:
     category="privacy",
     severity="info",
     layers=("mart",),
-    hint="Leave the PII out of the Mart, hash it in staging, or record a handling note.",
+    hint="Leave the PII out of the Mart, or hash it in staging if the Mart needs it.",
     title="PII-derived columns reach the mart Layer",
 )
 def pii_in_mart(table: DesignTable, design: Design) -> Outcome:
