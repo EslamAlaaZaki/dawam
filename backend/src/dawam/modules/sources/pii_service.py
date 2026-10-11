@@ -285,3 +285,72 @@ def confirmed_pii_column_ids(db: Session, workspace_id: uuid.UUID) -> set[uuid.U
             )
         )
     )
+
+
+@dataclass(frozen=True)
+class ConfirmedPiiColumn:
+    id: uuid.UUID
+    system_code: str
+    db_schema: str
+    table: str
+    column: str
+    category: str
+    """The column's PII category, else its confirmed finding's."""
+    rules: list[str]
+    """The rules whose findings are confirmed."""
+    reviewer_id: uuid.UUID | None
+    """Who made the latest confirming decision."""
+    reviewed_at: datetime | None
+
+
+def confirmed_pii_columns(db: Session, workspace_id: uuid.UUID) -> list[ConfirmedPiiColumn]:
+    """The Workspace's source columns with a ``confirmed`` PII finding, by system, schema,
+    table and column; in the caller's session (no permission check). The PII inventory."""
+    rows = db.execute(
+        sa.select(
+            PiiFindingRecord,
+            SrcColumnRecord,
+            SrcTableRecord.name,
+            SrcDbSchemaRecord.name,
+            SourceSystemRecord.code,
+        )
+        .join(SrcColumnRecord, SrcColumnRecord.id == PiiFindingRecord.src_column_id)
+        .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+        .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+        .join(SourceSystemRecord, SourceSystemRecord.id == SrcDbSchemaRecord.source_system_id)
+        .where(
+            PiiFindingRecord.status == "confirmed",
+            SrcColumnRecord.status != "deleted",
+            SourceSystemRecord.workspace_id == workspace_id,
+        )
+        .order_by(
+            SourceSystemRecord.code,
+            SrcDbSchemaRecord.name,
+            SrcTableRecord.name,
+            SrcColumnRecord.name,
+            PiiFindingRecord.rule,
+        )
+    ).all()
+    grouped: dict[uuid.UUID, list[tuple]] = {}
+    for row in rows:
+        grouped.setdefault(row[1].id, []).append(row)
+    result = []
+    for group in grouped.values():
+        _, column, table, db_schema, code = group[0]
+        findings = [row[0] for row in group]
+        decided = [f for f in findings if f.decided_at is not None]
+        latest = max(decided, key=lambda f: f.decided_at) if decided else None
+        result.append(
+            ConfirmedPiiColumn(
+                id=column.id,
+                system_code=code,
+                db_schema=db_schema,
+                table=table,
+                column=column.name,
+                category=column.pii_category or findings[0].category,
+                rules=[f.rule for f in findings],
+                reviewer_id=latest.decided_by if latest else None,
+                reviewed_at=latest.decided_at if latest else None,
+            )
+        )
+    return result

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
+from dawam.modules.lineage import InventoryFormatParam, PiiInventoryServiceDep
 from dawam.modules.sources import DataDictionaryServiceDep, SourceSystemService
 from dawam.modules.warehouse import (
     DataWarehouseService,
@@ -200,6 +201,27 @@ def save_score_report(
     report = exports.export(user, workspace_id, fmt=format)
     return _out(
         files.save_generated_to_warehouse(user, workspace_id, name=report.name, data=report.data)
+    )
+
+
+@router.post(
+    "/data-warehouse/files/pii-inventory", operation_id="savePiiInventory", status_code=201
+)
+def save_pii_inventory(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    files: FileServiceDep,
+    inventories: PiiInventoryServiceDep,
+    format: InventoryFormatParam = "xlsx",
+) -> WorkspaceFile:
+    """Export the PII inventory into the Data Warehouse's file area as
+    `pii-inventory.<format>`, overwriting the previous one (owners and editors). 404 before
+    the Data Warehouse is set up."""
+    inventory = inventories.export(user, workspace_id, fmt=format)
+    return _out(
+        files.save_generated_to_warehouse(
+            user, workspace_id, name=inventory.name, data=inventory.data
+        )
     )
 
 

@@ -2664,6 +2664,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/pii/inventory/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Pii Inventory
+         * @description The PII inventory (any member): the confirmed PII source columns and the DW columns
+         *     they feed, with category, hashing (`pseudonymised` or `not hashed`), handling note and
+         *     reviewer, never values. PII-influenced tables are listed on their own sheet or section.
+         *     To keep a copy, save it to the file area with
+         *     `POST .../data-warehouse/files/pii-inventory`.
+         */
+        get: operations["downloadPiiInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/comments": {
         parameters: {
             query?: never;
@@ -2843,6 +2867,28 @@ export interface paths {
          *     the Data Warehouse is set up.
          */
         post: operations["saveScoreReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/pii-inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Pii Inventory
+         * @description Export the PII inventory into the Data Warehouse's file area as
+         *     `pii-inventory.<format>`, overwriting the previous one (owners and editors). 404 before
+         *     the Data Warehouse is set up.
+         */
+        post: operations["savePiiInventory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15274,6 +15320,50 @@ export interface operations {
             };
         };
     };
+    downloadPiiInventory: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (three sheets) or `md` (Markdown tables). */
+                format?: "xlsx" | "md";
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PII inventory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                    "text/markdown; charset=utf-8": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listComments: {
         parameters: {
             query: {
@@ -15668,6 +15758,49 @@ export interface operations {
             query?: {
                 /** @description `md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks). */
                 format?: "md" | "xlsx";
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    savePiiInventory: {
+        parameters: {
+            query?: {
+                /** @description `xlsx` (three sheets) or `md` (Markdown tables). */
+                format?: "xlsx" | "md";
             };
             header?: never;
             path: {
