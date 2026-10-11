@@ -2610,6 +2610,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/kpis/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Suggestions
+         * @description The rule-based KPI suggestions for the DW Schema (any member), by name: a computed
+         *     list, not KPIs. Sums and averages of additive measures, distinct counts of dimension
+         *     keys, ratios of measures, and month-over-month and year-over-year growth, with formula SQL.
+         *     Measures that trace to the same Core measure are one suggestion; dismissed and accepted
+         *     ones are left out. Empty before the Data Warehouse is set up.
+         */
+        get: operations["listKpiSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/kpis/suggestions/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Suggestion
+         * @description Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with
+         *     `origin` `rule`, its formula SQL and links. 404 if no such suggestion is open.
+         */
+        post: operations["acceptKpiSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/kpis/suggestions/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Suggestion
+         * @description Hide a suggestion for good (owners and editors). 404 if there is no such suggestion.
+         */
+        post: operations["dismissKpiSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}": {
         parameters: {
             query?: never;
@@ -2660,6 +2725,27 @@ export interface paths {
          *     `invalid_kpi_link`.
          */
         put: operations["setKpiLinks"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/feasibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feasibility
+         * @description Whether the KPI (a rule or an AI suggestion, or any other) can be computed from the
+         *     DW Schema (any member): `computable`, `needs_mapping` or `needs_data`.
+         */
+        get: operations["getKpiFeasibility"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -5904,6 +5990,20 @@ export interface components {
              */
             updated_at: string;
         };
+        /** KpiFeasibility */
+        KpiFeasibility: {
+            /**
+             * Feasibility
+             * @description `computable`: every input exists and is mapped; `needs_mapping`: they exist but some are unmapped; `needs_data`: some are missing from the DW Schema.
+             * @enum {string}
+             */
+            feasibility: "computable" | "needs_mapping" | "needs_data";
+            /**
+             * Unmapped
+             * @description `table.column` of the inputs no mapping fills.
+             */
+            unmapped: string[];
+        };
         /** KpiLink */
         KpiLink: {
             /**
@@ -5955,6 +6055,55 @@ export interface components {
              * @enum {string}
              */
             status: "not_started" | "in_progress" | "complete";
+        };
+        /** KpiSuggestion */
+        KpiSuggestion: {
+            /**
+             * Key
+             * @description Stable across renames and a measure moving from Core to Mart; send it to accept or dismiss the suggestion.
+             */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sum" | "avg" | "count_distinct" | "ratio" | "mom_growth" | "yoy_growth";
+            /** Name */
+            name: string;
+            /** Definition */
+            definition: string;
+            /** Formula Text */
+            formula_text: string;
+            /**
+             * Formula Sql
+             * @description Written against the DW Schema.
+             */
+            formula_sql: string;
+            /** Aggregation */
+            aggregation: string;
+            /**
+             * Layer
+             * @description The Layer of the fact it reads.
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Ids
+             * @description The DW columns the KPI will link to.
+             */
+            column_ids: string[];
+            /**
+             * Feasibility
+             * @enum {string}
+             */
+            feasibility: "computable" | "needs_mapping" | "needs_data";
+        };
+        /** KpiSuggestions */
+        KpiSuggestions: {
+            /** Items */
+            items: components["schemas"]["KpiSuggestion"][];
         };
         /** LayerApproval */
         LayerApproval: {
@@ -8534,6 +8683,11 @@ export interface components {
              * @default 30
              */
             timeout_seconds: number;
+        };
+        /** SuggestionKeyRequest */
+        SuggestionKeyRequest: {
+            /** Key */
+            key: string;
         };
         /** SuspectedPiiColumn */
         SuspectedPiiColumn: {
@@ -15353,6 +15507,132 @@ export interface operations {
             };
         };
     };
+    listKpiSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiSuggestions"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptKpiSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestionKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kpi"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    dismissKpiSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestionKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getKpi: {
         parameters: {
             query?: never;
@@ -15542,6 +15822,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KpiLinks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getKpiFeasibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                kpi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiFeasibility"];
                 };
             };
             /** @description Validation error */

@@ -20,6 +20,7 @@ from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
 from .service import Kpi as KpiView
 from .service import KpiService, KpiTarget
+from .suggestions import RuleSuggestion
 from .tables import (
     AGGREGATION_MAX_LENGTH,
     MAX_LINKS,
@@ -209,6 +210,86 @@ def create_kpi(
     )
 
 
+Feasibility = Literal["computable", "needs_mapping", "needs_data"]
+SuggestionKind = Literal["sum", "avg", "count_distinct", "ratio", "mom_growth", "yoy_growth"]
+
+
+class KpiSuggestion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str = Field(
+        description="Stable across renames and a measure moving from Core to Mart; send it to "
+        "accept or dismiss the suggestion."
+    )
+    kind: SuggestionKind
+    name: str
+    definition: str
+    formula_text: str
+    formula_sql: str = Field(description="Written against the DW Schema.")
+    aggregation: str
+    layer: Literal["core", "mart"] = Field(description="The Layer of the fact it reads.")
+    table_name: str
+    column_ids: list[uuid.UUID] = Field(description="The DW columns the KPI will link to.")
+    feasibility: Feasibility
+
+
+class KpiSuggestions(BaseModel):
+    items: list[KpiSuggestion]
+
+
+class SuggestionKeyRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=200)
+
+
+def _suggestion(suggestion: RuleSuggestion) -> KpiSuggestion:
+    return KpiSuggestion.model_validate(suggestion)
+
+
+@router.get("/suggestions", operation_id="listKpiSuggestions")
+def list_suggestions(
+    workspace_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
+) -> KpiSuggestions:
+    """The rule-based KPI suggestions for the DW Schema (any member), by name: a computed
+    list, not KPIs. Sums and averages of additive measures, distinct counts of dimension
+    keys, ratios of measures, and month-over-month and year-over-year growth, with formula SQL.
+    Measures that trace to the same Core measure are one suggestion; dismissed and accepted
+    ones are left out. Empty before the Data Warehouse is set up."""
+    return KpiSuggestions(items=[_suggestion(s) for s in kpis.rule_suggestions(user, workspace_id)])
+
+
+@router.post("/suggestions/accept", operation_id="acceptKpiSuggestion", status_code=201)
+def accept_suggestion(
+    workspace_id: uuid.UUID, body: SuggestionKeyRequest, user: CurrentUser, kpis: KpiServiceDep
+) -> Kpi:
+    """Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with
+    `origin` `rule`, its formula SQL and links. 404 if no such suggestion is open."""
+    return _out(kpis.accept_suggestion(user, workspace_id, body.key))
+
+
+@router.post(
+    "/suggestions/dismiss",
+    operation_id="dismissKpiSuggestion",
+    status_code=204,
+    response_class=Response,
+)
+def dismiss_suggestion(
+    workspace_id: uuid.UUID, body: SuggestionKeyRequest, user: CurrentUser, kpis: KpiServiceDep
+) -> Response:
+    """Hide a suggestion for good (owners and editors). 404 if there is no such suggestion."""
+    kpis.dismiss_suggestion(user, workspace_id, body.key)
+    return Response(status_code=204)
+
+
+class KpiFeasibility(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    feasibility: Feasibility = Field(
+        description="`computable`: every input exists and is mapped; `needs_mapping`: they "
+        "exist but some are unmapped; `needs_data`: some are missing from the DW Schema."
+    )
+    unmapped: list[str] = Field(description="`table.column` of the inputs no mapping fills.")
+
+
 @router.get("/{kpi_id}", operation_id="getKpi")
 def get_kpi(
     workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
@@ -288,6 +369,15 @@ def set_links(
             user, workspace_id, kpi_id, version=body.version, dw_column_ids=body.dw_column_ids
         )
     )
+
+
+@router.get("/{kpi_id}/feasibility", operation_id="getKpiFeasibility")
+def get_feasibility(
+    workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
+) -> KpiFeasibility:
+    """Whether the KPI (a rule or an AI suggestion, or any other) can be computed from the
+    DW Schema (any member): `computable`, `needs_mapping` or `needs_data`."""
+    return KpiFeasibility.model_validate(kpis.feasibility(user, workspace_id, kpi_id))
 
 
 @router.delete("/{kpi_id}", operation_id="deleteKpi", status_code=204, response_class=Response)

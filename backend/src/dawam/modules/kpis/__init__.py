@@ -15,6 +15,13 @@ Public interface. Other modules import only what is re-exported here:
   holding the measure, stored with ``kpi`` lineage edges; a structural edit of an approved
   KPI returns it to draft. ``link_candidates`` (``LinkCandidates``) lists the KPIs with no
   links or no formula SQL and the DW Schema, for the AI to propose them.
+- ``rule_suggestions`` / ``accept_suggestion`` / ``dismiss_suggestion`` (``RuleSuggestion``):
+  the rule-based KPI suggestions (spec §6.13, story 77): a computed list from the DW Schema
+  (sum and average of additive measures, distinct count of dimension keys, ratios, month-over-
+  month and year-over-year growth; one per Core measure through lineage), each with formula SQL
+  and a feasibility. Accepting one creates a draft KPI (``origin`` ``rule``) with its links;
+  a dismissed one stays hidden. ``feasibility`` (``KpiFeasibility``) tells for any KPI,
+  an AI suggestion included, whether it is *computable*, *needs mapping* or *needs data*.
 - ``kpi_names`` (in the caller's session, no permission check): the names of the given
   KPIs of a Workspace, for the lineage graph's ``kpi`` nodes.
 - ``kpis_for_score`` (in the caller's session, no permission check): the Workspace's KPIs as
@@ -28,9 +35,11 @@ Public interface. Other modules import only what is re-exported here:
   ``KpiPropagationHandler`` is the handler for its ``kpi_formula`` items.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/kpis``,
   ``GET|PATCH|DELETE /workspaces/{workspace_id}/kpis/{kpi_id}``,
-  ``GET|PUT /workspaces/{workspace_id}/kpis/{kpi_id}/links``.
+  ``GET|PUT /workspaces/{workspace_id}/kpis/{kpi_id}/links``,
+  ``GET /workspaces/{workspace_id}/kpis/{kpi_id}/feasibility``,
+  ``GET /workspaces/{workspace_id}/kpis/suggestions`` and ``POST .../suggestions/accept|dismiss``.
 
-Owns the ``kpis`` and ``kpi_links`` tables.
+Owns the ``kpis``, ``kpi_links`` and ``kpi_suggestion_dismissals`` tables.
 """
 
 from .api import router
@@ -40,6 +49,7 @@ from .propagation import KpiPlan, KpiPropagationHandler, plan_kpi_propagation
 from .score_feed import kpis_for_score
 from .service import (
     Kpi,
+    KpiFeasibility,
     KpiLink,
     KpiLinks,
     KpiPage,
@@ -49,9 +59,11 @@ from .service import (
     LinkCandidates,
     SuggestedKpis,
 )
+from .suggestions import RuleSuggestion
 
 __all__ = [
     "Kpi",
+    "KpiFeasibility",
     "KpiLink",
     "KpiLinkHandler",
     "KpiLinks",
@@ -62,6 +74,7 @@ __all__ = [
     "KpiSuggestion",
     "KpiTarget",
     "LinkCandidates",
+    "RuleSuggestion",
     "SuggestedKpis",
     "kpi_names",
     "kpis_for_score",

@@ -9509,6 +9509,181 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/kpis/suggestions": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "List Suggestions",
+        "description": "The rule-based KPI suggestions for the DW Schema (any member), by name: a computed\nlist, not KPIs. Sums and averages of additive measures, distinct counts of dimension\nkeys, ratios of measures, and month-over-month and year-over-year growth, with formula SQL.\nMeasures that trace to the same Core measure are one suggestion; dismissed and accepted\nones are left out. Empty before the Data Warehouse is set up.",
+        "operationId": "listKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiSuggestions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/suggestions/accept": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Accept Suggestion",
+        "description": "Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with\n`origin` `rule`, its formula SQL and links. 404 if no such suggestion is open.",
+        "operationId": "acceptKpiSuggestion",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/suggestions/dismiss": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Dismiss Suggestion",
+        "description": "Hide a suggestion for good (owners and editors). 404 if there is no such suggestion.",
+        "operationId": "dismissKpiSuggestion",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}": {
       "get": {
         "tags": [
@@ -9809,6 +9984,70 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/KpiLinks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/feasibility": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Get Feasibility",
+        "description": "Whether the KPI (a rule or an AI suggestion, or any other) can be computed from the\nDW Schema (any member): `computable`, `needs_mapping` or `needs_data`.",
+        "operationId": "getKpiFeasibility",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiFeasibility"
                 }
               }
             }
@@ -18705,6 +18944,34 @@
         ],
         "title": "Kpi"
       },
+      "KpiFeasibility": {
+        "properties": {
+          "feasibility": {
+            "type": "string",
+            "enum": [
+              "computable",
+              "needs_mapping",
+              "needs_data"
+            ],
+            "title": "Feasibility",
+            "description": "`computable`: every input exists and is mapped; `needs_mapping`: they exist but some are unmapped; `needs_data`: some are missing from the DW Schema."
+          },
+          "unmapped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmapped",
+            "description": "`table.column` of the inputs no mapping fills."
+          }
+        },
+        "type": "object",
+        "required": [
+          "feasibility",
+          "unmapped"
+        ],
+        "title": "KpiFeasibility"
+      },
       "KpiLink": {
         "properties": {
           "dw_column_id": {
@@ -18817,6 +19084,110 @@
           "status"
         ],
         "title": "KpiProgress"
+      },
+      "KpiSuggestion": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Stable across renames and a measure moving from Core to Mart; send it to accept or dismiss the suggestion."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "avg",
+              "count_distinct",
+              "ratio",
+              "mom_growth",
+              "yoy_growth"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "definition": {
+            "type": "string",
+            "title": "Definition"
+          },
+          "formula_text": {
+            "type": "string",
+            "title": "Formula Text"
+          },
+          "formula_sql": {
+            "type": "string",
+            "title": "Formula Sql",
+            "description": "Written against the DW Schema."
+          },
+          "aggregation": {
+            "type": "string",
+            "title": "Aggregation"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer",
+            "description": "The Layer of the fact it reads."
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Column Ids",
+            "description": "The DW columns the KPI will link to."
+          },
+          "feasibility": {
+            "type": "string",
+            "enum": [
+              "computable",
+              "needs_mapping",
+              "needs_data"
+            ],
+            "title": "Feasibility"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "name",
+          "definition",
+          "formula_text",
+          "formula_sql",
+          "aggregation",
+          "layer",
+          "table_name",
+          "column_ids",
+          "feasibility"
+        ],
+        "title": "KpiSuggestion"
+      },
+      "KpiSuggestions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KpiSuggestion"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "KpiSuggestions"
       },
       "LayerApproval": {
         "properties": {
@@ -24462,6 +24833,21 @@
           "table_ids"
         ],
         "title": "StartProfilingRequest"
+      },
+      "SuggestionKeyRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "SuggestionKeyRequest"
       },
       "SuspectedPiiColumn": {
         "properties": {

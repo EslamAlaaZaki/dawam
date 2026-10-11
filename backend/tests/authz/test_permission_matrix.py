@@ -24,6 +24,7 @@ from tests.authz.matrix import (
     credentials_of,
     describe,
     dw_column_id,
+    dw_table_id,
     ensure_data_warehouse,
     linked_file_id,
     outcome_of,
@@ -185,6 +186,27 @@ def member_user(roles: RoleClients, role: Role):
     """The role's user, who becomes a member of the Workspace once its client exists."""
     roles.client(role)
     return roles.user(role)
+
+
+def _suggestion_key(roles: RoleClients) -> str:
+    """The key of a rule-based KPI suggestion: a Core fact with an additive measure."""
+    owner = roles.client("owner")
+    base = f"/api/v1/workspaces/{roles.workspace_id}"
+    table = dw_table_id(roles)
+    path = f"{base}/data-warehouse/tables/{table}"
+    if not any(c["name"] == "revenue" for c in owner.get(path).json()["columns"]):
+        response = owner.post(
+            f"{path}/columns",
+            json={
+                "name": "revenue",
+                "data_type": {"type": "integer"},
+                "role": "measure",
+                "additivity": "additive",
+            },
+        )
+        assert response.status_code == 201, response.text
+    items = owner.get(f"{base}/kpis/suggestions").json()["items"]
+    return next(s["key"] for s in items if s["kind"] == "sum")
 
 
 ROWS: list[Row] = [
@@ -1033,6 +1055,32 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}",
         "Edit KPIs (delete one)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/kpis/suggestions",
+        "Open Workspace content (rule-based KPI suggestions)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/kpis/suggestions/accept",
+        "Edit KPIs (accept a suggestion)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"key": _suggestion_key(roles)},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/kpis/suggestions/dismiss",
+        "Edit KPIs (dismiss a suggestion)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"key": _suggestion_key(roles)},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/feasibility",
+        "Open Workspace content (a KPI's feasibility)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
     # Change Sets (stories 147, 148; §4.3 "Accept / reject Change Set items").
     Row(
