@@ -13299,6 +13299,127 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/documentation-pack": {
+      "get": {
+        "tags": [
+          "documentation-pack"
+        ],
+        "summary": "Download Documentation Pack",
+        "description": "The documentation pack (any member, also in an archived Workspace): Source Schemas,\nthe DW Schema per Layer, mappings, KPIs and a lineage summary. `zip` holds one Markdown\npage per Source System, Layer and topic with a `README.md`; `html` is the same content in\none self-contained file. Metadata only, never row values. To keep a copy, save it to\nthe file area with `POST .../data-warehouse/files/documentation-pack`.",
+        "operationId": "downloadDocumentationPack",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "zip",
+                "html"
+              ],
+              "type": "string",
+              "description": "`zip` (Markdown files) or `html` (a single self-contained file).",
+              "default": "zip",
+              "title": "Format"
+            },
+            "description": "`zip` (Markdown files) or `html` (a single self-contained file)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The documentation pack.",
+            "content": {
+              "application/zip": {},
+              "text/html": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/documentation-pack": {
+      "post": {
+        "tags": [
+          "documentation-pack"
+        ],
+        "summary": "Save Documentation Pack",
+        "description": "Save the documentation pack into the Data Warehouse's file area as one Markdown file,\n`documentation-pack.md` (owners and editors), overwriting the previous one. The file\narea holds no HTML or zip, so download those. 404 before the Data Warehouse is set up;\nrefused in an archived Workspace.",
+        "operationId": "saveDocumentationPack",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedPack"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -21419,6 +21540,31 @@
           "mapping_type"
         ],
         "title": "SaveColumnMappingRequest"
+      },
+      "SavedPack": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Bytes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size"
+        ],
+        "title": "SavedPack"
       },
       "Score": {
         "properties": {
