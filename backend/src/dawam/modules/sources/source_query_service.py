@@ -59,7 +59,7 @@ from .internal.connector import (
     connector_for,
 )
 from .internal.pii import load_rule_set, scan_columns
-from .internal.query_guard import Rejected, cap_rows, check_query
+from .internal.query_guard import Rejected, cap_rows, check_query, count_ordinals
 from .internal.query_guard_catalog import load_guard_catalog
 from .tables import (
     ConnectionRecord,
@@ -127,6 +127,9 @@ class SourceQueryResult:
     can_write: bool | None
     """The Connection user could change data at its last test (warn the member)."""
     new_findings: int = field(default=0)
+    count_ordinals: tuple[int, ...] = ()
+    """The unmasked output columns that are a bare ``COUNT(...)``: numbers that may be kept
+    as evidence (spec §6.8: raw results are never persisted, counts are not values)."""
 
 
 class SourceQueryService:
@@ -284,6 +287,11 @@ class SourceQueryService:
             duration_ms=round((self._timer() - started) * 1000),
             can_write=can_write,
             new_findings=written,
+            count_ordinals=tuple(
+                i
+                for i in count_ordinals(checked.sql, engine=engine_name)
+                if i not in masked and i < len(names)
+            ),
         )
 
     def _name_scan(self, db: Session, workspace_id: uuid.UUID, snapshot_id: uuid.UUID) -> None:

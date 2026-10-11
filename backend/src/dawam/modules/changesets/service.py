@@ -789,8 +789,10 @@ class ChangeSetService:
         now: datetime,
     ) -> None:
         handler = self._handlers.get(item.object_type)
+        # A handler that records who decided (``wants_actor``) is told the accepting user.
+        extra = {"actor_id": user.id} if getattr(handler, "wants_actor", False) else {}
         applied = handler.apply(
-            db, record.workspace_id, item.operation, item.object_id, item.payload, at=now
+            db, record.workspace_id, item.operation, item.object_id, item.payload, at=now, **extra
         )
         if applied.old == applied.new:  # the object already had these values
             return

@@ -475,6 +475,7 @@ METADATA_TOOLS = {
     "evaluate_dw",
     "explain_check",
     "get_lineage",
+    "get_relationships",
 }
 LEVELS = [
     ("metadata", METADATA_TOOLS),
