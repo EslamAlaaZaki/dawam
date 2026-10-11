@@ -50,6 +50,7 @@ from .lineage_sql import (
 )
 from .schema_reader import SchemaColumn, describe_columns
 from .tables import (
+    DELETED,
     ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -212,6 +213,7 @@ class _Planner:
                     .where(
                         DwTableRecord.data_warehouse_id == self.warehouse.id,
                         DwTableRecord.layer == layer,
+                        DwTableRecord.status != DELETED,
                     )
                     .order_by(DwTableRecord.name, DwColumnRecord.ordinal, ColumnMappingRecord.id)
                 )
@@ -232,6 +234,7 @@ class _Planner:
                     .where(
                         DwTableRecord.data_warehouse_id == self.warehouse.id,
                         DwTableRecord.layer == layer,
+                        DwTableRecord.status != DELETED,
                     )
                     .order_by(DwTableRecord.name, MappingBranchRecord.ordinal)
                 )

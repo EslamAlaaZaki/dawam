@@ -35,7 +35,9 @@ function workspace(role: WorkspaceRole): Workspace {
     permissions:
       role === "viewer"
         ? ["workspace.view"]
-        : ["dw_schema.edit", "workspace.view"],
+        : role === "owner"
+          ? ["dw_schema.edit", "objects.delete", "workspace.view"]
+          : ["dw_schema.edit", "workspace.view"],
     status: "active",
     archived_at: null,
     require_distinct_approver: false,
@@ -468,7 +470,7 @@ describe("editing a table", () => {
 
   it("deletes a column and a table", async () => {
     const requests = renderApp(
-      backend("editor", [CUSTOMER], (r) =>
+      backend("owner", [CUSTOMER], (r) =>
         r.method === "DELETE" ? noContent() : undefined,
       ),
       `${PATH}?folder=dw/core/model`,
@@ -497,6 +499,23 @@ describe("editing a table", () => {
         requests.filter((r) => r.method === "DELETE").map((r) => r.path),
       ).toContain(`${TABLES}/${CUSTOMER.id}`),
     );
+  });
+
+  it("offers deleting a table to owners only", async () => {
+    renderApp(backend("editor", [CUSTOMER]), `${PATH}?folder=dw/core/model`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "dim_customer" }),
+    );
+    const details = await screen.findByRole("region", {
+      name: "Table dim_customer",
+    });
+    expect(
+      within(details).getByRole("button", { name: "Delete dim_customer_key" }),
+    ).toBeTruthy();
+    expect(
+      within(details).queryByRole("button", { name: "Delete table" }),
+    ).toBeNull();
   });
 
   it("saves a table's changes with its version", async () => {

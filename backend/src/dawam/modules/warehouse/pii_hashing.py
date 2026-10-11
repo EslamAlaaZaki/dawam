@@ -29,7 +29,13 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .platforms import TargetPlatform
-from .tables import ColumnMappingRecord, DataWarehouseRecord, DwColumnRecord, DwTableRecord
+from .tables import (
+    DELETED,
+    ColumnMappingRecord,
+    DataWarehouseRecord,
+    DwColumnRecord,
+    DwTableRecord,
+)
 
 SALT_PLACEHOLDER = ":pii_salt"
 """The bind parameter the loading process fills with the salt; never a value."""
@@ -199,6 +205,7 @@ class PiiHashingService:
             .where(
                 DwColumnRecord.id == column_id,
                 DwTableRecord.layer == "staging",
+                DwTableRecord.status != DELETED,
                 DwColumnRecord.source_column_id.is_not(None),
                 DataWarehouseRecord.workspace_id == workspace_id,
             )

@@ -3,6 +3,7 @@
 import type { FormEvent } from "react";
 
 import { ApiError } from "../api/client";
+import { useDeleteSourceSystem } from "../api/deletions";
 import {
   useCreateSourceSystem,
   useUpdateSourceSystem,
@@ -244,7 +245,32 @@ export function SystemDetails({
         <button type="submit" disabled={update.isPending}>
           Save
         </button>
+        {allows(workspace, "objects.delete") && (
+          <DeleteSystemButton workspaceId={workspace.id} system={system} />
+        )}
       </div>
     </form>
+  );
+}
+
+/** Soft-delete (owners only): the system moves to the deleted list until purged there. */
+function DeleteSystemButton({ workspaceId, system }: { workspaceId: string; system: SourceSystem }) {
+  const remove = useDeleteSourceSystem(workspaceId, system.id);
+  return (
+    <>
+      <button
+        type="button"
+        className="secondary"
+        disabled={remove.isPending}
+        onClick={() => remove.mutate()}
+      >
+        Delete Source System
+      </button>
+      {remove.isError && (
+        <p className="form-error" role="alert">
+          {remove.error.message}
+        </p>
+      )}
+    </>
   );
 }

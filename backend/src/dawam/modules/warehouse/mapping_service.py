@@ -49,6 +49,7 @@ from .propagation import StructuralChange, StructuralChangeHook, notify_structur
 from .score_trigger import touch
 from .tables import (
     BRANCH_NAME_MAX_LENGTH,
+    DELETED,
     MAPPING_TEXT_MAX_LENGTH,
     MAPPING_TYPES,
     ColumnMappingRecord,
@@ -245,6 +246,7 @@ class MappingService:
                 .where(
                     DwTableRecord.data_warehouse_id == warehouse.id,
                     DwTableRecord.layer.in_(tuple(SOURCE_LAYER)),
+                    DwTableRecord.status != DELETED,
                 )
                 .order_by(DwTableRecord.layer, DwTableRecord.name, DwTableRecord.id)
             )
@@ -655,7 +657,9 @@ class MappingService:
         known = set(
             db.scalars(
                 sa.select(sa.func.lower(DwTableRecord.name)).where(
-                    DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer == layer
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.layer == layer,
+                    DwTableRecord.status != DELETED,
                 )
             )
         )
@@ -904,6 +908,7 @@ class MappingService:
                 .where(
                     DwTableRecord.data_warehouse_id == warehouse.id,
                     DwTableRecord.layer == layer,
+                    DwTableRecord.status != DELETED,
                     sa.func.lower(DwTableRecord.name).in_(
                         {r.table.lower() for r in refs if r.table}
                     ),
@@ -1040,7 +1045,9 @@ class MappingService:
         lock: bool = False,
     ) -> DwTableRecord:
         query = sa.select(DwTableRecord).where(
-            DwTableRecord.id == table_id, DwTableRecord.data_warehouse_id == warehouse.id
+            DwTableRecord.id == table_id,
+            DwTableRecord.data_warehouse_id == warehouse.id,
+            DwTableRecord.status != DELETED,
         )
         if lock:
             query = query.with_for_update()

@@ -2628,7 +2628,7 @@
           "data-warehouse-model"
         ],
         "summary": "Delete Table",
-        "description": "Delete a table and its columns (editors and owners). 409 `table_referenced` while\nanother table's foreign key points at it.",
+        "description": "Soft-delete a table (owners only): only the table is marked deleted, hidden from the\nmodel and the score, and listed under `GET /workspaces/{workspace_id}/deleted` until an\nowner confirms the permanent delete there. 409 `table_referenced` while another table's\nforeign key points at it.",
         "operationId": "deleteDwTable",
         "parameters": [
           {
@@ -5136,6 +5136,61 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Delete Source System",
+        "description": "Soft-delete a Source System (owners only). Only the system is marked deleted; it is\nlisted under ``GET /workspaces/{workspace_id}/deleted`` until an owner confirms the\npermanent delete there.",
+        "operationId": "deleteSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation error",
@@ -14048,6 +14103,298 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/deleted": {
+      "get": {
+        "tags": [
+          "deletions"
+        ],
+        "summary": "List Deleted",
+        "description": "The soft-deleted Source Systems and DW tables (any member).",
+        "operationId": "listDeletedObjects",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedObjects"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/deleted/systems/{system_id}": {
+      "get": {
+        "tags": [
+          "deletions"
+        ],
+        "summary": "Get System Deletion",
+        "description": "Everything purging a deleted Source System takes with it (owners only).",
+        "operationId": "getSourceSystemDeletion",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSystemDeletion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "deletions"
+        ],
+        "summary": "Purge System",
+        "description": "Delete a deleted Source System for good (owners only).",
+        "operationId": "purgeSourceSystem",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/deleted/tables/{dw_table_id}": {
+      "get": {
+        "tags": [
+          "deletions"
+        ],
+        "summary": "Get Table Deletion",
+        "description": "Everything purging a deleted DW table takes with it (owners only).",
+        "operationId": "getDwTableDeletion",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DwTableDeletion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "deletions"
+        ],
+        "summary": "Purge Table",
+        "description": "Delete a deleted DW table for good (owners only).",
+        "operationId": "purgeDwTable",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dw_table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dw Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14097,6 +14444,7 @@
           "data_warehouse.change_platform",
           "dw_schema.edit",
           "dw_schema.retire_staging",
+          "objects.delete",
           "source_system.create",
           "source_system.edit",
           "source_system.change_code",
@@ -15004,6 +15352,42 @@
           "driving_input"
         ],
         "title": "BranchRequest"
+      },
+      "BrokenBranch": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Branch Id"
+          },
+          "branch_name": {
+            "type": "string",
+            "title": "Branch Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "layer",
+          "branch_id",
+          "branch_name"
+        ],
+        "title": "BrokenBranch",
+        "description": "A mapping branch that reads what goes: it stays, and becomes broken."
       },
       "BuiltInPiiRule": {
         "properties": {
@@ -17235,6 +17619,101 @@
         ],
         "title": "DeleteWorkspaceRequest"
       },
+      "DeletedDwTable": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "layer",
+          "name",
+          "kind",
+          "column_count",
+          "deleted_at"
+        ],
+        "title": "DeletedDwTable"
+      },
+      "DeletedObjects": {
+        "properties": {
+          "systems": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedSourceSystem"
+            },
+            "type": "array",
+            "title": "Systems"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedDwTable"
+            },
+            "type": "array",
+            "title": "Tables"
+          }
+        },
+        "type": "object",
+        "required": [
+          "systems",
+          "tables"
+        ],
+        "title": "DeletedObjects"
+      },
+      "DeletedSourceSystem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Not reusable by another Source System until it is purged."
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "code",
+          "deleted_at"
+        ],
+        "title": "DeletedSourceSystem"
+      },
       "DocumentPassage": {
         "properties": {
           "file_id": {
@@ -17680,6 +18159,49 @@
         ],
         "title": "DwTable"
       },
+      "DwTableDeletion": {
+        "properties": {
+          "table": {
+            "$ref": "#/components/schemas/DeletedDwTable"
+          },
+          "column_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Names"
+          },
+          "has_mapping": {
+            "type": "boolean",
+            "title": "Has Mapping"
+          },
+          "broken_branches": {
+            "items": {
+              "$ref": "#/components/schemas/BrokenBranch"
+            },
+            "type": "array",
+            "title": "Broken Branches"
+          },
+          "unlinked_kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiRef"
+            },
+            "type": "array",
+            "title": "Unlinked Kpis",
+            "description": "KPIs that lose their links to its columns."
+          }
+        },
+        "type": "object",
+        "required": [
+          "table",
+          "column_names",
+          "has_mapping",
+          "broken_branches",
+          "unlinked_kpis"
+        ],
+        "title": "DwTableDeletion",
+        "description": "What purging a deleted DW table does, for the owner to confirm."
+      },
       "DwTableList": {
         "properties": {
           "items": {
@@ -18093,6 +18615,30 @@
           "items"
         ],
         "title": "FileObjectLinkList"
+      },
+      "FileRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "is_document": {
+            "type": "boolean",
+            "title": "Is Document"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "is_document"
+        ],
+        "title": "FileRef"
       },
       "Finding": {
         "properties": {
@@ -19084,6 +19630,25 @@
           "status"
         ],
         "title": "KpiProgress"
+      },
+      "KpiRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "KpiRef"
       },
       "KpiSuggestion": {
         "properties": {
@@ -24395,6 +24960,91 @@
         ],
         "title": "SourceSystem"
       },
+      "SourceSystemDeletion": {
+        "properties": {
+          "system": {
+            "$ref": "#/components/schemas/DeletedSourceSystem"
+          },
+          "db_schema_count": {
+            "type": "integer",
+            "title": "Db Schema Count"
+          },
+          "table_count": {
+            "type": "integer",
+            "title": "Table Count"
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "routine_count": {
+            "type": "integer",
+            "title": "Routine Count"
+          },
+          "snapshot_count": {
+            "type": "integer",
+            "title": "Snapshot Count"
+          },
+          "staging_tables": {
+            "items": {
+              "$ref": "#/components/schemas/StagingTableRef"
+            },
+            "type": "array",
+            "title": "Staging Tables"
+          },
+          "broken_branches": {
+            "items": {
+              "$ref": "#/components/schemas/BrokenBranch"
+            },
+            "type": "array",
+            "title": "Broken Branches"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileRef"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "source_link_count": {
+            "type": "integer",
+            "title": "Source Link Count"
+          },
+          "rehomed_kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiRef"
+            },
+            "type": "array",
+            "title": "Rehomed Kpis",
+            "description": "Linked to DW columns: moved to the Data Warehouse."
+          },
+          "deleted_kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiRef"
+            },
+            "type": "array",
+            "title": "Deleted Kpis",
+            "description": "With no DW links: deleted with it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "system",
+          "db_schema_count",
+          "table_count",
+          "column_count",
+          "routine_count",
+          "snapshot_count",
+          "staging_tables",
+          "broken_branches",
+          "files",
+          "source_link_count",
+          "rehomed_kpis",
+          "deleted_kpis"
+        ],
+        "title": "SourceSystemDeletion",
+        "description": "What purging a deleted Source System does, for the owner to confirm."
+      },
       "SourceSystemPage": {
         "properties": {
           "items": {
@@ -24593,6 +25243,31 @@
           "flags"
         ],
         "title": "StagingResult"
+      },
+      "StagingTableRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "has_mapping": {
+            "type": "boolean",
+            "title": "Has Mapping",
+            "description": "Its staging mapping goes with it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "has_mapping"
+        ],
+        "title": "StagingTableRef"
       },
       "StarCard": {
         "properties": {

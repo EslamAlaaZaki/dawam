@@ -252,7 +252,7 @@ def test_a_deleted_staging_table_is_never_proposed_again(warehouse: RoleClients)
     system = add_system(warehouse)
     staged(warehouse, system, {"customers": CUSTOMER, "orders": [("id", "integer")]})
     orders = staging_tables(warehouse)["stg_crm_public_orders"]
-    deleted = warehouse.client("editor").delete(f"{base(warehouse)}/tables/{orders['id']}")
+    deleted = warehouse.client("owner").delete(f"{base(warehouse)}/tables/{orders['id']}")
     assert deleted.status_code == 204, deleted.text
 
     proposed = sync(warehouse, system)

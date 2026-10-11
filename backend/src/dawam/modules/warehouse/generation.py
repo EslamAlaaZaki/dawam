@@ -54,6 +54,7 @@ from .model_service import (
 )
 from .platforms import max_identifier_length
 from .tables import (
+    DELETED,
     ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -200,6 +201,7 @@ def _load(db: Session, warehouse: DataWarehouseRecord) -> _Model:
             .where(
                 DwTableRecord.data_warehouse_id == warehouse.id,
                 DwTableRecord.layer.in_(MODEL_LAYERS),
+                DwTableRecord.status != DELETED,
             )
             .order_by(DwTableRecord.layer, sa.func.lower(DwTableRecord.name))
         )
@@ -230,7 +232,11 @@ def _load(db: Session, warehouse: DataWarehouseRecord) -> _Model:
     for table_name, column_name in db.execute(
         sa.select(DwTableRecord.name, DwColumnRecord.name)
         .join(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
-        .where(DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer == "staging")
+        .where(
+            DwTableRecord.data_warehouse_id == warehouse.id,
+            DwTableRecord.layer == "staging",
+            DwTableRecord.status != DELETED,
+        )
     ):
         staging.setdefault(table_name.lower(), set()).add(column_name.lower())
     return _Model(warehouse, tables, columns, handle_of, tombstoned, staging)
@@ -1036,6 +1042,7 @@ def _model_table(
         .where(
             DataWarehouseRecord.workspace_id == workspace_id,
             DwTableRecord.layer.in_(MODEL_LAYERS),
+            DwTableRecord.status != DELETED,
             DwTableRecord.id == object_id,
         )
     )
@@ -1056,6 +1063,7 @@ def _model_column(
         .where(
             DataWarehouseRecord.workspace_id == workspace_id,
             DwTableRecord.layer.in_(MODEL_LAYERS),
+            DwTableRecord.status != DELETED,
             DwColumnRecord.id == object_id,
         )
     )

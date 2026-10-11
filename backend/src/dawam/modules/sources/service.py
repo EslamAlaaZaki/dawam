@@ -278,6 +278,19 @@ class SourceSystemService:
         except IntegrityError as exc:
             raise _integrity_error(exc) from None
 
+    def delete(self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID) -> None:
+        """Soft-delete a Source System (owners only; spec §7 "Soft deletes"): only the
+        system is marked ``deleted``, nothing cascades. It disappears from every list and
+        lookup and keeps its System Code until an owner confirms the permanent delete."""
+        self._workspaces.authorize(user, Action.DELETE_OBJECTS, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            record = self._load(db, workspace_id, system_id, lock=True)
+            record.status = "deleted"
+            record.version += 1
+            record.updated_at = self._clock()
+            db.flush()
+            self._record_activity(db, user, "source_system.deleted", record)
+
     def _load(
         self,
         db: Session,

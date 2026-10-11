@@ -69,6 +69,11 @@ Public interface. Other modules import only what is re-exported here:
   and ``assign_placeholders`` (the stable ``placeholder_no`` of non-Latin names).
   ``source_column_labels`` (in the caller's session, no permission check) names a
   Workspace's source columns ``SYSTEM.schema.table.column`` for the lineage graph.
+- ``SourceSystemService.delete`` soft-deletes a Source System (owners only); for the
+  ``deletions`` module (in the caller's session, no permission check):
+  ``deleted_source_systems`` / ``deleted_source_system`` read the soft-deleted ones,
+  ``source_system_contents`` (``SourceSystemContents``) counts the Source Objects and
+  Snapshots that go with one, and ``purge_source_system`` deletes it for good.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
@@ -85,7 +90,7 @@ Public interface. Other modules import only what is re-exported here:
   ``GET|POST /workspaces/{workspace_id}/pii-rules``, ``PATCH|DELETE .../pii-rules/{rule_id}``,
   ``PATCH .../pii-rules/built-in/{rule_id}``,
   ``GET|POST /workspaces/{workspace_id}/systems``,
-  ``GET|PATCH /workspaces/{workspace_id}/systems/{system_id}``.
+  ``GET|PATCH|DELETE /workspaces/{workspace_id}/systems/{system_id}``.
 
 Owns the ``source_systems`` and ``connections`` tables, the Source Objects
 (``src_db_schemas``, ``src_tables``, ``src_columns``, ``src_routines``) and the Snapshots
@@ -99,6 +104,13 @@ from fastapi import APIRouter
 
 from .api import router as _systems_router
 from .connection_service import Connection, ConnectionService
+from .deletion import (
+    SourceSystemContents,
+    deleted_source_system,
+    deleted_source_systems,
+    purge_source_system,
+    source_system_contents,
+)
 from .dictionary_api import DataDictionaryServiceDep
 from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_changes import SourceEnhancementHandler
@@ -204,6 +216,7 @@ __all__ = [
     "SourceSummary",
     "SourceSummaryService",
     "SourceSystem",
+    "SourceSystemContents",
     "SourceSystemPage",
     "SourceSystemService",
     "StagingColumn",
@@ -215,9 +228,13 @@ __all__ = [
     "check_query",
     "confirmed_pii_column_ids",
     "confirmed_pii_columns",
+    "deleted_source_system",
+    "deleted_source_systems",
     "is_protected",
     "load_guard_catalog",
+    "purge_source_system",
     "router",
     "source_column_labels",
+    "source_system_contents",
     "untraceable_views",
 ]

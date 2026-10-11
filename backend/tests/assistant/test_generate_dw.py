@@ -459,7 +459,7 @@ def test_a_generated_table_a_user_deleted_is_never_proposed_again(
 ):
     model_tables = generate_first(app, services, staged, fake_llm)
     for name in ("core.fact_sales", "core.dim_customer"):
-        response = staged.client("editor").delete(f"{dw(staged)}/tables/{model_tables[name]['id']}")
+        response = staged.client("owner").delete(f"{dw(staged)}/tables/{model_tables[name]['id']}")
         assert response.status_code == 204, response.text
 
     run(app, services, staged, fake_llm, [customer()])

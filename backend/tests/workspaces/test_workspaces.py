@@ -51,6 +51,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
             "job.cancel_own",
             "kpi.edit",
             "layer.approve",
+            "objects.delete",
             "pii.manage_rules",
             "pii.review",
             "source_schema.enhance",

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from dawam.modules.auth import CurrentUser
@@ -171,6 +171,22 @@ def update_source_system(
             technical_owner=body.technical_owner,
         )
     )
+
+
+@router.delete(
+    "/{system_id}", operation_id="deleteSourceSystem", status_code=204, response_class=Response
+)
+def delete_source_system(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    user: CurrentUser,
+    systems: SourceSystemServiceDep,
+) -> Response:
+    """Soft-delete a Source System (owners only). Only the system is marked deleted; it is
+    listed under ``GET /workspaces/{workspace_id}/deleted`` until an owner confirms the
+    permanent delete there."""
+    systems.delete(user, workspace_id, system_id)
+    return Response(status_code=204)
 
 
 # Mounted last: the OpenAPI document lists the Connection routes after the system routes.

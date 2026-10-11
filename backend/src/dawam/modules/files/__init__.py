@@ -33,6 +33,11 @@ Public interface. Other modules import only what is re-exported here:
   ``DELETE .../object-links/{object_type}/{object_id}`` and
   ``GET /workspaces/{workspace_id}/objects/{object_type}/{object_id}/documents``.
 
+- For the ``deletions`` module (in the caller's session, no permission check):
+  ``system_files`` (``SystemFiles``, ``FileRef``) lists what a Source System's permanent
+  delete removes, and ``purge_system_files`` removes it, returning the storage keys to delete
+  once committed.
+
 Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
 ``file_object_links`` tables.
 """
@@ -40,6 +45,7 @@ Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
 from fastapi import APIRouter
 
 from .api import router as _files_router
+from .deletion import FileRef, SystemFiles, purge_system_files, system_files
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .search import (
@@ -68,6 +74,7 @@ __all__ = [
     "EmbeddingModels",
     "FileContent",
     "FileObjectLink",
+    "FileRef",
     "FileService",
     "LinkService",
     "NoDocumentAi",
@@ -75,8 +82,11 @@ __all__ = [
     "RegisteredEmbeddingModels",
     "SourceLink",
     "SourceLinkPage",
+    "SystemFiles",
     "TextFile",
     "WorkspaceFile",
     "WorkspaceFilePage",
+    "purge_system_files",
     "router",
+    "system_files",
 ]

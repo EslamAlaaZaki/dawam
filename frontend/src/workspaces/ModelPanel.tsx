@@ -313,6 +313,8 @@ function TableDetails({
   const table = useDwTable(workspace.id, tableId);
   const removeColumn = useDeleteDwColumn(workspace.id, tableId);
   const removeTable = useDeleteDwTable(workspace.id, tableId);
+  // Deleting a table is a soft delete, for owners only; it is purged from the deleted list.
+  const canDelete = allows(workspace, "objects.delete");
   const [showMappings, setShowMappings] = useState(false);
 
   if (table.isPending) {
@@ -454,16 +456,18 @@ function TableDetails({
             references={references.filter((r) => r.id !== t.id)}
           />
           <div className="form-actions">
-            <button
-              type="button"
-              className="secondary"
-              disabled={removeTable.isPending}
-              onClick={() =>
-                removeTable.mutate(undefined, { onSuccess: onClose })
-              }
-            >
-              Delete table
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={removeTable.isPending}
+                onClick={() =>
+                  removeTable.mutate(undefined, { onSuccess: onClose })
+                }
+              >
+                Delete table
+              </button>
+            )}
             <button type="button" className="secondary" onClick={onClose}>
               Close
             </button>

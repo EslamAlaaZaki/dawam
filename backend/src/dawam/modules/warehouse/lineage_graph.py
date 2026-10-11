@@ -17,7 +17,7 @@ from typing import Literal
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from .tables import DataWarehouseRecord, DwColumnRecord, DwTableRecord, LineageEdgeRecord
+from .tables import DELETED, DataWarehouseRecord, DwColumnRecord, DwTableRecord, LineageEdgeRecord
 
 MAX_DEPTH = 64
 """A safety net beside the cycle guard (Layers are three deep), and the deepest walk a
@@ -131,6 +131,7 @@ def lineage_nodes(
     in_workspace = sa.and_(
         DataWarehouseRecord.id == DwTableRecord.data_warehouse_id,
         DataWarehouseRecord.workspace_id == workspace_id,
+        DwTableRecord.status != DELETED,
     )
     nodes: dict[uuid.UUID, LineageNode] = {}
     for column_id, column, table, layer in db.execute(

@@ -673,7 +673,7 @@ def test_a_referenced_dimension_cannot_be_deleted_until_nothing_points_at_it(
         role="fk",
         references_table_id=customer["id"],
     )
-    client = warehouse.client("editor")
+    client = warehouse.client("owner")
 
     blocked = client.delete(f"{base(warehouse)}/tables/{customer['id']}")
     assert blocked.status_code == 409 and code_of(blocked) == "table_referenced"
@@ -778,7 +778,8 @@ def test_an_unknown_table_or_column_is_404(warehouse: RoleClients):
         ).status_code
         == 404
     )
-    assert client.delete(f"{base(warehouse)}/tables/{missing}").status_code == 404
+    owner = warehouse.client("owner")
+    assert owner.delete(f"{base(warehouse)}/tables/{missing}").status_code == 404
 
 
 def test_changes_are_audited_and_visible_in_the_activity_feed(warehouse: RoleClients):
@@ -819,9 +820,9 @@ def test_changes_are_audited_and_visible_in_the_activity_feed(warehouse: RoleCli
     assert column_trail[1].new == {"additivity": "semi_additive"}
 
     clock.advance(timedelta(seconds=1))
-    client.delete(f"{base(warehouse)}/tables/{sales['id']}")
+    warehouse.client("owner").delete(f"{base(warehouse)}/tables/{sales['id']}")
     trail = audit.list(warehouse.workspace_id, entity_type="dw_table", entity_id=sales["id"])
-    assert trail[-1].new is None and trail[-1].old["name"] == "fact_sales"
+    assert trail[-1].old == {"status": "present"} and trail[-1].new == {"status": "deleted"}
 
     feed = warehouse.client("viewer").get(f"/api/v1/workspaces/{warehouse.workspace_id}/activity")
     verbs = [item["verb"] for item in feed.json()["items"]]

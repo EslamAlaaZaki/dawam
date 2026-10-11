@@ -102,6 +102,13 @@ Public interface. Other modules import only what is re-exported here:
   cause; text fields never revoke and staging changes revoke nothing. ``install_approval_clock``
   (the composition root) times those revocations. ``GET .../data-warehouse/approvals`` and
   ``PUT .../approvals/{layer}``.
+- Soft deletes (spec §7): ``ModelService.delete_table`` marks a table ``deleted`` (owners
+  only), hidden from the model, mappings, validation and the score. For the ``deletions``
+  module (in the caller's session, no permission check): ``deleted_dw_tables``
+  (``DeletedDwTable``), ``dw_table_deletion`` / ``purge_dw_table`` (``DwTableDeletion``) read
+  and delete one for good, and ``staging_deletion`` / ``purge_staging`` (``StagingDeletion``,
+  ``DwTableRef``) do the same for a deleted Source System's Staging Tables; the branches
+  reading what goes (``BrokenBranch``) stay, broken.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
@@ -120,6 +127,18 @@ from .approvals import install_clock as install_approval_clock
 from .ddl import ident
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
+from .deletion import (
+    BrokenBranch,
+    DeletedDwTable,
+    DwTableDeletion,
+    DwTableRef,
+    StagingDeletion,
+    deleted_dw_tables,
+    dw_table_deletion,
+    purge_dw_table,
+    purge_staging,
+    staging_deletion,
+)
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
 from .fix_impacts import RENAMED_ENTITY_TYPES, open_impacts
 from .generation import SCOPE as GENERATION_SCOPE
@@ -194,6 +213,7 @@ __all__ = [
     "TARGET_PLATFORMS",
     "AiEvaluation",
     "ApprovalService",
+    "BrokenBranch",
     "ColumnMappingHandler",
     "DataWarehouse",
     "DataWarehouseService",
@@ -202,10 +222,13 @@ __all__ = [
     "DdlPackage",
     "DdlService",
     "DdlServiceDep",
+    "DeletedDwTable",
     "DesignKpi",
     "DwColumnHandler",
     "DwSchema",
+    "DwTableDeletion",
     "DwTableHandler",
+    "DwTableRef",
     "EvaluationService",
     "Finding",
     "FindingItem",
@@ -247,6 +270,7 @@ __all__ = [
     "SheetFormat",
     "SheetLayer",
     "StagingColumnHandler",
+    "StagingDeletion",
     "StagingFlag",
     "StagingResult",
     "StagingService",
@@ -257,7 +281,9 @@ __all__ = [
     "ValidationReport",
     "ValidationService",
     "clear_kpi_edges",
+    "deleted_dw_tables",
     "describe_columns",
+    "dw_table_deletion",
     "ident",
     "install_approval_clock",
     "install_score_recalculation",
@@ -272,12 +298,15 @@ __all__ = [
     "plan_propagation",
     "platform_profile",
     "propagate_pii",
+    "purge_dw_table",
+    "purge_staging",
     "read_mapping_state",
     "read_schema",
     "rename_in_sql",
     "replace_kpi_edges",
     "router",
     "sql_reads",
+    "staging_deletion",
     "touch_score",
     "uninstall_score_recalculation",
 ]
