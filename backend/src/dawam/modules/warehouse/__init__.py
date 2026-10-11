@@ -17,6 +17,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
   sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
   .../data-warehouse/mapping-sheet`` downloads it.
+- ``ScoreExportService``: any member exports the latest score as a Markdown or XLSX report
+  (story 124); ``GET .../data-warehouse/score/report`` downloads it.
 - ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
   (errors: unparsable SQL, GROUP BY gaps; warnings: unmapped columns, a missing integration
   rule, data-type compatibility such as truncation, see ``type_compat``) and reads ``coverage``
@@ -160,6 +162,8 @@ from .schema_reader import (
     read_schema,
     replace_kpi_edges,
 )
+from .score_export import ScoreExportService, ScoreReportFile
+from .score_export_api import ScoreExportServiceDep, ScoreReportFormatQuery
 from .score_service import KpiReader, Score, ScoreService
 from .score_trigger import ScoreScheduler
 from .score_trigger import install as install_score_recalculation
@@ -222,6 +226,10 @@ __all__ = [
     "SchemaColumn",
     "SchemaTable",
     "Score",
+    "ScoreExportService",
+    "ScoreExportServiceDep",
+    "ScoreReportFile",
+    "ScoreReportFormatQuery",
     "ScoreScheduler",
     "ScoreService",
     "SheetFormat",

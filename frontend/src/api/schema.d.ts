@@ -1070,6 +1070,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Score Report
+         * @description The latest score as a report (any member): the overall, per-Layer and per-table
+         *     scores, and every failed check with its severity, object and fix hint. To keep a copy,
+         *     save it to the file area with `POST .../files/score-report`. 404 before the Data
+         *     Warehouse is set up.
+         */
+        get: operations["downloadScoreReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
         parameters: {
             query?: never;
@@ -2889,6 +2912,28 @@ export interface paths {
          *     set up.
          */
         post: operations["saveMappingSheet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/score-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Score Report
+         * @description Export the score report into the Data Warehouse's file area as
+         *     `score-report.<format>`, overwriting the previous one (owners and editors). 404 before
+         *     the Data Warehouse is set up.
+         */
+        post: operations["saveScoreReport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11755,6 +11800,50 @@ export interface operations {
             };
         };
     };
+    downloadScoreReport: {
+        parameters: {
+            query?: {
+                /** @description `md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks). */
+                format?: "md" | "xlsx";
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The score report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown; charset=utf-8": unknown;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listAiEvaluations: {
         parameters: {
             query?: {
@@ -15938,6 +16027,49 @@ export interface operations {
                 format?: "xlsx" | "csv";
                 /** @description One Layer's mappings; omit for Core and Mart. */
                 layer?: ("core" | "mart") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveScoreReport: {
+        parameters: {
+            query?: {
+                /** @description `md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks). */
+                format?: "md" | "xlsx";
             };
             header?: never;
             path: {
