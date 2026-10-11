@@ -37,7 +37,7 @@ from dawam.modules.sources import StagingSystem
 from dawam.modules.workspaces import Action
 from dawam.platform.errors import ApiError
 
-from .platforms import TARGET_PLATFORMS, TargetPlatform
+from .platforms import TARGET_PLATFORMS, TargetPlatform, is_reserved_word, max_identifier_length
 from .propagation import same_type
 from .propagation_handlers import ColumnMappingHandler
 from .service import NamingRules
@@ -234,6 +234,7 @@ def plan_platform_change(
         )
     )
     _retype_staging(db, warehouse, systems, target, plan)
+    _flag_names(db, warehouse, target, plan)
     _transpile_mappings(db, warehouse, current, target, plan)
     _transpile_branches(db, warehouse, current, target, plan)
     return plan
@@ -281,6 +282,49 @@ def _retype_staging(
                 is_conflict="data_type" in (column.edited_fields or []),
             )
         )
+
+
+def _flag_names(
+    db: Session, warehouse: DataWarehouseRecord, target: TargetPlatform, plan: PlatformPlan
+) -> None:
+    """Flag (never rename) staging table and column names the new platform's identifier limit or
+    reserved words would break."""
+    limit = max_identifier_length(target)
+
+    def problem(name: str) -> str | None:
+        if len(name.encode()) > limit:
+            return f"`{name}` is longer than the {limit} bytes {target} allows."
+        if is_reserved_word(target, name):
+            return f"`{name}` is a reserved word on {target}."
+        return None
+
+    tables = db.scalars(
+        sa.select(DwTableRecord)
+        .where(DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer == "staging")
+        .order_by(DwTableRecord.name)
+    )
+    for table in tables:
+        found = problem(table.name)
+        if found:
+            note = ManualNote("dw_table", table.id, table.name, found)
+            plan.manual.append(note)
+            plan.items.append(
+                manual_item(note, table.name, key=f"nt:{table.id}", depends_on=(PLATFORM_KEY,))
+            )
+    columns = db.execute(
+        sa.select(DwColumnRecord, DwTableRecord)
+        .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+        .where(DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer == "staging")
+        .order_by(DwTableRecord.name, DwColumnRecord.ordinal)
+    )
+    for column, table in columns:
+        found = problem(column.name)
+        if found:
+            note = ManualNote("dw_column", column.id, f"{table.name}.{column.name}", found)
+            plan.manual.append(note)
+            plan.items.append(
+                manual_item(note, column.name, key=f"nc:{column.id}", depends_on=(PLATFORM_KEY,))
+            )
 
 
 def _transpile_mappings(

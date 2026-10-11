@@ -10,6 +10,7 @@ whose translation is not one valid SELECT, is flagged "manual" and left as it is
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -69,3 +70,24 @@ def plan_kpi_transpile(
                 )
             )
     return plan
+
+
+def kpi_formulas_check(engine: sa.Engine) -> Callable[[uuid.UUID], bool]:
+    """The ``warehouse`` port: whether a Workspace has a KPI with formula SQL, which a direct
+    platform change would leave in the old dialect."""
+
+    def has_formulas(workspace_id: uuid.UUID) -> bool:
+        with Session(engine) as db:
+            return (
+                db.scalar(
+                    sa.select(KpiRecord.id)
+                    .where(
+                        KpiRecord.workspace_id == workspace_id,
+                        sa.func.length(sa.func.trim(KpiRecord.formula_sql)) > 0,
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
+
+    return has_formulas

@@ -219,3 +219,50 @@ def test_a_platform_change_before_setup_is_refused(roles: RoleClients):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "not_set_up"
+
+
+def test_accepting_a_platform_change_returns_approved_layers_to_draft(warehouse: RoleClients):
+    staged_system(warehouse)
+    approvals = f"{base(warehouse)}/approvals"
+    for layer in ("core", "mart"):
+        moved = warehouse.client("owner").put(f"{approvals}/{layer}", json={"status": "approved"})
+        assert moved.status_code == 200, moved.text
+    proposed = platform_change(warehouse, "sqlserver").json()
+
+    accept(warehouse, proposed["change_set_id"])
+
+    items = warehouse.client("viewer").get(approvals).json()["items"]
+    assert {i["layer"]: i["status"] for i in items} == {"core": "draft", "mart": "draft"}
+
+
+def test_names_the_new_platform_cannot_hold_are_flagged_not_renamed(warehouse: RoleClients):
+    system = add_system(warehouse)
+    seed(warehouse, system, "public", {"customers": [("id", "integer"), ("top", "integer")]})
+    assert generate(warehouse).status_code == 200
+    with warehouse.app.state.engine.begin() as connection:
+        connection.execute(sa.text("update dw_columns set name = 'view' where name = 'top'"))
+
+    proposed = platform_change(warehouse, "oracle").json()
+
+    assert any("view" in note and "reserved" in note for note in proposed["manual"])
+    accept(warehouse, proposed["change_set_id"])
+    table = staging_tables(warehouse)["stg_crm_public_customers"]
+    assert "view" in columns_of(warehouse, table)
+
+
+def test_a_warehouse_with_only_kpi_formulas_cannot_change_platform_directly(
+    warehouse: RoleClients,
+):
+    created = warehouse.client("owner").post(
+        f"/api/v1/workspaces/{warehouse.workspace_id}/kpis",
+        json={"name": "Revenue", "formula_sql": "SELECT 1"},
+    )
+    assert created.status_code == 201, created.text
+    version = warehouse.client("owner").get(base(warehouse)).json()["version"]
+
+    response = warehouse.client("owner").patch(
+        base(warehouse), json={"version": version, "target_platform": "oracle"}
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "use_change_set"

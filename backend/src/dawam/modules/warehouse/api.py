@@ -50,7 +50,10 @@ def data_warehouse_service(request: Request) -> DataWarehouseService:
     state = request.app.state
     clock = state.services.clock
     return DataWarehouseService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        has_formulas=getattr(state, "workspace_has_kpi_formulas", None),
     )
 
 

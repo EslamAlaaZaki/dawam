@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Literal
@@ -205,10 +206,20 @@ class DataWarehouseService:
     """The "Set up Data Warehouse" step and what it records. Every method that acts for
     a user authorizes through the Workspace policy first."""
 
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        has_formulas: Callable[[uuid.UUID], bool] | None = None,
+    ) -> None:
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._has_formulas = has_formulas
+        """``workspace_id`` to whether a KPI holds formula SQL (``warehouse`` cannot read KPIs,
+        so the composition root fills this port)."""
 
     def get(self, user: User, workspace_id: uuid.UUID) -> DataWarehouse | None:
         """The Workspace's Data Warehouse, or ``None`` before it is set up (any member)."""
@@ -293,16 +304,17 @@ class DataWarehouseService:
             current = _view(record)
             if target_platform is not None and target_platform != current.target_platform:
                 self._workspaces.authorize(user, Action.CHANGE_DW_PLATFORM, workspace_id)
-                if db.scalar(
+                has_tables = db.scalar(
                     sa.select(DwTableRecord.id)
                     .where(DwTableRecord.data_warehouse_id == record.id)
                     .limit(1)
-                ):
+                )
+                if has_tables or (self._has_formulas and self._has_formulas(workspace_id)):
                     raise ApiError(
                         409,
                         "use_change_set",
-                        "The Data Warehouse has tables whose types and SQL depend on its "
-                        "platform. Propose the change as a Change Set instead.",
+                        "The Data Warehouse has tables or KPI formulas whose types and SQL depend "
+                        "on its platform. Propose the change as a Change Set instead.",
                     )
             settings = _Settings(
                 target_platform or current.target_platform,
