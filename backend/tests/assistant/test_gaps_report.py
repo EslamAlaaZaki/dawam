@@ -87,3 +87,30 @@ def test_identical_regeneration_changes_nothing(roles, model, fake_llm):
     shown = run(roles, fake_llm, system, content=REPORT)
 
     assert "unchanged" in shown
+
+
+def test_a_path_in_the_name_still_finds_the_existing_report(roles, model, fake_llm):
+    system = add_system(roles)
+    run(roles, fake_llm, system, content=REPORT)
+    call = tool("generate_file", system_id=system, name="Outputs/gaps-report.md", content="new\n")
+    fake_llm.script(Reply(tool_calls=(call,)), Reply(text="done"))
+    owner = roles.client("owner")
+
+    ask(owner, roles, conversation(owner, roles), "Again")
+
+    assert "needs_confirmation" in (fake_llm.calls[-1].messages[-1].content or "")
+    [saved] = files(roles, system)
+    assert content(roles, saved) == REPORT
+
+
+def test_the_existing_report_is_found_behind_a_full_page_of_files(roles, model, fake_llm):
+    system = add_system(roles)
+    url = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system}/files"
+    for i in range(55):
+        sent = roles.client("owner").post(url, files={"file": (f"a{i:02}.md", b"x", "text/plain")})
+        assert sent.status_code in (200, 201), sent.text
+    run(roles, fake_llm, system, content=REPORT)
+
+    shown = run(roles, fake_llm, system, content="changed\n")
+
+    assert "needs_confirmation" in shown

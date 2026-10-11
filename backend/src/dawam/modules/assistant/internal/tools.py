@@ -1160,14 +1160,9 @@ def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     name = redact_text(args.name).strip()
     content = redact_text(args.content)
     files = ctx.services.files
-    existing = next(
-        (
-            f
-            for f in files.list_for_system(ctx.user, ctx.workspace_id, args.system_id).items
-            if f.name == name
-        ),
-        None,
-    )
+    existing = files.find_in_system(ctx.user, ctx.workspace_id, args.system_id, name)
+    if existing is not None:
+        name = existing.name
     if existing is not None and not args.replace:
         # Files are overwritten in place with no history, so the user sees the change first.
         try:

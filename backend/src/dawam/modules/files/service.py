@@ -436,6 +436,24 @@ class FileService:
         area = self._system_area(user, workspace_id, system_id)
         return self._list(workspace_id, area, limit, cursor)
 
+    def find_in_system(
+        self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID, name: str
+    ) -> WorkspaceFile | None:
+        """The file a Source System's file area would store under ``name`` (cleaned as an
+        upload's name is), or ``None``; any member."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        area = self._system_area(user, workspace_id, system_id)
+        with Session(self._engine) as db:
+            record = db.scalars(
+                sa.select(WorkspaceFileRecord).where(
+                    WorkspaceFileRecord.workspace_id == workspace_id,
+                    WorkspaceFileRecord.owner_kind == area.kind,
+                    WorkspaceFileRecord.owner_id == area.owner_id,
+                    WorkspaceFileRecord.path == clean_file_name(name),
+                )
+            ).first()
+            return None if record is None else _view(record)
+
     def list_for_warehouse(
         self,
         user: User,
