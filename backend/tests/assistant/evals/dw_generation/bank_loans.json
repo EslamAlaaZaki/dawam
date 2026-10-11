@@ -1,0 +1,70 @@
+{
+  "name": "bank_loans",
+  "description": "A bank's loan book: customers, branches, loans and monthly balances.",
+  "inputs": {
+    "platform": "sqlserver",
+    "naming_rules": {"case_style": "lower", "dimension_prefix": "dim_", "fact_prefix": "fact_", "bridge_prefix": "bridge_"},
+    "staging": [
+      {"name": "stg_cbs_dbo_customers", "columns": [
+        {"name": "cif", "type": {"type": "string", "length": 12}, "nullable": false},
+        {"name": "name_en", "type": {"type": "string", "length": 200}, "nullable": true},
+        {"name": "name_ar", "type": {"type": "string", "length": 200}, "nullable": true},
+        {"name": "risk_grade", "type": {"type": "string", "length": 5}, "nullable": true}]},
+      {"name": "stg_cbs_dbo_branches", "columns": [
+        {"name": "branch_code", "type": {"type": "string", "length": 6}, "nullable": false},
+        {"name": "branch_name", "type": {"type": "string", "length": 100}, "nullable": true},
+        {"name": "region", "type": {"type": "string", "length": 50}, "nullable": true}]},
+      {"name": "stg_cbs_dbo_loans", "columns": [
+        {"name": "loan_no", "type": {"type": "string", "length": 20}, "nullable": false},
+        {"name": "cif", "type": {"type": "string", "length": 12}, "nullable": false},
+        {"name": "branch_code", "type": {"type": "string", "length": 6}, "nullable": false},
+        {"name": "product_type", "type": {"type": "string", "length": 30}, "nullable": true},
+        {"name": "disbursed_on", "type": {"type": "date"}, "nullable": false},
+        {"name": "principal", "type": {"type": "decimal", "precision": 18, "scale": 2}, "nullable": false}]},
+      {"name": "stg_cbs_dbo_loan_balances", "columns": [
+        {"name": "loan_no", "type": {"type": "string", "length": 20}, "nullable": false},
+        {"name": "balance_date", "type": {"type": "date"}, "nullable": false},
+        {"name": "outstanding", "type": {"type": "decimal", "precision": 18, "scale": 2}, "nullable": false},
+        {"name": "days_past_due", "type": {"type": "integer"}, "nullable": true}]}
+    ],
+    "existing": [],
+    "date_dimension": {"handle": "date", "name": "dim_date", "exists": false},
+    "deleted_by_users": [],
+    "kpis": [
+      {"name": "Outstanding Balance", "definition": "Total outstanding at month end", "formula_text": "sum(outstanding) at period end", "unit": "SAR", "aggregation": "sum"},
+      {"name": "NPL Ratio", "definition": "Share of balance over 90 days past due", "formula_text": "sum(outstanding where dpd > 90) / sum(outstanding)", "unit": "%", "aggregation": "ratio"}
+    ]
+  },
+  "reference": [
+    {"layer": "core", "name": "dim_customer", "kind": "dimension", "scd_type": 2, "is_conformed": true, "columns": [
+      {"name": "cif", "data_type": {"type": "string", "length": 12}, "role": "nk"},
+      {"name": "name_en", "data_type": {"type": "string", "length": 200}, "role": "attribute"},
+      {"name": "risk_grade", "data_type": {"type": "string", "length": 5}, "role": "attribute"}]},
+    {"layer": "core", "name": "dim_branch", "kind": "dimension", "scd_type": 1, "is_conformed": true, "columns": [
+      {"name": "branch_code", "data_type": {"type": "string", "length": 6}, "role": "nk"},
+      {"name": "branch_name", "data_type": {"type": "string", "length": 100}, "role": "attribute"},
+      {"name": "region", "data_type": {"type": "string", "length": 50}, "role": "attribute"}]},
+    {"layer": "core", "name": "dim_loan", "kind": "dimension", "scd_type": 1, "columns": [
+      {"name": "loan_no", "data_type": {"type": "string", "length": 20}, "role": "nk"},
+      {"name": "product_type", "data_type": {"type": "string", "length": 30}, "role": "attribute"}]},
+    {"layer": "core", "name": "fact_loan_balance", "kind": "fact", "grain": "One row per loan per balance date.", "fact_type": "periodic_snapshot", "columns": [
+      {"name": "loan_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_loan",
+       "lookup": {"nk_inputs": ["stg_cbs_dbo_loan_balances.loan_no"]}},
+      {"name": "customer_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_customer",
+       "lookup": {"nk_inputs": ["stg_cbs_dbo_loans.cif"], "as_of_input": "stg_cbs_dbo_loan_balances.balance_date"}},
+      {"name": "branch_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_branch",
+       "lookup": {"nk_inputs": ["stg_cbs_dbo_loans.branch_code"]}},
+      {"name": "balance_date_key", "data_type": {"type": "integer"}, "role": "fk", "references": "date", "role_name": "balance_date"},
+      {"name": "outstanding_amount", "data_type": {"type": "decimal", "precision": 18, "scale": 2}, "role": "measure", "additivity": "semi_additive"},
+      {"name": "days_past_due", "data_type": {"type": "integer"}, "role": "measure", "additivity": "non_additive"}]},
+    {"layer": "core", "name": "fact_loan_disbursement", "kind": "fact", "grain": "One row per loan disbursed.", "fact_type": "transactional", "columns": [
+      {"name": "loan_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_loan",
+       "lookup": {"nk_inputs": ["stg_cbs_dbo_loans.loan_no"]}},
+      {"name": "customer_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_customer",
+       "lookup": {"nk_inputs": ["stg_cbs_dbo_loans.cif"], "as_of_input": "stg_cbs_dbo_loans.disbursed_on"}},
+      {"name": "branch_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_branch",
+       "lookup": {"nk_inputs": ["stg_cbs_dbo_loans.branch_code"]}},
+      {"name": "disbursed_date_key", "data_type": {"type": "integer"}, "role": "fk", "references": "date", "role_name": "disbursed_on"},
+      {"name": "principal_amount", "data_type": {"type": "decimal", "precision": 18, "scale": 2}, "role": "measure", "additivity": "additive"}]}
+  ]
+}
