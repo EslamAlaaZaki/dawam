@@ -506,9 +506,13 @@ class RelationshipService:
                     )
                     created += 1
                 else:
-                    # A decision is never undone: only the score and its evidence move.
+                    # A decision is never undone: only the score and its evidence move. The
+                    # AI's evidence for a decision (``ai``) is not the rules' and stays.
                     record.confidence = c.confidence
-                    record.evidence = c.evidence(threshold)
+                    kept_ai = (record.evidence or {}).get("ai")
+                    record.evidence = c.evidence(threshold) | (
+                        {"ai": kept_ai} if kept_ai is not None else {}
+                    )
                     record.origin = c.origin
                     updated += 1
             stale = [

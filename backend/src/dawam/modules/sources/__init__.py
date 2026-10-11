@@ -41,6 +41,9 @@ Public interface. Other modules import only what is re-exported here:
   text, and (live Connection and profiling only) value overlap; those at or above the
   threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
   Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
+- ``SourceRelationshipHandler``: the ``changesets`` engine's handler for
+  ``source_relationship`` items: accepting or rejecting a relationship through a Change Set
+  (the AI's proposals), with the AI's evidence (reason and query counts) kept on it.
 - ``SourceSummaryService``: any member reads a Source System's dashboard (``SourceSummary``: table
   count, documented %, profiled %, relationships and PII found, computed on read) at
   ``GET .../systems/{system_id}/summary``; ``source_analysis`` fills the stage-progress port.
@@ -119,6 +122,7 @@ from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import PiiFinding, PiiService, confirmed_pii_column_ids
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
+from .relationship_changes import SourceRelationshipHandler
 from .relationship_service import INFER_JOB, Relationship, RelationshipService
 from .rename_service import RenameCandidate, RenamedObject, RenameService
 from .service import SourceSystem, SourceSystemPage, SourceSystemService
@@ -188,6 +192,7 @@ __all__ = [
     "SourceEnhancementHandler",
     "SourceQueryResult",
     "SourceQueryService",
+    "SourceRelationshipHandler",
     "SourceSchema",
     "SourceSummary",
     "SourceSummaryService",

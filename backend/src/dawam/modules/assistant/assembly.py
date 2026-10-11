@@ -19,6 +19,7 @@ from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
     PiiService,
     ProfilingService,
+    RelationshipService,
     SnapshotService,
     SourceQueryService,
     SourceSystemService,
@@ -120,6 +121,13 @@ def build_assistant_service(
             ),
             lineage=LineageService(engine, workspaces=workspaces),
             generation=GenerationService(engine, workspaces=workspaces),
+            relationships=RelationshipService(
+                engine,
+                workspaces=workspaces,
+                jobs=jobs,
+                encryption_key=encryption_key,
+                clock=clock,
+            ),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )
