@@ -120,7 +120,13 @@ from .internal.query_guard_catalog import load_guard_catalog
 from .pii_rule_api import router as _pii_rules_router
 from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
-from .pii_service import PiiFinding, PiiService, confirmed_pii_column_ids
+from .pii_service import (
+    ConfirmedPiiColumn,
+    PiiFinding,
+    PiiService,
+    confirmed_pii_column_ids,
+    confirmed_pii_columns,
+)
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .relationship_changes import SourceRelationshipHandler
 from .relationship_service import INFER_JOB, Relationship, RelationshipService
@@ -159,6 +165,7 @@ __all__ = [
     "INFER_JOB",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
+    "ConfirmedPiiColumn",
     "Connection",
     "ConnectionService",
     "DataDictionary",
@@ -207,6 +214,7 @@ __all__ = [
     "UntraceableView",
     "check_query",
     "confirmed_pii_column_ids",
+    "confirmed_pii_columns",
     "is_protected",
     "load_guard_catalog",
     "router",
