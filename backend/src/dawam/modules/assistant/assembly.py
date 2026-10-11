@@ -17,6 +17,7 @@ from dawam.modules.lineage import LineageService
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, WorkspaceAiService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
+    DataDictionaryService,
     PiiService,
     ProfilingService,
     RelationshipService,
@@ -26,8 +27,10 @@ from dawam.modules.sources import (
 )
 from dawam.modules.warehouse import (
     DataWarehouseService,
+    DdlService,
     EvaluationService,
     GenerationService,
+    MappingExportService,
     MappingService,
     ModelService,
     ScoreService,
@@ -62,6 +65,11 @@ def build_assistant_service(
         **({"adapters": llm_adapters} if llm_adapters else {}),
     )
     encryption_key = settings.encryption_key.get_secret_value()
+    warehouses = DataWarehouseService(engine, workspaces=workspaces, clock=clock)
+    model = ModelService(engine, workspaces=workspaces, clock=clock)
+    snapshots = SnapshotService(
+        engine, workspaces=workspaces, jobs=jobs, encryption_key=encryption_key, clock=clock
+    )
     tools = ToolRegistry(
         workspaces,
         ToolServices(
@@ -128,6 +136,14 @@ def build_assistant_service(
                 encryption_key=encryption_key,
                 clock=clock,
             ),
+            ddl=DdlService(warehouses, model),
+            mapping_exports=MappingExportService(
+                engine,
+                warehouses,
+                model,
+                MappingService(engine, workspaces=workspaces, clock=clock),
+            ),
+            dictionaries=DataDictionaryService(snapshots, systems),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )

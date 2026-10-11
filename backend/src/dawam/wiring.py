@@ -15,6 +15,7 @@ import sqlalchemy as sa
 
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ChangeSetService, ObjectHandlers
+from dawam.modules.files import FileContentHandler
 from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.propagation import PropagationService
@@ -32,10 +33,17 @@ from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
 from dawam.platform.hooks import SnapshotCreatedHook
+from dawam.platform.storage import create_storage
 
 
-def change_set_handlers() -> ObjectHandlers:
-    """One handler per object type a Change Set may change."""
+def change_set_handlers(settings: Settings | None = None) -> ObjectHandlers:
+    """One handler per object type a Change Set may change. File handling needs the storage
+    ``settings`` name; the callers that only propose (propagation, staging sync) leave it out."""
+    files = (
+        [FileContentHandler(create_storage(settings), max_bytes=settings.upload_max_bytes)]
+        if settings is not None
+        else []
+    )
     return ObjectHandlers(
         SourceEnhancementHandler("source_table"),
         SourceEnhancementHandler("source_column"),
@@ -48,6 +56,7 @@ def change_set_handlers() -> ObjectHandlers:
         ColumnMappingHandler(),
         MappingBranchHandler(),
         KpiPropagationHandler(),
+        *files,
     )
 
 

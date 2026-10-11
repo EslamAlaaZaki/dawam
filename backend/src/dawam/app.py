@@ -179,7 +179,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # Change Sets proposed in a private conversation are hidden from everyone else.
     app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
-    app.state.change_set_handlers = job_handlers.build_change_set_handlers()
+    app.state.change_set_handlers = job_handlers.build_change_set_handlers(settings)
     # A structural change (a direct edit, or an applied Change Set) is followed by its
     # propagation: warehouse and changesets cannot import propagation, which imports them.
     propagation = propagation_service(engine, services.clock)
