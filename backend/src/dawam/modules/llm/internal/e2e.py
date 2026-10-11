@@ -21,7 +21,9 @@ TOOL = "generate_dw_schema"
 def _staging_names(content: str | None) -> dict[str, str]:
     """``{"customers": "stg_shop_sales_customers", ...}`` from the generator's inputs."""
     try:
-        staging = json.loads(content or "")["staging"]
+        # The agent quotes a tool result as `<data source="...">` + JSON + `</data>`.
+        text = content or ""
+        staging = json.loads(text[text.index("{") : text.rindex("}") + 1])["staging"]
         names = [str(table["name"]) for table in staging]
     except (ValueError, KeyError, TypeError):
         return {}

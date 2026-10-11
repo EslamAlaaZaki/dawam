@@ -15,6 +15,7 @@ TOOLS = [ToolSpec("generate_dw_schema", "", {"type": "object"})]
 INPUTS = json.dumps(
     {"staging": [{"name": "stg_shop_sales_customers"}, {"name": "stg_shop_sales_orders"}]}
 )
+QUOTED = f'<data source="tool:generate_dw_schema">\n{INPUTS}\n</data>'  # as the agent quotes it
 
 
 def calls(*messages: Message) -> list[ToolCall]:
@@ -25,7 +26,7 @@ def calls(*messages: Message) -> list[ToolCall]:
 def test_the_chat_hands_generation_over_the_job_reads_then_writes_the_model():
     [start] = calls(Message("user", "Generate the core layer"))
     [read] = calls(Message("user", GENERATION_TASK))
-    [write] = calls(Message("user", GENERATION_TASK), Message("tool", INPUTS, tool_call_id="read"))
+    [write] = calls(Message("user", GENERATION_TASK), Message("tool", QUOTED, tool_call_id="read"))
 
     assert start.arguments == {} and read.arguments == {}
     tables = _GenerateDwSchema.model_validate(write.arguments).tables
