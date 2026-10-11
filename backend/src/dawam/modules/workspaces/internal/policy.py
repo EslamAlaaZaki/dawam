@@ -124,6 +124,12 @@ class Action(StrEnum):
     EDIT_KPI = "kpi.edit"
     """Create, edit and delete KPIs, and move them between statuses (owners and editors;
     spec §4.3, stories 73, 74, 80)."""
+    APPROVE_LAYER = "layer.approve"
+    """Move the Core or Mart Layer between ``draft``, ``in_review`` and ``approved`` (owners
+    and editors; spec §4.3 "Move to in review; approve a Layer (core, mart) or KPI", stories
+    107, 120). Reading the approval states needs only ``VIEW_WORKSPACE``."""
+    REQUIRE_DISTINCT_APPROVER = "workspace.require_distinct_approver"
+    """Switch "approver must not be the last editor" on or off (owners only; spec §4.3)."""
     COMMENT = "comment.create"
     """Comment on tables, columns, DW objects, KPIs and mappings, @mention members, and
     resolve or reopen threads (owners, editors and viewers; spec §4.3 "Comment", stories
@@ -233,6 +239,8 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
+    Action.APPROVE_LAYER: _WorkspaceRule(min_role="editor"),
+    Action.REQUIRE_DISTINCT_APPROVER: _WorkspaceRule(min_role="owner"),
     Action.COMMENT: _WorkspaceRule(min_role="viewer"),
     Action.UPLOAD_FILE: _WorkspaceRule(min_role="editor"),
     Action.VIEW_CONNECTION: _WorkspaceRule(min_role="owner", state="any"),

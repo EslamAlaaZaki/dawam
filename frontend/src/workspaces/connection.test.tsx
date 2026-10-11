@@ -40,6 +40,7 @@ function workspace(role: WorkspaceRole, archived = false): Workspace {
     version: 1,
     status: archived ? "archived" : "active",
     archived_at: archived ? "2026-01-06T09:00:00Z" : null,
+    require_distinct_approver: false,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
   };

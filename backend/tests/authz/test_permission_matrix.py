@@ -478,6 +478,15 @@ ROWS: list[Row] = [
         json=lambda roles: {"version": roles.workspace["version"], "name": "Renamed"},
     ),
     Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/approval-settings",
+        'Set "approver must not be the last editor"',
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"require_distinct_approver": True},
+        # A second editor (the owner is one), so the setting may be switched on.
+        setup=lambda roles: member_user(roles, "editor"),
+    ),
+    Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/archive",
         "Archive / unarchive Workspace",
@@ -862,6 +871,23 @@ ROWS: list[Row] = [
         "View lineage, scores, AI evaluation findings, exports, audit log (the score trend)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=_set_up_data_warehouse,
+    ),
+    # Layer Approval of Core and Mart (stories 107, 120).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals",
+        "Open Workspace content (the Layer approval states)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals/{layer}",
+        "Move to in review; approve a Layer (core, mart) or KPI",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"status": "approved"},
+        setup=_set_up_data_warehouse,
+        path_params={"layer": lambda roles: "core"},
     ),
     # AI evaluation (story 122): any member reads findings; editors turn them into Change Sets.
     Row(

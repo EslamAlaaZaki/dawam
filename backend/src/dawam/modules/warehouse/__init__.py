@@ -87,6 +87,13 @@ Public interface. Other modules import only what is re-exported here:
   change, debounced. ``KpiReader`` (``DesignKpi``) is how the composition root gives it the
   Workspace's KPIs for the DW-wide KPI checks; ``touch_score`` marks a Workspace's KPIs changed.
   ``GET .../data-warehouse/score`` and ``.../score/history``.
+- ``ApprovalService`` (``list``, ``move``): the Layer Approval of Core and Mart (spec §6.10,
+  stories 107, 120): ``draft``, ``in_review``, ``approved``; Mart only while Core is approved,
+  and revoking Core revokes Mart. Any committed change to a revoking field of a Core or Mart
+  object (``REVOKING_FIELDS``), whoever made it, returns the Layer to ``draft``, audited with its
+  cause; text fields never revoke and staging changes revoke nothing. ``install_approval_clock``
+  (the composition root) times those revocations. ``GET .../data-warehouse/approvals`` and
+  ``PUT .../approvals/{layer}``.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
@@ -94,11 +101,14 @@ Public interface. Other modules import only what is re-exported here:
   ``/workspaces/{workspace_id}/data-warehouse/lineage``.
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
-``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs`` and
-``score_check_results`` and ``ai_evaluations`` tables.
+``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs``,
+``score_check_results``, ``ai_evaluations`` and ``layer_approvals`` tables.
 """
 
 from .api import router
+from .approvals import REVOKING as REVOKING_FIELDS
+from .approvals import ApprovalService, LayerApproval
+from .approvals import install_clock as install_approval_clock
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
@@ -164,9 +174,11 @@ from .validation_service import ValidationReport, ValidationService
 __all__ = [
     "GENERATION_SCOPE",
     "PLATFORM_PROFILES",
+    "REVOKING_FIELDS",
     "SQL_DIALECTS",
     "TARGET_PLATFORMS",
     "AiEvaluation",
+    "ApprovalService",
     "ColumnMappingHandler",
     "DataWarehouse",
     "DataWarehouseService",
@@ -191,6 +203,7 @@ __all__ = [
     "KpiReader",
     "KpiRemoval",
     "KpiRename",
+    "LayerApproval",
     "LayerSchemas",
     "LineageEdge",
     "LineageNode",
@@ -225,6 +238,7 @@ __all__ = [
     "ValidationService",
     "clear_kpi_edges",
     "describe_columns",
+    "install_approval_clock",
     "install_score_recalculation",
     "is_reserved_word",
     "lineage_edges",

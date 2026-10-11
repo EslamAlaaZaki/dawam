@@ -26,7 +26,9 @@ Public interface. Other modules import only what is re-exported here:
   reassigning ownership still pass. ``WorkspaceService.authorize`` then says 409
   ``workspace_archived``.
 - ``router``: ``GET|POST /workspaces``, ``GET|PATCH|DELETE /workspaces/{workspace_id}``,
-  ``POST .../archive``, ``POST .../unarchive``,
+  ``POST .../archive``, ``POST .../unarchive``, ``PUT .../approval-settings`` (the owner
+  setting "approver must not be the last editor", which the warehouse module reads through
+  ``WorkspaceService.requires_distinct_approver``),
   ``GET /workspaces/{workspace_id}/progress``, ``GET .../activity`` (the activity feed,
   served from the ``activity`` module's service), ``GET|POST .../members``,
   ``PATCH|DELETE .../members/{member_id}``, ``POST .../leave``,

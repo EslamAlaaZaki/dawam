@@ -18,6 +18,7 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 
 from . import service as svc
+from .approval_api import router as approval_router
 from .ddl_api import router as ddl_router
 from .evaluation_api import router as evaluation_router
 from .mapping_api import lineage_router
@@ -40,6 +41,7 @@ router.include_router(evaluation_router)
 router.include_router(mapping_export_router)
 router.include_router(validation_router)
 router.include_router(staging_router)
+router.include_router(approval_router)
 
 
 def data_warehouse_service(request: Request) -> DataWarehouseService:

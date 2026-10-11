@@ -32,6 +32,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
+from .approvals import DesignChange, note_design_change
 from .lineage_graph import reachable_edge_ids
 from .lineage_sql import (
     DIALECTS,
@@ -575,6 +576,10 @@ class MappingService:
             old = {f: getattr(branch, f) for f in BRANCH_FIELDS}
             db.execute(sa.delete(MappingBranchRecord).where(MappingBranchRecord.id == branch.id))
             touch(db, "table", table.id)  # a bulk delete is not seen as a flush
+            note_design_change(
+                db,
+                DesignChange("mapping_branch", branch.id, ("deleted",), True, table_id=table.id),
+            )
             db.execute(
                 sa.update(MappingBranchRecord)
                 .where(

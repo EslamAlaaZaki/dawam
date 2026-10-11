@@ -1285,6 +1285,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Layer Approvals
+         * @description The approval state of the Core and Mart Layers (any member). Staging has none.
+         *     404 `not_set_up` before the Data Warehouse is set up.
+         */
+        get: operations["listLayerApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals/{layer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move Layer Approval
+         * @description Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and
+         *     editors). 409 `core_not_approved` when approving Mart while Core is not approved;
+         *     409 `approver_is_last_editor` when the Workspace requires another approver than the
+         *     Layer's last editor. Moving Core away from `approved` returns an approved Mart to
+         *     `draft`. Every move is in the audit trail.
+         */
+        put: operations["moveLayerApproval"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-warehouse/platforms": {
         parameters: {
             query?: never;
@@ -2286,6 +2331,28 @@ export interface paths {
          * @description Edit the Workspace's details (owners only). Fields left out stay as they are.
          */
         patch: operations["updateWorkspace"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/approval-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Approval Settings
+         * @description Switch "approver must not be the last editor" on or off (owners only). 422
+         *     `single_editor` when switching it on in a Workspace with a single editor (owners
+         *     count).
+         */
+        put: operations["setApprovalSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/workspaces/{workspace_id}/archive": {
@@ -3581,7 +3648,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -3831,6 +3898,14 @@ export interface components {
              * @description Items an owner still has to accept (owner-only ones and what depends on them).
              */
             needs_owner: string[];
+        };
+        /** ApprovalSettingsRequest */
+        ApprovalSettingsRequest: {
+            /**
+             * Require Distinct Approver
+             * @description Whoever approves a Layer must not be its last editor.
+             */
+            require_distinct_approver: boolean;
         };
         /** ApprovedAgentModel */
         ApprovedAgentModel: {
@@ -5776,6 +5851,39 @@ export interface components {
              */
             status: "not_started" | "in_progress" | "complete";
         };
+        /** LayerApproval */
+        LayerApproval: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /**
+             * Status
+             * @description `in_review` only asks for a review; a structural change to the Layer returns `approved` to `draft`.
+             * @enum {string}
+             */
+            status: "draft" | "in_review" | "approved";
+            /** Approved By */
+            approved_by: string | null;
+            /** Approved At */
+            approved_at: string | null;
+            /**
+             * Last Editor Id
+             * @description Who last changed anything in the Layer.
+             */
+            last_editor_id: string | null;
+            /** Last Edited At */
+            last_edited_at: string | null;
+        };
+        /** LayerApprovalList */
+        LayerApprovalList: {
+            /**
+             * Items
+             * @description Core, then Mart.
+             */
+            items: components["schemas"]["LayerApproval"][];
+        };
         /** LayerCoverageOut */
         LayerCoverageOut: {
             /**
@@ -6471,6 +6579,14 @@ export interface components {
             created_at: string;
             /** @description On a member's message: the run that answered it. */
             run: components["schemas"]["RunOut"] | null;
+        };
+        /** MoveLayerRequest */
+        MoveLayerRequest: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "in_review" | "approved";
         };
         /** NamingRules */
         NamingRules: {
@@ -8999,6 +9115,11 @@ export interface components {
             status: "active" | "archived";
             /** Archived At */
             archived_at: string | null;
+            /**
+             * Require Distinct Approver
+             * @description Whoever approves the Core or Mart Layer must not be its last editor.
+             */
+            require_distinct_approver: boolean;
             /**
              * Version
              * @description Send it back when editing; a stale one gets 409.
@@ -12055,6 +12176,91 @@ export interface operations {
             };
         };
     };
+    listLayerApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayerApprovalList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    moveLayerApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                layer: "core" | "mart";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveLayerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayerApproval"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listDataWarehousePlatforms: {
         parameters: {
             query?: never;
@@ -14364,6 +14570,50 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setApprovalSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalSettingsRequest"];
             };
         };
         responses: {
