@@ -58,13 +58,18 @@ from tests.sample_source.sqlserver import (  # noqa: F401  (fixtures; the contai
 )
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg16"
+POSTGRES_COMMAND = "postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
+"""The test database is thrown away, so it skips flushing to disk: the TRUNCATE after
+every test is then about 15x faster."""
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
 """A fresh encryption key per test run; tests never need a real one."""
 
 
 @pytest.fixture(scope="session")
 def postgres() -> Iterator[PostgresContainer]:
-    with PostgresContainer(POSTGRES_IMAGE, driver="psycopg") as container:
+    with PostgresContainer(POSTGRES_IMAGE, driver="psycopg").with_command(
+        POSTGRES_COMMAND
+    ) as container:
         yield container
 
 
