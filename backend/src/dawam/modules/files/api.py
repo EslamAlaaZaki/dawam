@@ -22,6 +22,8 @@ from dawam.modules.warehouse import (
     DdlLayer,
     DdlServiceDep,
     MappingExportServiceDep,
+    ScoreExportServiceDep,
+    ScoreReportFormatQuery,
     SheetFormat,
     SheetLayer,
 )
@@ -181,6 +183,23 @@ def save_mapping_sheet(
     sheet = exports.export(user, workspace_id, fmt=format, layer=layer)
     return _out(
         files.save_generated_to_warehouse(user, workspace_id, name=sheet.name, data=sheet.data)
+    )
+
+
+@router.post("/data-warehouse/files/score-report", operation_id="saveScoreReport", status_code=201)
+def save_score_report(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    files: FileServiceDep,
+    exports: ScoreExportServiceDep,
+    format: ScoreReportFormatQuery = "md",
+) -> WorkspaceFile:
+    """Export the score report into the Data Warehouse's file area as
+    `score-report.<format>`, overwriting the previous one (owners and editors). 404 before
+    the Data Warehouse is set up."""
+    report = exports.export(user, workspace_id, fmt=format)
+    return _out(
+        files.save_generated_to_warehouse(user, workspace_id, name=report.name, data=report.data)
     )
 
 

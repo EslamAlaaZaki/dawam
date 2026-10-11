@@ -886,6 +886,21 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=_set_up_data_warehouse,
     ),
+    # Score report export (story 124).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/report",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the score report)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/files/score-report",
+        "Upload, edit, delete Workspace files (save the score report)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+    ),
     # Source Systems (story 39). Changing a System Code is owner-only: the PATCH row
     # sends no code; tests/sources/test_source_systems.py covers the code change.
     Row(

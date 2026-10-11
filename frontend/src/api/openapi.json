@@ -3779,6 +3779,74 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/report": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Download Score Report",
+        "description": "The latest score as a report (any member): the overall, per-Layer and per-table\nscores, and every failed check with its severity, object and fix hint. To keep a copy,\nsave it to the file area with `POST .../files/score-report`. 404 before the Data\nWarehouse is set up.",
+        "operationId": "downloadScoreReport",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "md",
+                "xlsx"
+              ],
+              "type": "string",
+              "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks).",
+              "default": "md",
+              "title": "Format"
+            },
+            "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The score report.",
+            "content": {
+              "text/markdown; charset=utf-8": {},
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
       "get": {
         "tags": [
@@ -10421,6 +10489,76 @@
               "title": "Layer"
             },
             "description": "One Layer's mappings; omit for Core and Mart."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/score-report": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Score Report",
+        "description": "Export the score report into the Data Warehouse's file area as\n`score-report.<format>`, overwriting the previous one (owners and editors). 404 before\nthe Data Warehouse is set up.",
+        "operationId": "saveScoreReport",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "md",
+                "xlsx"
+              ],
+              "type": "string",
+              "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks).",
+              "default": "md",
+              "title": "Format"
+            },
+            "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks)."
           }
         ],
         "responses": {
