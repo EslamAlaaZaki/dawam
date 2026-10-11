@@ -116,6 +116,9 @@ class Workspace(BaseModel):
         description="`archived`: read-only until an owner or admin unarchives it."
     )
     archived_at: datetime | None
+    require_distinct_approver: bool = Field(
+        description="Whoever approves the Core or Mart Layer must not be its last editor."
+    )
     version: int = Field(description="Send it back when editing; a stale one gets 409.")
     created_at: datetime
     updated_at: datetime
@@ -137,6 +140,12 @@ class UpdateWorkspaceRequest(BaseModel):
     name: Name | None = None
     description: Description | None = None
     domain: Domain | None = None
+
+
+class ApprovalSettingsRequest(BaseModel):
+    require_distinct_approver: bool = Field(
+        description="Whoever approves a Layer must not be its last editor."
+    )
 
 
 class DeleteWorkspaceRequest(BaseModel):
@@ -184,6 +193,7 @@ def _out(workspace: WorkspaceView) -> Workspace:
         permissions=sorted(workspace.permissions),
         status=workspace.status,
         archived_at=workspace.archived_at,
+        require_distinct_approver=workspace.require_distinct_approver,
         version=workspace.version,
         created_at=workspace.created_at,
         updated_at=workspace.updated_at,
@@ -236,6 +246,23 @@ def update_workspace(
             name=body.name,
             description=body.description,
             domain=body.domain,
+        )
+    )
+
+
+@router.put("/{workspace_id}/approval-settings", operation_id="setApprovalSettings")
+def set_approval_settings(
+    workspace_id: uuid.UUID,
+    body: ApprovalSettingsRequest,
+    user: CurrentUser,
+    workspaces: WorkspaceServiceDep,
+) -> Workspace:
+    """Switch "approver must not be the last editor" on or off (owners only). 422
+    `single_editor` when switching it on in a Workspace with a single editor (owners
+    count)."""
+    return _out(
+        workspaces.set_distinct_approver(
+            user, workspace_id, required=body.require_distinct_approver
         )
     )
 

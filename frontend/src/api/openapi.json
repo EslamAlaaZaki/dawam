@@ -4454,6 +4454,139 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "List Layer Approvals",
+        "description": "The approval state of the Core and Mart Layers (any member). Staging has none.\n404 `not_set_up` before the Data Warehouse is set up.",
+        "operationId": "listLayerApprovals",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerApprovalList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals/{layer}": {
+      "put": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Move Layer Approval",
+        "description": "Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and\neditors). 409 `core_not_approved` when approving Mart while Core is not approved;\n409 `approver_is_last_editor` when the Workspace requires another approver than the\nLayer's last editor. Moving Core away from `approved` returns an approved Mart to\n`draft`. Every move is in the audit trail.",
+        "operationId": "moveLayerApproval",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "core",
+                "mart"
+              ],
+              "type": "string",
+              "title": "Layer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveLayerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerApproval"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/data-warehouse/platforms": {
       "get": {
         "tags": [
@@ -8230,6 +8363,70 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/approval-settings": {
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Set Approval Settings",
+        "description": "Switch \"approver must not be the last editor\" on or off (owners only). 422\n`single_editor` when switching it on in a Workspace with a single editor (owners\ncount).",
+        "operationId": "setApprovalSettings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error",
@@ -13226,6 +13423,8 @@
           "job.cancel_any",
           "installation.list_workspaces",
           "kpi.edit",
+          "layer.approve",
+          "workspace.require_distinct_approver",
           "comment.create",
           "file.upload",
           "connection.view",
@@ -13776,6 +13975,20 @@
           "needs_owner"
         ],
         "title": "ApplyResult"
+      },
+      "ApprovalSettingsRequest": {
+        "properties": {
+          "require_distinct_approver": {
+            "type": "boolean",
+            "title": "Require Distinct Approver",
+            "description": "Whoever approves a Layer must not be its last editor."
+          }
+        },
+        "type": "object",
+        "required": [
+          "require_distinct_approver"
+        ],
+        "title": "ApprovalSettingsRequest"
       },
       "ApprovedAgentModel": {
         "properties": {
@@ -18092,6 +18305,104 @@
         ],
         "title": "KpiProgress"
       },
+      "LayerApproval": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_review",
+              "approved"
+            ],
+            "title": "Status",
+            "description": "`in_review` only asks for a review; a structural change to the Layer returns `approved` to `draft`."
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "last_editor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Editor Id",
+            "description": "Who last changed anything in the Layer."
+          },
+          "last_edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Edited At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "status",
+          "approved_by",
+          "approved_at",
+          "last_editor_id",
+          "last_edited_at"
+        ],
+        "title": "LayerApproval"
+      },
+      "LayerApprovalList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LayerApproval"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Core, then Mart."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LayerApprovalList"
+      },
       "LayerCoverageOut": {
         "properties": {
           "layer": {
@@ -19632,6 +19943,24 @@
           "run"
         ],
         "title": "MessageOut"
+      },
+      "MoveLayerRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_review",
+              "approved"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "MoveLayerRequest"
       },
       "NamingRules": {
         "properties": {
@@ -25491,6 +25820,11 @@
             ],
             "title": "Archived At"
           },
+          "require_distinct_approver": {
+            "type": "boolean",
+            "title": "Require Distinct Approver",
+            "description": "Whoever approves the Core or Mart Layer must not be its last editor."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -25517,6 +25851,7 @@
           "permissions",
           "status",
           "archived_at",
+          "require_distinct_approver",
           "version",
           "created_at",
           "updated_at"

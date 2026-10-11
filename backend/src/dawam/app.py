@@ -36,6 +36,7 @@ from dawam.modules.warehouse import (
     ScoreScheduler,
     ScoreService,
     ValidationService,
+    install_approval_clock,
     install_score_recalculation,
     uninstall_score_recalculation,
 )
@@ -102,6 +103,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         document_ai=services.document_ai,
     )
 
+    # Revocations of a Layer's approval are timed like the change that caused them.
+    install_approval_clock(engine, services.clock)
     # Every committed design change rescores the Data Warehouse, debounced (warehouse).
     install_score_recalculation(
         engine,
