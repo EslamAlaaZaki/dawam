@@ -42,7 +42,7 @@ Public interface. Other modules import only what is re-exported here:
   Set items, the impacted Assets (``Impact``) and what the KPIs need (``KpiRename``,
   ``KpiRemoval``, re-pointing pairs), as a ``Propagation``. ``ModelService`` and
   ``MappingService`` report committed structural changes through a ``StructuralChangeHook``.
-  ``DwColumnHandler``, ``ColumnMappingHandler`` and ``MappingBranchHandler`` are the handlers
+  ``ColumnMappingHandler`` and ``MappingBranchHandler`` (with ``DwColumnHandler``) are the handlers
   for the ``dw_column``, ``column_mapping`` and ``mapping_branch`` items it proposes.
   ``Renames`` / ``rename_in_sql`` / ``sql_reads`` respell or find renamed identifiers in SQL
   text, in place.
@@ -69,6 +69,18 @@ Public interface. Other modules import only what is re-exported here:
 - ``EvaluationService`` (``review``, ``store``, ``list``, ``propose_change_set``): the advisory AI
   evaluation of a Layer behind the assistant's ``evaluate_dw`` tool (spec §6.11, story 122);
   ``GET .../data-warehouse/evaluations`` and ``POST .../evaluations/{id}/findings/{n}/change-set``.
+- ``GenerationService`` (``inputs``, ``plan``): the AI generation of the Core and Mart Layers
+  behind the assistant's ``generate_dw_schema`` tool (spec §6.9, story 88). The model names
+  existing objects by short opaque handles; DAWAM issues a ``generation_key`` to every table
+  and column it creates, keeps the last generated values (``generated``) and the user's
+  overrides (``edited_fields``, proposed only as conflicts), flags creates with an unknown or
+  missing handle as possible duplicates, never re-proposes what a user deleted (Tombstones) and
+  adds the built-in date dimension when there is none. ``GenerationPlan`` holds the items of
+  the one Change Set (scope ``GENERATION_SCOPE``); ``GeneratedTable`` / ``GeneratedColumn`` are
+  the model's answer.
+- ``DwTableHandler`` / ``DwColumnHandler``: the ``changesets`` engine's handlers for Core and
+  Mart ``dw_table`` and ``dw_column`` items (creates and updates); the composition root
+  registers them.
 - ``ScoreService`` (``current``, ``history``; ``recalculate`` for the system): the rule-based DW
   score (spec §6.11) from the checks in ``score_checks`` run by the engine in ``scoring``;
   ``install_score_recalculation`` (the composition root) rescores after every committed design
@@ -90,6 +102,16 @@ from .api import router
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
+from .generation import SCOPE as GENERATION_SCOPE
+from .generation import (
+    DwColumnHandler,
+    DwTableHandler,
+    GeneratedColumn,
+    GeneratedTable,
+    GenerationNote,
+    GenerationPlan,
+    GenerationService,
+)
 from .lineage_graph import LineageEdge, LineageNode, lineage_edges, lineage_nodes
 from .lineage_sql import DIALECTS as SQL_DIALECTS
 from .lineage_sql import Renames, rename_in_sql, sql_reads
@@ -117,7 +139,7 @@ from .propagation import (
     StructuralChangeHook,
     plan_propagation,
 )
-from .propagation_handlers import ColumnMappingHandler, DwColumnHandler, MappingBranchHandler
+from .propagation_handlers import ColumnMappingHandler, MappingBranchHandler
 from .schema_reader import (
     DwSchema,
     SchemaColumn,
@@ -140,6 +162,7 @@ from .staging_sync import StagingColumnHandler, StagingTableHandler
 from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
+    "GENERATION_SCOPE",
     "PLATFORM_PROFILES",
     "SQL_DIALECTS",
     "TARGET_PLATFORMS",
@@ -155,9 +178,15 @@ __all__ = [
     "DesignKpi",
     "DwColumnHandler",
     "DwSchema",
+    "DwTableHandler",
     "EvaluationService",
     "Finding",
     "FindingItem",
+    "GeneratedColumn",
+    "GeneratedTable",
+    "GenerationNote",
+    "GenerationPlan",
+    "GenerationService",
     "Impact",
     "KpiReader",
     "KpiRemoval",

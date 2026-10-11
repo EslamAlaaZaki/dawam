@@ -1,0 +1,62 @@
+{
+  "name": "retail_sales",
+  "description": "A shop's orders: customers, products, orders and order lines.",
+  "inputs": {
+    "platform": "postgresql",
+    "naming_rules": {"case_style": "lower", "dimension_prefix": "dim_", "fact_prefix": "fact_", "bridge_prefix": "bridge_"},
+    "staging": [
+      {"name": "stg_shop_sales_customers", "columns": [
+        {"name": "customer_no", "type": {"type": "string", "length": 20}, "nullable": false},
+        {"name": "full_name", "type": {"type": "string", "length": 200}, "nullable": true},
+        {"name": "city", "type": {"type": "string", "length": 100}, "nullable": true},
+        {"name": "segment", "type": {"type": "string", "length": 20}, "nullable": true},
+        {"name": "updated_at", "type": {"type": "timestamp"}, "nullable": true}]},
+      {"name": "stg_shop_sales_products", "columns": [
+        {"name": "sku", "type": {"type": "string", "length": 30}, "nullable": false},
+        {"name": "product_name", "type": {"type": "string", "length": 200}, "nullable": true},
+        {"name": "category", "type": {"type": "string", "length": 100}, "nullable": true},
+        {"name": "list_price", "type": {"type": "decimal", "precision": 12, "scale": 2}, "nullable": true}]},
+      {"name": "stg_shop_sales_orders", "columns": [
+        {"name": "order_no", "type": {"type": "string", "length": 20}, "nullable": false},
+        {"name": "customer_no", "type": {"type": "string", "length": 20}, "nullable": false},
+        {"name": "order_date", "type": {"type": "date"}, "nullable": false},
+        {"name": "status", "type": {"type": "string", "length": 20}, "nullable": true}]},
+      {"name": "stg_shop_sales_order_lines", "columns": [
+        {"name": "order_no", "type": {"type": "string", "length": 20}, "nullable": false},
+        {"name": "line_no", "type": {"type": "integer"}, "nullable": false},
+        {"name": "sku", "type": {"type": "string", "length": 30}, "nullable": false},
+        {"name": "quantity", "type": {"type": "integer"}, "nullable": false},
+        {"name": "unit_price", "type": {"type": "decimal", "precision": 12, "scale": 2}, "nullable": false},
+        {"name": "discount", "type": {"type": "decimal", "precision": 12, "scale": 2}, "nullable": true}]}
+    ],
+    "existing": [],
+    "date_dimension": {"handle": "date", "name": "dim_date", "exists": false},
+    "deleted_by_users": [],
+    "kpis": [
+      {"name": "Net Sales", "definition": "Sales after discounts", "formula_text": "sum(quantity * unit_price - discount)", "unit": "SAR", "aggregation": "sum"},
+      {"name": "Orders per Customer", "definition": "Average orders per customer", "formula_text": "count(distinct order) / count(distinct customer)", "unit": "", "aggregation": "ratio"}
+    ]
+  },
+  "reference": [
+    {"layer": "core", "name": "dim_customer", "kind": "dimension", "scd_type": 2, "is_conformed": true, "columns": [
+      {"name": "customer_no", "data_type": {"type": "string", "length": 20}, "role": "nk"},
+      {"name": "full_name", "data_type": {"type": "string", "length": 200}, "role": "attribute"},
+      {"name": "city", "data_type": {"type": "string", "length": 100}, "role": "attribute"},
+      {"name": "segment", "data_type": {"type": "string", "length": 20}, "role": "attribute"}]},
+    {"layer": "core", "name": "dim_product", "kind": "dimension", "scd_type": 1, "is_conformed": true, "columns": [
+      {"name": "sku", "data_type": {"type": "string", "length": 30}, "role": "nk"},
+      {"name": "product_name", "data_type": {"type": "string", "length": 200}, "role": "attribute"},
+      {"name": "category", "data_type": {"type": "string", "length": 100}, "role": "attribute"}]},
+    {"layer": "core", "name": "fact_sales", "kind": "fact", "grain": "One row per order line.", "fact_type": "transactional", "columns": [
+      {"name": "customer_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_customer",
+       "lookup": {"nk_inputs": ["stg_shop_sales_orders.customer_no"], "as_of_input": "stg_shop_sales_orders.order_date"}},
+      {"name": "product_key", "data_type": {"type": "bigint"}, "role": "fk", "references": "dim_product",
+       "lookup": {"nk_inputs": ["stg_shop_sales_order_lines.sku"]}},
+      {"name": "order_date_key", "data_type": {"type": "integer"}, "role": "fk", "references": "date", "role_name": "order_date"},
+      {"name": "order_no", "data_type": {"type": "string", "length": 20}, "role": "degenerate_dimension"},
+      {"name": "quantity", "data_type": {"type": "integer"}, "role": "measure", "additivity": "additive"},
+      {"name": "sales_amount", "data_type": {"type": "decimal", "precision": 18, "scale": 2}, "role": "measure", "additivity": "additive"},
+      {"name": "discount_amount", "data_type": {"type": "decimal", "precision": 18, "scale": 2}, "role": "measure", "additivity": "additive"},
+      {"name": "unit_price", "data_type": {"type": "decimal", "precision": 12, "scale": 2}, "role": "measure", "additivity": "non_additive"}]}
+  ]
+}

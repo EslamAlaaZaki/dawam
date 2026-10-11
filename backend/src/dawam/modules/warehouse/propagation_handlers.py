@@ -1,7 +1,6 @@
-"""The Change Set handlers propagation items use (spec §6.10).
+"""The Change Set handlers propagation items use (spec §6.10); a ``dw_column`` rename or
+retype goes through ``generation.DwColumnHandler``.
 
-- ``DwColumnHandler`` (``dw_column``): renames or retypes a Core or Mart column, the optional
-  items of the rule table.
 - ``ColumnMappingHandler`` (``column_mapping``): rewrites a column mapping's SQL or lookup
   inputs to follow a rename, or makes it ``unmapped`` when an input was removed.
 - ``MappingBranchHandler`` (``mapping_branch``): rewrites a branch's driving input, joins,
@@ -29,7 +28,7 @@ from dawam.platform.errors import ApiError
 
 from .lineage_sql import BRANCH_PARTS
 from .mapping_service import MappingService
-from .model_service import MODEL_LAYERS, neutral_type
+from .model_service import MODEL_LAYERS
 from .tables import (
     ColumnMappingRecord,
     DataWarehouseRecord,
@@ -64,108 +63,6 @@ class _UpdateOnly:
         if operation != "update":
             raise ValueError(f"Change Sets only update {self.object_type} objects.")
         return Action.EDIT_DW_SCHEMA
-
-
-class DwColumnHandler(_UpdateOnly):
-    object_type = "dw_column"
-    FIELDS = ("name", "data_type")
-
-    def validate(
-        self,
-        db: Session,
-        workspace_id: uuid.UUID,
-        operation: str,
-        object_id: uuid.UUID | None,
-        payload: Mapping[str, Any],
-    ) -> None:
-        if not payload or any(f not in self.FIELDS for f in payload):
-            raise _invalid(f"A dw_column item changes some of {', '.join(self.FIELDS)}.")
-        if "name" in payload and (not isinstance(payload["name"], str) or not payload["name"]):
-            raise _invalid("A column name is text.")
-        if "data_type" in payload:
-            try:
-                neutral_type(payload["data_type"])
-            except ApiError as exc:
-                raise _invalid(exc.message) from None
-        if self._column(db, workspace_id, object_id) is None:
-            raise _invalid("The Core or Mart column does not exist.")
-
-    def current_values(
-        self,
-        db: Session,
-        workspace_id: uuid.UUID,
-        object_id: uuid.UUID,
-        fields: Sequence[str],
-    ) -> dict[str, Any] | None:
-        found = self._column(db, workspace_id, object_id, lock=True)
-        return None if found is None else {f: getattr(found[0], f) for f in fields}
-
-    def apply(
-        self,
-        db: Session,
-        workspace_id: uuid.UUID,
-        operation: str,
-        object_id: uuid.UUID | None,
-        payload: Mapping[str, Any],
-        *,
-        at: datetime,
-    ) -> AppliedChange:
-        found = self._column(db, workspace_id, object_id, lock=True)
-        if found is None:  # pragma: no cover - the engine checked staleness under the lock
-            raise ApiError(409, "version_conflict", "The column no longer exists.")
-        column, table = found
-        old = {f: getattr(column, f) for f in payload}
-        if "name" in payload and payload["name"] != column.name:
-            taken = db.scalar(
-                sa.select(sa.func.count())
-                .select_from(DwColumnRecord)
-                .where(
-                    DwColumnRecord.table_id == table.id,
-                    sa.func.lower(DwColumnRecord.name) == str(payload["name"]).lower(),
-                    DwColumnRecord.id != column.id,
-                )
-            )
-            if taken:
-                raise ApiError(
-                    409,
-                    "name_taken",
-                    f"{table.name} already has a column named {payload['name']}.",
-                )
-            member = table.unknown_member
-            if member and column.name in member.get("defaults", {}):
-                defaults = dict(member["defaults"])
-                defaults[payload["name"]] = defaults.pop(column.name)
-                table.unknown_member = {**member, "defaults": defaults}
-            column.name = payload["name"]
-        if "data_type" in payload:
-            column.data_type = neutral_type(payload["data_type"])
-        column.version += 1
-        column.updated_at = at
-        db.flush()
-        new = {f: getattr(column, f) for f in payload}
-        return AppliedChange("dw_column", column.id, old, new, f"{table.name}.{column.name}")
-
-    @staticmethod
-    def _column(
-        db: Session, workspace_id: uuid.UUID, object_id: uuid.UUID | None, *, lock: bool = False
-    ) -> tuple[DwColumnRecord, DwTableRecord] | None:
-        if object_id is None:
-            return None
-        query = (
-            sa.select(DwColumnRecord, DwTableRecord)
-            .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
-            .join(DataWarehouseRecord, DataWarehouseRecord.id == DwTableRecord.data_warehouse_id)
-            .where(
-                DataWarehouseRecord.workspace_id == workspace_id,
-                DwTableRecord.layer.in_(MODEL_LAYERS),
-                DwColumnRecord.id == object_id,
-                DwColumnRecord.is_system.is_(False),
-            )
-        )
-        if lock:
-            query = query.with_for_update(of=DwColumnRecord)
-        row = db.execute(query).first()
-        return None if row is None else (row[0], row[1])
 
 
 def _broken(message: str) -> dict[str, Any]:

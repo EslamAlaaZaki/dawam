@@ -22,6 +22,7 @@ from dawam.modules.sources import SourceEnhancementHandler, SourceRelationshipHa
 from dawam.modules.warehouse import (
     ColumnMappingHandler,
     DwColumnHandler,
+    DwTableHandler,
     MappingBranchHandler,
     StagingColumnHandler,
     StagingService,
@@ -41,8 +42,9 @@ def change_set_handlers() -> ObjectHandlers:
         SourceRelationshipHandler(),
         StagingTableHandler(),
         StagingColumnHandler(),
-        KpiLinkHandler(),
+        DwTableHandler(),
         DwColumnHandler(),
+        KpiLinkHandler(),
         ColumnMappingHandler(),
         MappingBranchHandler(),
         KpiPropagationHandler(),

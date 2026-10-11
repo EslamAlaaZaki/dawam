@@ -8,7 +8,7 @@ example ``http://localhost:11434/v1``) and ``DAWAM_OLLAMA_MODEL`` to try it.
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import pytest
@@ -21,6 +21,7 @@ pytestmark = pytest.mark.ollama
 URL = os.environ.get("DAWAM_OLLAMA_URL", "")
 MODEL = os.environ.get("DAWAM_OLLAMA_MODEL", "qwen2.5:1.5b")
 CODE = "4711"
+ATTEMPTS = 3
 SECRET = ToolSpec(
     "get_secret_code",
     "Returns the secret code. Takes no arguments.",
@@ -60,9 +61,24 @@ def ask(capabilities: Capabilities) -> tuple[SecretTools, Finished]:
     return tools, finished
 
 
+def ask_until(
+    capabilities: Capabilities, ok: Callable[[SecretTools, Finished], bool]
+) -> tuple[SecretTools, Finished]:
+    """``ask`` up to ``ATTEMPTS`` times until ``ok``: a small model is not deterministic and
+    sometimes answers without calling the tool, so one miss is not a failure."""
+    for _ in range(ATTEMPTS):
+        tools, finished = ask(capabilities)
+        if ok(tools, finished):
+            break
+    return tools, finished
+
+
 @pytest.mark.skipif(not URL, reason="DAWAM_OLLAMA_URL is not set")
 def test_a_small_tool_capable_model_calls_a_native_tool_and_answers():
-    tools, finished = ask(Capabilities(tool_calling=True, context_window=4096))
+    tools, finished = ask_until(
+        Capabilities(tool_calling=True, context_window=4096),
+        lambda t, f: f.status in ("completed", "tool_limit") and t.ran >= 1 and CODE in f.text,
+    )
 
     assert finished.status in ("completed", "tool_limit"), finished.error_message
     assert tools.ran >= 1 and CODE in finished.text
@@ -72,7 +88,10 @@ def test_a_small_tool_capable_model_calls_a_native_tool_and_answers():
 def test_limited_mode_ends_cleanly_with_a_small_model():
     """A small model may not follow the JSON protocol; the run must still end in a defined
     state (an answer, or the strict parser giving up), never hang or raise."""
-    tools, finished = ask(Capabilities(tool_calling=False, context_window=4096))
+    tools, finished = ask_until(
+        Capabilities(tool_calling=False, context_window=4096),
+        lambda t, f: f.status != "failed" or (f.error_code == "invalid_tool_call" and t.ran == 0),
+    )
 
     assert finished.status in ("completed", "tool_limit", "failed")
     if finished.status == "failed":

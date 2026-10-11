@@ -123,6 +123,20 @@ OVERRIDABLE = (*SYNCED_FIELDS, "name")
 """The fields of a staging object whose user edit is recorded; a name or type edit also
 resolves what generation flagged for review about it (the score's review-flags check)."""
 
+GENERATED_TABLE_FIELDS = (
+    "name",
+    "description",
+    "grain",
+    "fact_type",
+    "is_aggregate",
+    "scd_type",
+    "is_conformed",
+)
+"""The fields of a Core or Mart table the AI generator sets, so a user edit of one on a
+generated table is an override that regeneration never overwrites unasked (spec §6.9)."""
+GENERATED_COLUMN_FIELDS = tuple(f for f in COLUMN_FIELDS if f != "pii_note")
+"""The PII handling note is the user's alone."""
+
 _HOUSEKEEPING: tuple[tuple[str, dict[str, Any], bool], ...] = (
     ("scd_valid_from", {"type": "timestamp"}, False),
     ("scd_valid_to", {"type": "timestamp"}, True),
@@ -449,24 +463,7 @@ class ModelService:
                     at=now,
                 )
                 self._activity(db, user, workspace_id, "dw_table.created", table)
-                if table.kind in ("dimension", "bridge"):
-                    suffix = "_group_key" if table.kind == "bridge" else "_key"
-                    # Shortened so the key fits the platform's identifier limit.
-                    room = max_identifier_length(warehouse.target_platform) - len(suffix)  # type: ignore[arg-type]
-                    self._add_column(
-                        db,
-                        user,
-                        workspace_id,
-                        table,
-                        {
-                            "name": f"{table.name[:room]}{suffix}",
-                            "data_type": {"type": "bigint"},
-                            "is_nullable": False,
-                            "role": "sk",
-                        },
-                        now,
-                        scaffold=True,
-                    )
+                self._scaffold_key(db, user, workspace_id, warehouse, table, now)
                 self._sync_scd2(db, user, workspace_id, table, now)
                 return _table_view(table, self._columns(db, table.id), _rules(warehouse))
         except IntegrityError as exc:
@@ -488,65 +485,77 @@ class ModelService:
             with Session(self._engine) as db, db.begin():
                 warehouse = self._warehouse(db, workspace_id)
                 assert warehouse is not None
-                rules = _rules(warehouse)
-                settings = date_dimension_of(warehouse.date_dim_settings)
-                columns = date_columns(settings) if which == "date" else time_columns()
-                name = (
-                    f"{rules.dimension_prefix}{which}" if rules.dimension_prefix else f"{which}_dim"
+                table = self._build_generated(
+                    db, user, workspace_id, warehouse, which, layer, self._clock()
                 )
-                if rules.case_style == "upper":
-                    name = name.upper()
-                self._ensure_table_name_free(db, warehouse, layer, name, None)
-                now = self._clock()
-                table = DwTableRecord(
-                    id=uuid.uuid4(),
-                    data_warehouse_id=warehouse.id,
-                    layer=layer,
-                    name=name,
-                    kind="generated",
-                    fact_type=None,
-                    grain=None,
-                    is_aggregate=False,
-                    scd_type=None,
-                    is_conformed=True,
-                    unknown_member=None,
-                    description=f"Generated {which} dimension; needs no mapping.",
-                    created_by=user.id,
-                    created_at=now,
-                    updated_at=now,
-                    version=1,
-                )
-                db.add(table)
-                db.flush()
-                record_audit(
-                    db,
-                    workspace_id=workspace_id,
-                    actor_id=user.id,
-                    entity_type="dw_table",
-                    entity_id=table.id,
-                    old=None,
-                    new=_table_snapshot(table),
-                    at=now,
-                )
-                self._activity(db, user, workspace_id, "dw_table.created", table)
-                for column in columns:
-                    self._add_column(
-                        db,
-                        user,
-                        workspace_id,
-                        table,
-                        {
-                            "name": column.name,
-                            "data_type": dict(column.data_type),
-                            "is_nullable": column.is_nullable,
-                            "role": column.role,
-                        },
-                        now,
-                        scaffold=True,
-                    )
-                return _table_view(table, self._columns(db, table.id), rules)
+                return _table_view(table, self._columns(db, table.id), _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None
+
+    def _build_generated(
+        self,
+        db: Session,
+        user: User | None,
+        workspace_id: uuid.UUID,
+        warehouse: DataWarehouseRecord,
+        which: str,
+        layer: str,
+        now: datetime,
+        *,
+        table_id: uuid.UUID | None = None,
+    ) -> DwTableRecord:
+        settings = date_dimension_of(warehouse.date_dim_settings)
+        columns = date_columns(settings) if which == "date" else time_columns()
+        name = generated_table_name(_rules(warehouse), which)
+        self._ensure_table_name_free(db, warehouse, layer, name, None)
+        table = DwTableRecord(
+            id=table_id or uuid.uuid4(),
+            data_warehouse_id=warehouse.id,
+            layer=layer,
+            name=name,
+            kind="generated",
+            fact_type=None,
+            grain=None,
+            is_aggregate=False,
+            scd_type=None,
+            is_conformed=True,
+            unknown_member=None,
+            description=f"Generated {which} dimension; needs no mapping.",
+            created_by=user.id if user else None,
+            created_at=now,
+            updated_at=now,
+            version=1,
+        )
+        db.add(table)
+        db.flush()
+        if user is not None:
+            record_audit(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                entity_type="dw_table",
+                entity_id=table.id,
+                old=None,
+                new=_table_snapshot(table),
+                at=now,
+            )
+            self._activity(db, user, workspace_id, "dw_table.created", table)
+        for column in columns:
+            self._add_column(
+                db,
+                user,
+                workspace_id,
+                table,
+                {
+                    "name": column.name,
+                    "data_type": dict(column.data_type),
+                    "is_nullable": column.is_nullable,
+                    "role": column.role,
+                },
+                now,
+                scaffold=True,
+            )
+        return table
 
     def update_table(
         self,
@@ -574,6 +583,7 @@ class ModelService:
                 columns = self._columns(db, table.id)
                 self._apply_table(db, warehouse, table, columns, changes)
                 db.flush()
+                mark_edited(table, before, _table_snapshot(table), GENERATED_TABLE_FIELDS)
                 self._sync_scd2(db, user, workspace_id, table, now)
                 self._finish_table_edit(db, user, workspace_id, table, before, now)
                 view = _table_view(table, self._columns(db, table.id), _rules(warehouse))
@@ -634,6 +644,18 @@ class ModelService:
                         data_warehouse_id=warehouse.id,
                         object_type="staging_table",
                         src_object_id=table.source_table_id,
+                        deleted_by=user.id,
+                        deleted_at=now,
+                    )
+                )
+            if table.generation_key is not None:
+                # Nor does regeneration bring back a generated one.
+                db.add(
+                    TombstoneRecord(
+                        data_warehouse_id=warehouse.id,
+                        object_type="dw_table",
+                        generation_key=table.generation_key,
+                        name=f"{table.layer}.{table.name}",
                         deleted_by=user.id,
                         deleted_at=now,
                     )
@@ -714,6 +736,7 @@ class ModelService:
                         column.edited_fields = sorted(
                             {*column.edited_fields, *(f for f in changed if f in OVERRIDABLE)}
                         )
+                    mark_edited(column, before, after, GENERATED_COLUMN_FIELDS)
                     if "name" in changed:
                         self._rename_default(table, before["name"], column.name)
                     column.version += 1
@@ -777,6 +800,17 @@ class ModelService:
             )
             self._activity(db, user, workspace_id, "dw_column.deleted", column, table=table)
             name = column.name
+            if column.generation_key is not None:
+                db.add(
+                    TombstoneRecord(
+                        data_warehouse_id=warehouse.id,
+                        object_type="dw_column",
+                        generation_key=column.generation_key,
+                        name=f"{table.layer}.{table.name}.{column.name}",
+                        deleted_by=user.id,
+                        deleted_at=now,
+                    )
+                )
             removed = StructuralChange(
                 "dw_column",
                 column.id,
@@ -850,7 +884,7 @@ class ModelService:
         self,
         db: Session,
         warehouse: DataWarehouseRecord,
-        user: User,
+        user: User | None,
         fields: Mapping[str, Any],
         now: datetime,
     ) -> DwTableRecord:
@@ -874,7 +908,7 @@ class ModelService:
             is_conformed=False,
             unknown_member=None,
             description="",
-            created_by=user.id,
+            created_by=user.id if user else None,
             created_at=now,
             updated_at=now,
             version=1,
@@ -947,6 +981,36 @@ class ModelService:
                     }
             else:  # pragma: no cover - a programming error
                 raise ValueError(f"cannot change table field {field!r}")
+
+    def _scaffold_key(
+        self,
+        db: Session,
+        user: User | None,
+        workspace_id: uuid.UUID,
+        warehouse: DataWarehouseRecord,
+        table: DwTableRecord,
+        now: datetime,
+    ) -> DwColumnRecord | None:
+        """A dimension's surrogate key or a bridge's group key, which DAWAM adds."""
+        if table.kind not in ("dimension", "bridge"):
+            return None
+        suffix = "_group_key" if table.kind == "bridge" else "_key"
+        # Shortened so the key fits the platform's identifier limit.
+        room = max_identifier_length(warehouse.target_platform) - len(suffix)  # type: ignore[arg-type]
+        return self._add_column(
+            db,
+            user,
+            workspace_id,
+            table,
+            {
+                "name": f"{table.name[:room]}{suffix}",
+                "data_type": {"type": "bigint"},
+                "is_nullable": False,
+                "role": "sk",
+            },
+            now,
+            scaffold=True,
+        )
 
     def _ensure_table_name_free(
         self,
@@ -1185,7 +1249,7 @@ class ModelService:
     def _add_column(
         self,
         db: Session,
-        user: User,
+        user: User | None,
         workspace_id: uuid.UUID,
         table: DwTableRecord,
         fields: Mapping[str, Any],
@@ -1226,18 +1290,21 @@ class ModelService:
         db.add(column)
         db.flush()
         self._audit_column_created(db, user, workspace_id, column, now)
-        if not scaffold:
+        if not scaffold and user is not None:
             self._activity(db, user, workspace_id, "dw_column.created", column, table=table)
         return column
 
     def _audit_column_created(
         self,
         db: Session,
-        user: User,
+        user: User | None,
         workspace_id: uuid.UUID,
         column: DwColumnRecord,
         now: datetime,
     ) -> None:
+        """Not for a Change Set's apply (``user`` ``None``): the engine audits the item."""
+        if user is None:
+            return
         record_audit(
             db,
             workspace_id=workspace_id,
@@ -1254,7 +1321,7 @@ class ModelService:
     def _sync_scd2(
         self,
         db: Session,
-        user: User,
+        user: User | None,
         workspace_id: uuid.UUID,
         table: DwTableRecord,
         now: datetime,
@@ -1302,16 +1369,17 @@ class ModelService:
                 self._audit_column_created(db, user, workspace_id, column, now)
         else:
             for column in present.values():
-                record_audit(
-                    db,
-                    workspace_id=workspace_id,
-                    actor_id=user.id,
-                    entity_type="dw_column",
-                    entity_id=column.id,
-                    old=_column_snapshot(column),
-                    new=None,
-                    at=now,
-                )
+                if user is not None:
+                    record_audit(
+                        db,
+                        workspace_id=workspace_id,
+                        actor_id=user.id,
+                        entity_type="dw_column",
+                        entity_id=column.id,
+                        old=_column_snapshot(column),
+                        new=None,
+                        at=now,
+                    )
                 db.delete(column)
             if present:
                 db.flush()
@@ -1381,6 +1449,33 @@ def _structural(
 
 def _not_pii_derived() -> ApiError:
     return _invalid("pii_note", "Only a PII-derived column has a handling note.")
+
+
+def generated_table_name(rules: NamingRules, which: str) -> str:
+    """The name of the built-in ``date`` or ``time`` dimension under the naming rules."""
+    name = f"{rules.dimension_prefix}{which}" if rules.dimension_prefix else f"{which}_dim"
+    return name.upper() if rules.case_style == "upper" else name
+
+
+def editing_rules(clock: Clock) -> ModelService:
+    """The model's editing rules for code that already holds a session in a transaction (a
+    Change Set handler): only the private helpers that take ``db`` may be called on it."""
+    return ModelService(None, workspaces=None, clock=clock)  # type: ignore[arg-type]
+
+
+def mark_edited(
+    record: DwTableRecord | DwColumnRecord,
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    fields: tuple[str, ...],
+) -> None:
+    """A user changed ``record``: on a generated object, the changed generated fields become
+    overrides (``edited_fields``)."""
+    if record.generation_key is None:
+        return
+    changed = [f for f in fields if before[f] != after[f]]
+    if changed:
+        record.edited_fields = sorted({*record.edited_fields, *changed})
 
 
 def _system_column() -> ApiError:
