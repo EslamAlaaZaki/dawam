@@ -145,8 +145,11 @@ def open_impacts(
         )
         .order_by(DwTableRecord.name, DwColumnRecord.ordinal, ColumnMappingRecord.id)
     ):
-        if record.validation.get("unparsed") or record.validation.get("errors"):
-            continue  # a mapping error no propagation fixes
+        if record.validation.get("unparsed"):
+            continue  # SQL that does not parse: no propagation fixes it
+        # Other stored errors don't stop it: an accepted propagation that re-derived the
+        # mapping stores ``broken_reference`` for an input still missing, which is exactly
+        # what this recomputes.
         texts = [record.sql_expression] if record.sql_expression else []
         for text in [*texts, *_lookup_inputs(record.lookup)]:
             try:

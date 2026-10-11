@@ -134,6 +134,34 @@ def test_items_a_newer_propagation_expired_are_recomputed_not_revived(layered, w
     assert problems(warehouse, "removed_input") == []
 
 
+def test_a_mapping_a_later_propagation_left_broken_is_still_fixed(model, warehouse):
+    label = column(warehouse, model["mart"]["id"], "label")
+    map_column(
+        warehouse, label, "CONCAT(dim_customer.customer_name, dim_customer.segment)", "derived"
+    )
+    edit_column(warehouse, model["name"], name="full_name")
+    reject(warehouse, only_propagation(warehouse)["change_set"]["id"])
+    edit_column(warehouse, model["segment"], name="tier")
+    # Accepting re-derives the mapping, which still reads the first name: the mapping now
+    # carries a stored broken_reference error.
+    accept(warehouse, only_propagation(warehouse)["change_set"]["id"])
+    assert mapping_sql(warehouse, label) == (
+        "derived",
+        "CONCAT(dim_customer.customer_name, dim_customer.tier)",
+    )
+    assert "label" in [p["column_name"] for p in problems(warehouse, "broken_reference")]
+
+    result = fixed(warehouse)
+
+    detail = detail_of(warehouse, result["change_set_id"])
+    item = labelled(detail)["[Mart] mart.dim_customer_m.label mapping: follow the rename"]
+    assert item["payload"] == {
+        "sql_expression": "CONCAT(dim_customer.full_name, dim_customer.tier)"
+    }
+    accept(warehouse, result["change_set_id"])
+    assert problems(warehouse, "broken_reference") == []
+
+
 def test_a_partly_accepted_propagation_leaves_nothing_to_fix(model, warehouse: RoleClients):
     edit_column(warehouse, model["name"], name="full_name")
     detail = only_propagation(warehouse)
