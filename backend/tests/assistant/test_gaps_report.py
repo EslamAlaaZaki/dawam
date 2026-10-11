@@ -7,8 +7,10 @@ from __future__ import annotations
 from typing import Any
 
 from dawam.modules.llm import Reply
+from tests.assistant import test_chat
+from tests.assistant.test_chat import add_system, ask, conversation, tool
 
-from .test_chat import add_system, ask, conversation, tool
+model = test_chat.model  # the fixture that registers and assigns the assistant's model
 
 REPORT = "# Gaps\n\n- `orders` has no primary key.\n"
 
