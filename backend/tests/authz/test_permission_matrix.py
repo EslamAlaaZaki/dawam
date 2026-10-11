@@ -804,6 +804,20 @@ ROWS: list[Row] = [
         "View lineage, scores, AI evaluation findings, exports, audit log (the PII view)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
+    # PII inventory export (story 140).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/pii/inventory/export",
+        "View lineage, scores, AI evaluation findings, exports, audit log (the PII inventory)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/files/pii-inventory",
+        "Upload, edit, delete Workspace files (save the PII inventory)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+    ),
     # DDL export (story 97).
     Row(
         "GET",
