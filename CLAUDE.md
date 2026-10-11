@@ -15,3 +15,7 @@ Default vocabulary: needs-triage, needs-info, ready-for-agent, ready-for-human, 
 ### Domain docs
 
 Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Workflow
+
+Tickets run as an implement → review → PR → CI → merge pipeline, one at a time, without asking. Implementers use the `ticket-implementer` agent (`.claude/agents/`). Read `docs/agents/workflow.md` before working tickets or grilling the maintainer.
