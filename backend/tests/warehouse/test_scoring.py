@@ -83,6 +83,7 @@ def dim(name="dim_customer", **kw) -> DesignTable:
     columns = kw.pop("columns", None)
     if columns is None:
         columns = (col("customer_key", "sk"), col("customer_code", "nk"))
+    kw.setdefault("description", "Who buys from us")
     return table(name, "dimension", columns=columns, scd_type=kw.pop("scd_type", 1), **kw)
 
 
@@ -91,8 +92,9 @@ def fact(dimension: DesignTable, name="fact_sales", **kw) -> DesignTable:
     if columns is None:
         columns = (
             col("customer_key", "fk", references_table_id=dimension.id),
-            col("amount", "measure", additivity="additive"),
+            col("amount", "measure", additivity="additive", description="Net amount in SAR"),
         )
+    kw.setdefault("description", "What we sold")
     return table(name, "fact", columns=columns, grain=kw.pop("grain", GRAIN), **kw)
 
 
@@ -154,10 +156,11 @@ def test_an_unresolved_error_caps_the_grade_at_c():
 
 def test_a_layer_with_no_tables_is_not_scored_and_staging_is_apart():
     customers = dim()
-    report = run(customers, fact(customers), table("stg_orders", "staging", layer="staging"))
+    staging = table("stg_erp_dbo_orders", "staging", layer="staging", status="source_removed")
+    report = run(customers, fact(customers), staging)
     assert report.layer("mart").score is None
     assert report.layer("mart").grade is None
-    assert report.layer("staging").score is None  # nothing in staging is checked yet
+    assert report.layer("staging").score is not None and report.layer("staging").score < 100
     assert report.layer("core").score == 100
     assert report.score == 100
 
@@ -539,3 +542,381 @@ def test_every_registered_check_has_a_hint_and_a_known_category():
     assert len({s.code for s in product_registry.specs}) == len(product_registry.specs)
     for spec in product_registry.specs:
         assert spec.hint and spec.category in categories and spec.title
+
+
+def test_same_named_columns_share_a_data_type():
+    customers = dim()
+    sales = fact(customers)
+    returns = fact(
+        customers,
+        "fact_returns",
+        columns=(
+            col("customer_key", "fk", references_table_id=customers.id),
+            col("amount", "measure", additivity="additive", data_type={"type": "decimal"}),
+        ),
+    )
+    report = run(customers, sales, returns)
+    assert not result(report, "same_name_same_type", name="fact_sales.amount").passed
+    assert not result(report, "same_name_same_type", name="fact_returns.amount").passed
+    assert result(report, "same_name_same_type", name="fact_sales.customer_key").passed
+
+
+def test_same_named_columns_in_staging_are_not_compared():
+    customers = dim()
+    staging = table(
+        "stg_erp_dbo_sales",
+        "staging",
+        layer="staging",
+        columns=(col("amount", data_type={"type": "text"}),),
+    )
+    report = run(customers, fact(customers), staging)
+    assert result(report, "same_name_same_type", name="fact_sales.amount").passed
+
+
+def _mapped(sql: str, name="fact_sales", layer="core", **kw) -> DesignTable:
+    return table(
+        name,
+        "fact",
+        layer=layer,
+        grain=GRAIN,
+        columns=(col("amount", "measure", mappings=(MappingFact(None, "derived", sql),)),),
+        **kw,
+    )
+
+
+def _staging(name="stg_erp_dbo_orders", columns=None, **kw) -> DesignTable:
+    columns = columns if columns is not None else (col("amount"), col("order_id"))
+    return table(name, "staging", layer="staging", columns=columns, **kw)
+
+
+def test_inputs_come_only_from_the_layer_below():
+    orders = _staging()
+    core_orders = table("fact_orders", "fact", columns=(col("amount"),))
+    ok = _mapped("stg_erp_dbo_orders.amount * 2")
+    wrong = _mapped("fact_orders.amount", name="fact_wrong", layer="mart")
+    skipping = _mapped("stg_erp_dbo_orders.amount", name="fact_skip", layer="mart")
+    report = run(orders, core_orders, ok, wrong, skipping)
+    assert result(report, "inputs_from_layer_below", name="fact_sales").passed
+    assert result(report, "inputs_from_layer_below", name="fact_wrong").passed
+    failed = result(report, "inputs_from_layer_below", name="fact_skip")
+    assert not failed.passed and failed.severity == "error"
+    assert "stg_erp_dbo_orders.amount (staging)" in failed.message
+
+
+def test_a_lookups_dimension_is_not_an_input_but_its_natural_key_inputs_are():
+    orders = _staging(columns=(col("customer_code"),))
+    customers = dim()
+    lookup = MappingFact(None, "lookup", lookup_inputs=("stg_erp_dbo_orders.customer_code",))
+    sales = fact(
+        customers,
+        columns=(col("customer_key", "fk", references_table_id=customers.id, mappings=(lookup,)),),
+    )
+    report = run(orders, customers, sales)
+    assert result(report, "inputs_from_layer_below", name="fact_sales").passed
+    assert result(report, "inputs_exist", name="fact_sales").passed
+
+
+def test_a_conformed_dimension_is_used_by_two_facts():
+    shared = dim("dim_product", is_conformed=True)
+    lonely = dim("dim_store", is_conformed=True)
+    plain = dim("dim_region")
+    facts = [
+        fact(shared, "fact_sales"),
+        fact(
+            shared,
+            "fact_returns",
+            columns=(
+                col("customer_key", "fk", references_table_id=shared.id),
+                col("store_key", "fk", references_table_id=lonely.id),
+            ),
+        ),
+    ]
+    report = run(shared, lonely, plain, *facts)
+    assert result(report, "conformed_dimension_shared", name="dim_product").passed
+    assert not result(report, "conformed_dimension_shared", name="dim_store").passed
+    assert not [
+        f
+        for f in report.findings
+        if f.code == "conformed_dimension_shared" and f.object_name == "dim_region"
+    ]
+
+
+# --- traceability --------------------------------------------------------------------
+
+
+def test_every_mapping_expression_join_and_filter_parses():
+    orders = _staging()
+    ok = _mapped("stg_erp_dbo_orders.amount")
+    broken = _mapped("stg_erp_dbo_orders.amount +", name="fact_broken")
+    bad_join = table(
+        "fact_join",
+        "fact",
+        grain=GRAIN,
+        branches=(DesignBranch(uuid.uuid4(), "erp", "stg_erp_dbo_orders", joins="JOIN ON"),),
+    )
+    report = run(orders, ok, broken, bad_join)
+    assert result(report, "mapping_parses", name="fact_sales").passed
+    assert not result(report, "mapping_parses", name="fact_broken").passed
+    failed = result(report, "mapping_parses", name="fact_join")
+    assert not failed.passed and "branch erp" in failed.message
+
+
+def test_all_mapped_input_columns_exist():
+    orders = _staging()
+    ok = _mapped("stg_erp_dbo_orders.amount")
+    gone_column = _mapped("stg_erp_dbo_orders.discount", name="fact_column")
+    gone_table = _mapped("stg_erp_dbo_returns.amount", name="fact_table")
+    branch = table(
+        "fact_branch",
+        "fact",
+        grain=GRAIN,
+        branches=(
+            DesignBranch(
+                uuid.uuid4(),
+                "erp",
+                "stg_erp_dbo_orders o",
+                joins="JOIN stg_erp_dbo_lines l ON l.order_id = o.order_id",
+            ),
+        ),
+    )
+    report = run(orders, ok, gone_column, gone_table, branch)
+    assert result(report, "inputs_exist", name="fact_sales").passed
+    assert (
+        "stg_erp_dbo_orders.discount" in result(report, "inputs_exist", name="fact_column").message
+    )
+    assert not result(report, "inputs_exist", name="fact_table").passed
+    failed = result(report, "inputs_exist", name="fact_branch")
+    assert not failed.passed and "stg_erp_dbo_lines" in failed.message
+
+
+def test_a_table_with_nothing_mapped_is_not_scored_on_its_inputs():
+    report = run(table("fact_empty", "fact", grain=GRAIN))
+    for code in (
+        "mapping_parses",
+        "inputs_exist",
+        "inputs_from_layer_below",
+        "no_source_removed_inputs",
+    ):
+        assert not [f for f in report.findings if f.code == code]
+
+
+def test_no_mapping_reads_a_source_removed_column():
+    orders = _staging(columns=(col("amount"), col("discount", status="source_removed")))
+    ok = _mapped("stg_erp_dbo_orders.amount")
+    stale = _mapped("stg_erp_dbo_orders.amount - stg_erp_dbo_orders.discount", name="fact_stale")
+    report = run(orders, ok, stale)
+    assert result(report, "no_source_removed_inputs", name="fact_sales").passed
+    failed = result(report, "no_source_removed_inputs", name="fact_stale")
+    assert not failed.passed and failed.severity == "error"
+
+
+def test_a_source_removed_staging_object_is_a_warning():
+    kept = _staging()
+    column_gone = _staging("stg_erp_dbo_lines", columns=(col("qty", status="source_removed"),))
+    table_gone = _staging("stg_erp_dbo_old", status="source_removed")
+    report = run(kept, column_gone, table_gone)
+    assert result(report, "no_source_removed_inputs", name="stg_erp_dbo_orders").passed
+    for name in ("stg_erp_dbo_lines", "stg_erp_dbo_old"):
+        failed = result(report, "no_source_removed_inputs", name=name)
+        assert not failed.passed and failed.severity == "warning"
+
+
+def test_review_flags_are_resolved_by_overriding_the_flagged_field():
+    clean = _staging()
+    lossy = {"code": "lossy_type", "message": "NUMBER without precision became numeric(38,10)."}
+    placeholder = {"code": "placeholder", "message": "The column name is not Latin."}
+    flagged = _staging(
+        "stg_erp_dbo_flagged",
+        columns=(col("col_001", review_flags=(placeholder,)), col("total", review_flags=(lossy,))),
+    )
+    overridden = _staging(
+        "stg_erp_dbo_fixed",
+        columns=(
+            col("customer_name", review_flags=(placeholder,), edited_fields=("name",)),
+            col("total", review_flags=(lossy,), edited_fields=("data_type",)),
+        ),
+    )
+    table_flag = _staging("stg_erp_dbo_tbl_007", review_flags=(placeholder,))
+    report = run(clean, flagged, overridden, table_flag)
+    assert result(report, "review_flags_resolved", name="stg_erp_dbo_orders").passed
+    failed = result(report, "review_flags_resolved", name="stg_erp_dbo_flagged")
+    assert not failed.passed and failed.severity == "warning"
+    assert "col_001" in failed.message and "total" in failed.message
+    assert result(report, "review_flags_resolved", name="stg_erp_dbo_fixed").passed
+    assert not result(report, "review_flags_resolved", name="stg_erp_dbo_tbl_007").passed
+
+
+# --- staging -------------------------------------------------------------------------
+
+
+def test_staging_is_scored_only_on_naming_and_traceability():
+    report = run(_staging(), _staging("stg_erp_dbo_lines", status="source_removed"))
+    staging = [f for f in report.findings if f.layer == "staging"]
+    assert staging
+    categories = {product_registry.spec(f.code).category for f in staging}
+    assert categories <= {"consistency", "traceability"}
+    assert {f.code for f in staging if product_registry.spec(f.code).category == "consistency"} == {
+        "naming_conventions"
+    }
+    assert report.layer("staging").score is not None
+    assert report.score is None  # staging is never part of the Data Warehouse score
+
+
+def test_staging_names_follow_the_staging_convention():
+    ok = _staging()
+    no_prefix = _staging("erp_dbo_orders")
+    shouting = _staging("stg_erp_dbo_lines", columns=(col("Qty"),))
+    too_long = _staging("stg_" + "x" * 70)
+    report = run(ok, no_prefix, shouting, too_long)
+    assert result(report, "naming_conventions", name="stg_erp_dbo_orders").passed
+    assert not result(report, "naming_conventions", name="erp_dbo_orders").passed
+    assert "lower case" in result(report, "naming_conventions", name="stg_erp_dbo_lines").message
+    assert "63-byte" in result(report, "naming_conventions", name="stg_" + "x" * 70).message
+
+
+def test_generated_tables_are_exempt_from_the_new_mapping_checks():
+    dates = table(
+        "dim_date",
+        "generated",
+        columns=(col("date_key", "sk", mappings=(MappingFact(None, "derived", "nonsense +"),)),),
+    )
+    report = run(dates)
+    for code in (
+        "mapping_parses",
+        "inputs_exist",
+        "inputs_from_layer_below",
+        "no_source_removed_inputs",
+    ):
+        assert not [f for f in report.findings if f.code == code]
+
+
+# --- documentation -------------------------------------------------------------------
+
+
+def test_every_dw_table_has_a_description():
+    customers = dim()
+    bare = dim("dim_store", description="")
+    report = run(customers, bare)
+    assert result(report, "table_has_description", name="dim_customer").passed
+    failed = result(report, "table_has_description", name="dim_store")
+    assert not failed.passed and failed.severity == "info"
+
+
+def test_every_measure_has_a_description():
+    customers = dim()
+    sales = fact(
+        customers,
+        columns=(
+            col("customer_key", "fk", references_table_id=customers.id),
+            col("amount", "measure", additivity="additive", description="Net amount"),
+            col("qty", "measure", additivity="additive"),
+        ),
+    )
+    report = run(customers, sales)
+    assert result(report, "measure_has_description", name="fact_sales.amount").passed
+    assert not result(report, "measure_has_description", name="fact_sales.qty").passed
+    assert not [
+        f
+        for f in report.findings
+        if f.code == "measure_has_description" and f.object_name == "fact_sales.customer_key"
+    ]
+
+
+# --- performance readiness -----------------------------------------------------------
+
+
+def test_surrogate_keys_use_integer_types():
+    ok = dim()
+    uuid_key = dim(
+        "dim_store",
+        columns=(col("store_key", "sk", data_type={"type": "uuid"}), col("store_code", "nk")),
+    )
+    dates = table("dim_date", "generated", columns=(col("date_key", "sk"),))
+    report = run(ok, uuid_key, dates)
+    assert result(report, "surrogate_key_integer", name="dim_customer.customer_key").passed
+    assert result(report, "surrogate_key_integer", name="dim_date.date_key").passed
+    failed = result(report, "surrogate_key_integer", name="dim_store.store_key")
+    assert not failed.passed and failed.severity == "warning"
+
+
+def test_no_free_text_on_fact_tables():
+    customers = dim()
+    text = {"type": "string", "length": 200}
+    sales = fact(
+        customers,
+        columns=(
+            col("customer_key", "fk", references_table_id=customers.id),
+            col("amount", "measure", additivity="additive"),
+            col("comment", "attribute", data_type=text),
+            col("invoice_no", "degenerate_dimension", data_type=text),
+        ),
+    )
+    report = run(customers, sales)
+    assert result(report, "fact_no_free_text", name="fact_sales.amount").passed
+    assert not result(report, "fact_no_free_text", name="fact_sales.comment").passed
+    assert not [
+        f
+        for f in report.findings
+        if f.code == "fact_no_free_text" and f.object_name == "fact_sales.invoice_no"
+    ]
+
+
+def test_fact_tables_wider_than_60_columns():
+    customers = dim()
+    narrow = fact(customers)
+    wide = fact(
+        customers,
+        "fact_wide",
+        columns=(
+            col("customer_key", "fk", references_table_id=customers.id),
+            *(col(f"m{i}", "measure", additivity="additive") for i in range(60)),
+        ),
+    )
+    report = run(customers, narrow, wide)
+    assert result(report, "fact_width", name="fact_sales").passed
+    failed = result(report, "fact_width", name="fact_wide")
+    assert not failed.passed and failed.severity == "info"
+
+
+# --- privacy -------------------------------------------------------------------------
+
+
+def test_pii_derived_columns_reaching_the_mart_are_flagged():
+    customers = dim(layer="mart")
+    clean = dim(
+        "dim_store", layer="mart", columns=(col("store_key", "sk"), col("store_code", "nk"))
+    )
+    exposed = dim(
+        "dim_person",
+        layer="mart",
+        columns=(col("person_key", "sk"), col("national_id", "nk", pii_derived=True)),
+    )
+    core = dim("dim_core", columns=(col("core_key", "sk"), col("email", "nk", pii_derived=True)))
+    report = run(customers, clean, exposed, core)
+    assert result(report, "pii_in_mart", name="dim_store").passed
+    failed = result(report, "pii_in_mart", name="dim_person")
+    assert not failed.passed and failed.severity == "info" and "national_id" in failed.message
+    assert not [f for f in report.findings if f.code == "pii_in_mart" and f.layer == "core"]
+
+
+def test_every_check_in_the_spec_table_is_registered_with_its_layers_and_severity():
+    expected = {
+        "naming_conventions": ("warning", ("staging", "core", "mart")),
+        "same_name_same_type": ("warning", ("core", "mart")),
+        "inputs_from_layer_below": ("error", ("staging", "core", "mart")),
+        "conformed_dimension_shared": ("info", ("core", "mart")),
+        "mapping_parses": ("error", ("staging", "core", "mart")),
+        "inputs_exist": ("error", ("staging", "core", "mart")),
+        "no_source_removed_inputs": ("error", ("staging", "core", "mart")),
+        "review_flags_resolved": ("warning", ("staging",)),
+        "table_has_description": ("info", ("core", "mart")),
+        "measure_has_description": ("info", ("core", "mart")),
+        "surrogate_key_integer": ("warning", ("core", "mart")),
+        "fact_no_free_text": ("warning", ("core", "mart")),
+        "fact_width": ("info", ("core", "mart")),
+        "pii_in_mart": ("info", ("mart",)),
+    }
+    for code, (severity, layers) in expected.items():
+        spec = product_registry.spec(code)
+        assert spec is not None, code
+        assert (spec.severity, spec.layers) == (severity, layers), code

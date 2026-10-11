@@ -67,6 +67,8 @@ class MappingFact:
     branch_id: uuid.UUID | None
     mapping_type: str
     sql_expression: str = ""
+    lookup_inputs: tuple[str, ...] = ()
+    """A lookup's natural-key (and as-of) inputs, as ``table.column``; it has no SQL."""
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,15 @@ class DesignColumn:
     needs_no_mapping: bool = False
     """A system column (surrogate key, SCD housekeeping, audit): always covered."""
     mappings: tuple[MappingFact, ...] = ()
+    description: str = ""
+    status: str = "present"
+    """``source_removed``: a staging column whose source column is gone (still scored)."""
+    review_flags: tuple[Mapping[str, Any], ...] = ()
+    """What staging generation flagged for review: ``{"code", "message"}``."""
+    edited_fields: tuple[str, ...] = ()
+    """The fields a user overrode (a staging column)."""
+    pii_derived: bool = False
+    """Fed by a confirmed PII source column through value edges (spec §6.12)."""
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,10 @@ class DesignTable:
     description: str = ""
     columns: tuple[DesignColumn, ...] = ()
     branches: tuple[DesignBranch, ...] = ()
+    status: str = "present"
+    """``source_removed``: a Staging Table whose source is gone (still scored)."""
+    review_flags: tuple[Mapping[str, Any], ...] = ()
+    edited_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -121,9 +136,15 @@ class Design:
     """A ``NamingRulesLike`` (see ``naming``)."""
     tables: tuple[DesignTable, ...] = ()
     by_id: dict[uuid.UUID, DesignTable] = field(init=False, compare=False, repr=False)
+    by_name: dict[str, tuple[DesignTable, ...]] = field(init=False, compare=False, repr=False)
+    """The tables by lower-cased name (one per Layer at most)."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "by_id", {t.id: t for t in self.tables})
+        by_name: dict[str, list[DesignTable]] = {}
+        for t in self.tables:
+            by_name.setdefault(t.name.lower(), []).append(t)
+        object.__setattr__(self, "by_name", {k: tuple(v) for k, v in by_name.items()})
 
     def table(self, table_id: uuid.UUID | None) -> DesignTable | None:
         return self.by_id.get(table_id) if table_id else None
@@ -177,9 +198,10 @@ class Finding:
 CheckFunction = Callable[[Design, CheckSpec], Iterable[Finding]]
 
 
-def _finding(
+def finding(
     spec: CheckSpec, outcome: Outcome, table: DesignTable, column: DesignColumn | None
 ) -> Finding:
+    """The finding of ``spec`` on the table (or one of its columns), for a general check."""
     return Finding(
         code=spec.code,
         severity=outcome.severity or spec.severity,
@@ -250,7 +272,7 @@ class CheckRegistry:
                         continue
                     outcome = function(table, design)
                     if outcome is not None:
-                        yield _finding(spec, outcome, table, None)
+                        yield finding(spec, outcome, table, None)
 
             self.check(
                 code,
@@ -287,7 +309,7 @@ class CheckRegistry:
                     for column in table.columns:
                         outcome = function(column, table, design)
                         if outcome is not None:
-                            yield _finding(spec, outcome, table, column)
+                            yield finding(spec, outcome, table, column)
 
             self.check(
                 code,

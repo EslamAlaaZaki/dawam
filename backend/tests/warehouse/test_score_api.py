@@ -16,7 +16,14 @@ from dawam.modules.workspaces import WorkspaceService
 from tests.assistant import test_chat
 from tests.assistant.test_source_tools import payload, use
 from tests.roles import RoleClients
-from tests.warehouse.test_column_mappings import base, column, mapping_path, table
+from tests.warehouse.test_column_mappings import (
+    _staging_table,
+    _warehouse_id,
+    base,
+    column,
+    mapping_path,
+    table,
+)
 from tests.warehouse.test_mapping_branches import add_branch, put_branch_column
 
 model = test_chat.model
@@ -208,6 +215,68 @@ def test_the_naming_rules_are_scored(warehouse: RoleClients):
     )
     assert patch.status_code == 200, patch.text
     assert not failed(score(warehouse), "naming_conventions")
+
+
+def test_staging_is_scored_apart_and_core_mappings_are_traced(warehouse: RoleClients, app):
+    engine = app.state.engine
+    staging_id = _staging_table(engine, _warehouse_id(engine), "stg_crm_dbo_orders", ["amt", "old"])
+    flag = '[{"code": "lossy_type", "message": "NUMBER became numeric(38,10)."}]'
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text("update dw_columns set status = 'source_removed' where name = 'old'"),
+        )
+        conn.execute(
+            sa.text(f"update dw_columns set review_flags = '{flag}' where name = 'amt'"),
+        )
+    core = table(warehouse, "crm_orders", "core")
+    amount = column(warehouse, core["id"], "amount")
+    saved = warehouse.client("editor").put(
+        f"{mapping_path(warehouse, core['id'])}/columns/{amount['id']}",
+        json={
+            "mapping_type": "derived",
+            "sql_expression": "stg_crm_dbo_orders.amt + stg_crm_dbo_orders.old",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+
+    result = score(warehouse)
+
+    staging = layer(result, "staging")
+    assert staging["scored"] and staging["score"] < 100
+    [removed_input] = failed(result, "no_source_removed_inputs")[:1]
+    assert {(f["layer"], f["severity"]) for f in failed(result, "no_source_removed_inputs")} == {
+        ("core", "error"),
+        ("staging", "warning"),
+    }
+    assert removed_input["fix_hint"]
+    [unresolved] = failed(result, "review_flags_resolved")
+    assert unresolved["table_id"] == str(staging_id) and "numeric(38,10)" in unresolved["message"]
+    assert result["score"] is not None  # Core alone makes the Data Warehouse score
+
+    # Setting the flagged type yourself resolves the flag.
+    with engine.connect() as conn:
+        amt = conn.execute(sa.text("select id from dw_columns where name = 'amt'")).scalar_one()
+    retyped = warehouse.client("editor").patch(
+        f"{base(warehouse)}/tables/{staging_id}/columns/{amt}",
+        json={"version": 1, "data_type": {"type": "decimal", "precision": 18, "scale": 2}},
+    )
+    assert retyped.status_code == 200, retyped.text
+    assert not failed(score(warehouse), "review_flags_resolved")
+
+    # A renamed staging column no longer matches its mapping, and the rename is recorded as
+    # an override (which resolves a name flag the same way).
+    renamed = warehouse.client("editor").patch(
+        f"{base(warehouse)}/tables/{staging_id}/columns/{amt}",
+        json={"version": 2, "name": "amount"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    with engine.connect() as conn:
+        edited = conn.execute(
+            sa.text("select edited_fields from dw_columns where id = :id"), {"id": amt}
+        ).scalar_one()
+    assert set(edited) == {"data_type", "name"}
+    [missing] = failed(score(warehouse), "inputs_exist")
+    assert "stg_crm_dbo_orders.amt" in missing["message"]
 
 
 def test_each_run_adds_a_summary_but_only_the_latest_results_are_kept(warehouse: RoleClients, app):

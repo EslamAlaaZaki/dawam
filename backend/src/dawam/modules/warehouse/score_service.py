@@ -18,11 +18,13 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
+from dawam.modules.sources import confirmed_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .mapping_service import SYSTEM_ROLES
+from .pii_propagation import propagate_pii
 from .score_checks import is_date_dimension
 from .score_checks import registry as default_registry
 from .scoring import (
@@ -342,7 +344,10 @@ class ScoreService:
         tables = list(
             db.scalars(
                 sa.select(DwTableRecord)
-                .where(DwTableRecord.data_warehouse_id == warehouse.id)
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.status != "deleted",
+                )
                 .order_by(sa.func.lower(DwTableRecord.name), DwTableRecord.id)
             )
         )
@@ -350,7 +355,7 @@ class ScoreService:
         columns: dict[uuid.UUID, list[DwColumnRecord]] = defaultdict(list)
         for c in db.scalars(
             sa.select(DwColumnRecord)
-            .where(DwColumnRecord.table_id.in_(ids))
+            .where(DwColumnRecord.table_id.in_(ids), DwColumnRecord.status != "deleted")
             .order_by(DwColumnRecord.table_id, DwColumnRecord.ordinal)
         ):
             columns[c.table_id].append(c)
@@ -360,8 +365,17 @@ class ScoreService:
             .join(DwColumnRecord, DwColumnRecord.id == ColumnMappingRecord.dw_column_id)
             .where(DwColumnRecord.table_id.in_(ids))
         ):
+            lookup = m.lookup or {}
             column_mappings[m.dw_column_id].append(
-                MappingFact(m.branch_id, m.mapping_type, m.sql_expression)
+                MappingFact(
+                    m.branch_id,
+                    m.mapping_type,
+                    m.sql_expression,
+                    lookup_inputs=(
+                        *lookup.get("nk_inputs", ()),
+                        *([lookup["as_of_input"]] if lookup.get("as_of_input") else []),
+                    ),
+                )
             )
         branches: dict[uuid.UUID, list[DesignBranch]] = defaultdict(list)
         for table_id, b in db.execute(
@@ -377,6 +391,7 @@ class ScoreService:
                     b.id, b.name, b.driving_input, b.joins, b.filters, b.group_by, b.having
                 )
             )
+        pii = propagate_pii(db, confirmed_pii_column_ids(db, warehouse.workspace_id))
         return Design(
             platform=warehouse.target_platform,
             naming_rules=NamingRules(**warehouse.naming_rules),
@@ -392,6 +407,9 @@ class ScoreService:
                     scd_type=t.scd_type,
                     is_conformed=t.is_conformed,
                     description=t.description,
+                    status=t.status,
+                    review_flags=tuple(t.review_flags or ()),
+                    edited_fields=tuple(t.edited_fields or ()),
                     columns=tuple(
                         DesignColumn(
                             id=c.id,
@@ -404,6 +422,11 @@ class ScoreService:
                             is_system=c.is_system,
                             needs_no_mapping=c.is_system or c.role in SYSTEM_ROLES,
                             mappings=tuple(column_mappings.get(c.id, ())),
+                            description=c.description,
+                            status=c.status,
+                            review_flags=tuple(c.review_flags or ()),
+                            edited_fields=tuple(c.edited_fields or ()),
+                            pii_derived=c.id in pii.derived_columns,
                         )
                         for c in columns.get(t.id, ())
                     ),
@@ -440,22 +463,28 @@ class ScoreService:
                 ScoreCheckResultRecord.data_warehouse_id == warehouse_id
             )
         )
-        db.add_all(
-            ScoreCheckResultRecord(
-                id=uuid.uuid4(),
-                data_warehouse_id=warehouse_id,
-                check_code=f.code,
-                severity=f.severity,
-                layer=f.layer,
-                object_type=f.object_type,
-                object_id=f.object_id,
-                table_id=f.table_id,
-                object_name=f.object_name,
-                passed=f.passed,
-                message=f.message[:MESSAGE_MAX_LENGTH],
+        if report.findings:
+            # A Core insert of plain rows: building an ORM object per finding is the slow part
+            # of a run on a wide model.
+            db.execute(
+                sa.insert(ScoreCheckResultRecord),
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "data_warehouse_id": warehouse_id,
+                        "check_code": f.code,
+                        "severity": f.severity,
+                        "layer": f.layer,
+                        "object_type": f.object_type,
+                        "object_id": f.object_id,
+                        "table_id": f.table_id,
+                        "object_name": f.object_name,
+                        "passed": f.passed,
+                        "message": f.message[:MESSAGE_MAX_LENGTH],
+                    }
+                    for f in report.findings
+                ],
             )
-            for f in report.findings
-        )
         old = (
             sa.select(ScoreRunRecord.id)
             .where(ScoreRunRecord.data_warehouse_id == warehouse_id)
