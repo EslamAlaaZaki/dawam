@@ -1451,8 +1451,9 @@ export interface paths {
         /**
          * Update Source System
          * @description Edit a Source System (owners and editors); fields left out stay as they are.
-         *     Changing the System Code is for owners only (403 for editors). Until staging
-         *     exists, a code change applies directly.
+         *     Changing the System Code is for owners only (403 for editors). Once the system has
+         *     Staging Tables a code change is a Change Set (409 `use_change_set`; see
+         *     `proposeSystemCodeChange`); before that it applies directly.
          */
         patch: operations["updateSourceSystem"];
         trace?: never;
@@ -2771,6 +2772,58 @@ export interface paths {
          *     impacts" supersedes a pending one.
          */
         post: operations["fixImpacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/code-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose System Code Change
+         * @description Propose changing a Source System's System Code (owners only; 403 for editors). One
+         *     `system_code_change` Change Set renames every Staging Table named after the old code and
+         *     updates the `source_system` audit column; accepting it applies the change, and the Core and
+         *     Mart SQL reading a renamed table follows through the propagation Change Set the rename
+         *     triggers. A pending one for the same system is superseded. 404 `not_found`; 409
+         *     `system_code_unchanged`; 422 `invalid_change_set` for a code that is not identifier-safe
+         *     or is taken.
+         */
+        post: operations["proposeSystemCodeChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/platform-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose Platform Change
+         * @description Propose moving the Data Warehouse to another target platform (owners only; 403 for
+         *     editors). One `platform_change` Change Set carries the platform, the Staging column types
+         *     translated again for it and every stored SQL text (Core and Mart mappings and branches, KPI
+         *     formulas) transpiled to its dialect; text sqlglot cannot translate stays as it is and is
+         *     flagged "manual" (`manual`, and a `manual_review` item). Accepting the platform is
+         *     structural: it returns an approved Core and Mart to draft. 404 `not_set_up`; 409
+         *     `platform_unchanged`.
+         */
+        post: operations["proposePlatformChange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7213,6 +7266,14 @@ export interface components {
              */
             reserved_words: string[];
         };
+        /** PlatformChangeRequest */
+        PlatformChangeRequest: {
+            /**
+             * Target Platform
+             * @enum {string}
+             */
+            target_platform: "postgresql" | "sqlserver" | "oracle" | "snowflake" | "bigquery";
+        };
         /** PlatformList */
         PlatformList: {
             /** Items */
@@ -7266,24 +7327,6 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
-        };
-        /** ProposedChangeSet */
-        ProposedChangeSet: {
-            /**
-             * Change Set Id
-             * @description The pending Change Set, to review at `/change-sets/{id}`; null when there is nothing to change.
-             */
-            change_set_id: string | null;
-            /**
-             * Items
-             * @description How many changes it proposes.
-             */
-            items: number;
-            /**
-             * Conflicts
-             * @description Items that would overwrite a field a user overrode.
-             */
-            conflicts: number;
         };
         /** ReassignOwnerRequest */
         ReassignOwnerRequest: {
@@ -8728,6 +8771,14 @@ export interface components {
              */
             source_system_id: string;
         };
+        /** SystemCodeChangeRequest */
+        SystemCodeChangeRequest: {
+            /**
+             * Code
+             * @description The new System Code.
+             */
+            code: string;
+        };
         /** SystemProgress */
         SystemProgress: {
             /**
@@ -9529,6 +9580,43 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** ProposedChangeSet */
+        dawam__modules__propagation__api__ProposedChangeSet: {
+            /**
+             * Change Set Id
+             * Format: uuid
+             * @description The pending Change Set, to review at `/change-sets/{id}`.
+             */
+            change_set_id: string;
+            /**
+             * Items
+             * @description How many changes it proposes.
+             */
+            items: number;
+            /**
+             * Manual
+             * @description Stored SQL sqlglot could not translate, flagged "manual" (platform changes).
+             */
+            manual: string[];
+        };
+        /** ProposedChangeSet */
+        dawam__modules__warehouse__staging_api__ProposedChangeSet: {
+            /**
+             * Change Set Id
+             * @description The pending Change Set, to review at `/change-sets/{id}`; null when there is nothing to change.
+             */
+            change_set_id: string | null;
+            /**
+             * Items
+             * @description How many changes it proposes.
+             */
+            items: number;
+            /**
+             * Conflicts
+             * @description Items that would overwrite a field a user overrode.
+             */
+            conflicts: number;
         };
     };
     responses: never;
@@ -12330,7 +12418,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposedChangeSet"];
+                    "application/json": components["schemas"]["dawam__modules__warehouse__staging_api__ProposedChangeSet"];
                 };
             };
             /** @description Validation error */
@@ -12370,7 +12458,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposedChangeSet"];
+                    "application/json": components["schemas"]["dawam__modules__warehouse__staging_api__ProposedChangeSet"];
                 };
             };
             /** @description Validation error */
@@ -15903,6 +15991,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FixImpactsResult"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    proposeSystemCodeChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemCodeChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["dawam__modules__propagation__api__ProposedChangeSet"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    proposePlatformChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["dawam__modules__propagation__api__ProposedChangeSet"];
                 };
             };
             /** @description Validation error */

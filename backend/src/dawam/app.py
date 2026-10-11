@@ -39,6 +39,7 @@ from dawam.modules.warehouse import (
     ValidationService,
     install_approval_clock,
     install_score_recalculation,
+    staged_system_check,
     uninstall_score_recalculation,
 )
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
@@ -185,6 +186,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     propagation = propagation_service(engine, services.clock)
     app.state.on_structural_change = propagation.after_edit
     app.state.on_change_set_applied = propagation.after_change_set
+    # A System Code change of a staged system is a Change Set: sources cannot import warehouse.
+    app.state.system_has_staging = staged_system_check(engine)
     # A new Snapshot (Schema Import) is followed by a staging sync: sources cannot import warehouse.
     app.state.on_snapshot_created = staging_sync_after_snapshot(engine, settings, services.clock)
     # The stage progress (workspaces) shows each Source System's analysis: workspaces cannot

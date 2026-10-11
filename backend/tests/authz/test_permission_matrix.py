@@ -1117,6 +1117,22 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=_set_up_data_warehouse,
     ),
+    # System Code and target platform changes (stories 39, 87): owner-only Change Sets.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/code-change",
+        "Change a System Code or the target platform after creation (System Code)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"code": "crm2"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/platform-change",
+        "Change a System Code or the target platform after creation (target platform)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        setup=ensure_data_warehouse,
+        json=lambda roles: {"target_platform": "sqlserver"},
+    ),
     # Comments and mentions (stories 107, 125, 126; §4.3 "Comment": viewers too, admins not).
     Row(
         "GET",

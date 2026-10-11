@@ -22,7 +22,7 @@ from .platforms import (
     is_reserved_word,
     max_identifier_length,
 )
-from .tables import WORKSPACE_UNIQUE, DataWarehouseRecord
+from .tables import WORKSPACE_UNIQUE, DataWarehouseRecord, DwTableRecord
 
 CaseStyle = Literal["lower", "upper"]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -270,7 +270,8 @@ class DataWarehouseService:
         date_dimension: DateDimension | None = None,
     ) -> DataWarehouse:
         """Change the settings (``None``: leave as is). Editors and owners may, except
-        that changing the platform is for owners (403 ``forbidden``). 404
+        that changing the platform is for owners (403 ``forbidden``) and, once the Data
+        Warehouse has tables, a Change Set (409 ``use_change_set``; see ``DwChangeService``). 404
         ``not_set_up`` before setup; 409 ``version_conflict`` if ``version`` is stale."""
         self._workspaces.authorize(user, Action.SET_UP_DATA_WAREHOUSE, workspace_id)
         with Session(self._engine) as db, db.begin():
@@ -292,6 +293,17 @@ class DataWarehouseService:
             current = _view(record)
             if target_platform is not None and target_platform != current.target_platform:
                 self._workspaces.authorize(user, Action.CHANGE_DW_PLATFORM, workspace_id)
+                if db.scalar(
+                    sa.select(DwTableRecord.id)
+                    .where(DwTableRecord.data_warehouse_id == record.id)
+                    .limit(1)
+                ):
+                    raise ApiError(
+                        409,
+                        "use_change_set",
+                        "The Data Warehouse has tables whose types and SQL depend on its "
+                        "platform. Propose the change as a Change Set instead.",
+                    )
             settings = _Settings(
                 target_platform or current.target_platform,
                 layer_schemas or current.layer_schemas,
