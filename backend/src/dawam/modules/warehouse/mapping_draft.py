@@ -149,7 +149,8 @@ class MappingDraftService:
     def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService) -> None:
         self._engine = engine
         self._workspaces = workspaces
-        # Used for its SQL helpers (parse, resolve, check a branch), which authorize nothing.
+        # The private MappingService SQL helpers (parse, resolve, check a branch) are shared on
+        # purpose, so a draft is checked exactly as a save is; they authorize nothing.
         self._helpers = MappingService(engine, workspaces=workspaces, clock=None)  # type: ignore[arg-type]
 
     # -- reading --------------------------------------------------------------------
@@ -610,6 +611,7 @@ class MappingDraftHandler:
             if branch is None:
                 raise ApiError(409, "version_conflict", "The mapping branch no longer exists.")
         mapped: list[str] = []
+        mapped_ids: list[str] = []
         skipped: list[str] = []
         for entry in payload["columns"]:
             column = db.scalars(
@@ -656,7 +658,9 @@ class MappingDraftHandler:
                 db, record, table, derived.parsed, derived.inputs, derived.dimension
             )
             mapped.append(column.name)
-        new: dict[str, Any] = {"mapped_columns": mapped}
+            mapped_ids.append(str(column.id))
+        # ``mapped_column_ids`` lets propagation follow newly mapped columns after the commit.
+        new: dict[str, Any] = {"mapped_columns": mapped, "mapped_column_ids": mapped_ids}
         if created:
             new |= {f: getattr(branch, f) for f in _BRANCH_KEYS}
         if skipped:

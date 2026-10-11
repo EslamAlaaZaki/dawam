@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from dawam.modules.changesets import ChangeSetService, ProposedItem
+from dawam.modules.notifications import NotificationService
+from dawam.modules.workspaces import WorkspaceService
 from tests.kpis.test_kpis import kpis_path
 from tests.roles import RoleClients
 from tests.warehouse.test_staging_generation import add_system, columns_of, generate, seed
@@ -524,3 +527,61 @@ def test_a_source_removed_input_is_unmapped_never_deleted(layered, warehouse: Ro
     assert mapping_sql(warehouse, layered["name"]) == ("unmapped", "")
     assert columns_of(warehouse, layered["stg"])["name"]["status"] == "source_removed"
     assert problems(warehouse, "removed_input") == []
+
+
+def test_accepting_a_mapping_draft_offers_to_re_point_kpis_like_a_save(warehouse):
+    fact = table(warehouse, "fact_sales", "core", "fact")
+    measure = {"type": "decimal", "precision": 18, "scale": 2}
+    amount = column(warehouse, fact["id"], "amount", measure, role="measure", additivity="additive")
+    revenue = kpi(warehouse, "Revenue", "SELECT SUM(fact_sales.amount) FROM fact_sales")
+    linked = warehouse.client("editor").put(
+        f"{kpis_path(warehouse)}/{revenue['id']}/links",
+        json={"version": revenue["version"], "dw_column_ids": [amount["id"]]},
+    )
+    assert linked.status_code == 200, linked.text
+    mart = table(warehouse, "fact_sales_m", "mart", "fact")
+    amount_m = column(
+        warehouse, mart["id"], "amount", measure, role="measure", additivity="additive"
+    )
+    state = warehouse.app.state
+    clock = state.services.clock
+    ChangeSetService(
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        handlers=state.change_set_handlers,
+        notifications=NotificationService(state.engine, clock=clock),
+        clock=clock,
+    ).propose(
+        warehouse.user("editor"),
+        warehouse.workspace_id,
+        origin="ai",
+        scope={"kind": "mapping_draft", "table_ids": [mart["id"]]},
+        title="Draft mappings",
+        items=[
+            ProposedItem(
+                key="map0",
+                object_type="mapping_draft",
+                operation="create",
+                label="mart.fact_sales_m: Core",
+                payload={
+                    "table_id": mart["id"],
+                    "branch": {"name": "Core", "driving_input": "fact_sales", "id": None},
+                    "columns": [
+                        {
+                            "column_id": amount_m["id"],
+                            "column_name": "amount",
+                            "mapping_type": "direct",
+                            "sql_expression": "fact_sales.amount",
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+    [draft] = warehouse.client("editor").get(change_sets(warehouse)).json()["items"]
+
+    accept(warehouse, draft["id"])
+
+    [item] = only_propagation(warehouse)["items"]
+    assert item["label"] == "[KPIs] KPI Revenue: re-point to the Mart"
+    assert item["payload"]["links"] == [amount_m["id"]]
