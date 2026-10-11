@@ -120,6 +120,11 @@ def install_clock(engine: sa.Engine, clock: Clock) -> None:
     _CLOCKS[engine] = clock
 
 
+def installed_clock(engine: object) -> Clock:
+    """The clock ``install_clock`` gave sessions of ``engine`` (default: the system's)."""
+    return _CLOCKS.get(engine, system_clock) if isinstance(engine, sa.Engine) else system_clock
+
+
 def note_design_change(db: Session, change: DesignChange) -> None:
     """Note a change the session makes without a flush that shows it (a bulk statement)."""
     db.info.setdefault(_PENDING, []).append(change)

@@ -13,7 +13,10 @@ table and column the generator creates and stores the last generated value of ea
 (``generated``); a field the user overrode (``edited_fields``) is changed only by a conflict
 item the user accepts. A generated object a user deleted has a Tombstone and is never proposed
 again. Every fact can rely on a date dimension: when there is none, the plan creates the
-built-in one.
+built-in one. A regeneration may be limited to one existing table (``table``, story 98a): the
+model then reads what that table's mapping reads and describes only that table, and the
+Change Set's scope names it. Only an item of a generation Change Set applies as the
+generator's (an item of any other Change Set, e.g. from ``propose_changes``, is a user edit).
 
 ``DwTableHandler`` and ``DwColumnHandler`` are the ``changesets`` engine's handlers for
 ``dw_table`` and ``dw_column`` items (Core and Mart creates and updates).
@@ -25,7 +28,7 @@ import base64
 import hashlib
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
@@ -53,6 +56,7 @@ from .model_service import (
     mark_edited,
 )
 from .platforms import max_identifier_length
+from .regeneration import table_inputs
 from .tables import (
     ColumnMappingRecord,
     DataWarehouseRecord,
@@ -129,10 +133,20 @@ class GenerationPlan:
     """``ai`` for a first generation, ``regeneration`` once generated objects exist."""
     items: list[ProposedItem]
     notes: list[GenerationNote] = field(default_factory=list)
+    table_id: uuid.UUID | None = None
+    """Set for a regeneration of only this table (story 98a)."""
 
     @property
     def conflicts(self) -> int:
         return sum(1 for i in self.items if i.is_conflict)
+
+    @property
+    def scope(self) -> dict[str, Any]:
+        """The Change Set's scope: a table's regeneration supersedes only a pending one of
+        that table, never the whole model's."""
+        if self.table_id is None:
+            return dict(SCOPE)
+        return {**SCOPE, "table_id": str(self.table_id)}
 
 
 def _invalid(message: str, problems: Sequence[str] = ()) -> ApiError:
@@ -236,6 +250,36 @@ def _load(db: Session, warehouse: DataWarehouseRecord) -> _Model:
     return _Model(warehouse, tables, columns, handle_of, tombstoned, staging)
 
 
+def _scoped_table(model: _Model, ref: str) -> DwTableRecord:
+    """The Core or Mart table a table-scoped regeneration is limited to: by handle, by
+    ``layer.name`` or by a name only one table has. 422 ``invalid_generation``."""
+    found = model.by_handle.get(ref)
+    if not isinstance(found, DwTableRecord):
+        wanted = ref.strip().lower()
+        matches = [
+            t for t in model.tables if wanted in (t.name.lower(), f"{t.layer}.{t.name}".lower())
+        ]
+        found = matches[0] if len(matches) == 1 else None
+    if found is None or found.kind == "generated":
+        raise _invalid(
+            f"No single Core or Mart fact, dimension or bridge is {ref!r}; give its handle or "
+            "its layer and name."
+        )
+    return found
+
+
+def _mapping_inputs(db: Session, table_id: uuid.UUID) -> list[str]:
+    """What a table's mapping reads now, as ``table.column``: the user's mapping decisions
+    a table-scoped regeneration follows."""
+    ids = table_inputs(db, table_id)
+    rows = db.execute(
+        sa.select(DwTableRecord.name, DwColumnRecord.name)
+        .join(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
+        .where(DwColumnRecord.id.in_(ids))
+    )
+    return sorted(f"{t}.{c}" for t, c in rows)
+
+
 def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b) if a and b else 0.0
 
@@ -266,14 +310,20 @@ class GenerationService:
 
     # -- reading --------------------------------------------------------------------
 
-    def inputs(self, user: User, workspace_id: uuid.UUID) -> dict[str, Any]:
+    def inputs(
+        self, user: User, workspace_id: uuid.UUID, *, table: str | None = None
+    ) -> dict[str, Any]:
         """What the generator reads (owners and editors): the target platform and naming
         rules, the staging tables, the existing Core and Mart objects behind handles, the
-        date dimension and the generated objects users deleted. 404 ``not_set_up``."""
+        date dimension and the generated objects users deleted. With ``table`` (a handle,
+        ``layer.name`` or name), also the one table a regeneration is limited to and what
+        its mapping reads (``regenerate_only``). 404 ``not_set_up``; 422
+        ``invalid_generation`` for an unknown ``table``."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
         with Session(self._engine) as db:
             warehouse = self._warehouse(db, workspace_id)
             model = _load(db, warehouse)
+            only = _scoped_table(model, table) if table is not None else None
             staging = db.execute(
                 sa.select(DwTableRecord, DwColumnRecord)
                 .join(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
@@ -314,6 +364,18 @@ class GenerationService:
                     "exists": date is not None,
                 },
                 "deleted_by_users": sorted(model.tombstoned),
+                **(
+                    {
+                        "regenerate_only": {
+                            "handle": model.handle_of[only.id],
+                            "layer": only.layer,
+                            "name": only.name,
+                            "mapping_inputs": _mapping_inputs(db, only.id),
+                        }
+                    }
+                    if only is not None
+                    else {}
+                ),
             }
 
     @staticmethod
@@ -358,12 +420,19 @@ class GenerationService:
     # -- planning -------------------------------------------------------------------
 
     def plan(
-        self, user: User, workspace_id: uuid.UUID, tables: Sequence[GeneratedTable]
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        tables: Sequence[GeneratedTable],
+        *,
+        table: str | None = None,
     ) -> GenerationPlan:
         """The Change Set items that bring the DW Schema to the model's ``tables`` (owners
         and editors). Nothing is changed. 422 ``invalid_generation`` lists every problem the
         model must fix (a fact without a grain, a measure without an additivity, a foreign
-        key to nothing); notes report what DAWAM decided on its own."""
+        key to nothing); notes report what DAWAM decided on its own. With ``table`` the
+        regeneration is limited to that one existing table: ``tables`` describes only it,
+        by its handle."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
         if not tables:
             raise _invalid("Describe at least one table.")
@@ -371,7 +440,15 @@ class GenerationService:
             raise _invalid(f"Generate at most {MAX_TABLES} tables at once.")
         with Session(self._engine) as db:
             warehouse = self._warehouse(db, workspace_id)
-            return _Planner(db, _load(db, warehouse)).plan(tables)
+            model = _load(db, warehouse)
+            only = _scoped_table(model, table) if table is not None else None
+            if only is not None and [t.handle for t in tables] != [model.handle_of[only.id]]:
+                raise _invalid(
+                    f"This regeneration is limited to {only.layer}.{only.name}: describe only "
+                    f"that table, with its handle {model.handle_of[only.id]!r}."
+                )
+            plan = _Planner(db, model).plan(tables)
+            return replace(plan, table_id=only.id) if only is not None else plan
 
 
 @dataclass
@@ -1124,10 +1201,14 @@ def _take_generated(
     changed: Sequence[str],
     fields: tuple[str, ...],
     payload: Mapping[str, Any],
+    scope: Mapping[str, Any] | None,
 ) -> None:
     """Provenance after an accepted update: the generator's value is the last generated one
-    and no longer an override; anyone else's change to a generated object is a user edit."""
-    if payload.get(PROVENANCE) != GENERATION:
+    and no longer an override; anyone else's change to a generated object is a user edit,
+    including an item of any other Change Set (e.g. one the assistant proposed in a chat
+    with ``propose_changes``), whatever its payload claims."""
+    generating = (scope or {}).get("kind") == SCOPE["kind"]
+    if payload.get(PROVENANCE) != GENERATION or not generating:
         mark_edited(record, before, after, fields)
         return
     if record.generation_key is None:
@@ -1153,6 +1234,8 @@ def _check_provenance(payload: Mapping[str, Any]) -> None:
 
 class _Handler:
     object_type: str
+    wants_scope = True
+    """Only an item of a generation Change Set (``SCOPE``) applies as the generator's."""
 
     def required_action(self, operation: str) -> Action:
         if operation in ("create", "update"):
@@ -1228,6 +1311,7 @@ class DwTableHandler(_Handler):
         payload: Mapping[str, Any],
         *,
         at: datetime,
+        scope: Mapping[str, Any] | None = None,
     ) -> AppliedChange:
         warehouse = _warehouse_of(db, workspace_id)
         rules = editing_rules(lambda: at)
@@ -1243,7 +1327,7 @@ class DwTableHandler(_Handler):
         db.flush()
         after = _table_snapshot(table)
         changed = [f for f in GENERATED_TABLE_FIELDS if before[f] != after[f]]
-        _take_generated(table, before, after, changed, GENERATED_TABLE_FIELDS, payload)
+        _take_generated(table, before, after, changed, GENERATED_TABLE_FIELDS, payload, scope)
         rules._sync_scd2(db, None, workspace_id, table, at)
         if changed:
             table.version += 1
@@ -1381,6 +1465,7 @@ class DwColumnHandler(_Handler):
         payload: Mapping[str, Any],
         *,
         at: datetime,
+        scope: Mapping[str, Any] | None = None,
     ) -> AppliedChange:
         warehouse = _warehouse_of(db, workspace_id)
         rules = editing_rules(lambda: at)
@@ -1423,7 +1508,7 @@ class DwColumnHandler(_Handler):
         changed = [f for f in GENERATED_COLUMN_FIELDS if before[f] != after[f]]
         if "name" in changed:
             rules._rename_default(table, before["name"], column.name)
-        _take_generated(column, before, after, changed, GENERATED_COLUMN_FIELDS, payload)
+        _take_generated(column, before, after, changed, GENERATED_COLUMN_FIELDS, payload, scope)
         if changed:
             column.version += 1
             column.updated_at = at

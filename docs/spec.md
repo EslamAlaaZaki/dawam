@@ -756,7 +756,7 @@ AuditEntry(id, workspace_id, actor_id,
            via[user|ai|regeneration|sync|propagation|import|platform_change|system_code_change],
            change_set_id?, entity_type, entity_id, old JSON, new JSON, created_at)
                                                   -- critical entities only (§6.10); never secrets
-Notification(id, user_id, workspace_id, kind[mention|impact_alert|sync_alert|ownership|job|needs_owner],
+Notification(id, user_id, workspace_id, kind[mention|impact_alert|sync_alert|ownership|job|needs_owner|regeneration],
              ref_type, ref_id, created_at, read_at?)
                                                   -- impact alerts are derived from open validation errors
 
