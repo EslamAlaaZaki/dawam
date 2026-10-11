@@ -46,6 +46,13 @@ from tests.authz.matrix import (
 from tests.roles import PASSWORD, ROLES, Role, RoleClients
 
 
+def _empty_mapping_sheet(roles: RoleClients) -> dict:
+    """A mapping sheet with only its header, for the import row."""
+    from tests.warehouse.test_mapping_import import sheet_bytes
+
+    return {"file": ("mapping-sheet.xlsx", sheet_bytes([]), "application/octet-stream")}
+
+
 def _second_owner(roles: RoleClients) -> None:
     """Makes the colleague an owner too, so the owner is not the last one and may leave."""
     response = roles.client("owner").patch(
@@ -947,6 +954,15 @@ ROWS: list[Row] = [
         "Upload, edit, delete Workspace files (save the mapping sheet)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=_set_up_data_warehouse,
+    ),
+    # Mapping sheet import (story 109).
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet/import",
+        "Edit KPIs, DW Schema, mappings (import a mapping sheet)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_set_up_data_warehouse,
+        files=_empty_mapping_sheet,
     ),
     # Score report export (story 124).
     Row(

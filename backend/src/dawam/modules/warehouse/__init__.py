@@ -17,6 +17,10 @@ Public interface. Other modules import only what is re-exported here:
 - ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
   sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
   .../data-warehouse/mapping-sheet`` downloads it.
+- ``MappingImportService``: an Editor imports a filled-in mapping sheet (``POST
+  .../mapping-sheet/import``): a validation report first (unknown tables, columns and branches
+  fail and create nothing; Staging rows are ignored), then one Change Set of origin ``import``
+  for what differs. It never changes approval states.
 - ``ScoreExportService``: any member exports the latest score as a Markdown or XLSX report
   (story 124); ``GET .../data-warehouse/score/report`` downloads it.
 - ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
@@ -137,6 +141,7 @@ from .lineage_sql import DIALECTS as SQL_DIALECTS
 from .lineage_sql import Renames, rename_in_sql, sql_reads
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
+from .mapping_import import MappingImportReport, MappingImportResult, MappingImportService
 from .mapping_service import MappingService
 from .model_service import ModelService
 from .pii_hashing import PiiHashingService
@@ -225,6 +230,9 @@ __all__ = [
     "MappingBranchHandler",
     "MappingExportService",
     "MappingExportServiceDep",
+    "MappingImportReport",
+    "MappingImportResult",
+    "MappingImportService",
     "MappingService",
     "MappingSheet",
     "MappingState",
