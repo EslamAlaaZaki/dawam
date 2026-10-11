@@ -17,6 +17,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``MappingExportService``: any member exports the Core and Mart column mappings as a mapping
   sheet (XLSX with a Branches sheet, or CSV); ``files`` saves it to the file area. ``GET
   .../data-warehouse/mapping-sheet`` downloads it.
+- ``ScoreExportService``: any member exports the latest score as a Markdown or XLSX report
+  (story 124); ``GET .../data-warehouse/score/report`` downloads it.
 - ``ValidationService``: any member runs ``run_validation`` over every Core and Mart mapping
   (errors: unparsable SQL, GROUP BY gaps; warnings: unmapped columns, a missing integration
   rule, data-type compatibility such as truncation, see ``type_compat``) and reads ``coverage``
@@ -91,6 +93,13 @@ Public interface. Other modules import only what is re-exported here:
   change, debounced. ``KpiReader`` (``DesignKpi``) is how the composition root gives it the
   Workspace's KPIs for the DW-wide KPI checks; ``touch_score`` marks a Workspace's KPIs changed.
   ``GET .../data-warehouse/score`` and ``.../score/history``.
+- ``ApprovalService`` (``list``, ``move``): the Layer Approval of Core and Mart (spec §6.10,
+  stories 107, 120): ``draft``, ``in_review``, ``approved``; Mart only while Core is approved,
+  and revoking Core revokes Mart. Any committed change to a revoking field of a Core or Mart
+  object (``REVOKING_FIELDS``), whoever made it, returns the Layer to ``draft``, audited with its
+  cause; text fields never revoke and staging changes revoke nothing. ``install_approval_clock``
+  (the composition root) times those revocations. ``GET .../data-warehouse/approvals`` and
+  ``PUT .../approvals/{layer}``.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
@@ -98,11 +107,14 @@ Public interface. Other modules import only what is re-exported here:
   ``/workspaces/{workspace_id}/data-warehouse/lineage``.
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
-``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs`` and
-``score_check_results`` and ``ai_evaluations`` tables.
+``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs``,
+``score_check_results``, ``ai_evaluations`` and ``layer_approvals`` tables.
 """
 
 from .api import router
+from .approvals import REVOKING as REVOKING_FIELDS
+from .approvals import ApprovalService, LayerApproval
+from .approvals import install_clock as install_approval_clock
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
@@ -155,6 +167,8 @@ from .schema_reader import (
     read_schema,
     replace_kpi_edges,
 )
+from .score_export import ScoreExportService, ScoreReportFile
+from .score_export_api import ScoreExportServiceDep, ScoreReportFormatQuery
 from .score_service import KpiReader, Score, ScoreService
 from .score_trigger import ScoreScheduler
 from .score_trigger import install as install_score_recalculation
@@ -170,9 +184,11 @@ __all__ = [
     "GENERATION_SCOPE",
     "PLATFORM_PROFILES",
     "RENAMED_ENTITY_TYPES",
+    "REVOKING_FIELDS",
     "SQL_DIALECTS",
     "TARGET_PLATFORMS",
     "AiEvaluation",
+    "ApprovalService",
     "ColumnMappingHandler",
     "DataWarehouse",
     "DataWarehouseService",
@@ -197,6 +213,7 @@ __all__ = [
     "KpiReader",
     "KpiRemoval",
     "KpiRename",
+    "LayerApproval",
     "LayerSchemas",
     "LineageEdge",
     "LineageNode",
@@ -215,6 +232,10 @@ __all__ = [
     "SchemaColumn",
     "SchemaTable",
     "Score",
+    "ScoreExportService",
+    "ScoreExportServiceDep",
+    "ScoreReportFile",
+    "ScoreReportFormatQuery",
     "ScoreScheduler",
     "ScoreService",
     "SheetFormat",
@@ -231,6 +252,7 @@ __all__ = [
     "ValidationService",
     "clear_kpi_edges",
     "describe_columns",
+    "install_approval_clock",
     "install_score_recalculation",
     "is_reserved_word",
     "lineage_edges",

@@ -33,6 +33,25 @@ CONNECTION_OWNER_ONLY_KEYS = frozenset({"host", "username"})
 """Fields of a Connection entry only owners see (spec §4.3)."""
 CONNECTION_ENTITY = "connection"
 
+_CONTEXT = "dawam.audit.context"
+"""``Session.info`` key: who and how the session's latest audited change was made."""
+
+
+@dataclass(frozen=True)
+class AuditContext:
+    """Who made a transaction's latest audited change, and how: for code that reacts to
+    the change in the same transaction (e.g. revoking a Layer's approval) and records it
+    under the same actor and channel."""
+
+    actor_id: uuid.UUID | None
+    via: str
+    change_set_id: uuid.UUID | None
+
+
+def audit_context(db: Session) -> AuditContext | None:
+    """The context of the latest ``record_audit`` in ``db``'s current transaction."""
+    return db.info.get(_CONTEXT)
+
 
 @dataclass(frozen=True)
 class AuditEntry:
@@ -76,6 +95,7 @@ def record_audit(
     entity_id_text = str(entity_id)
     if len(entity_type) > ENTITY_TYPE_MAX_LENGTH or len(entity_id_text) > ENTITY_ID_MAX_LENGTH:
         raise ValueError("audit entity type or id is too long")
+    db.info[_CONTEXT] = AuditContext(actor_id, via, change_set_id)
     db.add(
         AuditEntryRecord(
             id=uuid.uuid4(),
@@ -221,3 +241,11 @@ def _entry(record: AuditEntryRecord, *, see_connection_details: bool) -> AuditEn
         new=_redact(record.new, record.entity_type, see_connection_details=see_connection_details),
         created_at=record.created_at,
     )
+
+
+def _forget_context(session: Session) -> None:
+    session.info.pop(_CONTEXT, None)
+
+
+sa.event.listen(Session, "after_commit", _forget_context)
+sa.event.listen(Session, "after_soft_rollback", lambda session, _previous: _forget_context(session))

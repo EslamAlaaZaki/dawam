@@ -7,6 +7,8 @@ Public interface. Other modules import only what is re-exported here:
   transaction, so an entry exists exactly when its change does. This is the only way
   to write the trail. Entries never hold secrets: callers pass only the fields that
   changed (or the whole entity at creation or deletion), never credentials.
+- ``audit_context(db)``: who made the latest audited change of ``db``'s transaction and
+  how (``AuditContext``), for code that reacts to that change in the same transaction.
 - ``AuditService.list``: the entries of one entity, oldest first.
 - ``AuditService.field_changes``: the Workspace's entries that changed one field of some
   entity types (e.g. every rename of a DW table or column), oldest first.
@@ -20,6 +22,22 @@ This module imports nothing from other modules, so any module may import it (REA
 rule 5). Owns the ``audit_entries`` table.
 """
 
-from .service import VIA_VALUES, AuditEntry, AuditPage, AuditService, record_audit
+from .service import (
+    VIA_VALUES,
+    AuditContext,
+    AuditEntry,
+    AuditPage,
+    AuditService,
+    audit_context,
+    record_audit,
+)
 
-__all__ = ["VIA_VALUES", "AuditEntry", "AuditPage", "AuditService", "record_audit"]
+__all__ = [
+    "VIA_VALUES",
+    "AuditContext",
+    "AuditEntry",
+    "AuditPage",
+    "AuditService",
+    "audit_context",
+    "record_audit",
+]

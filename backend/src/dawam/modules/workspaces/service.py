@@ -57,6 +57,8 @@ class Workspace:
     """The Workspace actions the viewing member may perform (from ``can``)."""
     status: WorkspaceStatus
     archived_at: datetime | None
+    require_distinct_approver: bool
+    """Whoever approves a Layer must not be its last editor (spec §6.10)."""
     version: int
     created_at: datetime
     updated_at: datetime
@@ -224,6 +226,7 @@ def workspace_view(user: User, record: WorkspaceRecord, role: WorkspaceRole | No
         permissions=frozenset(a for a in WORKSPACE_ACTIONS if can(user, a, scope)),
         status=as_status(record.status),
         archived_at=record.archived_at,
+        require_distinct_approver=record.require_distinct_approver,
         version=record.version,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -483,6 +486,59 @@ class WorkspaceService:
                 )
             db.flush()
             return workspace_view(user, record, scope.role)
+
+    def set_distinct_approver(
+        self, user: User, workspace_id: uuid.UUID, *, required: bool
+    ) -> Workspace:
+        """Switch "approver must not be the last editor" on or off (owners only). It cannot
+        be switched on while the Workspace has a single editor (owners count): 422
+        ``single_editor``, as nobody could then approve what that editor changed."""
+        with Session(self._engine) as db, db.begin():
+            record, scope = authorized(
+                db, user, Action.REQUIRE_DISTINCT_APPROVER, workspace_id, lock=True
+            )
+            if required and not record.require_distinct_approver:
+                editors = db.scalar(
+                    sa.select(sa.func.count()).where(
+                        MemberRecord.workspace_id == record.id,
+                        MemberRecord.role.in_(("owner", "editor")),
+                    )
+                )
+                if (editors or 0) < 2:
+                    raise ApiError(
+                        422,
+                        "single_editor",
+                        "A Workspace with a single editor cannot require a different approver.",
+                    )
+            if required != record.require_distinct_approver:
+                record.require_distinct_approver = required
+                record.version += 1
+                record.updated_at = self._clock()
+                record_activity(
+                    db,
+                    workspace_id=record.id,
+                    actor_id=user.id,
+                    verb="workspace.updated",
+                    object_type="workspace",
+                    object_id=record.id,
+                    object_label=record.name,
+                    details={"changed": ["require_distinct_approver"]},
+                    at=record.updated_at,
+                )
+            db.flush()
+            return workspace_view(user, record, scope.role)
+
+    def requires_distinct_approver(self, workspace_id: uuid.UUID) -> bool:
+        """Whether the Workspace's approvers must not be the last editor, for the module that
+        approves Layers (it has authorized the caller). ``False`` for an unknown Workspace."""
+        with Session(self._engine) as db:
+            return bool(
+                db.scalar(
+                    sa.select(WorkspaceRecord.require_distinct_approver).where(
+                        WorkspaceRecord.id == workspace_id
+                    )
+                )
+            )
 
     def archive(self, user: User, workspace_id: uuid.UUID) -> None:
         """Make the Workspace read-only: reads and exports keep working, every other
