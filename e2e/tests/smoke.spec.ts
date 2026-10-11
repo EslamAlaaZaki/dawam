@@ -138,7 +138,7 @@ test("the main path: sign in to lineage", async ({ page }) => {
           changeSetId =
             sets.items.find(
               (c: { status: string; scope?: { kind?: string } }) =>
-                c.status === "pending" && (c.scope?.kind ?? "dw_generation") === "dw_generation",
+                c.status === "pending" && c.scope?.kind === "dw_generation",
             )?.id ?? "";
           return changeSetId;
         },
