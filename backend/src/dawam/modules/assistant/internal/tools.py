@@ -13,6 +13,7 @@ Every object a tool returns carries a ``link`` (an app path) for the answer to c
 from __future__ import annotations
 
 import dataclasses
+import difflib
 import json
 import logging
 import uuid
@@ -278,6 +279,11 @@ class _GenerateFile(BaseModel):
     system_id: uuid.UUID = Field(description="The Source System whose file area gets the file.")
     name: str = Field(min_length=1, max_length=200, description="File name, e.g. `notes.md`.")
     content: str = Field(max_length=200_000, description="The file's text.")
+    replace: bool = Field(
+        default=False,
+        description="Set only after the user has seen the diff of an existing file and agreed "
+        "to overwrite it.",
+    )
 
 
 class _KpiIdea(BaseModel):
@@ -1151,12 +1157,40 @@ def _run_validation(ctx: ToolContext, args: _RunValidation) -> Any:
 
 def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
     # Model-written text may quote a value it saw: validator-detectable PII is redacted.
-    return ctx.services.files.save_generated(
-        ctx.user,
-        ctx.workspace_id,
-        args.system_id,
-        name=redact_text(args.name),
-        data=redact_text(args.content).encode(),
+    name = redact_text(args.name).strip()
+    content = redact_text(args.content)
+    files = ctx.services.files
+    existing = files.find_in_system(ctx.user, ctx.workspace_id, args.system_id, name)
+    if existing is not None:
+        name = existing.name
+    if existing is not None and not args.replace:
+        # Files are overwritten in place with no history, so the user sees the change first.
+        try:
+            before = files.read_text(ctx.user, ctx.workspace_id, existing.id).content
+        except ApiError:  # a binary file has no text to compare
+            before = None
+        if before == content:
+            return {"status": "unchanged", "name": name, "note": "The file already has this text."}
+        diff = None
+        if before is not None:
+            diff = "".join(
+                difflib.unified_diff(
+                    before.splitlines(keepends=True),
+                    content.splitlines(keepends=True),
+                    fromfile=f"{name} (saved)",
+                    tofile=f"{name} (new)",
+                )
+            )[:MAX_FILE_TEXT_CHARS]
+        return {
+            "status": "needs_confirmation",
+            "name": name,
+            "diff": diff,
+            "note": "A file with this name exists and was NOT changed. Show the user this diff "
+            "and ask whether to overwrite it; only if they agree, call generate_file again "
+            "with the same content and replace=true.",
+        }
+    return files.save_generated(
+        ctx.user, ctx.workspace_id, args.system_id, name=name, data=content.encode()
     )
 
 
@@ -1609,7 +1643,11 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "generate_file",
-        "Save a new text file in a Source System's file area (overwrites one of the same name).",
+        "Save a text file (e.g. Markdown) in a Source System's file area, under its Outputs. For "
+        "a gaps & enhancements report, write Markdown covering missing keys, undocumented "
+        "tables, data-quality concerns and suggested improvements, never quoting sample "
+        "values. If a file of that name exists it is not changed: you get a diff to show the "
+        "user, and overwrite only after they agree (replace=true).",
         _GenerateFile,
         "write",
         Action.UPLOAD_FILE,
