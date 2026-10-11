@@ -1093,6 +1093,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Disabled Checks
+         * @description The checks switched off for the Data Warehouse, with their reasons (any member).
+         *     They are left out of the score. 404 `not_set_up` before set up.
+         */
+        get: operations["listDisabledChecks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks/{check_code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Disable Check
+         * @description Switch a score check off with a reason, or change the reason (owners only). The score
+         *     is recalculated without it. 404 `unknown_check`; 422 `reason_required`.
+         */
+        put: operations["disableCheck"];
+        post?: never;
+        /**
+         * Enable Check
+         * @description Switch a disabled check back on (owners only); the score is recalculated. 404
+         *     `not_disabled`.
+         */
+        delete: operations["enableCheck"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/gates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Score Gates
+         * @description The approval gate of the Core and Mart Layers (any member).
+         */
+        get: operations["listScoreGates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/gates/{layer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Score Gate
+         * @description Set the minimum score of the Core or Mart Layer and whether errors block approval
+         *     (owners only). Approving the Layer then fails with 409 `score_gate_failed` while it has
+         *     errors or scores below the minimum. Staging has no gate.
+         */
+        put: operations["setScoreGate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
         parameters: {
             query?: never;
@@ -1342,8 +1431,9 @@ export interface paths {
          * @description Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and
          *     editors). 409 `core_not_approved` when approving Mart while Core is not approved;
          *     409 `approver_is_last_editor` when the Workspace requires another approver than the
-         *     Layer's last editor. Moving Core away from `approved` returns an approved Mart to
-         *     `draft`. Every move is in the audit trail.
+         *     Layer's last editor; 409 `score_gate_failed` when the owner set a gate on the Layer and
+         *     it has errors or scores below its minimum. Moving Core away from `approved` returns an
+         *     approved Mart to `draft`. Every move is in the audit trail.
          */
         put: operations["moveLayerApproval"];
         post?: never;
@@ -3803,7 +3893,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -5222,6 +5312,42 @@ export interface components {
              * @description The Workspace's name, typed exactly, to confirm.
              */
             name: string;
+        };
+        /** DisableCheckRequest */
+        DisableCheckRequest: {
+            /**
+             * Reason
+             * @description Why the check is off.
+             */
+            reason: string;
+        };
+        /** DisabledCheck */
+        DisabledCheck: {
+            /** Check Code */
+            check_code: string;
+            /** Title */
+            title: string;
+            /** Category */
+            category: string;
+            /** Severity */
+            severity: ("error" | "warning" | "info") | null;
+            /** Reason */
+            reason: string;
+            /** Disabled By */
+            disabled_by: string | null;
+            /**
+             * Disabled At
+             * Format: date-time
+             */
+            disabled_at: string;
+        };
+        /** DisabledChecks */
+        DisabledChecks: {
+            /**
+             * Items
+             * @description By check code.
+             */
+            items: components["schemas"]["DisabledCheck"][];
         };
         /** DocumentPassage */
         DocumentPassage: {
@@ -7671,6 +7797,40 @@ export interface components {
             checks_passed: number;
             /** Checks Failed */
             checks_failed: number;
+            /**
+             * Disabled Checks
+             * @description Left out of the score, with the owner's reason.
+             */
+            disabled_checks: components["schemas"]["DisabledCheck"][];
+        };
+        /** ScoreGate */
+        ScoreGate: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Min Score */
+            min_score: number;
+            /** Block On Errors */
+            block_on_errors: boolean;
+            /**
+             * Configured
+             * @description False: no gate is set, so the Layer is never blocked.
+             */
+            configured: boolean;
+            /** Updated By */
+            updated_by: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** ScoreGates */
+        ScoreGates: {
+            /**
+             * Items
+             * @description Core, then Mart. Staging has no gate.
+             */
+            items: components["schemas"]["ScoreGate"][];
         };
         /** ScoreHistory */
         ScoreHistory: {
@@ -7806,6 +7966,20 @@ export interface components {
              * @enum {string}
              */
             delivery: "sent" | "link_for_admin" | "not_sent";
+        };
+        /** SetGateRequest */
+        SetGateRequest: {
+            /**
+             * Min Score
+             * @description Approval needs the Layer at or above it.
+             */
+            min_score: number;
+            /**
+             * Block On Errors
+             * @description Unresolved errors block approval.
+             * @default true
+             */
+            block_on_errors: boolean;
         };
         /** SetKpiLinksRequest */
         SetKpiLinksRequest: {
@@ -12036,6 +12210,217 @@ export interface operations {
                 content: {
                     "text/markdown; charset=utf-8": unknown;
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDisabledChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisabledChecks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    disableCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                check_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisabledChecks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    enableCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                check_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisabledChecks"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listScoreGates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreGates"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setScoreGate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                layer: "core" | "mart";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetGateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreGate"];
                 };
             };
             /** @description Validation error */

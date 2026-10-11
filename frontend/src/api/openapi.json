@@ -3847,6 +3847,330 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "List Disabled Checks",
+        "description": "The checks switched off for the Data Warehouse, with their reasons (any member).\nThey are left out of the score. 404 `not_set_up` before set up.",
+        "operationId": "listDisabledChecks",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisabledChecks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks/{check_code}": {
+      "put": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Disable Check",
+        "description": "Switch a score check off with a reason, or change the reason (owners only). The score\nis recalculated without it. 404 `unknown_check`; 422 `reason_required`.",
+        "operationId": "disableCheck",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "check_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Check Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisabledChecks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Enable Check",
+        "description": "Switch a disabled check back on (owners only); the score is recalculated. 404\n`not_disabled`.",
+        "operationId": "enableCheck",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "check_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Check Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisabledChecks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/gates": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "List Score Gates",
+        "description": "The approval gate of the Core and Mart Layers (any member).",
+        "operationId": "listScoreGates",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreGates"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/gates/{layer}": {
+      "put": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Set Score Gate",
+        "description": "Set the minimum score of the Core or Mart Layer and whether errors block approval\n(owners only). Approving the Layer then fails with 409 `score_gate_failed` while it has\nerrors or scores below the minimum. Staging has no gate.",
+        "operationId": "setScoreGate",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "core",
+                "mart"
+              ],
+              "type": "string",
+              "title": "Layer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetGateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreGate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
       "get": {
         "tags": [
@@ -4584,7 +4908,7 @@
           "data-warehouse"
         ],
         "summary": "Move Layer Approval",
-        "description": "Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and\neditors). 409 `core_not_approved` when approving Mart while Core is not approved;\n409 `approver_is_last_editor` when the Workspace requires another approver than the\nLayer's last editor. Moving Core away from `approved` returns an approved Mart to\n`draft`. Every move is in the audit trail.",
+        "description": "Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and\neditors). 409 `core_not_approved` when approving Mart while Core is not approved;\n409 `approver_is_last_editor` when the Workspace requires another approver than the\nLayer's last editor; 409 `score_gate_failed` when the owner set a gate on the Layer and\nit has errors or scores below its minimum. Moving Core away from `approved` returns an\napproved Mart to `draft`. Every move is in the audit trail.",
         "operationId": "moveLayerApproval",
         "parameters": [
           {
@@ -14113,6 +14437,7 @@
           "installation.list_workspaces",
           "kpi.edit",
           "layer.approve",
+          "score.manage_settings",
           "workspace.require_distinct_approver",
           "comment.create",
           "file.upload",
@@ -17234,6 +17559,102 @@
           "name"
         ],
         "title": "DeleteWorkspaceRequest"
+      },
+      "DisableCheckRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Reason",
+            "description": "Why the check is off."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "DisableCheckRequest"
+      },
+      "DisabledCheck": {
+        "properties": {
+          "check_code": {
+            "type": "string",
+            "title": "Check Code"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "disabled_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled By"
+          },
+          "disabled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Disabled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_code",
+          "title",
+          "category",
+          "severity",
+          "reason",
+          "disabled_by",
+          "disabled_at"
+        ],
+        "title": "DisabledCheck"
+      },
+      "DisabledChecks": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DisabledCheck"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "By check code."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DisabledChecks"
       },
       "DocumentPassage": {
         "properties": {
@@ -22593,6 +23014,14 @@
           "checks_failed": {
             "type": "integer",
             "title": "Checks Failed"
+          },
+          "disabled_checks": {
+            "items": {
+              "$ref": "#/components/schemas/DisabledCheck"
+            },
+            "type": "array",
+            "title": "Disabled Checks",
+            "description": "Left out of the score, with the owner's reason."
           }
         },
         "type": "object",
@@ -22605,9 +23034,88 @@
           "tables",
           "failed_checks",
           "checks_passed",
-          "checks_failed"
+          "checks_failed",
+          "disabled_checks"
         ],
         "title": "Score"
+      },
+      "ScoreGate": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "min_score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Min Score"
+          },
+          "block_on_errors": {
+            "type": "boolean",
+            "title": "Block On Errors"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "False: no gate is set, so the Layer is never blocked."
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "min_score",
+          "block_on_errors",
+          "configured",
+          "updated_by",
+          "updated_at"
+        ],
+        "title": "ScoreGate"
+      },
+      "ScoreGates": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreGate"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Core, then Mart. Staging has no gate."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ScoreGates"
       },
       "ScoreHistory": {
         "properties": {
@@ -22945,6 +23453,28 @@
           "delivery"
         ],
         "title": "SentInvitationOut"
+      },
+      "SetGateRequest": {
+        "properties": {
+          "min_score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "description": "Approval needs the Layer at or above it."
+          },
+          "block_on_errors": {
+            "type": "boolean",
+            "title": "Block On Errors",
+            "description": "Unresolved errors block approval.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "min_score"
+        ],
+        "title": "SetGateRequest"
       },
       "SetKpiLinksRequest": {
         "properties": {

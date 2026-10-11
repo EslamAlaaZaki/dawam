@@ -894,6 +894,47 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=True),
         setup=_set_up_data_warehouse,
     ),
+    # Disabled checks and the approval gate (stories 119, 120).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks",
+        "View lineage, scores, AI evaluation findings, exports, audit log (disabled checks)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks/{check_code}",
+        "Set minimum score gate, disable score checks",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"reason": "Not applicable here"},
+        setup=_set_up_data_warehouse,
+        path_params={"check_code": lambda roles: "fact_has_grain"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/disabled-checks/{check_code}",
+        "Set minimum score gate, disable score checks",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        setup=_set_up_data_warehouse,
+        path_params={"check_code": lambda roles: "fact_has_grain"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/gates",
+        "View lineage, scores, AI evaluation findings, exports, audit log (score gates)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=_set_up_data_warehouse,
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/score/gates/{layer}",
+        "Set minimum score gate, disable score checks",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"min_score": 70},
+        setup=_set_up_data_warehouse,
+        path_params={"layer": lambda roles: "core"},
+    ),
     # Layer Approval of Core and Mart (stories 107, 120).
     Row(
         "GET",
