@@ -327,6 +327,24 @@ def test_an_ai_rename_through_its_handle_stays_a_rename(app, services, staged, m
     assert provenance(staged, after["id"])["generation_key"] == key
 
 
+def test_a_new_table_never_takes_the_name_a_rename_gives(app, services, staged, model, fake_llm):
+    generate_first(app, services, staged, fake_llm)
+
+    run(
+        app,
+        services,
+        staged,
+        fake_llm,
+        [again(staged, name="dim_client"), customer(name="dim_client")],
+    )
+
+    detail = pending(staged)
+    [create] = [i for i in detail["items"] if i["operation"] == "create"]
+    assert create["payload"]["name"] == "dim_client_2"
+    accept(staged, detail["change_set"]["id"])
+    assert {"core.dim_client", "core.dim_client_2"} <= set(tables(staged))
+
+
 def test_user_overrides_survive_regeneration_unless_accepted_as_conflicts(
     app, services, staged, model, fake_llm
 ):

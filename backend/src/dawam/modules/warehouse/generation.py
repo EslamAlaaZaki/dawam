@@ -398,6 +398,7 @@ class _Planner:
         self._limit = max_identifier_length(self._platform)  # type: ignore[arg-type]
         self._problems: list[str] = []
         self._notes: list[GenerationNote] = []
+        self._renamed: set[tuple[str, str]] = set()  # (layer, name) a rename of the plan takes
 
     def _problem(self, where: str, message: str) -> None:
         self._problems.append(f"{where}: {message}")
@@ -476,6 +477,9 @@ class _Planner:
             layer: {t.name.lower() for t in model.tables if t.layer == layer}
             for layer in MODEL_LAYERS
         }
+        for spec, record in matched:  # a new table never takes the name a rename gives
+            if record is not None and spec.name.lower() != record.name.lower():
+                taken[spec.layer].add(spec.name.lower())
         unclaimed = [t for t in model.tables if t.id not in {r.id for _, r in matched if r}]
         out: dict[int, tuple[uuid.UUID, str, list[dict[str, str]]]] = {}
         asked: set[str] = set()
@@ -872,11 +876,14 @@ class _Planner:
         except ApiError as exc:
             self._problem(where, exc.message)
             return []
-        if wanted["name"].lower() != record.name.lower() and any(
-            t.layer == record.layer and t.name.lower() == wanted["name"].lower()
-            for t in self._model.tables
-        ):
-            self._problem(where, "Another table of this Layer has that name.")
+        renamed = (record.layer, wanted["name"].lower())
+        if wanted["name"].lower() != record.name.lower():
+            if renamed in self._renamed or any(
+                t.layer == record.layer and t.name.lower() == wanted["name"].lower()
+                for t in self._model.tables
+            ):
+                self._problem(where, "Another table of this Layer has that name.")
+            self._renamed.add(renamed)
         if spec.kind == "fact":
             if not spec.grain or not spec.fact_type:
                 self._problem(where, "A fact states its grain and fact type.")
