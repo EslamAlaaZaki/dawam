@@ -374,3 +374,25 @@ class ScoreCheckResultRecord(Base):
     object_name: Mapped[str] = mapped_column(sa.String(300))
     passed: Mapped[bool] = mapped_column()
     message: Mapped[str] = mapped_column(sa.String(1000), default="")
+
+
+class AiEvaluationRecord(Base):
+    """The stored result of one AI evaluation of a Layer (spec §6.11 ``AiEvaluation``)."""
+
+    __tablename__ = "ai_evaluations"
+    __table_args__ = (
+        sa.Index(
+            "ix_ai_evaluations_dw_layer_created_at", "data_warehouse_id", "layer", "created_at"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE")
+    )
+    layer: Mapped[str] = mapped_column(sa.String(16))
+    findings: Mapped[list[dict[str, Any]]] = mapped_column(sa.JSON)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

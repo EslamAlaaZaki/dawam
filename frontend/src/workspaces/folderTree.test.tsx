@@ -296,9 +296,9 @@ describe("the folder tree", () => {
         "No Source Systems yet. Each Source System you add will get its own folder here.",
       ),
     ).toBeInTheDocument();
-    fireEvent.click(item("Score"));
+    fireEvent.click(item("DDL"));
     expect(
-      screen.getByText("The Data Warehouse has not been scored yet."),
+      screen.getByText("DDL is generated here once there is a DW Schema."),
     ).toBeInTheDocument();
   });
 });

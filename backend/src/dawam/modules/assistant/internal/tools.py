@@ -37,7 +37,13 @@ from dawam.modules.sources import (
     SnapshotService,
     SourceQueryService,
 )
-from dawam.modules.warehouse import ScoreService, ValidationService
+from dawam.modules.warehouse import (
+    EvaluationService,
+    Finding,
+    FindingItem,
+    ScoreService,
+    ValidationService,
+)
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
@@ -64,6 +70,7 @@ class ToolServices:
     pii: PiiService
     documents: DocumentSearchService
     scores: ScoreService
+    evaluations: EvaluationService
     lineage: LineageService
     validation: ValidationService
     source_queries: SourceQueryService
@@ -173,6 +180,56 @@ LINEAGE_NODE_LIMIT = 200
 class _GetScore(BaseModel):
     limit: int = Field(
         default=30, ge=1, le=100, description="At most this many failed checks, errors first."
+    )
+
+
+class _ExplainCheck(BaseModel):
+    check_code: str = Field(min_length=1, max_length=100, description="The failed check's code.")
+    object_id: uuid.UUID = Field(description="The table or column the check failed on.")
+
+
+class _FindingChange(BaseModel):
+    object_type: str = Field(description="A Change Set object type, e.g. `kpi`.")
+    operation: Literal["create", "update", "delete"]
+    object_id: uuid.UUID | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    label: str = Field(default="", max_length=200)
+
+
+class _EvaluationFinding(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    detail: str = Field(min_length=1, max_length=2000, description="What is wrong and why.")
+    category: Literal[
+        "ambiguous_grain",
+        "scd2_candidate",
+        "missing_conformed_dimension",
+        "uncomputable_kpi",
+        "other",
+    ] = "other"
+    severity: Literal["high", "medium", "low"] = "medium"
+    table_id: uuid.UUID | None = Field(default=None, description="The table at fault, if any.")
+    suggestion: str = Field(default="", max_length=2000)
+    changes: list[_FindingChange] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Concrete Change Set items, only when you can name them exactly.",
+    )
+
+
+class _ProposeCheckFix(_ExplainCheck):
+    title: str = Field(min_length=1, max_length=200, description="What the fix does.")
+    changes: list[_FindingChange] = Field(
+        min_length=1, max_length=50, description="The exact Change Set items that fix the check."
+    )
+
+
+class _EvaluateDw(BaseModel):
+    layer: Literal["staging", "core", "mart"]
+    findings: list[_EvaluationFinding] | None = Field(
+        default=None,
+        max_length=50,
+        description="Leave out to read the Layer; then call again with your findings "
+        "(an empty list if there are none) to store the evaluation.",
     )
 
 
@@ -750,6 +807,7 @@ def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
         "failed_checks": [
             {
                 "check": f.check_code,
+                "object_id": f.object_id,
                 "severity": f.severity,
                 "layer": f.layer,
                 "object": f.object_name,
@@ -759,6 +817,121 @@ def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
             }
             for f in score.failed_checks[: args.limit]
         ],
+    }
+
+
+def _failed_check(ctx: ToolContext, args: _ExplainCheck) -> Any:
+    score = ctx.services.scores.current(ctx.user, ctx.workspace_id)
+    for check in score.failed_checks:
+        if check.check_code == args.check_code and check.object_id == args.object_id:
+            return check
+    raise ApiError(
+        404,
+        "not_found",
+        "That check does not fail on that object (any more); call get_score for the current ones.",
+    )
+
+
+def _explain_check(ctx: ToolContext, args: _ExplainCheck) -> Any:
+    check = _failed_check(ctx, args)
+    return {
+        "check": check.check_code,
+        "title": check.title,
+        "category": check.category,
+        "severity": check.severity,
+        "layer": check.layer,
+        "object_type": check.object_type,
+        "object": check.object_name,
+        "object_id": check.object_id,
+        "table_id": check.table_id,
+        "problem": check.message,
+        "fix_hint": check.fix_hint,
+        "link": check.link,
+        "note": "Explain what the check measures, why it failed here and how it is fixed. "
+        "Never quote sample values.",
+    }
+
+
+def _propose_check_fix(ctx: ToolContext, args: _ProposeCheckFix) -> Any:
+    """The fix is not made: it becomes a Change Set the user reviews."""
+    check = _failed_check(ctx, args)
+    detail = ctx.services.change_sets.propose(
+        ctx.user,
+        ctx.workspace_id,
+        origin="ai",
+        scope={
+            "kind": "check_fix",
+            "check_code": check.check_code,
+            "object_id": str(check.object_id),
+        },
+        title=args.title,
+        conversation_id=ctx.conversation_id,
+        items=[
+            ProposedItem(
+                key=f"fix{n}",
+                object_type=c.object_type,
+                operation=c.operation,
+                object_id=c.object_id,
+                payload=c.payload,
+                label=c.label,
+            )
+            for n, c in enumerate(args.changes)
+        ],
+    )
+    return {
+        "change_set_id": detail.change_set.id,
+        "status": "proposed",
+        "note": "The user reviews these changes; nothing has been changed yet.",
+        "items": len(detail.items),
+    }
+
+
+def _evaluate_dw(ctx: ToolContext, args: _EvaluateDw) -> Any:
+    evaluations = ctx.services.evaluations
+    if args.findings is None:
+        review = evaluations.review(ctx.user, ctx.workspace_id, args.layer)
+        kpis = ctx.services.kpis.list(ctx.user, ctx.workspace_id, data_warehouse=True, limit=100)
+        review["kpis"] = [
+            {
+                "id": k.id,
+                "name": k.name,
+                "formula_text": k.formula_text,
+                "has_formula_sql": bool(k.formula_sql),
+                "status": k.status,
+            }
+            for k in kpis.items
+        ]
+        review["note"] = (
+            "Judge what the rule-based score cannot: ambiguous grain statements, dimensions "
+            "that look like they need SCD2, missing conformed dimensions, KPIs this model "
+            "cannot compute. Then call evaluate_dw again with your findings. Never quote "
+            "sample values."
+        )
+        return review
+    evaluation = evaluations.store(
+        ctx.user,
+        ctx.workspace_id,
+        args.layer,
+        [
+            Finding(
+                title=redact_text(f.title),
+                detail=redact_text(f.detail),
+                category=f.category,
+                severity=f.severity,
+                table_id=f.table_id,
+                suggestion=redact_text(f.suggestion),
+                items=[FindingItem(**c.model_dump()) for c in f.changes],
+            )
+            for f in args.findings
+        ],
+    )
+    return {
+        "evaluation_id": evaluation.id,
+        "layer": evaluation.layer,
+        "finding_count": len(evaluation.findings),
+        "link": f"/workspaces/{ctx.workspace_id}/data-warehouse",
+        "note": "Stored as advisory; it does not change the score. Editors can turn a finding "
+        "into a Change Set.",
     }
 
 
@@ -1013,6 +1186,34 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _get_score,
+    ),
+    Tool(
+        "explain_check",
+        "Read one failed score check (by `check_code` and `object_id` from get_score) to "
+        "explain what it measures and why it failed.",
+        _ExplainCheck,
+        "read",
+        Action.ASK_ASSISTANT,
+        _explain_check,
+    ),
+    Tool(
+        "propose_check_fix",
+        "Propose the exact changes that fix a failed score check. Nothing changes until an "
+        "editor accepts the proposal as a Change Set. Explain first with explain_check.",
+        _ProposeCheckFix,
+        "write",
+        Action.REVIEW_CHANGE_SETS,
+        _propose_check_fix,
+    ),
+    Tool(
+        "evaluate_dw",
+        "Advisory evaluation of a Data Warehouse Layer. Call with only `layer` to read it "
+        "(tables, grain, SCD types, columns, KPIs), then again with your `findings` to "
+        "store them. Findings never change the score or the gate.",
+        _EvaluateDw,
+        "read",
+        Action.ASK_ASSISTANT,
+        _evaluate_dw,
     ),
     Tool(
         "search_documents",

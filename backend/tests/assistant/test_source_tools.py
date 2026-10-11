@@ -472,6 +472,8 @@ METADATA_TOOLS = {
     "list_files",
     "run_validation",
     "get_score",
+    "evaluate_dw",
+    "explain_check",
     "get_lineage",
 }
 LEVELS = [
@@ -496,7 +498,13 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
 
     offered = tool_names(fake_llm) - {"generate_file", "start_job", "suggest_kpis"}
     extra = (
-        {"get_pii_findings", "propose_changes", "get_kpi_link_candidates", "propose_kpi_links"}
+        {
+            "get_pii_findings",
+            "propose_changes",
+            "get_kpi_link_candidates",
+            "propose_kpi_links",
+            "propose_check_fix",
+        }
         if role != "viewer"
         else set()
     )
