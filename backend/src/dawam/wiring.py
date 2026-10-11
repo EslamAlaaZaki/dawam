@@ -18,7 +18,7 @@ from dawam.modules.changesets import ChangeSetService, ObjectHandlers
 from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.propagation import PropagationService
-from dawam.modules.sources import SourceEnhancementHandler
+from dawam.modules.sources import SourceEnhancementHandler, SourceRelationshipHandler
 from dawam.modules.warehouse import (
     ColumnMappingHandler,
     DwColumnHandler,
@@ -38,6 +38,7 @@ def change_set_handlers() -> ObjectHandlers:
     return ObjectHandlers(
         SourceEnhancementHandler("source_table"),
         SourceEnhancementHandler("source_column"),
+        SourceRelationshipHandler(),
         StagingTableHandler(),
         StagingColumnHandler(),
         KpiLinkHandler(),

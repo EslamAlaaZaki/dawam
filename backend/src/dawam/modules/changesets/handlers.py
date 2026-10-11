@@ -78,7 +78,8 @@ class ObjectHandler(Protocol):
         at: datetime,
     ) -> AppliedChange:
         """Make the change in ``db``'s transaction. An ``ApiError`` aborts the whole
-        accept."""
+        accept. A handler with ``wants_actor = True`` is also passed ``actor_id``, the
+        accepting user."""
         ...
 
 
