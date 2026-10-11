@@ -72,7 +72,9 @@ class ProblemOut(BaseModel):
 
     severity: Literal["error", "warning"]
     code: str = Field(
-        description="`unparsed_sql`, `not_in_group_by` or another mapping error code (errors); "
+        description="`unparsed_sql`, `not_in_group_by`, `broken_reference` (the SQL names a "
+        "table or column that no longer exists), `removed_input` (one removed from the source) "
+        "or another mapping error code (errors); "
         "`unmapped_column`, `missing_integration_rule`, `may_truncate`, `may_lose_precision`, "
         "`may_fail_conversion` or `nullable_into_required` (warnings)."
     )

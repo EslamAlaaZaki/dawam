@@ -210,3 +210,170 @@ def _column_safe(
             break
         node = node.parent
     return False
+
+
+@dataclass(frozen=True)
+class Renames:
+    """Identifier renames to carry into SQL text (spec §6.10, propagation). Keys are the
+    names as the text writes them (the old ones), lower case."""
+
+    tables: dict[str, str]
+    """Old table name -> new name."""
+    columns: dict[tuple[str, str], str]
+    """(old table name, old column name) -> new column name."""
+    schema: str | None = None
+    """Only a table reference with no schema or this one (lower case) is the renamed table."""
+
+
+def _spelled(old: exp.Identifier, new: str, dialect: str | None) -> str:
+    quoted = bool(old.args.get("quoted"))
+    return exp.to_identifier(new, quoted=quoted or None).sql(dialect=dialect)
+
+
+def _renamed_table(table: exp.Table, renames: Renames) -> bool:
+    if table.name.lower() not in renames.tables:
+        return False
+    return not table.db or renames.schema is None or table.db.lower() == renames.schema
+
+
+def _edits(tree: exp.Expression, renames: Renames, platform: str) -> dict[int, tuple[int, str]]:
+    """Where the parsed text names a renamed table or column: start -> (end, new spelling),
+    as positions in the text ``tree`` was parsed from (end exclusive)."""
+    dialect = DIALECTS.get(platform)
+    edits: dict[int, tuple[int, str]] = {}
+
+    def edit(identifier: exp.Expression | None, new: str) -> None:
+        if not isinstance(identifier, exp.Identifier):
+            return
+        start, end = identifier.meta.get("start"), identifier.meta.get("end")
+        if start is not None and end is not None:
+            edits[start] = (end + 1, _spelled(identifier, new, dialect))
+
+    tables = [t for t in tree.find_all(exp.Table) if isinstance(t.this, exp.Identifier)]
+
+    def owner_of(table: exp.Table) -> str | None:
+        """The table's name, or ``None`` when it sits in another schema than the renamed."""
+        in_schema = not table.db or renames.schema is None or table.db.lower() == renames.schema
+        return table.name.lower() if in_schema else None
+
+    aliases = {t.alias.lower(): owner_of(t) for t in tables if t.alias}
+    sources = {owner_of(t) for t in tables} - {None}
+    elsewhere = {t.name.lower() for t in tables if owner_of(t) is None} - sources
+    for table in tables:
+        if _renamed_table(table, renames):
+            edit(table.this, renames.tables[table.name.lower()])
+    for column in tree.find_all(exp.Column):
+        if isinstance(column.this, exp.Star):
+            continue
+        name = column.name.lower()
+        qualifier = (column.table or "").lower()
+        if qualifier:
+            owner = aliases.get(qualifier, qualifier)
+            if owner is None or (qualifier not in aliases and owner in elsewhere):
+                continue
+            in_schema = (
+                not column.db or renames.schema is None or column.db.lower() == renames.schema
+            )
+            if qualifier not in aliases and owner in renames.tables and in_schema:
+                edit(column.args.get("table"), renames.tables[owner])
+            new = renames.columns.get((owner, name))
+        else:
+            hits = [
+                renames.columns[(t, name)]
+                for t in sources
+                if t is not None and (t, name) in renames.columns
+            ]
+            new = hits[0] if len(hits) == 1 else None
+        if new is not None:
+            edit(column.this, new)
+    return edits
+
+
+def _splice(text: str, edits: dict[int, tuple[int, str]], offset: int) -> str:
+    for start in sorted(edits, reverse=True):
+        end, spelled = edits[start]
+        text = text[: start - offset] + spelled + text[end - offset :]
+    return text
+
+
+def _parsed(text: str, platform: str) -> exp.Expression | None:
+    try:
+        trees = sqlglot.parse(text, read=DIALECTS.get(platform))
+    except SqlglotError:
+        return None
+    return trees[0] if len(trees) == 1 else None
+
+
+def rename_in_sql(sql: str, platform: str, renames: Renames) -> str:
+    """A whole statement (a KPI's formula SQL) with ``renames`` respelled in place, so the
+    rest of the text (layout, case, functions) stays as written; unchanged when it does not
+    parse."""
+    tree = _parsed(sql, platform)
+    return sql if tree is None else _splice(sql, _edits(tree, renames, platform), 0)
+
+
+def rename_in_expression(sql: str, platform: str, renames: Renames) -> str:
+    """A mapping expression (or lookup input) with ``renames`` respelled in place."""
+    prefix = "SELECT "
+    tree = _parsed(prefix + sql, platform)
+    if tree is None:
+        return sql
+    return _splice(sql, _edits(tree, renames, platform), len(prefix))
+
+
+BRANCH_PARTS = ("driving_input", "joins", "filters", "group_by", "having")
+_BRANCH_GLUE = {
+    "driving_input": "SELECT 1 FROM ",
+    "joins": " ",
+    "filters": " WHERE ",
+    "group_by": " GROUP BY ",
+    "having": " HAVING ",
+}
+
+
+def rename_in_branch(
+    parts: dict[str, str | None], platform: str, renames: Renames
+) -> dict[str, str | None]:
+    """A branch's SQL parts with ``renames`` respelled, read as the one query they make (so
+    an alias set in the driving input or a join is followed)."""
+    text = ""
+    spans: dict[str, tuple[int, int]] = {}
+    for part in BRANCH_PARTS:
+        value = parts.get(part)
+        if not value:
+            continue
+        text += _BRANCH_GLUE[part]
+        spans[part] = (len(text), len(text) + len(value))
+        text += value
+    tree = _parsed(text, platform)
+    if tree is None:
+        return dict(parts)
+    edits = _edits(tree, renames, platform)
+    result = dict(parts)
+    for part, (start, end) in spans.items():
+        inside = {s: e for s, e in edits.items() if start <= s and e[0] <= end}
+        if inside:
+            result[part] = _splice(str(parts[part]), inside, start)
+    return result
+
+
+def expression_reads(sql: str, platform: str, names: Renames) -> bool:
+    """Whether a mapping expression names one of the tables or columns in ``names`` (the
+    new names are ignored)."""
+    tree = _parsed("SELECT " + sql, platform)
+    return tree is not None and bool(_edits(tree, names, platform))
+
+
+def branch_reads(parts: dict[str, str | None], platform: str, names: Renames) -> bool:
+    """Whether a branch's SQL parts name one of the tables or columns in ``names``."""
+    text = " ".join(
+        _BRANCH_GLUE[p].strip() + " " + str(parts[p]) for p in BRANCH_PARTS if parts.get(p)
+    )
+    tree = _parsed(text, platform)
+    return tree is not None and bool(_edits(tree, names, platform))
+
+
+def sql_reads(sql: str, platform: str, names: Renames) -> bool:
+    """Whether a whole statement (a KPI's formula SQL) names one of ``names``."""
+    tree = _parsed(sql, platform)
+    return tree is not None and bool(_edits(tree, names, platform))
