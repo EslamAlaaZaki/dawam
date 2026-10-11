@@ -125,7 +125,7 @@ from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_service import MappingService
 from .model_service import ModelService
 from .pii_hashing import PiiHashingService
-from .pii_propagation import PiiPropagation, pii_notes, propagate_pii
+from .pii_propagation import PiiPropagation, pii_notes, pii_origins, propagate_pii
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -239,6 +239,7 @@ __all__ = [
     "max_identifier_length",
     "open_impacts",
     "pii_notes",
+    "pii_origins",
     "plan_propagation",
     "platform_profile",
     "propagate_pii",

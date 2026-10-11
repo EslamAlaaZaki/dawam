@@ -9838,6 +9838,73 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/pii/inventory/export": {
+      "get": {
+        "tags": [
+          "lineage"
+        ],
+        "summary": "Download Pii Inventory",
+        "description": "The PII inventory (any member): the confirmed PII source columns and the DW columns\nthey feed, with category, hashing (`pseudonymised` or `not hashed`), handling note and\nreviewer, never values. PII-influenced tables are listed on their own sheet or section.\nTo keep a copy, save it to the file area with\n`POST .../data-warehouse/files/pii-inventory`.",
+        "operationId": "downloadPiiInventory",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "xlsx",
+                "md"
+              ],
+              "type": "string",
+              "description": "`xlsx` (three sheets) or `md` (Markdown tables).",
+              "default": "xlsx",
+              "title": "Format"
+            },
+            "description": "`xlsx` (three sheets) or `md` (Markdown tables)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PII inventory.",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {},
+              "text/markdown; charset=utf-8": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/comments": {
       "get": {
         "tags": [
@@ -10475,6 +10542,76 @@
               "title": "Layer"
             },
             "description": "One Layer's mappings; omit for Core and Mart."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/pii-inventory": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Pii Inventory",
+        "description": "Export the PII inventory into the Data Warehouse's file area as\n`pii-inventory.<format>`, overwriting the previous one (owners and editors). 404 before\nthe Data Warehouse is set up.",
+        "operationId": "savePiiInventory",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "xlsx",
+                "md"
+              ],
+              "type": "string",
+              "description": "`xlsx` (three sheets) or `md` (Markdown tables).",
+              "default": "xlsx",
+              "title": "Format"
+            },
+            "description": "`xlsx` (three sheets) or `md` (Markdown tables)."
           }
         ],
         "responses": {

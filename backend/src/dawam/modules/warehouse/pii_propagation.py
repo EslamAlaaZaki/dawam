@@ -66,6 +66,18 @@ def propagate_pii(db: Session, pii_column_ids: Iterable[uuid.UUID]) -> PiiPropag
     return PiiPropagation(frozenset(derived), frozenset(influenced), frozenset(pseudonymised))
 
 
+def pii_origins(
+    db: Session, pii_column_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """For each DW column reached by value edges, the given PII source columns it is fed
+    by (the DW columns ``propagate_pii`` calls derived, with where their PII comes from)."""
+    origins: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for seed in set(pii_column_ids):
+        for reached in _downstream(db, {seed}):
+            origins.setdefault(reached, set()).add(seed)
+    return origins
+
+
 def _downstream(db: Session, start: set[uuid.UUID]) -> set[uuid.UUID]:
     """The DW columns reached from ``start`` through ``value`` edges."""
     reached_all: set[uuid.UUID] = set()
