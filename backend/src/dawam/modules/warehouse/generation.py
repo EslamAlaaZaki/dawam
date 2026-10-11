@@ -1124,6 +1124,21 @@ def _take_generated(
     record.edited_fields = [f for f in record.edited_fields if f not in changed]
 
 
+def _check_provenance(payload: Mapping[str, Any]) -> None:
+    """What a create carries besides its fields must fit: any item may come from a model."""
+    key = payload.get("generation_key")
+    if key is not None and (not isinstance(key, str) or not 0 < len(key) <= 64):
+        raise _invalid_item("A generation key is a short text.")
+    flags = payload.get("review_flags", [])
+    if not isinstance(flags, list) or not all(
+        isinstance(f, Mapping)
+        and set(f) == {"code", "message"}
+        and all(isinstance(v, str) and len(v) <= 500 for v in f.values())
+        for f in flags
+    ):
+        raise _invalid_item("Review flags are a list of {code, message}.")
+
+
 class _Handler:
     object_type: str
 
@@ -1151,6 +1166,10 @@ class DwTableHandler(_Handler):
         if operation == "create":
             if _uuid(payload.get("id")) is None or payload.get("layer") not in MODEL_LAYERS:
                 raise _invalid_item("A table create carries its id and a Core or Mart layer.")
+            _check_provenance(payload)
+            for column in payload.get("columns") or []:
+                if isinstance(column, Mapping):
+                    _check_provenance(column)
             if payload.get("builtin") is not None:
                 if payload["builtin"] != "date":
                     raise _invalid_item("The built-in table is the date dimension.")
@@ -1316,6 +1335,7 @@ class DwColumnHandler(_Handler):
         payload: Mapping[str, Any],
     ) -> None:
         if operation == "create":
+            _check_provenance(payload)
             table = _model_table(db, workspace_id, _uuid(payload.get("table_id")))
             if table is None or not {"name", "data_type", "role"} <= set(payload):
                 raise _invalid_item("A column create names its table, name, type and role.")
