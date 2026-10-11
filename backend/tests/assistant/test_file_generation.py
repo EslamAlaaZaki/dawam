@@ -9,6 +9,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from dawam.modules.llm import Reply
 from tests.assistant import test_chat
 from tests.assistant.test_source_tools import payload, use
 from tests.kpis import test_kpi_links
@@ -77,11 +78,14 @@ def test_the_mapping_sheet_is_saved_as_the_exporters_xlsx(roles, model, warehous
 
 
 def test_free_text_goes_to_the_warehouse_area_without_a_system(roles, model, warehouse, fake_llm):
-    status, _ = use(
-        roles, fake_llm, "generate_file", "editor", name="kpi-docs.md", content="# KPIs\n"
-    )
+    # `use` takes a tool name as `name`, so the call is scripted here.
+    call = test_chat.tool("generate_file", name="kpi-docs.md", content="# KPIs\n")
+    fake_llm.script(Reply(tool_calls=(call,)), Reply(text="ok"))
+    editor = roles.client("editor")
+    events = test_chat.ask(editor, roles, test_chat.conversation(editor, roles), "Write")
 
-    assert status == "ok"
+    [(_, shown)] = [e for e in events if e[0] == "tool"]
+    assert shown["status"] == "ok"
     [saved] = area_files(roles)
     assert text_of(roles, saved) == "# KPIs\n"
 
