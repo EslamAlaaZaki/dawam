@@ -182,3 +182,11 @@ def test_changes_to_gates_and_checks_are_audited(warehouse: RoleClients):
     [entry] = entries.json()["items"]
     assert (entry["entity_id"], entry["new"]["min_score"]) == ("mart", 70)
     assert audit(warehouse) == []  # the Layer Approval's own trail is untouched
+
+
+def test_an_unapproved_core_is_named_before_the_gate(warehouse: RoleClients):
+    fact(warehouse, layer="mart")  # an error in Mart, and Core is not approved
+
+    blocked = move(warehouse, "mart", "approved")
+
+    assert blocked.status_code == 409 and code_of(blocked) == "core_not_approved"

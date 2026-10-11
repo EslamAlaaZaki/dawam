@@ -157,8 +157,8 @@ class ScoreGateService:
         layer: str,
         min_score: float,
     ) -> ScoreGate:
-        """Set the minimum score (0-100) of the Core or Mart Layer and whether errors block
-        approval (owners only). 422 ``no_layer_approval`` for staging."""
+        """Set the minimum score (0-100) of the Core or Mart Layer (owners only).
+        422 ``no_layer_approval`` for staging."""
         self._workspaces.authorize(user, Action.MANAGE_SCORE_SETTINGS, workspace_id)
         if layer not in APPROVAL_LAYERS:
             raise ApiError(422, "no_layer_approval", "Only Core and Mart have an approval gate.")
