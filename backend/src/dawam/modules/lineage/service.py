@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
 from dawam.modules.kpis import kpi_names
-from dawam.modules.sources import source_column_labels
-from dawam.modules.warehouse import LineageEdge, lineage_edges, lineage_nodes
+from dawam.modules.sources import confirmed_pii_column_ids, source_column_labels
+from dawam.modules.warehouse import LineageEdge, lineage_edges, lineage_nodes, propagate_pii
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 
@@ -67,6 +67,14 @@ class Impact:
     kpis: list[Node]
 
 
+@dataclass(frozen=True)
+class PiiView:
+    columns: list[Node]
+    """PII-derived DW columns: fed by a confirmed PII column through value edges."""
+    tables: list[Node]
+    """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
+
+
 def _order(node: Node) -> tuple[int, str]:
     return (LAYER_ORDER.get(node.layer, 9), node.label)
 
@@ -112,6 +120,21 @@ class LineageService:
             columns=sorted((n for n in unique if n.type == "dw_column"), key=_order),
             tables=sorted((n for n in unique if n.type == "dw_table"), key=_order),
             kpis=sorted((n for n in unique if n.type == "kpi"), key=_order),
+        )
+
+    def pii_view(self, user: User, workspace_id: uuid.UUID) -> PiiView:
+        """The PII-derived DW columns and, separately, the PII-influenced DW tables (spec
+        §6.12, story 137), computed from the lineage edges as they stand now."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            result = propagate_pii(db, confirmed_pii_column_ids(db, workspace_id))
+            nodes = lineage_nodes(
+                db, workspace_id, result.derived_columns | result.influenced_tables
+            )
+        found = [Node(n.id, n.type, n.label, n.layer) for n in nodes.values()]  # type: ignore[arg-type]
+        return PiiView(
+            columns=sorted((n for n in found if n.type == "dw_column"), key=_order),
+            tables=sorted((n for n in found if n.type == "dw_table"), key=_order),
         )
 
     def _start(self, db: Session, workspace_id: uuid.UUID, node_id: uuid.UUID) -> Node:

@@ -41,6 +41,9 @@ Public interface. Other modules import only what is re-exported here:
   tables a KPI's formula SQL and links refer to, and the ``kpi`` lineage edges this module
   stores for them (``DwSchema``, ``SchemaTable``, ``SchemaColumn``; ``SQL_DIALECTS`` maps a
   target platform to its sqlglot dialect).
+- ``propagate_pii`` (in the caller's session, no permission check): the DW columns a set of
+  confirmed PII source columns reaches through ``value`` edges and the tables it only steers
+  (``PiiPropagation``); the ``lineage`` module serves it as the PII view.
 - ``lineage_edges`` / ``lineage_nodes`` (in the caller's session, no permission check): the
   stored lineage edges within ``depth`` of a node, walked with recursive CTEs and a cycle
   guard, and the DW columns and tables among a set of node ids (``LineageEdge``,
@@ -76,6 +79,7 @@ from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_service import MappingService
 from .model_service import ModelService
+from .pii_propagation import PiiPropagation, propagate_pii
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -129,6 +133,7 @@ __all__ = [
     "MappingSheet",
     "ModelService",
     "NamingRules",
+    "PiiPropagation",
     "PlatformProfile",
     "SchemaColumn",
     "SchemaTable",
@@ -154,6 +159,7 @@ __all__ = [
     "mart_columns_reading",
     "max_identifier_length",
     "platform_profile",
+    "propagate_pii",
     "read_schema",
     "replace_kpi_edges",
     "router",

@@ -60,10 +60,13 @@ def measure(roles: RoleClients, table_id: str, name: str) -> dict:
     return response.json()
 
 
-def map_direct(roles: RoleClients, table_id: str, column_id: str, sql: str) -> None:
+def map_direct(
+    roles: RoleClients, table_id: str, column_id: str, sql: str, version: int | None = None
+) -> None:
+    body = {"mapping_type": "direct", "sql_expression": sql}
     response = roles.client("editor").put(
         f"{dw(roles)}/tables/{table_id}/mapping/columns/{column_id}",
-        json={"mapping_type": "direct", "sql_expression": sql},
+        json=body | ({"version": version} if version else {}),
     )
     assert response.status_code == 200, response.text
 
@@ -276,3 +279,54 @@ def test_the_assistant_reads_a_kpis_lineage(graph, roles, model, fake_llm):
         "to": f"{graph['stg']['name']}.amount (staging)",
     } in result["edges"]
     assert result["nodes_left_out"] == 0
+
+
+def confirm_pii(roles: RoleClients, column_id: str) -> None:
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "insert into pii_findings (id, src_column_id, rule, category, confidence,"
+                " evidence, status, detected_at) values (:id, :c, 'national_id',"
+                " 'direct_identifier', 0.9, 'name', 'confirmed', :now)"
+            ),
+            {"id": uuid.uuid4(), "c": column_id, "now": datetime.now(UTC)},
+        )
+
+
+def pii_view(roles: RoleClients, role="viewer") -> dict:
+    return ok(roles.client(role).get(f"{dw(roles)}/pii"))
+
+
+def test_pii_flows_through_value_edges_to_columns(graph, roles):
+    confirm_pii(roles, graph["src_amount"])
+
+    body = pii_view(roles)
+
+    assert [c["label"] for c in body["columns"]] == [
+        f"{graph['stg']['name']}.amount",
+        "fact_orders.amount_c",
+        "mart_orders.amount_m",
+    ]
+    assert body["tables"] == []
+
+
+def test_join_only_use_marks_the_table_not_its_columns(graph, roles):
+    confirm_pii(roles, graph["src_status"])
+
+    body = pii_view(roles)
+
+    # The staged status column is derived (a direct copy); the Core table it filters is
+    # only influenced, and its measure, fed by the amount, is not derived.
+    assert [c["label"] for c in body["columns"]] == [f"{graph['stg']['name']}.status"]
+    assert [t["label"] for t in body["tables"]] == ["fact_orders"]
+
+
+def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph, roles):
+    assert pii_view(roles) == {"columns": [], "tables": []}
+    confirm_pii(roles, graph["src_amount"])
+    map_direct(roles, graph["core"], graph["amount_c"], f"{graph['stg']['name']}.status", version=1)
+
+    labels_now = [c["label"] for c in pii_view(roles)["columns"]]
+
+    assert "fact_orders.amount_c" not in labels_now
+    assert labels_now == [f"{graph['stg']['name']}.amount"]

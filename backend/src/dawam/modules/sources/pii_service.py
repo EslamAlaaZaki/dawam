@@ -266,3 +266,22 @@ class PiiService:
             new={f: new[f] for f in changed},
             at=now,
         )
+
+
+def confirmed_pii_column_ids(db: Session, workspace_id: uuid.UUID) -> set[uuid.UUID]:
+    """The Workspace's source columns with a ``confirmed`` PII finding, in the caller's
+    session (no permission check); the start of PII propagation through lineage."""
+    return set(
+        db.scalars(
+            sa.select(PiiFindingRecord.src_column_id)
+            .join(SrcColumnRecord, SrcColumnRecord.id == PiiFindingRecord.src_column_id)
+            .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+            .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+            .join(SourceSystemRecord, SourceSystemRecord.id == SrcDbSchemaRecord.source_system_id)
+            .where(
+                PiiFindingRecord.status == "confirmed",
+                SrcColumnRecord.status != "deleted",
+                SourceSystemRecord.workspace_id == workspace_id,
+            )
+        )
+    )
