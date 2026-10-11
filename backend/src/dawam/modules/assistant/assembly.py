@@ -12,7 +12,7 @@ from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ChangeSetService, ObjectHandlers
 from dawam.modules.files import DocumentSearchService, FileService
 from dawam.modules.jobs import JobRunner, JobService
-from dawam.modules.kpis import KpiService
+from dawam.modules.kpis import KpiService, kpis_for_score
 from dawam.modules.lineage import LineageService
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, WorkspaceAiService
 from dawam.modules.notifications import NotificationService
@@ -111,7 +111,7 @@ def build_assistant_service(
                 clock=clock,
             ),
             jobs=JobService(engine, runner=jobs, clock=clock),
-            scores=ScoreService(engine, workspaces=workspaces, clock=clock),
+            scores=ScoreService(engine, workspaces=workspaces, clock=clock, kpis=kpis_for_score),
             evaluations=EvaluationService(
                 engine,
                 workspaces=workspaces,

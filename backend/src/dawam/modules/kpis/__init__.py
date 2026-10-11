@@ -17,6 +17,9 @@ Public interface. Other modules import only what is re-exported here:
   links or no formula SQL and the DW Schema, for the AI to propose them.
 - ``kpi_names`` (in the caller's session, no permission check): the names of the given
   KPIs of a Workspace, for the lineage graph's ``kpi`` nodes.
+- ``kpis_for_score`` (in the caller's session, no permission check): the Workspace's KPIs as
+  the warehouse score's DW-wide KPI checks read them (``ScoreService(kpis=...)``); a change
+  to a KPI or its links asks for a rescore.
 - ``KpiLinkHandler``: the Change Set handler for ``kpi`` objects (``formula_sql`` and
   ``links``); the composition root registers it.
 - ``plan_kpi_propagation`` (in the caller's session, no permission check): the KPI items of a
@@ -34,6 +37,7 @@ from .api import router
 from .link_changes import KpiLinkHandler
 from .links import kpi_names
 from .propagation import KpiPlan, KpiPropagationHandler, plan_kpi_propagation
+from .score_feed import kpis_for_score
 from .service import (
     Kpi,
     KpiLink,
@@ -60,6 +64,7 @@ __all__ = [
     "LinkCandidates",
     "SuggestedKpis",
     "kpi_names",
+    "kpis_for_score",
     "plan_kpi_propagation",
     "router",
 ]

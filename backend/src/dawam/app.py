@@ -27,6 +27,7 @@ from dawam.modules.auth import AuthService
 from dawam.modules.changesets import reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
+from dawam.modules.kpis import kpis_for_score
 from dawam.modules.llm import AdapterFactory, adapter_for, on_workspace_created
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceSummaryService
@@ -109,6 +110,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
                 engine,
                 workspaces=WorkspaceService(engine, clock=services.clock),
                 clock=services.clock,
+                kpis=kpis_for_score,
             ).recalculate,
             debounce_seconds=settings.score_debounce_seconds,
         ),
@@ -140,6 +142,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.settings = settings
     app.state.services = services
     app.state.engine = engine
+    app.state.score_kpis = kpis_for_score  # the score's DW-wide KPI checks read the KPIs
     # Indexing and searching uploaded documents (files); the worker builds the same service.
     app.state.document_search = job_handlers.build_document_search(
         services.jobs,

@@ -17044,7 +17044,8 @@
             "enum": [
               "staging",
               "core",
-              "mart"
+              "mart",
+              "dw"
             ],
             "title": "Layer"
           },
@@ -17052,7 +17053,8 @@
             "type": "string",
             "enum": [
               "table",
-              "column"
+              "column",
+              "kpi"
             ],
             "title": "Object Type"
           },

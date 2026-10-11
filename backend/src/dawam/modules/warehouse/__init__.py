@@ -72,7 +72,9 @@ Public interface. Other modules import only what is re-exported here:
 - ``ScoreService`` (``current``, ``history``; ``recalculate`` for the system): the rule-based DW
   score (spec §6.11) from the checks in ``score_checks`` run by the engine in ``scoring``;
   ``install_score_recalculation`` (the composition root) rescores after every committed design
-  change, debounced. ``GET .../data-warehouse/score`` and ``.../score/history``.
+  change, debounced. ``KpiReader`` (``DesignKpi``) is how the composition root gives it the
+  Workspace's KPIs for the DW-wide KPI checks; ``touch_score`` marks a Workspace's KPIs changed.
+  ``GET .../data-warehouse/score`` and ``.../score/history``.
 - ``router``: ``GET|POST|PATCH /workspaces/{workspace_id}/data-warehouse``,
   ``GET /data-warehouse/platforms`` and the Core and Mart model editor under
   ``/workspaces/{workspace_id}/data-warehouse/tables`` (tables, and their columns), the
@@ -126,10 +128,12 @@ from .schema_reader import (
     read_schema,
     replace_kpi_edges,
 )
-from .score_service import Score, ScoreService
+from .score_service import KpiReader, Score, ScoreService
 from .score_trigger import ScoreScheduler
 from .score_trigger import install as install_score_recalculation
+from .score_trigger import touch as touch_score
 from .score_trigger import uninstall as uninstall_score_recalculation
+from .scoring import DesignKpi
 from .service import DataWarehouse, DataWarehouseService, DateDimension, LayerSchemas, NamingRules
 from .staging_service import StagingFlag, StagingResult, StagingService
 from .staging_sync import StagingColumnHandler, StagingTableHandler
@@ -148,12 +152,14 @@ __all__ = [
     "DdlPackage",
     "DdlService",
     "DdlServiceDep",
+    "DesignKpi",
     "DwColumnHandler",
     "DwSchema",
     "EvaluationService",
     "Finding",
     "FindingItem",
     "Impact",
+    "KpiReader",
     "KpiRemoval",
     "KpiRename",
     "LayerSchemas",
@@ -205,5 +211,6 @@ __all__ = [
     "replace_kpi_edges",
     "router",
     "sql_reads",
+    "touch_score",
     "uninstall_score_recalculation",
 ]
