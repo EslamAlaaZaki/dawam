@@ -38,9 +38,14 @@ from dawam.modules.sources import (
     SourceQueryService,
 )
 from dawam.modules.warehouse import (
+    GENERATION_SCOPE,
     EvaluationService,
     Finding,
     FindingItem,
+    GeneratedColumn,
+    GeneratedTable,
+    GenerationPlan,
+    GenerationService,
     ScoreService,
     ValidationService,
 )
@@ -75,6 +80,7 @@ class ToolServices:
     validation: ValidationService
     source_queries: SourceQueryService
     jobs: JobService
+    generation: GenerationService
 
 
 @dataclass(frozen=True)
@@ -436,6 +442,8 @@ class Proposals:
     def __init__(self) -> None:
         self.source_system_id: uuid.UUID | None = None
         self.items: list[_ChangeItem] = []
+        self.generation: GenerationPlan | None = None
+        """The DW Schema generation's items; a later generation replaces an earlier one."""
 
     def add(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> int:
         self.check(source_system_id, items)
@@ -443,7 +451,14 @@ class Proposals:
         self.items.extend(items)
         return len(self.items)
 
+    def set_generation(self, plan: GenerationPlan) -> None:
+        if self.items:
+            raise _one_change_set()
+        self.generation = plan
+
     def check(self, source_system_id: uuid.UUID, items: Sequence[_ChangeItem]) -> None:
+        if self.generation is not None:
+            raise _one_change_set()
         if self.source_system_id not in (None, source_system_id):
             raise ApiError(
                 422,
@@ -457,6 +472,15 @@ class Proposals:
             taken.add(item.key)
         if len(self.items) + len(items) > MAX_JOB_ITEMS:
             raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
+
+
+def _one_change_set() -> ApiError:
+    return ApiError(
+        422,
+        "one_change_set",
+        "A job's changes go into one Change Set, so a job either generates the DW Schema or "
+        "proposes Source Schema changes, not both.",
+    )
 
 
 def _proposed_items(items: Sequence[_ChangeItem]) -> list[ProposedItem]:
@@ -1098,17 +1122,21 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
 
 
 def _start_job(ctx: ToolContext, args: _StartJob) -> Any:
+    return _submit_job(ctx, args.title, args.task)
+
+
+def _submit_job(ctx: ToolContext, title: str, task: str) -> Reported:
     job = ctx.services.jobs.submit(
         ctx.workspace_id,
         ASSISTANT_JOB,
         {
             "user_id": str(ctx.user.id),
             "workspace_id": str(ctx.workspace_id),
-            "title": args.title,
+            "title": title,
             "conversation_id": str(ctx.conversation_id) if ctx.conversation_id else None,
-            "task": args.task,
+            "task": task,
         },
-        title=args.title,
+        title=title,
         created_by=ctx.user.id,
     )
     content = {
@@ -1118,6 +1146,166 @@ def _start_job(ctx: ToolContext, args: _StartJob) -> Any:
         "Tell them it started; do not wait for its result.",
     }
     return Reported(content, {"job_id": str(job.id), "title": job.title})
+
+
+GENERATION_TITLE = "Generate the Core and Mart Layers"
+GENERATION_TASK = (
+    "Generate the Data Warehouse's Core and Mart Layers (Kimball facts and dimensions) from "
+    "the staging tables, the Source Schemas, the KPIs and the documents. First call "
+    "generate_dw_schema without `tables` to read the inputs; look up source tables, KPIs or "
+    "documents with your other tools where that helps; then call generate_dw_schema once with "
+    "the whole model in `tables`. If it lists problems, fix them and call it again with the "
+    "whole model."
+)
+GENERATION_NOTE = (
+    "Design the Core Layer as a Kimball star schema from the staging tables: facts with a "
+    "grain statement and fact type; dimensions with an SCD type (2 where history matters) and "
+    "their natural keys (role nk); measures with an additivity; foreign keys (role fk) whose "
+    "`references` is a dimension's handle or name. DAWAM adds surrogate keys, SCD2 columns and "
+    "unknown members itself. A dimension shared by several facts is conformed. Every fact can "
+    "reference the date dimension (`references`: its handle, or `date`); never model one. Give "
+    "a Core fact's foreign key a `lookup` with the staging natural-key columns (and the "
+    "as-of date for an SCD2 dimension). Add Mart facts or aggregates for the KPIs; Mart tables "
+    "reference Core conformed dimensions. Keep every existing table or column you still want "
+    "by giving its `handle` (a new name is a rename); leave the handle out only for something "
+    "new. Never propose anything in `deleted_by_users`. Follow the naming rules."
+)
+
+
+class _GenLookup(BaseModel):
+    nk_inputs: list[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="The staging columns that hold the dimension's natural key, as "
+        "`staging_table.column`, in the order of the dimension's nk columns.",
+    )
+    as_of_input: str | None = Field(
+        default=None,
+        max_length=300,
+        description="For an SCD2 dimension: the staging date column, as `staging_table.column`.",
+    )
+
+
+class _GenColumn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    handle: str | None = Field(
+        default=None, max_length=40, description="The existing column's handle, if it is one."
+    )
+    data_type: dict[str, Any] = Field(
+        description="`{type, length?, precision?, scale?}`; type is one of smallint, integer, "
+        "bigint, decimal, float, double, boolean, char, string, text, binary, date, time, "
+        "timestamp, timestamptz, uuid, json."
+    )
+    role: Literal["sk", "nk", "fk", "measure", "attribute", "degenerate_dimension", "audit"]
+    is_nullable: bool = True
+    additivity: Literal["additive", "semi_additive", "non_additive"] | None = Field(
+        default=None, description="Required for a measure."
+    )
+    scd_type_override: Literal[0, 1, 2] | None = None
+    references: str | None = Field(
+        default=None,
+        max_length=300,
+        description="A foreign key's dimension: its handle or name (`date` for the date "
+        "dimension).",
+    )
+    role_name: str | None = Field(
+        default=None, max_length=128, description="For a role-playing foreign key."
+    )
+    description: str = Field(default="", max_length=4000)
+    semantic_type: str | None = Field(default=None, max_length=64)
+    lookup: _GenLookup | None = None
+
+
+class _GenTable(BaseModel):
+    handle: str | None = Field(
+        default=None, max_length=40, description="The existing table's handle, if it is one."
+    )
+    layer: Literal["core", "mart"]
+    name: str = Field(min_length=1, max_length=128)
+    kind: Literal["fact", "dimension", "bridge"]
+    description: str = Field(default="", max_length=4000)
+    grain: str | None = Field(
+        default=None, max_length=1000, description="A fact's grain: what one row stands for."
+    )
+    fact_type: (
+        Literal["transactional", "periodic_snapshot", "accumulating_snapshot", "factless"] | None
+    ) = None
+    is_aggregate: bool = False
+    scd_type: Literal[0, 1, 2] | None = Field(default=None, description="A dimension's SCD type.")
+    is_conformed: bool = False
+    columns: list[_GenColumn] = Field(default_factory=list, max_length=300)
+
+
+class _GenerateDwSchema(BaseModel):
+    tables: list[_GenTable] | None = Field(
+        default=None,
+        max_length=300,
+        description="Leave out to read the inputs. Then the whole Core and Mart model: every "
+        "table to keep or create, with its columns.",
+    )
+
+
+def _generated_table(table: _GenTable) -> GeneratedTable:
+    return GeneratedTable(
+        **table.model_dump(exclude={"columns"}),
+        columns=[
+            GeneratedColumn(
+                **column.model_dump(exclude={"lookup"}),
+                lookup=column.lookup.model_dump() if column.lookup else None,
+            )
+            for column in table.columns
+        ],
+    )
+
+
+def _generate_dw_schema(ctx: ToolContext, args: _GenerateDwSchema) -> Any:
+    """Generation is a long task: from a chat it starts a job; the job reads the inputs, then
+    hands the whole model to DAWAM, which plans the job's one Change Set."""
+    generation = ctx.services.generation
+    if ctx.proposals is None:
+        generation.inputs(ctx.user, ctx.workspace_id)  # refused or not set up: say so now
+        reported = _submit_job(ctx, GENERATION_TITLE, GENERATION_TASK)
+        reported.content["note"] = (
+            "DW generation runs as a background job and ends in one Change Set for the member "
+            "to review. Tell them it started; do not wait for its result."
+        )
+        return reported
+    if args.tables is None:
+        inputs = generation.inputs(ctx.user, ctx.workspace_id)
+        kpis = ctx.services.kpis.list(ctx.user, ctx.workspace_id, limit=100)
+        inputs["kpis"] = [
+            {
+                "name": k.name,
+                "definition": k.definition,
+                "formula_text": k.formula_text,
+                "unit": k.unit,
+                "aggregation": k.aggregation,
+            }
+            for k in kpis.items
+        ]
+        inputs["note"] = GENERATION_NOTE
+        return inputs
+    try:
+        plan = generation.plan(
+            ctx.user, ctx.workspace_id, [_generated_table(t) for t in args.tables]
+        )
+    except ApiError as exc:
+        if exc.code != "invalid_generation":
+            raise
+        return {
+            "status": "not_collected",
+            "problems": (exc.details or {}).get("problems", []),
+            "note": f"{exc.message} Nothing was collected; call again with the whole model.",
+        }
+    ctx.proposals.set_generation(plan)
+    return {
+        "status": "collected",
+        "items": len(plan.items),
+        "conflicts": plan.conflicts,
+        "notes": [dataclasses.asdict(n) for n in plan.notes],
+        "note": "These changes are the job's Change Set, which the member reviews when the job "
+        "finishes; nothing has been changed yet. Calling again replaces them.",
+    }
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -1310,6 +1498,17 @@ TOOLS: tuple[Tool, ...] = (
         _propose_kpi_links,
     ),
     Tool(
+        "generate_dw_schema",
+        "Generate or regenerate the Data Warehouse's Core and Mart Layers (Kimball facts and "
+        "dimensions) from the staging tables, Source Schemas, KPIs and documents, as one Change "
+        "Set the member reviews. It runs as a background job; in a job, call it first without "
+        "`tables` to read the inputs, then with the whole model.",
+        _GenerateDwSchema,
+        "write",
+        Action.EDIT_DW_SCHEMA,
+        _generate_dw_schema,
+    ),
+    Tool(
         "start_job",
         "Hand a large task (exploring many tables, generating a whole layer) to a background "
         "job that can make many more tool calls than this chat. It reports progress here and "
@@ -1459,6 +1658,20 @@ class BoundTools:
         """Make the changes a job collected into one Change Set; how many items it has (0:
         none were proposed, so there is no Change Set)."""
         proposals = self._ctx.proposals
+        if proposals is not None and proposals.generation is not None:
+            plan = proposals.generation
+            if not plan.items:
+                return 0
+            detail = self._ctx.services.change_sets.propose(
+                self._ctx.user,
+                self._ctx.workspace_id,
+                origin=plan.origin,
+                scope=GENERATION_SCOPE,
+                title=title,
+                conversation_id=self._ctx.conversation_id,
+                items=plan.items,
+            )
+            return len(detail.items)
         if proposals is None or proposals.source_system_id is None:
             return 0
         detail = self._ctx.services.change_sets.propose(

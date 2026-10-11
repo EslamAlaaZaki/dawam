@@ -17,7 +17,13 @@ from dawam.modules.changesets import ChangeSetService, ObjectHandlers
 from dawam.modules.kpis import KpiLinkHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import SourceEnhancementHandler
-from dawam.modules.warehouse import StagingColumnHandler, StagingService, StagingTableHandler
+from dawam.modules.warehouse import (
+    DwColumnHandler,
+    DwTableHandler,
+    StagingColumnHandler,
+    StagingService,
+    StagingTableHandler,
+)
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -31,6 +37,8 @@ def change_set_handlers() -> ObjectHandlers:
         SourceEnhancementHandler("source_column"),
         StagingTableHandler(),
         StagingColumnHandler(),
+        DwTableHandler(),
+        DwColumnHandler(),
         KpiLinkHandler(),
     )
 

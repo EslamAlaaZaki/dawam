@@ -66,6 +66,8 @@ DESCRIPTION_MAX_LENGTH = 4000
 PII_NOTE_MAX_LENGTH = 1000
 GRAIN_MAX_LENGTH = 1000
 NAME_MAX_LENGTH = 128
+GENERATION_KEY_MAX_LENGTH = 64
+TOMBSTONE_NAME_MAX_LENGTH = 300
 
 
 def _in(values: tuple[str, ...]) -> str:
@@ -123,8 +125,12 @@ class DwTableRecord(Base):
     edited_fields: Mapped[list[str]] = mapped_column(
         sa.JSON, default=list, server_default=sa.text("'[]'")
     )
-    """The fields a user overrode on a Staging Table; sync reports a change to one as a
-    conflict instead of overwriting it (spec §6.9)."""
+    """The fields a user overrode on a Staging Table or a generated table; sync and
+    regeneration report a change to one as a conflict instead of overwriting it (spec §6.9)."""
+    generation_key: Mapped[str | None] = mapped_column(sa.String(GENERATION_KEY_MAX_LENGTH))
+    """Issued by DAWAM to every table the AI generator creates; stable across renames."""
+    generated: Mapped[dict[str, Any] | None] = mapped_column(sa.JSON)
+    """The last generated value of each field (provenance, not history)."""
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -185,8 +191,12 @@ class DwColumnRecord(Base):
     edited_fields: Mapped[list[str]] = mapped_column(
         sa.JSON, default=list, server_default=sa.text("'[]'")
     )
-    """The fields a user overrode on a staging column (``name``, ``data_type``,
-    ``is_nullable``)."""
+    """The fields a user overrode on a staging column (``data_type``, ``is_nullable``) or on a
+    generated column (any of its fields)."""
+    generation_key: Mapped[str | None] = mapped_column(sa.String(GENERATION_KEY_MAX_LENGTH))
+    """Issued by DAWAM to every column the AI generator creates."""
+    generated: Mapped[dict[str, Any] | None] = mapped_column(sa.JSON)
+    """The last generated value of each field."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     version: Mapped[int] = mapped_column()
@@ -339,10 +349,13 @@ class TombstoneRecord(Base):
         sa.ForeignKey("data_warehouses.id", ondelete="CASCADE"), index=True
     )
     object_type: Mapped[str] = mapped_column(sa.String(16))
-    """``staging_table`` for now."""
+    """``staging_table``, or ``dw_table`` / ``dw_column`` for a generated object."""
     generation_key: Mapped[str | None] = mapped_column(sa.String(128))
     src_object_id: Mapped[uuid.UUID | None] = mapped_column()
     """The Staging Table's Source Table (``src_tables.id``)."""
+    name: Mapped[str | None] = mapped_column(sa.String(TOMBSTONE_NAME_MAX_LENGTH))
+    """A generated object's qualified name when deleted (``core.dim_x``, ``core.dim_x.col``),
+    so regeneration can tell the model's new create is the object a user deleted."""
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )

@@ -26,6 +26,7 @@ from dawam.modules.sources import (
 from dawam.modules.warehouse import (
     DataWarehouseService,
     EvaluationService,
+    GenerationService,
     MappingService,
     ModelService,
     ScoreService,
@@ -118,6 +119,7 @@ def build_assistant_service(
                 clock=clock,
             ),
             lineage=LineageService(engine, workspaces=workspaces),
+            generation=GenerationService(engine, workspaces=workspaces),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )
