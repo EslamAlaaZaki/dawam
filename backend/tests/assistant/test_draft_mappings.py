@@ -192,7 +192,7 @@ def test_several_tables_run_as_a_job_that_ends_in_one_change_set(
 
     [(_, started)] = [e for e in events if e[0] == "tool"]
     assert started["name"] == "draft_mappings" and started["status"] == "ok"
-    [job] = jobs_of(staged)
+    [job] = [j for j in jobs_of(staged) if j["title"] == "Draft mappings"]  # not the generation's
     assert job["status"] == "succeeded"
     assert job["log"].count("draft_mappings ok") == 2
     detail = pending(staged)
