@@ -128,3 +128,43 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - run: scripts/check-api-client.sh
+
+  # The main path in a real browser against the whole Compose stack, with the fake LLM
+  # provider and a seeded PostgreSQL source (compose.e2e.yaml, e2e/README.md).
+  e2e:
+    name: End-to-end smoke test (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_FILE: compose.yaml:compose.e2e.yaml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Start the stack
+        run: |
+          key="$(openssl rand -base64 32 | tr '+/' '-_')"
+          echo "DAWAM_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+          DAWAM_ENCRYPTION_KEY="$key" docker compose up --build --wait --wait-timeout 600
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - name: Playwright
+        run: npx playwright test
+        working-directory: e2e
+      - name: Stack logs
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+      - if: always()
+        run: docker compose down --volumes

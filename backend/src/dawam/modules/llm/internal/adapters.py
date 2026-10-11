@@ -9,6 +9,7 @@ plugin that fails to load is skipped (it must not take the gateway down).
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -18,6 +19,7 @@ from ..gateway import Adapter
 from .anthropic import AnthropicAdapter
 from .azure_openai import AzureOpenAIAdapter
 from .bedrock import BedrockAdapter
+from .e2e import E2eAdapter
 from .gemini import GeminiAdapter
 from .openai_compatible import OpenAICompatibleAdapter
 from .transport import Transport, UrllibTransport
@@ -71,6 +73,8 @@ def adapter_kinds() -> tuple[str, ...]:
 
 
 def adapter_for(kind: str, config: AdapterConfig, transport: Transport | None = None) -> Adapter:
+    if os.environ.get("DAWAM_FAKE_LLM", "").lower() in ("1", "true", "yes"):
+        return E2eAdapter()  # the browser end-to-end suite: no provider is ever called
     transport = transport or UrllibTransport()
     if kind in BUILTIN_ADAPTERS:
         return BUILTIN_ADAPTERS[kind](
