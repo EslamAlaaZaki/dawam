@@ -1,7 +1,7 @@
 """add kpi suggestion dismissals: rule-based suggestions a user hid (kpis module).
 
 Revision ID: 9a3d5e7c1b28
-Revises: 7c2e9f4a1b36
+Revises: 9d3f6b2e8a41
 Create Date: 2026-10-11 18:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "9a3d5e7c1b28"
-down_revision: str | Sequence[str] | None = "7c2e9f4a1b36"
+down_revision: str | Sequence[str] | None = "9d3f6b2e8a41"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

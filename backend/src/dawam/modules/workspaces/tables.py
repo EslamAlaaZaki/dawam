@@ -50,6 +50,10 @@ class WorkspaceRecord(Base):
     status: Mapped[str] = mapped_column(sa.String(16), default="active", server_default="active")
     """``active``, or ``archived``: read-only until an owner or admin unarchives it."""
     archived_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    require_distinct_approver: Mapped[bool] = mapped_column(
+        default=False, server_default=sa.false()
+    )
+    """Owner setting: whoever approves a Layer must not be its last editor (spec §6.10)."""
     version: Mapped[int] = mapped_column()
     """Starts at 1 and goes up by one on every edit (optimistic concurrency, spec §8.3)."""
 

@@ -3779,6 +3779,74 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/score/report": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "score"
+        ],
+        "summary": "Download Score Report",
+        "description": "The latest score as a report (any member): the overall, per-Layer and per-table\nscores, and every failed check with its severity, object and fix hint. To keep a copy,\nsave it to the file area with `POST .../files/score-report`. 404 before the Data\nWarehouse is set up.",
+        "operationId": "downloadScoreReport",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "md",
+                "xlsx"
+              ],
+              "type": "string",
+              "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks).",
+              "default": "md",
+              "title": "Format"
+            },
+            "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The score report.",
+            "content": {
+              "text/markdown; charset=utf-8": {},
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/evaluations": {
       "get": {
         "tags": [
@@ -4427,6 +4495,139 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StagingColumnMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "List Layer Approvals",
+        "description": "The approval state of the Core and Mart Layers (any member). Staging has none.\n404 `not_set_up` before the Data Warehouse is set up.",
+        "operationId": "listLayerApprovals",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerApprovalList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals/{layer}": {
+      "put": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Move Layer Approval",
+        "description": "Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and\neditors). 409 `core_not_approved` when approving Mart while Core is not approved;\n409 `approver_is_last_editor` when the Workspace requires another approver than the\nLayer's last editor. Moving Core away from `approved` returns an approved Mart to\n`draft`. Every move is in the audit trail.",
+        "operationId": "moveLayerApproval",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "core",
+                "mart"
+              ],
+              "type": "string",
+              "title": "Layer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveLayerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerApproval"
                 }
               }
             }
@@ -8254,6 +8455,70 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/approval-settings": {
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Set Approval Settings",
+        "description": "Switch \"approver must not be the last editor\" on or off (owners only). 422\n`single_editor` when switching it on in a Workspace with a single editor (owners\ncount).",
+        "operationId": "setApprovalSettings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/archive": {
       "post": {
         "tags": [
@@ -10727,6 +10992,76 @@
               "title": "Layer"
             },
             "description": "One Layer's mappings; omit for Core and Mart."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/score-report": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Save Score Report",
+        "description": "Export the score report into the Data Warehouse's file area as\n`score-report.<format>`, overwriting the previous one (owners and editors). 404 before\nthe Data Warehouse is set up.",
+        "operationId": "saveScoreReport",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "md",
+                "xlsx"
+              ],
+              "type": "string",
+              "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks).",
+              "default": "md",
+              "title": "Format"
+            },
+            "description": "`md` (Markdown) or `xlsx` (Summary, Layers, Tables, Failed checks)."
           }
         ],
         "responses": {
@@ -13538,6 +13873,127 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspace_id}/documentation-pack": {
+      "get": {
+        "tags": [
+          "documentation-pack"
+        ],
+        "summary": "Download Documentation Pack",
+        "description": "The documentation pack (any member, also in an archived Workspace): Source Schemas,\nthe DW Schema per Layer, mappings, KPIs and a lineage summary. `zip` holds one Markdown\npage per Source System, Layer and topic with a `README.md`; `html` is the same content in\none self-contained file. Metadata only, never row values. To keep a copy, save it to\nthe file area with `POST .../data-warehouse/files/documentation-pack`.",
+        "operationId": "downloadDocumentationPack",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "zip",
+                "html"
+              ],
+              "type": "string",
+              "description": "`zip` (Markdown files) or `html` (a single self-contained file).",
+              "default": "zip",
+              "title": "Format"
+            },
+            "description": "`zip` (Markdown files) or `html` (a single self-contained file)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The documentation pack.",
+            "content": {
+              "application/zip": {},
+              "text/html": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/files/documentation-pack": {
+      "post": {
+        "tags": [
+          "documentation-pack"
+        ],
+        "summary": "Save Documentation Pack",
+        "description": "Save the documentation pack into the Data Warehouse's file area as one Markdown file,\n`documentation-pack.md` (owners and editors), overwriting the previous one. The file\narea holds no HTML or zip, so download those. 404 before the Data Warehouse is set up;\nrefused in an archived Workspace.",
+        "operationId": "saveDocumentationPack",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedPack"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13602,6 +14058,8 @@
           "job.cancel_any",
           "installation.list_workspaces",
           "kpi.edit",
+          "layer.approve",
+          "workspace.require_distinct_approver",
           "comment.create",
           "file.upload",
           "connection.view",
@@ -14152,6 +14610,20 @@
           "needs_owner"
         ],
         "title": "ApplyResult"
+      },
+      "ApprovalSettingsRequest": {
+        "properties": {
+          "require_distinct_approver": {
+            "type": "boolean",
+            "title": "Require Distinct Approver",
+            "description": "Whoever approves a Layer must not be its last editor."
+          }
+        },
+        "type": "object",
+        "required": [
+          "require_distinct_approver"
+        ],
+        "title": "ApprovalSettingsRequest"
       },
       "ApprovedAgentModel": {
         "properties": {
@@ -18600,6 +19072,104 @@
         ],
         "title": "KpiSuggestions"
       },
+      "LayerApproval": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_review",
+              "approved"
+            ],
+            "title": "Status",
+            "description": "`in_review` only asks for a review; a structural change to the Layer returns `approved` to `draft`."
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "last_editor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Editor Id",
+            "description": "Who last changed anything in the Layer."
+          },
+          "last_edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Edited At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "status",
+          "approved_by",
+          "approved_at",
+          "last_editor_id",
+          "last_edited_at"
+        ],
+        "title": "LayerApproval"
+      },
+      "LayerApprovalList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LayerApproval"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Core, then Mart."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LayerApprovalList"
+      },
       "LayerCoverageOut": {
         "properties": {
           "layer": {
@@ -20140,6 +20710,24 @@
           "run"
         ],
         "title": "MessageOut"
+      },
+      "MoveLayerRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_review",
+              "approved"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "MoveLayerRequest"
       },
       "NamingRules": {
         "properties": {
@@ -21790,6 +22378,31 @@
           "mapping_type"
         ],
         "title": "SaveColumnMappingRequest"
+      },
+      "SavedPack": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Bytes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size"
+        ],
+        "title": "SavedPack"
       },
       "Score": {
         "properties": {
@@ -26014,6 +26627,11 @@
             ],
             "title": "Archived At"
           },
+          "require_distinct_approver": {
+            "type": "boolean",
+            "title": "Require Distinct Approver",
+            "description": "Whoever approves the Core or Mart Layer must not be its last editor."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -26040,6 +26658,7 @@
           "permissions",
           "status",
           "archived_at",
+          "require_distinct_approver",
           "version",
           "created_at",
           "updated_at"

@@ -52,6 +52,7 @@ function workspace(state: { archived: boolean; permissions: Workspace["permissio
     permissions: state.permissions,
     status: state.archived ? "archived" : "active",
     archived_at: state.archived ? "2026-01-06T09:00:00Z" : null,
+    require_distinct_approver: false,
     version: 1,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",

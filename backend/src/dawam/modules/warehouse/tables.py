@@ -422,3 +422,35 @@ class AiEvaluationRecord(Base):
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+APPROVAL_LAYERS = ("core", "mart")
+APPROVAL_STATUSES = ("draft", "in_review", "approved")
+
+
+class LayerApprovalRecord(Base):
+    """The Layer Approval of the Core or Mart Layer (spec §7 ``LayerState``); a missing row
+    is a Layer in ``draft`` that nobody has edited yet."""
+
+    __tablename__ = "layer_approvals"
+    __table_args__ = (
+        sa.CheckConstraint(f"layer IN ({_in(APPROVAL_LAYERS)})", name="layer"),
+        sa.CheckConstraint(f"status IN ({_in(APPROVAL_STATUSES)})", name="status"),
+    )
+
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE"), primary_key=True
+    )
+    layer: Mapped[str] = mapped_column(sa.String(16), primary_key=True)
+    status: Mapped[str] = mapped_column(sa.String(16), default="draft")
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    last_editor_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    """Who last changed anything in the Layer (text edits too), for the owner setting
+    "approver must not be the last editor"."""
+    last_edited_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
