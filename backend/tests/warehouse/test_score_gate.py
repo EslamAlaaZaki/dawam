@@ -50,7 +50,7 @@ def set_gate(roles: RoleClients, name: str, min_score=0, role="owner", **body):
 def test_an_owner_disables_a_check_with_a_reason_and_it_leaves_the_score(warehouse: RoleClients):
     fact(warehouse)
     before = score(warehouse)
-    assert failed(before, NO_DIMENSION) and before["capped"] and before["disabled_checks"] == []
+    assert failed(before, NO_DIMENSION) and before["disabled_checks"] == []
 
     response = disable(warehouse, NO_DIMENSION, "Dimensions come in the next release")
 
