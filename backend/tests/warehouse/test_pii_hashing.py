@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 import pytest
+import sqlalchemy as sa
 
 from dawam.modules.warehouse.pii_hashing import SALT_PLACEHOLDER, hashed_sql, unhashed_sql
 from dawam.modules.warehouse.platforms import TARGET_PLATFORMS
@@ -223,3 +224,14 @@ def test_a_note_is_cleared_with_null(graph, roles):
     body = ok(set_note(roles, graph["mart"], graph["amount_m"], None))
 
     assert body["pii_note"] is None
+
+
+def test_a_hashed_expression_of_another_platform_is_refused_not_a_crash(graph, roles):
+    confirm_pii(roles, graph["src_amount"])
+    hash_column(roles, graph["stg_amount"])
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(sa.text("update data_warehouses set target_platform = 'sqlserver'"))
+
+    response = set_mapping(roles, graph["stg_amount"], "direct", 2)
+
+    assert response.status_code == 422, response.text

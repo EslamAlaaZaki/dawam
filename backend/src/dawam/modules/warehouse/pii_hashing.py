@@ -143,13 +143,21 @@ class PiiHashingService:
             if record.version != version:
                 raise _conflict(record.version)
             platform: TargetPlatform = warehouse.target_platform  # type: ignore[assignment]
+            if record.mapping_type not in ("direct", "hashed"):
+                raise _invalid("Only a direct or hashed staging mapping can be switched.")
             if record.mapping_type != mapping_type:
                 if mapping_type == "hashed":
                     if column.source_column_id not in confirmed_pii_column_ids(db, workspace_id):
                         raise _invalid("Only a confirmed PII column can be hashed.")
                     sql = hashed_sql(platform, record.sql_expression)
                 else:
-                    sql = unhashed_sql(platform, record.sql_expression)
+                    try:
+                        sql = unhashed_sql(platform, record.sql_expression)
+                    except ValueError:
+                        raise _invalid(
+                            "This hashed expression was not made for the current target "
+                            "platform; regenerate the column's staging mapping."
+                        ) from None
                 now = self._clock()
                 old = {"mapping_type": record.mapping_type, "sql_expression": record.sql_expression}
                 record.mapping_type = mapping_type
