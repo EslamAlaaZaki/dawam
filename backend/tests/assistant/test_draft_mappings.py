@@ -169,7 +169,8 @@ def test_problems_are_reported_and_nothing_is_collected(app, services, staged, m
 
     [answer] = results(fake_llm)
     assert "not_collected" in answer and "no_such_column" in answer and "no_column" in answer
-    assert change_sets(staged) == []
+    # Only the (applied) generation's Change Set exists.
+    assert [c["scope"]["kind"] for c in change_sets(staged)] == ["dw_generation"]
 
 
 # -- several tables, as a job --------------------------------------------------------------
