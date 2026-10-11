@@ -27,7 +27,7 @@ REFERENCED_BY_FACTS = ("dimension", "generated")
 registry = CheckRegistry()
 """The checks the product scores with."""
 
-_COVERED = ("direct", "derived", "constant", "lookup", "system", "not_in_branch")
+_COVERED = ("direct", "hashed", "derived", "constant", "lookup", "system", "not_in_branch")
 _TIME_TYPES = ("date", "time", "timestamp", "timestamptz")
 
 

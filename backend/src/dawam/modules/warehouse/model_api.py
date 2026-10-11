@@ -119,6 +119,9 @@ class DwColumn(BaseModel):
         default="present",
         description="`source_removed`: the source column is gone; the column stays, flagged.",
     )
+    pii_note: str | None = Field(
+        default=None, description="An optional handling note on a PII-derived column."
+    )
 
 
 class DwTableSummary(BaseModel):
@@ -235,6 +238,9 @@ class UpdateDwColumnRequest(BaseModel):
     role_name: str | None = None
     description: str | None = None
     semantic_type: str | None = None
+    pii_note: str | None = Field(
+        None, description="A handling note; only on a PII-derived column. Null clears it."
+    )
 
 
 # Null clears these; for every other field, null is the same as leaving it out.
@@ -244,6 +250,7 @@ _NULLABLE_COLUMN = (
     "references_table_id",
     "role_name",
     "semantic_type",
+    "pii_note",
 )
 
 

@@ -53,7 +53,12 @@ Public interface. Other modules import only what is re-exported here:
   target platform to its sqlglot dialect).
 - ``propagate_pii`` (in the caller's session, no permission check): the DW columns a set of
   confirmed PII source columns reaches through ``value`` edges and the tables it only steers
-  (``PiiPropagation``); the ``lineage`` module serves it as the PII view.
+  (``PiiPropagation``), and which of those columns are pseudonymised (hashed, or fed by a
+  hashed column); ``pii_notes`` reads their handling notes. The ``lineage`` module serves
+  them as the PII view.
+- ``PiiHashingService``: owners and editors switch a confirmed PII column's staging mapping to
+  ``hashed`` (salted SHA-256 with a ``:pii_salt`` placeholder; the salt is never stored) and
+  back (spec §6.12, story 138). ``PUT .../data-warehouse/staging/columns/{id}/mapping``.
 - ``lineage_edges`` / ``lineage_nodes`` (in the caller's session, no permission check): the
   stored lineage edges within ``depth`` of a node, walked with recursive CTEs and a cycle
   guard, and the DW columns and tables among a set of node ids (``LineageEdge``,
@@ -90,7 +95,8 @@ from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_service import MappingService
 from .model_service import ModelService
-from .pii_propagation import PiiPropagation, propagate_pii
+from .pii_hashing import PiiHashingService
+from .pii_propagation import PiiPropagation, pii_notes, propagate_pii
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -160,6 +166,7 @@ __all__ = [
     "MappingSheet",
     "ModelService",
     "NamingRules",
+    "PiiHashingService",
     "PiiPropagation",
     "PlatformProfile",
     "Propagation",
@@ -189,6 +196,7 @@ __all__ = [
     "lineage_nodes",
     "mart_columns_reading",
     "max_identifier_length",
+    "pii_notes",
     "plan_propagation",
     "platform_profile",
     "propagate_pii",
