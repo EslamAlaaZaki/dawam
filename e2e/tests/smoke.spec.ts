@@ -135,7 +135,11 @@ test("the main path: sign in to lineage", async ({ page }) => {
       .poll(
         async () => {
           const sets = await api(page, "GET", `/workspaces/${workspaceId}/change-sets`);
-          changeSetId = sets.items.find((c: { status: string }) => c.status === "pending")?.id ?? "";
+          changeSetId =
+            sets.items.find(
+              (c: { status: string; scope?: { kind?: string } }) =>
+                c.status === "pending" && (c.scope?.kind ?? "dw_generation") === "dw_generation",
+            )?.id ?? "";
           return changeSetId;
         },
         { timeout: 120_000, intervals: [2_000] },
@@ -143,7 +147,13 @@ test("the main path: sign in to lineage", async ({ page }) => {
       .not.toBe("");
 
     await page.goto(`/workspaces/${workspaceId}/change-sets/${changeSetId}`);
+    // Wait for the accept call itself: leaving the page would cancel it.
+    const accepted = page.waitForResponse(
+      (r) =>
+        r.url().endsWith(`/change-sets/${changeSetId}/accept`) && r.request().method() === "POST",
+    );
     await page.getByRole("button", { name: "Accept all" }).click();
+    expect((await accepted).ok()).toBeTruthy();
 
     await page.goto(`/workspaces/${workspaceId}?folder=dw/core/model`);
     await expect(page.getByRole("button", { name: "dim_customer" })).toBeVisible();
@@ -152,13 +162,14 @@ test("the main path: sign in to lineage", async ({ page }) => {
 
   await test.step("map a core column to staging", async () => {
     await page.getByRole("button", { name: "dim_customer" }).click();
-    await page.getByRole("button", { name: "Mappings" }).click();
-    await page.getByLabel("Type of name").selectOption("direct");
-    await page.getByLabel("SQL for name").fill(`${STAGING_CUSTOMERS}.name`);
+    await page.getByRole("button", { name: "Mappings", exact: true }).click();
+    await page.getByLabel("Type of name", { exact: true }).selectOption("direct");
+    await page.getByLabel("SQL for name", { exact: true }).fill(`${STAGING_CUSTOMERS}.name`);
     await page.getByRole("button", { name: "Save name", exact: true }).click();
-    await expect(page.getByRole("row", { name: /^name\b/ })).toContainText(
-      `${STAGING_CUSTOMERS}.name`,
-    );
+    // The inputs cell is derived by the server from the saved SQL.
+    await expect(
+      page.locator("td").filter({ hasText: `${STAGING_CUSTOMERS}.name` }),
+    ).toBeVisible();
   });
 
   await test.step("view the lineage of the mapped column", async () => {
