@@ -15,9 +15,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The suite is split round-robin over 4 runners (`--shard`, tests/conftest.py); each
+  # starts its own containers.
   backend:
-    name: Backend lint + tests
+    name: Backend lint + tests (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         working-directory: backend
@@ -34,7 +40,7 @@ jobs:
           ruff check .
           ruff format --check .
       - name: Tests (pytest, PostgreSQL 16 and SQL Server 2022 via Testcontainers)
-        run: pytest
+        run: pytest --shard ${{ matrix.shard }}/4
 
   # Oracle containers are slow and heavy: their tests (marker `oracle`) run here, not above.
   backend-oracle:

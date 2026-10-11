@@ -59,10 +59,34 @@ from tests.sample_source.sqlserver import (  # noqa: F401  (fixtures; the contai
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg16"
 POSTGRES_COMMAND = "postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
-"""The test database is thrown away, so it skips flushing to disk: the TRUNCATE after
-every test is then about 15x faster."""
+"""The test database is thrown away, so it skips flushing to disk: where disk flushes are
+slow (Docker Desktop), the TRUNCATE after every test is then about 15x faster."""
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
 """A fresh encryption key per test run; tests never need a real one."""
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--shard",
+        default=None,
+        metavar="K/N",
+        help="run only shard K of N (1-based): every Nth test, so CI can split the suite",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    shard = config.getoption("--shard")
+    if shard is None:
+        return
+    k, n = (int(part) for part in shard.split("/"))
+    if not 1 <= k <= n:
+        raise pytest.UsageError(f"--shard {shard}: K must be between 1 and N")
+    # Round-robin, not contiguous blocks: a slow file (the permission matrix) is spread
+    # over every shard instead of landing on one.
+    selected = items[k - 1 :: n]
+    kept = set(selected)
+    config.hook.pytest_deselected(items=[item for item in items if item not in kept])
+    items[:] = selected
 
 
 @pytest.fixture(scope="session")
