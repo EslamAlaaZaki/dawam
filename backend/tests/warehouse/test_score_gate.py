@@ -8,7 +8,7 @@ import pytest
 
 from tests.roles import RoleClients
 from tests.warehouse.test_column_mappings import base, column
-from tests.warehouse.test_layer_approval import approvals, audit, code_of, move, states
+from tests.warehouse.test_layer_approval import approvals, audit, code_of, states
 from tests.warehouse.test_score_api import (
     fact,
     failed,
@@ -31,6 +31,11 @@ def disable(roles: RoleClients, code: str, reason="Accepted for this model", rol
     return roles.client(role).put(
         f"{score_url(roles)}/disabled-checks/{code}", json={"reason": reason}
     )
+
+
+def move(roles: RoleClients, layer: str, status: str):
+    """Move a Layer as it is: unlike the approval tests', nothing is cleared first."""
+    return roles.client("owner").put(f"{approvals(roles)}/{layer}", json={"status": status})
 
 
 def set_gate(roles: RoleClients, name: str, min_score=0, role="owner", **body):
@@ -112,7 +117,6 @@ def test_only_owners_set_a_minimum_score_on_core_and_mart(warehouse: RoleClients
     assert response.json() | {"updated_by": None, "updated_at": None} == {
         "layer": "core",
         "min_score": 80,
-        "block_on_errors": True,
         "configured": True,
         "updated_by": None,
         "updated_at": None,
@@ -132,8 +136,7 @@ def test_only_owners_set_a_minimum_score_on_core_and_mart(warehouse: RoleClients
 
 
 def test_errors_block_approval_until_fixed_or_disabled(warehouse: RoleClients):
-    fact(warehouse)
-    set_gate(warehouse, "core", 0)
+    fact(warehouse)  # no minimum is set: errors block all the same
 
     blocked = move(warehouse, "core", "approved")
 
@@ -155,19 +158,17 @@ def test_a_score_below_the_minimum_blocks_approval(warehouse: RoleClients):
     result = score(warehouse)
     assert failed(result, NO_ADDITIVITY) and layer(result, "core")["score"] < 100
 
-    set_gate(warehouse, "core", 100, block_on_errors=False)
+    set_gate(warehouse, "core", 100)
     blocked = move(warehouse, "core", "approved")
     assert blocked.status_code == 409 and code_of(blocked) == "score_gate_failed"
     assert blocked.json()["error"]["details"]["min_score"] == 100
 
-    set_gate(warehouse, "core", 1, block_on_errors=False)
+    set_gate(warehouse, "core", 1)
     assert move(warehouse, "core", "approved").status_code == 200
 
 
-def test_without_a_gate_nothing_blocks_and_staging_has_none(warehouse: RoleClients):
-    fact(warehouse)
-
-    assert move(warehouse, "core", "approved").status_code == 200  # no gate set on Core
+def test_a_clean_layer_without_a_gate_and_staging_are_not_blocked(warehouse: RoleClients):
+    assert move(warehouse, "core", "approved").status_code == 200  # not scored: no errors
     assert move(warehouse, "staging", "approved").status_code == 422  # no approval, no gate
     assert warehouse.client("viewer").get(approvals(warehouse)).status_code == 200
 

@@ -488,7 +488,6 @@ class ScoreGateRecord(Base):
     )
     layer: Mapped[str] = mapped_column(sa.String(16), primary_key=True)
     min_score: Mapped[float] = mapped_column(sa.Float, default=0)
-    block_on_errors: Mapped[bool] = mapped_column(default=True)
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )

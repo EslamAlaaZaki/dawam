@@ -51,8 +51,7 @@ class ScoreGate(BaseModel):
 
     layer: GateLayer
     min_score: float = Field(ge=0, le=100)
-    block_on_errors: bool
-    configured: bool = Field(description="False: no gate is set, so the Layer is never blocked.")
+    configured: bool = Field(description="False: no minimum is set (errors still block approval).")
     updated_by: uuid.UUID | None
     updated_at: datetime | None
 
@@ -63,7 +62,6 @@ class ScoreGates(BaseModel):
 
 class SetGateRequest(BaseModel):
     min_score: float = Field(ge=0, le=100, description="Approval needs the Layer at or above it.")
-    block_on_errors: bool = Field(default=True, description="Unresolved errors block approval.")
 
 
 def _disabled(items: list[svc.DisabledCheck]) -> DisabledChecks:
@@ -120,6 +118,4 @@ def set_score_gate(
     """Set the minimum score of the Core or Mart Layer and whether errors block approval
     (owners only). Approving the Layer then fails with 409 `score_gate_failed` while it has
     errors or scores below the minimum. Staging has no gate."""
-    return ScoreGate.model_validate(
-        gates.set_gate(user, workspace_id, layer, body.min_score, body.block_on_errors)
-    )
+    return ScoreGate.model_validate(gates.set_gate(user, workspace_id, layer, body.min_score))

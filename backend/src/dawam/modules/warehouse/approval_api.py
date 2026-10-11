@@ -87,8 +87,8 @@ def move_layer_approval(
     """Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and
     editors). 409 `core_not_approved` when approving Mart while Core is not approved;
     409 `approver_is_last_editor` when the Workspace requires another approver than the
-    Layer's last editor; 409 `score_gate_failed` when the owner set a gate on the Layer and
-    it has errors or scores below its minimum. Moving Core away from `approved` returns an
+    Layer's last editor; 409 `score_gate_failed` when the Layer has errors or scores below
+    the minimum an owner set. Moving Core away from `approved` returns an
     approved Mart to `draft`. Every move is in the audit trail."""
     result: svc.LayerApproval = approvals.move(user, workspace_id, layer, body.status)
     return LayerApproval.model_validate(result)

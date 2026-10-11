@@ -1,10 +1,10 @@
 """Disabled checks and the approval gate (spec §6.11, stories 119, 120).
 
 An owner switches a score check off for the Data Warehouse with a reason (it leaves the
-formula and is listed apart) and sets, per Core and Mart Layer, a minimum score and whether
-errors block approval. ``verify_approval`` is what ``ApprovalService`` asks before it moves
-a Layer to ``approved``: it rescores first, so the gate never reads a stale run. A Layer
-without a gate, and Staging, are never blocked. Every change is audited and rescores.
+formula and is listed apart) and sets, per Core and Mart Layer, a minimum score.
+``verify_approval`` is what ``ApprovalService`` asks before it moves
+a Layer to ``approved``: it rescores first, so the gate never reads a stale run. Every change
+is audited and rescores. Errors block approval whether or not a minimum is set; Staging has no gate.
 """
 
 from __future__ import annotations
@@ -41,9 +41,8 @@ GATE_ENTITY = "score_gate"
 class ScoreGate:
     layer: str
     min_score: float
-    block_on_errors: bool
     configured: bool
-    """False: nobody set a gate on this Layer, so it is never blocked."""
+    """False: no minimum score is set; errors block approval all the same."""
     updated_by: uuid.UUID | None
     updated_at: datetime | None
 
@@ -157,7 +156,6 @@ class ScoreGateService:
         workspace_id: uuid.UUID,
         layer: str,
         min_score: float,
-        block_on_errors: bool,
     ) -> ScoreGate:
         """Set the minimum score (0-100) of the Core or Mart Layer and whether errors block
         approval (owners only). 422 ``no_layer_approval`` for staging."""
@@ -170,12 +168,8 @@ class ScoreGateService:
         with Session(self._engine) as db, db.begin():
             warehouse_id = _warehouse_id(db, workspace_id, lock=True)
             previous = db.get(ScoreGateRecord, (warehouse_id, layer))
-            old = (
-                None
-                if previous is None
-                else {"min_score": previous.min_score, "block_on_errors": previous.block_on_errors}
-            )
-            values = {"min_score": min_score, "block_on_errors": block_on_errors}
+            old = None if previous is None else {"min_score": previous.min_score}
+            values = {"min_score": min_score}
             db.execute(
                 pg_insert(ScoreGateRecord)
                 .values(
@@ -203,15 +197,13 @@ class ScoreGateService:
         return next(g for g in self.gates(user, workspace_id) if g.layer == layer)
 
     def verify_approval(self, workspace_id: uuid.UUID, layer: str) -> None:
-        """Raise 409 ``score_gate_failed`` when the Layer may not be approved: it has errors
-        (with the gate's ``block_on_errors``) or scores below the gate's minimum. Rescores
-        first. Returns quietly for staging, a Layer without a gate, and one with no tables
-        (not scored)."""
+        """Raise 409 ``score_gate_failed`` when the Layer may not be approved: it has
+        unresolved errors, or it scores below the minimum when an owner set one. Rescores
+        first, so a disabled check no longer counts. A Layer with no tables is not scored and
+        has no errors, so it passes."""
         with Session(self._engine) as db:
             warehouse_id = _warehouse_id(db, workspace_id)
             gate = db.get(ScoreGateRecord, (warehouse_id, layer))
-        if gate is None:
-            return
         report = self._scores.recalculate(warehouse_id)
         if report is None:
             return
@@ -223,9 +215,9 @@ class ScoreGateService:
         item = next((x for x in report.layers if x.layer == layer), None)
         score = item.score if item else None
         reasons = []
-        if gate.block_on_errors and errors:
+        if errors:
             reasons.append(f"it has {errors} unresolved error{'s' if errors != 1 else ''}")
-        if score is not None and score < gate.min_score:
+        if gate is not None and score is not None and score < gate.min_score:
             reasons.append(f"its score {score:g} is below the minimum {gate.min_score:g}")
         if reasons:
             raise ApiError(
@@ -235,7 +227,7 @@ class ScoreGateService:
                 {
                     "layer": layer,
                     "score": score,
-                    "min_score": gate.min_score,
+                    "min_score": gate.min_score if gate else None,
                     "error_count": errors,
                 },
             )
@@ -265,8 +257,8 @@ def _gates(db: Session, warehouse_id: uuid.UUID) -> list[ScoreGate]:
         )
     }
     return [
-        ScoreGate(layer, r.min_score, r.block_on_errors, True, r.updated_by, r.updated_at)
+        ScoreGate(layer, r.min_score, True, r.updated_by, r.updated_at)
         if (r := rows.get(layer))
-        else ScoreGate(layer, 0, False, False, None, None)
+        else ScoreGate(layer, 0, False, None, None)
         for layer in APPROVAL_LAYERS
     ]

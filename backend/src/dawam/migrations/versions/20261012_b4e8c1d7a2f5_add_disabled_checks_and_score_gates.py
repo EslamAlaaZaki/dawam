@@ -43,7 +43,6 @@ def upgrade() -> None:
         sa.Column("data_warehouse_id", sa.Uuid(), nullable=False),
         sa.Column("layer", sa.String(length=16), nullable=False),
         sa.Column("min_score", sa.Float(), nullable=False),
-        sa.Column("block_on_errors", sa.Boolean(), nullable=False),
         sa.Column("updated_by", sa.Uuid(), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint("layer IN ('core', 'mart')", name=op.f("ck_score_gates_layer")),

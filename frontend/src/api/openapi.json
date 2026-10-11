@@ -4908,7 +4908,7 @@
           "data-warehouse"
         ],
         "summary": "Move Layer Approval",
-        "description": "Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and\neditors). 409 `core_not_approved` when approving Mart while Core is not approved;\n409 `approver_is_last_editor` when the Workspace requires another approver than the\nLayer's last editor; 409 `score_gate_failed` when the owner set a gate on the Layer and\nit has errors or scores below its minimum. Moving Core away from `approved` returns an\napproved Mart to `draft`. Every move is in the audit trail.",
+        "description": "Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and\neditors). 409 `core_not_approved` when approving Mart while Core is not approved;\n409 `approver_is_last_editor` when the Workspace requires another approver than the\nLayer's last editor; 409 `score_gate_failed` when the Layer has errors or scores below\nthe minimum an owner set. Moving Core away from `approved` returns an\napproved Mart to `draft`. Every move is in the audit trail.",
         "operationId": "moveLayerApproval",
         "parameters": [
           {
@@ -23055,14 +23055,10 @@
             "minimum": 0.0,
             "title": "Min Score"
           },
-          "block_on_errors": {
-            "type": "boolean",
-            "title": "Block On Errors"
-          },
           "configured": {
             "type": "boolean",
             "title": "Configured",
-            "description": "False: no gate is set, so the Layer is never blocked."
+            "description": "False: no minimum is set (errors still block approval)."
           },
           "updated_by": {
             "anyOf": [
@@ -23093,7 +23089,6 @@
         "required": [
           "layer",
           "min_score",
-          "block_on_errors",
           "configured",
           "updated_by",
           "updated_at"
@@ -23462,12 +23457,6 @@
             "minimum": 0.0,
             "title": "Min Score",
             "description": "Approval needs the Layer at or above it."
-          },
-          "block_on_errors": {
-            "type": "boolean",
-            "title": "Block On Errors",
-            "description": "Unresolved errors block approval.",
-            "default": true
           }
         },
         "type": "object",

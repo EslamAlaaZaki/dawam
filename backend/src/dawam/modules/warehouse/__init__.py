@@ -101,8 +101,8 @@ Public interface. Other modules import only what is re-exported here:
   object (``REVOKING_FIELDS``), whoever made it, returns the Layer to ``draft``, audited with its
   cause; text fields never revoke and staging changes revoke nothing. ``install_approval_clock``
   (the composition root) times those revocations. ``GET .../data-warehouse/approvals`` and
-  ``PUT .../approvals/{layer}``, refused (409 ``score_gate_failed``) while an owner's gate on the
-  Layer finds errors or a score below its minimum.
+  ``PUT .../approvals/{layer}``, refused (409 ``score_gate_failed``) while the Layer has errors
+  or scores below the minimum an owner set.
 - ``ScoreGateService``: owners disable score checks with a reason (left out of the score, listed
   apart) and set a minimum score per Core and Mart Layer (``.../score/disabled-checks``,
   ``.../score/gates``); ``verify_approval`` is the gate ``ApprovalService`` asks.
