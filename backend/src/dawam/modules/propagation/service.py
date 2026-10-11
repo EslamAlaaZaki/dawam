@@ -6,6 +6,12 @@ carried through lineage is proposed as one ``propagation`` Change Set, grouped b
 which the Editor accepts in full or in part. What is not accepted stays visible as
 validation errors. Applying a propagation Change Set never propagates again, so there is no
 loop.
+
+"Fix impacts" (story 113a) recomputes the propagation from what is broken now: the open
+validation errors propagation can fix are turned back into the structural changes behind
+them (``open_impacts``, with former names from the audit trail) and propagated again as a
+new Change Set. Items that expired (a newer propagation superseded theirs, or theirs was
+closed) are never revived.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from dawam.modules.audit import AuditService
 from dawam.modules.auth import User
 from dawam.modules.changesets import (
     AppliedChange,
@@ -29,18 +36,22 @@ from dawam.modules.changesets import (
 from dawam.modules.kpis import kpi_names, plan_kpi_propagation
 from dawam.modules.notifications import NotificationService
 from dawam.modules.warehouse import (
+    RENAMED_ENTITY_TYPES,
     Impact,
     StructuralChange,
     lineage_nodes,
+    open_impacts,
     plan_propagation,
 )
-from dawam.modules.workspaces import WorkspaceService
+from dawam.modules.workspaces import Action, WorkspaceService
 
 LAYERS = ("staging", "core", "mart", "kpi")
 """How items and impacts are grouped, upstream first."""
 LAYER_TITLES = {"staging": "Staging", "core": "Core", "mart": "Mart", "kpi": "KPIs"}
 NAMED_PER_LAYER = 5
 """How many impacted Assets the alert names per Layer before "and N more"."""
+FIX_IMPACTS_SCOPE = {"trigger": "fix_impacts"}
+"""A newer "Fix impacts" supersedes a pending one."""
 
 
 @dataclass(frozen=True)
@@ -116,6 +127,7 @@ class PropagationService:
         self._workspaces = workspaces
         self._change_sets = change_sets
         self._notifications = notifications
+        self._audit = AuditService(engine)
 
     # -- the hooks --------------------------------------------------------------------
 
@@ -146,6 +158,24 @@ class PropagationService:
             scope = {"trigger": "change_set", "change_set_id": str(applied.change_set_id)}
         self.propagate(user, applied.workspace_id, changes, scope=scope)
 
+    def fix_impacts(self, user: User, workspace_id: uuid.UUID) -> PropagationResult:
+        """Recompute the propagation Change Set from the open validation errors propagation
+        can fix (owners and editors; refused while the Workspace is archived). An empty
+        result (no Change Set, no impacts) when nothing is broken that way."""
+        self._workspaces.authorize(user, Action.REVIEW_CHANGE_SETS, workspace_id)
+        renames = self._audit.field_changes(
+            workspace_id, entity_types=RENAMED_ENTITY_TYPES, field="name"
+        )
+        former = [(uuid.UUID(e.entity_id), str(e.old["name"])) for e in renames if e.old]
+        with Session(self._engine) as db:
+            changes = open_impacts(db, workspace_id, former)
+        result = None
+        if changes:
+            result = self.propagate(
+                user, workspace_id, changes, scope=FIX_IMPACTS_SCOPE, title="Fix impacts"
+            )
+        return result or PropagationResult(None, [])
+
     # -- propagating ------------------------------------------------------------------
 
     def propagate(
@@ -155,9 +185,10 @@ class PropagationService:
         changes: Sequence[StructuralChange],
         *,
         scope: Mapping[str, Any],
+        title: str = "Propagate",
     ) -> PropagationResult | None:
-        """Plan, propose and announce what ``changes`` (already applied) call for. ``None``
-        when they reach nothing."""
+        """Plan, propose and announce what ``changes`` (already applied) call for, as a
+        Change Set titled ``title: <the changes>``. ``None`` when they reach nothing."""
         with Session(self._engine) as db:
             plan = plan_propagation(db, workspace_id, changes)
             kpis = plan_kpi_propagation(db, workspace_id, plan)
@@ -191,7 +222,7 @@ class PropagationService:
                 workspace_id,
                 origin="propagation",
                 scope=scope,
-                title=f"Propagate: {summary}",
+                title=f"{title}: {summary}",
                 items=[
                     ProposedItem(
                         key=item.key,

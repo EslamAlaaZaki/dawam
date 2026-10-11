@@ -10075,6 +10075,60 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/fix-impacts": {
+      "post": {
+        "tags": [
+          "propagation"
+        ],
+        "summary": "Fix Impacts",
+        "description": "Recompute the propagation Change Set from whatever is broken now: the open validation\nerrors propagation can fix (a mapping reading a renamed, removed or `source_removed`\ninput). Owners and editors; 409 `workspace_archived` while the Workspace is archived.\nExpired items are never revived: a new Change Set is proposed, and a newer \"Fix\nimpacts\" supersedes a pending one.",
+        "operationId": "fixImpacts",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixImpactsResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage": {
       "get": {
         "tags": [
@@ -18178,6 +18232,37 @@
         ],
         "title": "FindingItem"
       },
+      "FixImpactsResult": {
+        "properties": {
+          "change_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Set Id",
+            "description": "The new `propagation` Change Set; null when nothing broken can be fixed by propagation (what is left stays a validation error to fix by hand)."
+          },
+          "impacts": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactOut"
+            },
+            "type": "array",
+            "title": "Impacts",
+            "description": "Every impacted Asset, grouped by Layer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set_id",
+          "impacts"
+        ],
+        "title": "FixImpactsResult"
+      },
       "ForcedReset": {
         "properties": {
           "delivery": {
@@ -18210,6 +18295,38 @@
           "email"
         ],
         "title": "ForgotPasswordRequest"
+      },
+      "ImpactOut": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "title": "Layer",
+            "description": "`staging`, `core`, `mart` or `kpi`."
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type",
+            "description": "`dw_table`, `dw_column` or `kpi`."
+          },
+          "object_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Object Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "`table.column`, the table name or the KPI name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "object_type",
+          "object_id",
+          "label"
+        ],
+        "title": "ImpactOut"
       },
       "ImpactReport": {
         "properties": {

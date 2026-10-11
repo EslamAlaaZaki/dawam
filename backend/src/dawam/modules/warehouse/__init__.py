@@ -46,6 +46,10 @@ Public interface. Other modules import only what is re-exported here:
   ``MappingService`` report committed structural changes through a ``StructuralChangeHook``.
   ``ColumnMappingHandler`` and ``MappingBranchHandler`` (with ``DwColumnHandler``) are the handlers
   for the ``dw_column``, ``column_mapping`` and ``mapping_branch`` items it proposes.
+  ``open_impacts`` (same session rules) turns the open ``broken_reference`` and
+  ``removed_input`` errors back into the ``StructuralChange``s propagation fixes them with,
+  for "Fix impacts" (renames are found from former names: the audit trail's renames of
+  ``RENAMED_ENTITY_TYPES``).
   ``Renames`` / ``rename_in_sql`` / ``sql_reads`` respell or find renamed identifiers in SQL
   text, in place.
 - ``read_schema`` / ``describe_columns`` / ``mart_columns_reading`` and ``replace_kpi_edges`` /
@@ -117,6 +121,7 @@ from .ddl import ident
 from .ddl_api import DdlLayer, DdlServiceDep
 from .ddl_service import DdlPackage, DdlService
 from .evaluation_service import AiEvaluation, EvaluationService, Finding, FindingItem
+from .fix_impacts import RENAMED_ENTITY_TYPES, open_impacts
 from .generation import SCOPE as GENERATION_SCOPE
 from .generation import (
     DwColumnHandler,
@@ -183,6 +188,7 @@ from .validation_service import ValidationReport, ValidationService
 __all__ = [
     "GENERATION_SCOPE",
     "PLATFORM_PROFILES",
+    "RENAMED_ENTITY_TYPES",
     "REVOKING_FIELDS",
     "SQL_DIALECTS",
     "TARGET_PLATFORMS",
@@ -260,6 +266,7 @@ __all__ = [
     "lineage_nodes",
     "mart_columns_reading",
     "max_identifier_length",
+    "open_impacts",
     "pii_notes",
     "pii_origins",
     "plan_propagation",

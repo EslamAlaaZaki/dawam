@@ -10,10 +10,12 @@ import {
   useUnarchiveWorkspace,
   type Workspace,
 } from "../api/workspaces";
+import { FixImpacts } from "./FixImpacts";
 
 /**
  * Archiving, unarchiving and deleting a Workspace (stories 35, 36), for those the API
- * lets: an archived Workspace is read-only, and deleting needs its name typed.
+ * lets: an archived Workspace is read-only, and deleting needs its name typed. Once
+ * unarchived, "Fix impacts" is offered (story 113a).
  */
 export function LifecyclePanel({ workspace }: { workspace: Workspace }) {
   const archive = useArchiveWorkspace(workspace.id);
@@ -21,6 +23,7 @@ export function LifecyclePanel({ workspace }: { workspace: Workspace }) {
   const canArchive = allows(workspace, "workspace.archive");
   const canUnarchive = allows(workspace, "workspace.unarchive");
   const canDelete = allows(workspace, "workspace.delete");
+  const canFixImpacts = allows(workspace, "change_set.review") && workspace.status !== "archived";
   if (!canArchive && !canUnarchive && !canDelete) {
     return null;
   }
@@ -47,6 +50,15 @@ export function LifecyclePanel({ workspace }: { workspace: Workspace }) {
         )}
       </div>
       {canArchive && <p>Archiving makes the Workspace read-only. You can unarchive it later.</p>}
+      {unarchive.isSuccess && canFixImpacts && (
+        <>
+          <p>
+            Archiving rejected the pending Change Sets. Fix impacts to propose again what
+            propagation can fix.
+          </p>
+          <FixImpacts workspace={workspace} />
+        </>
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error.message}
