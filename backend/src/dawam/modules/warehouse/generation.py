@@ -39,7 +39,7 @@ from dawam.platform.errors import ApiError
 
 from .mapping_service import MappingService
 from .model_service import (
-    COLUMN_FIELDS,
+    GENERATED_COLUMN_FIELDS,
     GENERATED_TABLE_FIELDS,
     MODEL_KINDS,
     MODEL_LAYERS,
@@ -989,7 +989,7 @@ class _Planner:
         ):
             self._problem(where, "Another column of this table has that name.")
             return []
-        wanted = {f: fields[f] for f in COLUMN_FIELDS}
+        wanted = {f: fields[f] for f in GENERATED_COLUMN_FIELDS}
         plain, conflict = self._split(record, wanted)
         label = f"{table.layer}.{table.name}.{record.name}"
         return self._items(COLUMN, record, label, plain, conflict, [needs] if needs else [])
@@ -1058,11 +1058,16 @@ def _model_column(
     return None if row is None else (row[0], row[1])
 
 
-_COLUMN_SPEC_KEYS = {*COLUMN_FIELDS, "generation_key", "lookup"}
+_COLUMN_SPEC_KEYS = {*GENERATED_COLUMN_FIELDS, "generation_key", "lookup"}
+
+
+def _generated_values(column: DwColumnRecord) -> dict[str, Any]:
+    snapshot = _column_snapshot(column)
+    return {f: snapshot[f] for f in GENERATED_COLUMN_FIELDS}
 
 
 def _given_fields(spec: Mapping[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in spec.items() if k in COLUMN_FIELDS}
+    return {k: v for k, v in spec.items() if k in GENERATED_COLUMN_FIELDS}
 
 
 def _apply_lookup(
@@ -1298,7 +1303,7 @@ class DwTableHandler(_Handler):
                 db, None, workspace_id, table, _given_fields(spec), at, scaffold=True
             )
             column.generation_key = spec.get("generation_key")
-            column.generated = _column_snapshot(column)
+            column.generated = _generated_values(column)
             if spec.get("lookup"):
                 lookups.append((column, spec["lookup"]))
         rules._sync_scd2(db, None, workspace_id, table, at)
@@ -1324,7 +1329,7 @@ class DwColumnHandler(_Handler):
     """Creates and updates of columns of existing Core and Mart tables."""
 
     object_type = COLUMN
-    _UPDATABLE = (*COLUMN_FIELDS, PROVENANCE)
+    _UPDATABLE = (*GENERATED_COLUMN_FIELDS, PROVENANCE)
 
     def validate(
         self,
@@ -1341,7 +1346,9 @@ class DwColumnHandler(_Handler):
                 raise _invalid_item("A column create names its table, name, type and role.")
             return
         if not payload or any(f not in self._UPDATABLE for f in payload):
-            raise _invalid_item(f"A column item changes some of {', '.join(COLUMN_FIELDS)}.")
+            raise _invalid_item(
+                f"A column item changes some of {', '.join(GENERATED_COLUMN_FIELDS)}."
+            )
         found = _model_column(db, workspace_id, object_id)
         if found is None or found[0].is_system:
             raise _invalid_item("The column does not exist or DAWAM maintains it.")
@@ -1378,7 +1385,7 @@ class DwColumnHandler(_Handler):
                 db, None, workspace_id, table, _given_fields(payload), at, scaffold=True
             )
             column.generation_key = payload.get("generation_key")
-            column.generated = _column_snapshot(column)
+            column.generated = _generated_values(column)
             column.review_flags = list(payload.get("review_flags") or [])
             rules._sync_scd2(db, None, workspace_id, table, at)
             table.version += 1
@@ -1399,17 +1406,17 @@ class DwColumnHandler(_Handler):
         column, table = found
         before = _column_snapshot(column)
         siblings = [c for c in rules._columns(db, table.id) if c.id != column.id]
-        changes = {f: v for f, v in payload.items() if f in COLUMN_FIELDS}
+        changes = {f: v for f, v in payload.items() if f in GENERATED_COLUMN_FIELDS}
         final = {**before, **rules._column_fields(warehouse, changes, partial=True)}
         final["references_table_id"] = _uuid(final["references_table_id"])
         rules._check_column(db, warehouse, table, siblings, final)
-        for name in COLUMN_FIELDS:
+        for name in GENERATED_COLUMN_FIELDS:
             setattr(column, name, final[name])
         after = _column_snapshot(column)
-        changed = [f for f in COLUMN_FIELDS if before[f] != after[f]]
+        changed = [f for f in GENERATED_COLUMN_FIELDS if before[f] != after[f]]
         if "name" in changed:
             rules._rename_default(table, before["name"], column.name)
-        _take_generated(column, before, after, changed, COLUMN_FIELDS, payload)
+        _take_generated(column, before, after, changed, GENERATED_COLUMN_FIELDS, payload)
         if changed:
             column.version += 1
             column.updated_at = at

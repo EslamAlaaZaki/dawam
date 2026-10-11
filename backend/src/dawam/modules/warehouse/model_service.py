@@ -130,7 +130,8 @@ GENERATED_TABLE_FIELDS = (
 )
 """The fields of a Core or Mart table the AI generator sets, so a user edit of one on a
 generated table is an override that regeneration never overwrites unasked (spec §6.9)."""
-GENERATED_COLUMN_FIELDS = COLUMN_FIELDS
+GENERATED_COLUMN_FIELDS = tuple(f for f in COLUMN_FIELDS if f != "pii_note")
+"""The PII handling note is the user's alone."""
 
 _HOUSEKEEPING: tuple[tuple[str, dict[str, Any], bool], ...] = (
     ("scd_valid_from", {"type": "timestamp"}, False),
