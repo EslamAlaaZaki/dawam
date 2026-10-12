@@ -18,6 +18,10 @@ _Avoid_: Closed, frozen
 A message addressed to one user (one row per recipient), shown as unread in the header until read, e.g. that a Workspace's ownership was reassigned. Distinct from the activity feed and the security-event log.
 _Avoid_: Alert, toast
 
+**Toast**:
+A short-lived on-screen confirmation of the user's own action (e.g. "Saved"), not stored and not addressed to anyone. Errors are never toasts. Distinct from a Notification.
+_Avoid_: Notification, flash message
+
 **Source System**:
 A logical system being analysed (e.g. "Core Banking", "CRM"). Backed by exactly one database for now.
 _Avoid_: Source, application
