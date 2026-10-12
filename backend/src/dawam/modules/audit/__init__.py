@@ -9,6 +9,8 @@ Public interface. Other modules import only what is re-exported here:
   changed (or the whole entity at creation or deletion), never credentials.
 - ``audit_context(db)``: who made the latest audited change of ``db``'s transaction and
   how (``AuditContext``), for code that reacts to that change in the same transaction.
+- ``audited_changes(db)``: every change audited in ``db``'s current transaction so far
+  (``AuditedChange``), for code that reacts to them before it commits.
 - ``AuditService.list``: the entries of one entity, oldest first.
 - ``AuditService.field_changes``: the Workspace's entries that changed one field of some
   entity types (e.g. every rename of a DW table or column), oldest first.
@@ -25,10 +27,12 @@ rule 5). Owns the ``audit_entries`` table.
 from .service import (
     VIA_VALUES,
     AuditContext,
+    AuditedChange,
     AuditEntry,
     AuditPage,
     AuditService,
     audit_context,
+    audited_changes,
     record_audit,
 )
 
@@ -38,6 +42,8 @@ __all__ = [
     "AuditEntry",
     "AuditPage",
     "AuditService",
+    "AuditedChange",
     "audit_context",
+    "audited_changes",
     "record_audit",
 ]

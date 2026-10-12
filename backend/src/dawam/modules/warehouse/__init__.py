@@ -88,8 +88,10 @@ Public interface. Other modules import only what is re-exported here:
   overrides (``edited_fields``, proposed only as conflicts), flags creates with an unknown or
   missing handle as possible duplicates, never re-proposes what a user deleted (Tombstones) and
   adds the built-in date dimension when there is none. ``GenerationPlan`` holds the items of
-  the one Change Set (scope ``GENERATION_SCOPE``); ``GeneratedTable`` / ``GeneratedColumn`` are
-  the model's answer.
+  the one Change Set (scope ``GENERATION_SCOPE``, plus ``table_id`` for a regeneration limited
+  to one table: ``inputs`` and ``plan`` take ``table``); ``GeneratedTable`` /
+  ``GeneratedColumn`` are the model's answer. Only an item of a generation Change Set takes
+  the generator's value; any other accepted change to a generated object is a user edit.
 - ``MappingDraftService`` (``resolve``, ``inputs``, ``plan``): the AI mapping drafts behind the
   assistant's ``draft_mappings`` tool (spec §6.9, story 101). ``plan`` checks the model's
   branches, column mappings and lookups as a save would and returns a ``MappingDraftPlan``: one
@@ -98,6 +100,13 @@ Public interface. Other modules import only what is re-exported here:
 - ``DwTableHandler`` / ``DwColumnHandler``: the ``changesets`` engine's handlers for Core and
   Mart ``dw_table`` and ``dw_column`` items (creates and updates); the composition root
   registers them.
+- ``RegenerationOffers`` (spec §6.9, stories 98, 98a): DAWAM offers (a ``regeneration``
+  notification to the owners and editors), never runs, a regeneration once the DW Schema was
+  generated and a mandatory input changes: a KPI change or a Source Schema enhancement
+  (classification, SCD hint, relationship), seen in what each transaction audited, or a new
+  Snapshot (``after_snapshot``, which the composition root calls). A direct mapping edit that
+  gives a Core or Mart table a new input offers a regeneration of only that table. Changes
+  that come from regeneration or propagation offer nothing.
 - ``ScoreService`` (``current``, ``history``; ``recalculate`` for the system): the rule-based DW
   score (spec §6.11) from the checks in ``score_checks`` run by the engine in ``scoring``;
   ``install_score_recalculation`` (the composition root) rescores after every committed design
@@ -206,6 +215,7 @@ from .propagation import (
     plan_propagation,
 )
 from .propagation_handlers import ColumnMappingHandler, MappingBranchHandler
+from .regeneration import RegenerationOffers
 from .schema_reader import (
     DwSchema,
     MappingState,
@@ -301,6 +311,7 @@ __all__ = [
     "PlatformProfile",
     "Propagation",
     "ProposedChange",
+    "RegenerationOffers",
     "Renames",
     "SchemaColumn",
     "SchemaTable",

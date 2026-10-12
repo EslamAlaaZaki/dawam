@@ -38,6 +38,7 @@ from dawam.modules.warehouse import (
     ManualReviewHandler,
     MappingBranchHandler,
     MappingDraftHandler,
+    RegenerationOffers,
     StagingColumnHandler,
     StagingService,
     StagingTableHandler,
@@ -119,8 +120,9 @@ def propagation(engine: sa.Engine, clock: Clock) -> PropagationService:
 def staging_sync_after_snapshot(
     engine: sa.Engine, settings: Settings, clock: Clock
 ) -> SnapshotCreatedHook:
-    """The hook that follows every new Snapshot with a staging sync Change Set. It acts as
-    the user who took the Snapshot, or as an owner when nobody did."""
+    """The hook that follows every new Snapshot with a staging sync Change Set, then offers
+    to regenerate the DW Schema (a new Snapshot is a mandatory input of the generator). It
+    acts as the user who took the Snapshot, or as an owner when nobody did."""
     workspaces = WorkspaceService(engine, clock=clock)
     notifications = NotificationService(engine, clock=clock)
     auth = AuthService(engine, settings, clock=clock)
@@ -147,6 +149,7 @@ def staging_sync_after_snapshot(
             user = auth.get_user(candidate)
             if user is not None and user.is_active:
                 staging.sync(user, workspace_id, source_system_id)
-                return
+                break
+        RegenerationOffers(engine, workspaces=workspaces, clock=clock).after_snapshot(workspace_id)
 
     return hook

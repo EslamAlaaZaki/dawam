@@ -35,6 +35,8 @@ CONNECTION_ENTITY = "connection"
 
 _CONTEXT = "dawam.audit.context"
 """``Session.info`` key: who and how the session's latest audited change was made."""
+_CHANGES = "dawam.audit.changes"
+"""``Session.info`` key: the changes audited in the session's current transaction."""
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,24 @@ class AuditContext:
 def audit_context(db: Session) -> AuditContext | None:
     """The context of the latest ``record_audit`` in ``db``'s current transaction."""
     return db.info.get(_CONTEXT)
+
+
+@dataclass(frozen=True)
+class AuditedChange:
+    """A change ``record_audit`` added in a transaction, for code that reacts to it before
+    the transaction commits (e.g. offering a regeneration)."""
+
+    workspace_id: uuid.UUID
+    entity_type: str
+    entity_id: str
+    via: str
+    old: Mapping[str, Any] | None
+    new: Mapping[str, Any] | None
+
+
+def audited_changes(db: Session) -> list[AuditedChange]:
+    """The changes audited in ``db``'s current transaction so far, oldest first."""
+    return list(db.info.get(_CHANGES, ()))
 
 
 @dataclass(frozen=True)
@@ -96,6 +116,16 @@ def record_audit(
     if len(entity_type) > ENTITY_TYPE_MAX_LENGTH or len(entity_id_text) > ENTITY_ID_MAX_LENGTH:
         raise ValueError("audit entity type or id is too long")
     db.info[_CONTEXT] = AuditContext(actor_id, via, change_set_id)
+    db.info.setdefault(_CHANGES, []).append(
+        AuditedChange(
+            workspace_id,
+            entity_type,
+            entity_id_text,
+            via,
+            dict(old) if old is not None else None,
+            dict(new) if new is not None else None,
+        )
+    )
     db.add(
         AuditEntryRecord(
             id=uuid.uuid4(),
@@ -247,5 +277,14 @@ def _forget_context(session: Session) -> None:
     session.info.pop(_CONTEXT, None)
 
 
+def _forget_changes(session: Session) -> None:
+    """The transaction ended: commit, or a rollback of the whole transaction (not a
+    SAVEPOINT's, whose outer transaction keeps what it audited)."""
+    if not session.in_transaction():
+        session.info.pop(_CHANGES, None)
+
+
 sa.event.listen(Session, "after_commit", _forget_context)
 sa.event.listen(Session, "after_soft_rollback", lambda session, _previous: _forget_context(session))
+sa.event.listen(Session, "after_commit", _forget_changes)
+sa.event.listen(Session, "after_soft_rollback", lambda session, _previous: _forget_changes(session))

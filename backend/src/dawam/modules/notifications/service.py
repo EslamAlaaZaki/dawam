@@ -22,7 +22,7 @@ from dawam.platform.clock import Clock
 from .tables import MESSAGE_MAX_LENGTH, NotificationRecord
 
 NotificationKind = Literal[
-    "mention", "impact_alert", "sync_alert", "ownership", "job", "needs_owner"
+    "mention", "impact_alert", "sync_alert", "ownership", "job", "needs_owner", "regeneration"
 ]
 NOTIFICATION_KINDS: tuple[NotificationKind, ...] = get_args(NotificationKind)
 
@@ -79,13 +79,32 @@ class NotificationService:
         ref_type: str | None = None,
         ref_id: uuid.UUID | None = None,
         db: Session | None = None,
+        unless_unread: bool = False,
     ) -> int:
         """Give each user in ``recipient_ids`` (once) an unread notification; returns how
         many were created. Pass ``db`` to write them in that session's transaction, so
         they are kept only if the caller's change is; without it they are committed on
-        their own. ``ValueError`` for an unknown ``kind``."""
+        their own. With ``unless_unread``, a user who still has an unread one of the same
+        kind, Workspace and reference gets no other. ``ValueError`` for an unknown
+        ``kind``."""
         if kind not in NOTIFICATION_KINDS:
             raise ValueError(f"unknown notification kind {kind!r}")
+        recipients = list(dict.fromkeys(recipient_ids))
+        if unless_unread and recipients:
+            unread = sa.select(NotificationRecord.user_id).where(
+                NotificationRecord.user_id.in_(recipients),
+                NotificationRecord.read_at.is_(None),
+                NotificationRecord.kind == kind,
+                NotificationRecord.workspace_id.is_not_distinct_from(workspace_id),
+                NotificationRecord.ref_type.is_not_distinct_from(ref_type),
+                NotificationRecord.ref_id.is_not_distinct_from(ref_id),
+            )
+            if db is not None:
+                taken = set(db.scalars(unread))
+            else:
+                with Session(self._engine) as own:
+                    taken = set(own.scalars(unread))
+            recipients = [r for r in recipients if r not in taken]
         now = self._clock()
         records = [
             NotificationRecord(
@@ -98,7 +117,7 @@ class NotificationService:
                 ref_id=ref_id,
                 created_at=now,
             )
-            for user_id in dict.fromkeys(recipient_ids)
+            for user_id in recipients
         ]
         if db is not None:
             db.add_all(records)

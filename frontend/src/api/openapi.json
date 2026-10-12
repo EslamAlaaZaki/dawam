@@ -21714,7 +21714,8 @@
               "sync_alert",
               "ownership",
               "job",
-              "needs_owner"
+              "needs_owner",
+              "regeneration"
             ],
             "title": "Kind"
           },

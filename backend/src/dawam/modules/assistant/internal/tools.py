@@ -41,7 +41,6 @@ from dawam.modules.sources import (
     SourceQueryService,
 )
 from dawam.modules.warehouse import (
-    GENERATION_SCOPE,
     DdlService,
     DraftBranch,
     DraftColumn,
@@ -1476,6 +1475,13 @@ GENERATION_TASK = (
     "the whole model in `tables`. If it lists problems, fix them and call it again with the "
     "whole model."
 )
+TABLE_GENERATION_TASK = (
+    "Regenerate only the Data Warehouse table {table}, following the member's mapping of it. "
+    "First call generate_dw_schema with `table`: {table!r} and without `tables` to read the "
+    "inputs (`regenerate_only` names the table, its handle and what its mapping reads); then "
+    "call generate_dw_schema with `table`: {table!r} and `tables` holding only that table, by "
+    "its handle. If it lists problems, fix them and call it again."
+)
 GENERATION_NOTE = (
     "Design the Core Layer as a Kimball star schema from the staging tables: facts with a "
     "grain statement and fact type; dimensions with an SCD type (2 where history matters) and "
@@ -1562,6 +1568,13 @@ class _GenerateDwSchema(BaseModel):
         description="Leave out to read the inputs. Then the whole Core and Mart model: every "
         "table to keep or create, with its columns.",
     )
+    table: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Regenerate only this existing Core or Mart table (its handle, or its "
+        "`layer.name`), e.g. after the member changed its mapping. Then `tables` describes "
+        "only that table, by its handle.",
+    )
 
 
 def _generated_table(table: _GenTable) -> GeneratedTable:
@@ -1582,15 +1595,23 @@ def _generate_dw_schema(ctx: ToolContext, args: _GenerateDwSchema) -> Any:
     hands the whole model to DAWAM, which plans the job's one Change Set."""
     generation = ctx.services.generation
     if ctx.proposals is None:
-        generation.inputs(ctx.user, ctx.workspace_id)  # refused or not set up: say so now
-        reported = _submit_job(ctx, GENERATION_TITLE, GENERATION_TASK)
+        # Refused, not set up or an unknown table: say so now.
+        scoped = generation.inputs(ctx.user, ctx.workspace_id, table=args.table)
+        if args.table is None:
+            reported = _submit_job(ctx, GENERATION_TITLE, GENERATION_TASK)
+        else:
+            only = scoped["regenerate_only"]
+            name = f"{only['layer']}.{only['name']}"
+            reported = _submit_job(
+                ctx, f"Regenerate {name}", TABLE_GENERATION_TASK.format(table=name)
+            )
         reported.content["note"] = (
             "DW generation runs as a background job and ends in one Change Set for the member "
             "to review. Tell them it started; do not wait for its result."
         )
         return reported
     if args.tables is None:
-        inputs = generation.inputs(ctx.user, ctx.workspace_id)
+        inputs = generation.inputs(ctx.user, ctx.workspace_id, table=args.table)
         kpis = ctx.services.kpis.list(ctx.user, ctx.workspace_id, limit=100)
         inputs["kpis"] = [
             {
@@ -1606,7 +1627,7 @@ def _generate_dw_schema(ctx: ToolContext, args: _GenerateDwSchema) -> Any:
         return inputs
     try:
         plan = generation.plan(
-            ctx.user, ctx.workspace_id, [_generated_table(t) for t in args.tables]
+            ctx.user, ctx.workspace_id, [_generated_table(t) for t in args.tables], table=args.table
         )
     except ApiError as exc:
         if exc.code != "invalid_generation":
@@ -2184,7 +2205,7 @@ class BoundTools:
                 self._ctx.user,
                 self._ctx.workspace_id,
                 origin=plan.origin,
-                scope=GENERATION_SCOPE,
+                scope=plan.scope,
                 title=title,
                 conversation_id=self._ctx.conversation_id,
                 items=plan.items,

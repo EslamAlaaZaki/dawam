@@ -832,7 +832,12 @@ class ChangeSetService:
     ) -> AppliedChange | None:
         handler = self._handlers.get(item.object_type)
         # A handler that records who decided (``wants_actor``) is told the accepting user.
-        extra = {"actor_id": user.id} if getattr(handler, "wants_actor", False) else {}
+        extra: dict[str, Any] = (
+            {"actor_id": user.id} if getattr(handler, "wants_actor", False) else {}
+        )
+        # A handler whose effect depends on what proposed the item is told its scope.
+        if getattr(handler, "wants_scope", False):
+            extra["scope"] = dict(record.scope)
         applied = handler.apply(
             db, record.workspace_id, item.operation, item.object_id, item.payload, at=now, **extra
         )

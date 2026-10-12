@@ -7176,7 +7176,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mention" | "impact_alert" | "sync_alert" | "ownership" | "job" | "needs_owner";
+            kind: "mention" | "impact_alert" | "sync_alert" | "ownership" | "job" | "needs_owner" | "regeneration";
             /** Message */
             message: string;
             /** Workspace Id */
