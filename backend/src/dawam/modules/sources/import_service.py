@@ -30,6 +30,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.hooks import SnapshotCreatedHook, notify_snapshot_created
 
 from .internal.schema_import import ImportReport, build_template, read_catalog
+from .internal.schema_import_queries import ENGINES, helper_script
 from .internal.snapshots import store_catalog
 from .snapshot_service import FOLDS_CASE, SnapshotSummary, _summary
 from .tables import (
@@ -96,6 +97,30 @@ class SchemaImportService:
         with Session(self._engine) as db:
             self._load_system(db, workspace_id, system_id)
         return build_template()
+
+    def helper_queries(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        system_id: uuid.UUID,
+        engine: str,
+        schemas: tuple[str, ...] = (),
+    ) -> str:
+        """The helper queries for ``engine`` as one SQL script (owners and editors),
+        limited to ``schemas`` if given. 422 ``unsupported_engine`` or ``invalid_schema_name``."""
+        self._workspaces.authorize(user, Action.RUN_EXTRACTION, workspace_id)
+        with Session(self._engine) as db:
+            self._load_system(db, workspace_id, system_id)
+        if engine not in ENGINES:
+            raise ApiError(422, "unsupported_engine", f"The engine {engine!r} is not supported.")
+        for name in schemas:
+            if "\\" in name or any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+                raise ApiError(
+                    422,
+                    "invalid_schema_name",
+                    "A schema name cannot contain a backslash or control characters.",
+                )
+        return helper_script(engine, schemas or None)
 
     def validate(
         self,

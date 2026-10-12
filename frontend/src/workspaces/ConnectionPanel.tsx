@@ -11,6 +11,7 @@ import {
 } from "../api/connections";
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { SchemaImportPanel } from "./SchemaImportPanel";
 
 function parseSchemas(text: string): string[] {
   return text
@@ -26,6 +27,21 @@ function parseSchemas(text: string): string[] {
  * archived Workspace owners can still see the Connection, read-only.
  */
 export function ConnectionPanel({
+  workspace,
+  system,
+}: {
+  workspace: Workspace;
+  system: SourceSystem;
+}) {
+  return (
+    <>
+      <ConnectionSection workspace={workspace} system={system} />
+      <SchemaImportPanel workspace={workspace} system={system} />
+    </>
+  );
+}
+
+function ConnectionSection({
   workspace,
   system,
 }: {

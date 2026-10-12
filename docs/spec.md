@@ -438,7 +438,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 ### 6.4 Schema Import
 
 - **Template:** one Excel workbook, one sheet per metadata kind: `schemas`, `tables` (incl. views and view definitions), `columns`, `constraints` (PK, FK, unique), `indexes`, `routines` (stored procedures and functions with code). Optional columns for row counts. Each sheet has a header row and documented column meanings.
-- **Helper queries:** for each supported engine plus DB2 and Teradata, DAWAM ships catalog queries (on `information_schema`, `sys.*`, `ALL_*`, `SYSCAT.*`, `DBC.*`…). Each query returns exactly the columns of one template sheet, so its result can be pasted or exported straight into that sheet. Each sheet can also be uploaded as a CSV.
+- **Helper queries:** for each supported engine plus DB2 and Teradata, DAWAM ships catalog queries (on `information_schema`, `sys.*`, `ALL_*`, `SYSCAT.*`, `DBC.*`…). Each query returns exactly the columns of one template sheet, so its result can be pasted or exported straight into that sheet. Each sheet can also be uploaded as a CSV. The Schema Import page downloads them per engine as one SQL script (all sheets), optionally limited to named Database Schemas.
 - **Validation:** the upload is parsed and validated (required columns, types, referential consistency such as FKs pointing at existing tables) and produces a report. Nothing is saved until the report is clean or the user accepts the warnings.
 - **Result:** a Snapshot with `origin = import`, diffed against the previous Snapshot like any other. Names are matched against existing Source Objects as described in §7 (exact name first, then case-insensitive when unambiguous), so switching between import and a live Connection doesn't turn objects into removed-plus-added.
 - **Disabled features:** profiling, value-based PII scans, value-overlap relationship inference and AI source queries need a live Connection. The UI shows this list as a warning on imported Source Systems. Name-based PII, name/type-based inference and routine JOIN parsing still work.
@@ -1089,4 +1089,4 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel
 
 ## 13. Open Items
 
-1. **Helper queries.** The maintainer will share the catalog queries they already use; the Schema Import template and helper queries (§6.4) will be aligned with them.
+1. **Helper queries.** Shipped: DAWAM wrote the Schema Import helper queries (§6.4) itself, one per template sheet for PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, Db2 and Teradata. The first five are round-tripped against the seeded containers in CI; the Db2 and Teradata queries are written from the vendor documentation and only checked for shape (one query per sheet, output columns equal to the sheet's). The maintainer may replace any of them with the catalog queries they already use; the template stays the contract.

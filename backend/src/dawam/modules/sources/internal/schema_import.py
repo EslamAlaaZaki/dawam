@@ -231,15 +231,19 @@ class _Row:
     cells: dict[str, str | None]
 
 
-def _text(value: object) -> str | None:
+def _text(value: object, *, strip: bool = True) -> str | None:
+    """A cell as text; blank is ``None``. Source code (``strip=False``) keeps its leading
+    and trailing whitespace, as a Connector reads it."""
     if value is None:
         return None
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
-    text = str(value).strip()
-    return text or None
+    text = str(value)
+    if not text.strip():
+        return None
+    return text.strip() if strip else text
 
 
 def _sheet_rows(
@@ -271,7 +275,10 @@ def _sheet_rows(
         if number - 1 > MAX_ROWS_PER_SHEET:
             report.error(name, None, f"The sheet `{name}` has more than {MAX_ROWS_PER_SHEET} rows.")
             return None
-        values = [_text(cell) for cell in cells]
+        values = [
+            _text(cell, strip=header[i] != "definition" if i < len(header) else True)
+            for i, cell in enumerate(cells)
+        ]
         if not any(values):
             continue
         values += [None] * (len(header) - len(values))

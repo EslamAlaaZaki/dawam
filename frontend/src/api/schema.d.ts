@@ -2022,6 +2022,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/helper-queries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Helper Queries
+         * @description The helper queries for an engine (owners and editors): one catalog query per
+         *     template sheet, each returning exactly that sheet's columns, as a SQL script. Without
+         *     `schemas` they cover every non-system schema. 422 `unsupported_engine`.
+         */
+        get: operations["downloadSchemaImportHelperQueries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/validate": {
         parameters: {
             query?: never;
@@ -14661,6 +14683,52 @@ export interface operations {
                 };
                 content: {
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    downloadSchemaImportHelperQueries: {
+        parameters: {
+            query: {
+                /** @description `postgresql`, `mysql`, `mariadb`, `sqlserver`, `oracle`, `db2` or `teradata`. */
+                engine: string;
+                /** @description Comma-separated Database Schemas to limit the queries to. */
+                schemas?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The SQL script. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/sql": unknown;
                 };
             };
             /** @description Validation error */
