@@ -201,9 +201,15 @@ def test_a_mapping_edit_that_adds_an_input_offers_to_regenerate_only_that_table(
     columns = {c["name"]: c for c in fact["columns"]}
     mapping = f"{dw(staged)}/tables/{fact['id']}/mapping/columns"
 
+    versions: dict[str, int] = {}
+
     def save(column: str, **body: Any) -> None:
-        response = staged.client("editor").put(f"{mapping}/{columns[column]['id']}", json=body)
+        response = staged.client("editor").put(
+            f"{mapping}/{columns[column]['id']}",
+            json={"version": versions.get(column, 0), **body},
+        )
         assert response.status_code == 200, response.text
+        versions[column] = response.json()["version"]
 
     save("amount", mapping_type="direct", sql_expression=f"{ORDERS}.amount")
 
