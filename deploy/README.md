@@ -1,0 +1,401 @@
+# Deploying DAWAM
+
+How to run DAWAM, from a laptop to a server. Pick a method and follow only its
+section. Every setting is described in [`.env.example`](../.env.example). LLM servers
+and air-gapped installs are covered in [`docs/install.md`](../docs/install.md), and
+backups, upgrades and key rotation in [`docs/operations.md`](../docs/operations.md).
+
+| Method | Use it for | Needs |
+|--------|-----------|-------|
+| [1. Docker Compose](#1-docker-compose) | The usual way: evaluation, or a single server | Docker + Compose v2.24+ |
+| [2. All-in-one Compose file](#2-all-in-one-compose-file) | Everything in one go: DAWAM, a local LLM, a mail catcher and a demo source database | Docker + Compose v2.24+, ~10 GB disk and 8 GB RAM for the default models |
+| [3. Local development](#3-local-development) | Working on the code (hot reload) | Python 3.12, Node.js 22.12+, Docker (for PostgreSQL) |
+| [4. Local run without Docker](#4-local-run-without-docker) | Running the built app on your machine | Python 3.12, Node.js 22.12+, PostgreSQL 16 + pgvector, nginx |
+| [5. Linux server without Docker](#5-linux-server-without-docker-systemd) | Hosts where containers are not allowed | Same as 4, plus systemd |
+
+## Components
+
+Every method runs the same components. The ones inside the box are DAWAM's own; the
+ones outside are systems DAWAM connects to, which you provide.
+
+```mermaid
+flowchart LR
+    user(["User's browser"])
+
+    subgraph dawam["DAWAM installation"]
+        direction LR
+        edge["<b>edge</b><br/>nginx entry proxy<br/>:8080 (host: DAWAM_PORT)"]
+        web["<b>web</b><br/>Next.js UI<br/>:3000"]
+        app["<b>app</b><br/>FastAPI API<br/>:8000"]
+        worker["<b>worker</b><br/>background jobs"]
+        db[("<b>db</b><br/>PostgreSQL 16<br/>+ pgvector")]
+        files[("<b>file storage</b><br/>local volume<br/>or S3 bucket")]
+        ollama["<b>ollama</b> (optional)<br/>local LLM server<br/>:11434"]
+    end
+
+    subgraph external["External systems (configured in the admin console)"]
+        direction TB
+        llm["<b>LLM providers</b><br/>OpenAI-compatible (Ollama, vLLM, SGLang, OpenAI…)<br/>Anthropic · Azure OpenAI · Gemini · AWS Bedrock"]
+        sources[("<b>Source databases</b><br/>PostgreSQL · SQL Server<br/>MySQL · Oracle")]
+        smtp["<b>SMTP server</b><br/>outgoing email"]
+    end
+
+    user -- "HTTP" --> edge
+    edge -- "/api/, /healthz, /readyz" --> app
+    edge -- "everything else" --> web
+
+    app --> db
+    worker --> db
+    app --> files
+    worker --> files
+
+    app -- "chat, embeddings" --> llm
+    worker -- "chat, embeddings" --> llm
+    app -. "optional" .-> ollama
+    worker -. "optional" .-> ollama
+
+    app -- "read schema, profile, sample<br/>(read-only)" --> sources
+    worker -- "read schema, profile, sample<br/>(read-only)" --> sources
+
+    app -- "invitations, password resets,<br/>notifications" --> smtp
+```
+
+| Component | What it is | Runs as | Required |
+|-----------|-----------|---------|----------|
+| **edge** | nginx entry proxy. Sends `/api/`, `/healthz` and `/readyz` to `app` and everything else to `web`, so the browser sees one address. It overwrites `X-Forwarded-For`, and the app believes that header from this address only (`DAWAM_FORWARDED_ALLOW_IPS`). The only port published on the host. | `deploy/nginx/` image; `host/nginx.conf` without Docker | Yes |
+| **web** | The Next.js frontend, as a standalone Node.js server. Pages only: no API routes, no database access, no secrets. | `frontend/Dockerfile` | Yes |
+| **app** | The FastAPI backend (`python -m dawam serve`). The only place that authenticates, authorizes and stores data. Applies database migrations when it starts. | Root `Dockerfile` | Yes |
+| **worker** | Background jobs (`python -m dawam worker`): long assistant tasks, schema extraction from Connections, data profiling, PII scans, relationship inference, document re-indexing. Same image and settings as `app`; you can run several. | Root `Dockerfile` | Yes |
+| **db** | PostgreSQL 16 with the `vector` extension: DAWAM's only metadata store, including the document search index. You can use an external server instead (`DAWAM_DATABASE_URL`). | `pgvector/pgvector:pg16` | Yes |
+| **file storage** | Uploaded files and documents. A directory (`file-data` volume) or an S3-compatible bucket (`DAWAM_STORAGE_BACKEND=s3`, image built with the `s3` extra). | Volume or bucket | Yes |
+| **ollama** | Optional local LLM server, started with `--profile ollama`. | `ollama/ollama` | No |
+| **LLM providers** | The models behind AI features. Types: OpenAI-compatible (Ollama, vLLM, SGLang, OpenAI and others), Anthropic, Azure OpenAI, Gemini, AWS Bedrock. Added by an admin. | External | For AI features |
+| **Source databases** | The systems you analyse, reached through Connections with credentials encrypted by `DAWAM_ENCRYPTION_KEY`. Live connections: PostgreSQL, SQL Server, MySQL, Oracle. Schema Import from files also covers Snowflake and BigQuery, with no connection needed. | External | For live connections |
+| **SMTP server** | Sends invitations, password resets and notifications. Set in Admin > Email. Until then, links are shown to admins to share. | External | No |
+
+Network access the installation needs:
+
+- **Inbound:** only `edge` (`DAWAM_PORT`, default 8000).
+- **Outbound from `app` and `worker`:** the LLM providers and source databases you
+  configure, the SMTP server (`app` only), plus the S3 endpoint if you use one. With local models and no
+  external services, DAWAM runs fully offline ([`docs/install.md`](../docs/install.md),
+  "Air-Gapped Installation").
+- **Browser:** the API docs page (`/api/v1/docs`) loads Swagger UI from
+  cdn.jsdelivr.net. Nothing else in the UI loads from outside.
+
+Files in this folder:
+
+| Path | Used by |
+|------|---------|
+| `nginx/` | The `edge` image (methods 1–2) |
+| `docker-compose.yaml` | Method 2: every component in one Compose file, HTTPS disabled |
+| `host/nginx.conf` | Methods 4–5: the entry proxy without Docker |
+| `host/dawam.env.example` | Methods 4–5: app and worker settings without Docker |
+| `host/systemd/*.service` | Method 5: the `app`, `worker` and `web` services |
+
+## Before any method: the encryption key
+
+`DAWAM_ENCRYPTION_KEY` is the only setting with no default, and nothing starts
+without it. It encrypts stored credentials (connection passwords, LLM API keys).
+Generate it **once per installation**, keep it secret, and **back it up separately
+from the database**. Without it, stored credentials cannot be read.
+
+```sh
+openssl rand -base64 32
+# or
+python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+```
+
+To create the first admin account, set `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD`
+before the first start (password: 10+ characters, not a common one). They are only
+used while no admin exists, so you can remove them afterwards.
+
+---
+
+## 1. Docker Compose
+
+```sh
+git clone https://github.com/EslamAlaaZaki/dawam.git
+cd dawam
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```sh
+DAWAM_ENCRYPTION_KEY=<the key you generated>
+POSTGRES_PASSWORD=<a strong password>          # for anything others can reach
+DAWAM_ADMIN_EMAIL=admin@example.com            # first start only
+DAWAM_ADMIN_PASSWORD=<a long password>
+DAWAM_PUBLIC_URL=http://<host>:8000            # the address users open; used in emailed links
+# DAWAM_PORT=8000                              # host port, if 8000 is taken
+```
+
+Start it:
+
+```sh
+docker compose up -d --build
+docker compose ps                  # wait until app, web and edge are "healthy"
+curl http://localhost:8000/readyz  # 200 once the database is migrated
+```
+
+Open `http://localhost:8000` (or your `DAWAM_PORT`) and sign in.
+
+Day-to-day commands:
+
+```sh
+docker compose logs -f app worker web edge   # JSON log lines
+docker compose restart worker
+docker compose down                          # stop; data stays in the volumes
+docker compose --profile ollama up -d        # also start the optional local LLM server
+```
+
+Data lives in two volumes: `db-data` (PostgreSQL) and `file-data` (uploads). Never
+run `docker compose down -v` on an installation you want to keep. For backups, see
+[`docs/operations.md`](../docs/operations.md).
+
+**Upgrade:** take a backup, then run `git pull && docker compose up -d --build`.
+Migrations run when `app` starts, and `/readyz` returns 200 once they are done.
+
+**External PostgreSQL:** set `DAWAM_DATABASE_URL` in `.env`
+(`postgresql+psycopg://user:pass@host:5432/db`). That database needs the `vector`
+extension ([method 4](#4-local-run-without-docker), step 1). The `db` service still
+starts, but nothing uses it.
+
+**Subnet clash:** the Compose network uses `172.30.126.0/24` so that `edge` can have a
+fixed address. If this clashes with your network, change three things in
+`compose.yaml` together: the subnet, `edge`'s `ipv4_address` and
+`DAWAM_FORWARDED_ALLOW_IPS`.
+
+**HTTPS is off.** DAWAM serves plain HTTP. It only sends HSTS and marks cookies
+`Secure` when a trusted TLS proxy reports an HTTPS request, and none is trusted
+unless you set `DAWAM_TRUSTED_PROXY_CIDRS`. To make sure HSTS is never sent, keep
+that unset and set `DAWAM_HSTS_MAX_AGE_SECONDS=0` in `.env`.
+
+## 2. All-in-one Compose file
+
+[`docker-compose.yaml`](docker-compose.yaml) runs every component from
+[Components](#components) in one file, with HTTPS disabled (HSTS off, no trusted TLS
+proxy):
+
+| Service | Port on the host | Notes |
+|---------|------------------|-------|
+| `edge`, `web`, `app`, `worker`, `db` | `DAWAM_PORT` (8000) | DAWAM itself, as in method 1 |
+| `ollama` | none | Local LLM server, always on |
+| `ollama-pull` | none | Runs once at start, pulls `OLLAMA_MODELS`, then exits |
+| `mailpit` | `127.0.0.1:8025` (`MAILPIT_PORT`) | SMTP server that catches every email; read them in its web UI |
+| `source-db` | none | Demo PostgreSQL source with a small `sales` schema (profile `demo`) |
+
+1. Set up `.env` in the repository root as in method 1 (encryption key, first admin).
+   Optionally add:
+
+   ```sh
+   OLLAMA_MODELS=qwen2.5:7b nomic-embed-text   # default: a chat model + an embedding model
+   # OLLAMA_MODELS=qwen2.5:1.5b nomic-embed-text   # smaller machines (weaker answers)
+   ```
+
+2. Start everything from the repository root, adding `--profile demo` if you want the
+   demo source database. Use the same `-f` and `--env-file` in every later command:
+
+   ```sh
+   docker compose -f deploy/docker-compose.yaml --env-file .env --profile demo up -d --build
+   docker compose -f deploy/docker-compose.yaml --env-file .env logs -f ollama-pull   # model download
+   ```
+
+3. Open `http://localhost:8000`, sign in as the first admin, and connect the
+   components. They can't be wired up automatically, because they are stored
+   (encrypted) by the app:
+
+   - **Admin > LLM:** add a provider of type *OpenAI-compatible*, base URL
+     `http://ollama:11434/v1`, no API key. Assign `qwen2.5:7b` to the `agent` (and
+     `light`) role and `nomic-embed-text` to the `embedding` role.
+   - **Admin > Email:** host `mailpit`, port `1025`, no TLS, no login. Emails appear
+     at `http://localhost:8025`. For real delivery, enter your own SMTP server instead.
+   - **Demo source** (with `--profile demo`): in a Workspace, add a PostgreSQL
+     Connection: host `source-db`, port `5432`, database `shop`, user `reader`,
+     password `reader`.
+
+GPU: uncomment the `deploy:` block under `ollama` (needs the NVIDIA Container
+Toolkit). The volumes are the same as in method 1 (the project is named `dawam` in
+both), so you can switch between the two files without losing data. Don't run both
+at the same time.
+
+## 3. Local development
+
+Runs each part from source, with hot reload. `next dev` forwards `/api`, `/healthz`
+and `/readyz` to the API itself, so you need no proxy.
+
+**Database** (once):
+
+```sh
+docker run -d --name dawam-dev-db -p 5432:5432 \
+  -e POSTGRES_USER=dawam -e POSTGRES_PASSWORD=dawam pgvector/pgvector:pg16
+```
+
+**Backend** (terminals 1 and 2):
+
+```sh
+cd backend
+python -m venv .venv
+. .venv/bin/activate                 # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+Create `backend/.env`. The app reads `.env` from its working directory. Reuse the same
+key on every run:
+
+```sh
+DAWAM_DATABASE_URL=postgresql+psycopg://dawam:dawam@localhost:5432/dawam
+DAWAM_ENCRYPTION_KEY=<the key you generated>
+DAWAM_ADMIN_EMAIL=admin@example.com
+DAWAM_ADMIN_PASSWORD=<a long password>
+DAWAM_PUBLIC_URL=http://localhost:3000
+```
+
+```sh
+python -m dawam serve        # terminal 1: API on http://localhost:8000, migrates on start
+python -m dawam worker       # terminal 2: background worker
+```
+
+**Frontend** (terminal 3):
+
+```sh
+cd frontend
+npm ci
+npm run dev                  # http://localhost:3000
+```
+
+Open `http://localhost:3000`. If the API runs elsewhere, set `DAWAM_DEV_API_URL`
+(default `http://localhost:8000`). After changing the API, regenerate the client with
+`scripts/generate-api-client.sh`.
+
+## 4. Local run without Docker
+
+Runs the built app (no hot reload) on your own machine, with nginx as the entry proxy
+just as in Compose.
+
+1. **PostgreSQL 16 with pgvector.** Install PostgreSQL 16 and the pgvector package
+   (for example `postgresql-16-pgvector` on Debian/Ubuntu, or `brew install pgvector`
+   on macOS). Then, as a superuser:
+
+   ```sql
+   CREATE ROLE dawam LOGIN PASSWORD 'change-me';
+   CREATE DATABASE dawam OWNER dawam;
+   \c dawam
+   CREATE EXTENSION IF NOT EXISTS vector;   -- a migration needs it; only a superuser can create it
+   ```
+
+2. **Backend:**
+
+   ```sh
+   python3.12 -m venv .venv-run
+   .venv-run/bin/pip install ./backend      # Windows: .venv-run\Scripts\pip; use "./backend[s3]" for S3 storage
+   ```
+
+   Copy [`host/dawam.env.example`](host/dawam.env.example) to `.env` in the directory
+   you will start the app from, and fill it in. Use a `DAWAM_STORAGE_PATH` you can
+   write to, for example `./data/files`. Then, from that directory:
+
+   ```sh
+   .venv-run/bin/python -m dawam serve --host 127.0.0.1 --port 8000
+   .venv-run/bin/python -m dawam worker          # in a second terminal
+   ```
+
+3. **Frontend.** It is a standalone server, which `next start` cannot run:
+
+   ```sh
+   cd frontend
+   npm ci && npm run build
+   cp -r .next/static .next/standalone/.next/
+   PORT=3000 HOSTNAME=127.0.0.1 NODE_ENV=production node .next/standalone/server.js
+   ```
+
+   On Windows PowerShell: `$env:PORT=3000; $env:HOSTNAME="127.0.0.1"; $env:NODE_ENV="production"; node .next\standalone\server.js`.
+
+4. **Entry proxy:** include [`host/nginx.conf`](host/nginx.conf) in your nginx
+   configuration (it listens on `127.0.0.1:8080`), then reload nginx.
+
+5. Open `http://localhost:8080` and check `curl http://localhost:8080/readyz`.
+
+Without nginx, the pages still load at `http://localhost:3000`, but every API call
+fails because the standalone server does not forward `/api`.
+
+## 5. Linux server without Docker (systemd)
+
+Method 4 made permanent. The three services run under systemd as an unprivileged
+`dawam` user and listen on `127.0.0.1` only. nginx is the only part others can reach.
+The commands are for Debian/Ubuntu; adapt package names for other distributions.
+
+1. **Packages:** PostgreSQL 16 + pgvector, Python 3.12 (with `venv`), Node.js 22.12+
+   and nginx. Prepare the database as in method 4, step 1, with a strong password.
+
+2. **User and directories:**
+
+   ```sh
+   sudo useradd --system --home /var/lib/dawam --shell /usr/sbin/nologin dawam
+   sudo mkdir -p /opt/dawam /var/lib/dawam/files /etc/dawam
+   sudo chown dawam:dawam /var/lib/dawam /var/lib/dawam/files
+   ```
+
+3. **Backend** (from a checkout of the repository):
+
+   ```sh
+   sudo python3.12 -m venv /opt/dawam/venv
+   sudo /opt/dawam/venv/bin/pip install ./backend
+   ```
+
+4. **Frontend:**
+
+   ```sh
+   (cd frontend && npm ci && npm run build)
+   sudo rm -rf /opt/dawam/web
+   sudo cp -r frontend/.next/standalone /opt/dawam/web
+   sudo cp -r frontend/.next/static /opt/dawam/web/.next/static
+   ```
+
+5. **Settings:**
+
+   ```sh
+   sudo cp deploy/host/dawam.env.example /etc/dawam/dawam.env
+   sudo chown root:dawam /etc/dawam/dawam.env && sudo chmod 640 /etc/dawam/dawam.env
+   sudoedit /etc/dawam/dawam.env   # key, database URL, DAWAM_PUBLIC_URL=http://<server>, first admin
+   ```
+
+6. **Services:**
+
+   ```sh
+   sudo cp deploy/host/systemd/dawam-*.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now dawam-app dawam-worker dawam-web
+   systemctl status dawam-app
+   journalctl -u dawam-app -f            # JSON log lines
+   curl http://127.0.0.1:8000/readyz
+   ```
+
+7. **nginx:** copy [`host/nginx.conf`](host/nginx.conf) to
+   `/etc/nginx/conf.d/dawam.conf`, change `listen 127.0.0.1:8080;` to `listen 80;`,
+   then run `sudo nginx -t && sudo systemctl reload nginx`.
+
+8. Open `http://<server>`. Once you have signed in, remove `DAWAM_ADMIN_PASSWORD`
+   from `/etc/dawam/dawam.env`.
+
+**Upgrade:** take a database backup first, because migrations run when `dawam-app`
+starts. Then pull the new code, repeat steps 3 and 4, and run
+`sudo systemctl restart dawam-app dawam-worker dawam-web`.
+
+**Backups:** `pg_dump` the database and archive `/var/lib/dawam/files` (or rely on
+your S3 bucket's versioning). Back up `/etc/dawam/dawam.env` separately, because it
+holds the encryption key.
+
+---
+
+## Checklist before others use it
+
+- [ ] `DAWAM_ENCRYPTION_KEY` was generated for this installation and is backed up separately from the data.
+- [ ] `POSTGRES_PASSWORD` (or the password in `DAWAM_DATABASE_URL`) is no longer `dawam`.
+- [ ] `DAWAM_PUBLIC_URL` is the address users actually open.
+- [ ] Only the entry proxy can be reached from the network; app, web and PostgreSQL cannot.
+- [ ] `DAWAM_ADMIN_PASSWORD` was removed after the first admin signed in.
+- [ ] Email is set up in Admin > Email, so password reset links reach users.
+- [ ] Database and file backups are scheduled, and a restore has been tested ([`docs/operations.md`](../docs/operations.md)).
+- [ ] Your monitoring watches `GET /readyz`.
