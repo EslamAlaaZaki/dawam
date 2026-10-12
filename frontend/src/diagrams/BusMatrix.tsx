@@ -1,4 +1,6 @@
 import type { DwTable } from "../api/dwModel";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { EmptyState } from "../workspaces/parts";
 import { busMatrix } from "./starModel";
 
 /** Facts down, conformed dimensions across; a cell names the roles the dimension plays. */
@@ -6,34 +8,40 @@ export function BusMatrix({ tables }: { tables: DwTable[] }) {
   const { facts, dimensions, roles } = busMatrix(tables);
   if (facts.length === 0 || dimensions.length === 0) {
     return (
-      <p className="empty-state">
-        The bus matrix needs at least one fact and one conformed dimension.
-      </p>
+      <EmptyState>The bus matrix needs at least one fact and one conformed dimension.</EmptyState>
     );
   }
   return (
-    <table className="admin-table" aria-label="Bus matrix">
-      <thead>
-        <tr>
-          <th scope="col">Fact</th>
-          {dimensions.map((d) => (
-            <th key={d.id} scope="col">
-              {d.name}
-            </th>
+    <div className="overflow-hidden rounded-xl border border-sand-5 bg-sand-1">
+      <Table aria-label="Bus matrix">
+        <TableHeader>
+          <TableRow>
+            <TableHead scope="col">Fact</TableHead>
+            {dimensions.map((d) => (
+              <TableHead key={d.id} scope="col" className="font-mono text-mono">
+                {d.name}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {facts.map((f) => (
+            <TableRow key={f.id}>
+              <TableHead scope="row" className="static bg-transparent font-mono text-mono text-sand-12">
+                {f.name}
+              </TableHead>
+              {dimensions.map((d) => {
+                const r = roles(f, d);
+                return (
+                  <TableCell key={d.id} className="text-jade-11">
+                    {r.length ? `● ${r.join(", ")}` : ""}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        {facts.map((f) => (
-          <tr key={f.id}>
-            <th scope="row">{f.name}</th>
-            {dimensions.map((d) => {
-              const r = roles(f, d);
-              return <td key={d.id}>{r.length ? `● ${r.join(", ")}` : ""}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+        </TableBody>
+      </Table>
+    </div>
   );
 }

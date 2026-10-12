@@ -3,6 +3,7 @@
 import {
   Background,
   Controls,
+  MarkerType,
   ReactFlow,
   type Edge,
   type Node,
@@ -27,8 +28,8 @@ const COLUMNS = 4;
 
 /** Declared foreign keys are solid; accepted inferred relationships are dashed. */
 const EDGE_STYLE: Record<ErEdge["kind"], React.CSSProperties> = {
-  declared: { strokeWidth: 2 },
-  inferred: { strokeWidth: 2, strokeDasharray: "6 4" },
+  declared: { strokeWidth: 2, stroke: "var(--sand-11)" },
+  inferred: { strokeWidth: 2, strokeDasharray: "6 4", stroke: "var(--jade-11)" },
 };
 
 /**
@@ -93,6 +94,10 @@ export function SourceErDiagram({
     label: edge.label,
     style: EDGE_STYLE[edge.kind],
     animated: false,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: edge.kind === "declared" ? "var(--sand-11)" : "var(--jade-11)",
+    },
     ariaLabel: `${edge.kind} relationship`,
   }));
 
@@ -140,7 +145,7 @@ export function SourceErDiagram({
         <p className="empty-state">No tables match these filters.</p>
       ) : (
         <div
-          className="er-diagram"
+          className="er-diagram dawam-flow"
           style={{ height: 480 }}
           aria-label="ER diagram canvas"
         >

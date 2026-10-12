@@ -1,0 +1,148 @@
+/* React Flow in the redesign's tokens (spec #231, ADR 0004). Every colour is a CSS
+   variable from theme.css, so switching theme (`.dark` on <html>) restyles an open
+   diagram without a reload. Contrast: text is sand-12/jade-12 on sand-1/jade-3 (AA in
+   both themes); edges, node borders and controls are sand-9 or darker (3:1, 1.4.11). */
+.dw-flow {
+  --xy-background-color: var(--sand-2);
+  --xy-background-pattern-dots-color: var(--sand-7);
+  --xy-node-color: var(--sand-12);
+  --xy-node-border: 1px solid var(--sand-9);
+  --xy-node-background-color: var(--sand-1);
+  --xy-node-border-radius: 6px;
+  --xy-node-boxshadow-hover: var(--shadow-color);
+  --xy-node-boxshadow-selected: 0 0 0 2px var(--jade-11);
+  --xy-handle-background-color: var(--sand-9);
+  --xy-handle-border-color: var(--sand-1);
+  --xy-edge-stroke: var(--sand-9);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--sand-12);
+  --xy-edge-label-color: var(--sand-12);
+  --xy-edge-label-background-color: var(--sand-2);
+  --xy-controls-button-background-color: var(--sand-1);
+  --xy-controls-button-background-color-hover: var(--sand-3);
+  --xy-controls-button-color: var(--sand-12);
+  --xy-controls-button-color-hover: var(--sand-12);
+  --xy-controls-button-border-color: var(--sand-7);
+  --xy-controls-box-shadow: var(--shadow-color);
+  --xy-minimap-background-color: var(--sand-1);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--sand-3) 70%, transparent);
+  --xy-minimap-node-background-color: var(--sand-8);
+  --xy-selection-background-color: var(--jade-3);
+  --xy-selection-border: 1px dotted var(--jade-11);
+
+  overflow: hidden;
+  border: 1px solid var(--sand-5);
+  border-radius: 12px;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+
+.dw-flow .react-flow__node-default {
+  font-size: 12px;
+  padding: 0;
+}
+
+/* Controls icons are SVG paths drawn with `fill`; follow the button colour. */
+.dw-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.dw-flow .react-flow__edge-textbg {
+  fill: var(--sand-2);
+}
+
+.dw-flow .react-flow__edge-text {
+  fill: var(--sand-12);
+  font-family: var(--font-geist-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+/* Identifiers (table, column and node names) are mono. */
+.dw-flow .react-flow__node,
+.dw-flow .star-card strong,
+.dw-flow .lineage-node-button {
+  font-family: var(--font-geist-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+/* Star diagram: a fact stands out by the accent, a dimension is plain. */
+.dw-flow .star-node {
+  text-align: left;
+}
+
+.dw-flow .star-fact {
+  --xy-node-border: 1.5px solid var(--accent-solid);
+  background: var(--jade-2);
+}
+
+.star-card {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--sand-12);
+}
+
+.star-card small {
+  color: var(--sand-11);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.star-card ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-geist-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.star-card li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 18px;
+}
+
+/* The key marker is the prototype's key-round icon in amber-11. */
+.star-key {
+  display: inline-flex;
+  color: var(--amber-11);
+}
+
+.star-key svg {
+  width: 12px;
+  height: 12px;
+}
+
+.star-fk {
+  color: var(--sand-11);
+  font-size: 10.5px;
+}
+
+/* Lineage: one button per node; the selected node takes the accent, with a heavier
+   border so selection is never colour alone. */
+.dw-flow .lineage-node {
+  display: flex;
+  align-items: center;
+}
+
+.dw-flow .lineage-node-button {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.dw-flow .lineage-start {
+  --xy-node-border: 1.5px solid var(--accent-solid);
+}
+
+.dw-flow .lineage-selected {
+  --xy-node-border: 2px solid var(--jade-11);
+  --xy-node-background-color: var(--jade-3);
+  --xy-node-color: var(--jade-12);
+}

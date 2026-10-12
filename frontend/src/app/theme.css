@@ -198,3 +198,165 @@
     outline-offset: 2px;
   }
 }
+
+/* React Flow diagrams (star, lineage, source ER) in the theme tokens. Every colour is a
+   `var(--token)`, so a theme switch restyles an open diagram with no re-render. React Flow
+   reads the `--xy-*` variables (set here on the wrapper) and its own classes (restyled
+   below, one class deeper to beat its stylesheet). Text pairs are the tokens' AA pairs:
+   sand-12 and sand-11 on sand-1/sand-2, jade-12 on jade-3. */
+.dawam-flow {
+  --xy-background-color: var(--sand-2);
+  --xy-background-pattern-color: var(--sand-6);
+  --xy-node-color: var(--sand-12);
+  --xy-node-background-color: var(--sand-1);
+  --xy-node-border: 1px solid var(--control-edge);
+  --xy-node-border-radius: 8px;
+  --xy-node-boxshadow-hover: var(--shadow-color);
+  --xy-node-boxshadow-selected: 0 0 0 2px var(--jade-11);
+  --xy-handle-background-color: var(--sand-9);
+  --xy-handle-border-color: var(--sand-1);
+  --xy-edge-stroke: var(--sand-11);
+  --xy-edge-stroke-selected: var(--jade-11);
+  --xy-edge-label-color: var(--sand-12);
+  --xy-edge-label-background-color: var(--sand-1);
+  --xy-minimap-background-color: var(--sand-1);
+  --xy-minimap-mask-background-color: var(--overlay);
+  --xy-minimap-node-background-color: var(--sand-7);
+  --xy-controls-button-background-color: var(--sand-1);
+  --xy-controls-button-background-color-hover: var(--sand-3);
+  --xy-controls-button-color: var(--sand-12);
+  --xy-controls-button-color-hover: var(--sand-12);
+  --xy-controls-button-border-color: var(--sand-5);
+  --xy-controls-box-shadow: var(--shadow-color);
+  overflow: hidden;
+  border: 1px solid var(--sand-5);
+  border-radius: 12px;
+  font-family: var(--font-sans);
+  font-size: var(--text-mono);
+}
+
+.dawam-flow .react-flow__node {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  text-align: left;
+}
+
+.dawam-flow .react-flow__edge-text {
+  fill: var(--sand-12);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.dawam-flow .react-flow__edge-textbg {
+  fill: var(--sand-1);
+}
+
+.dawam-flow .react-flow__controls {
+  border: 1px solid var(--sand-5);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dawam-flow .react-flow__controls-button {
+  background: var(--sand-1);
+  border-bottom: 1px solid var(--sand-5);
+  color: var(--sand-12);
+}
+
+.dawam-flow .react-flow__controls-button:hover {
+  background: var(--sand-3);
+}
+
+.dawam-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.dawam-flow .react-flow__controls-button:focus-visible {
+  outline: 2px solid var(--jade-11);
+  outline-offset: -2px;
+}
+
+.dawam-flow .react-flow__minimap {
+  border: 1px solid var(--sand-5);
+  border-radius: 8px;
+}
+
+/* Lineage: the start node and the selected one stand out by more than colour (a heavier
+   edge, a marker and bold text). */
+.dawam-flow .lineage-node {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dawam-flow .lineage-node-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--sand-12);
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.dawam-flow .lineage-node-button:focus-visible {
+  outline: 2px solid var(--jade-11);
+  outline-offset: -2px;
+}
+
+.dawam-flow .lineage-start {
+  border-color: var(--jade-11);
+  border-width: 2px;
+}
+
+.dawam-flow .lineage-selected {
+  background: var(--jade-3);
+  border-color: var(--jade-11);
+}
+
+.dawam-flow .lineage-selected .lineage-node-button {
+  color: var(--jade-12);
+  font-weight: 600;
+}
+
+/* Star: a table card; keys carry the prototype's amber key marker, facts a jade edge. */
+.dawam-flow .star-node {
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.dawam-flow .star-fact {
+  border-color: var(--jade-11);
+  background: var(--jade-2);
+}
+
+.dawam-flow .star-name {
+  font-weight: 600;
+}
+
+.dawam-flow .star-kind {
+  color: var(--sand-11);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+}
+
+.dawam-flow .star-card ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  line-height: 18px;
+}
+
+.dawam-flow .star-key {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  color: var(--amber-11);
+}

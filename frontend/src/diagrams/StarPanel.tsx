@@ -2,6 +2,7 @@
 
 import { useLayerModel } from "../api/dwDiagram";
 import type { DwLayer } from "../api/dwModel";
+import { h4Classes } from "../workspaces/parts";
 import { BusMatrix } from "./BusMatrix";
 import { StarDiagram } from "./StarDiagram";
 import { linksOf } from "./starModel";
@@ -25,11 +26,11 @@ export function StarPanel({ workspaceId, layer }: { workspaceId: string; layer: 
   const links = linksOf(model.tables);
   return (
     <>
-      <section aria-labelledby="star-title">
-        <h4 id="star-title">Star diagram</h4>
+      <section aria-labelledby="star-title" className="mt-6 flex flex-col gap-3">
+        <h4 id="star-title" className={h4Classes}>Star diagram</h4>
         <StarDiagram tables={model.tables} />
         {/* The canvas is a picture: the same relationships, readable. */}
-        <ul aria-label="Relationships">
+        <ul aria-label="Relationships" className="text-sm text-sand-11">
           {links.map((l) => (
             <li key={l.id}>
               {l.from.name} → {l.to.name} ({l.label})
@@ -37,8 +38,8 @@ export function StarPanel({ workspaceId, layer }: { workspaceId: string; layer: 
           ))}
         </ul>
       </section>
-      <section aria-labelledby="bus-title">
-        <h4 id="bus-title">Bus matrix</h4>
+      <section aria-labelledby="bus-title" className="mt-6 flex flex-col gap-3">
+        <h4 id="bus-title" className={h4Classes}>Bus matrix</h4>
         <BusMatrix tables={model.tables} />
       </section>
     </>

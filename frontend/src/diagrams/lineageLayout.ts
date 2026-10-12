@@ -39,13 +39,13 @@ export function edgeStyle(kind: LineageEdge["kind"]): {
 } {
   switch (kind) {
     case "uses":
-      return { strokeDasharray: "6 4", stroke: "#b26a00" };
+      return { strokeDasharray: "6 4", stroke: "var(--amber-11)" };
     case "lookup":
-      return { strokeDasharray: "2 4", stroke: "#6a3fb2" };
+      return { strokeDasharray: "2 4", stroke: "var(--jade-11)" };
     case "kpi":
-      return { stroke: "#1f7a3f" };
+      return { stroke: "var(--grass-11)" };
     default:
-      return { stroke: "#4a5568" };
+      return { stroke: "var(--sand-11)" };
   }
 }
 

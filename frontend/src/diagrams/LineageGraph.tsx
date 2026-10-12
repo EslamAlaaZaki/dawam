@@ -60,13 +60,13 @@ export function LineageGraph({
         target: e.to_id,
         style: edgeStyle(e.kind),
         className: `lineage-edge lineage-edge-${e.kind}`,
-        markerEnd: { type: MarkerType.ArrowClosed },
+        markerEnd: { type: MarkerType.ArrowClosed, color: edgeStyle(e.kind).stroke },
       })),
     [edges],
   );
 
   return (
-    <div className="lineage-graph" role="group" aria-label="Lineage graph" style={{ height: 560 }}>
+    <div className="lineage-graph dawam-flow" role="group" aria-label="Lineage graph" style={{ height: 560 }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}

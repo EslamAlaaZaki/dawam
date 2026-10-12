@@ -1,5 +1,6 @@
 "use client";
 
+import { KeyRound } from "lucide-react";
 import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -46,11 +47,12 @@ export function StarDiagram({ tables }: { tables: DwTable[] }) {
     source: l.from.id,
     target: l.to.id,
     label: l.label,
-    markerEnd: { type: MarkerType.ArrowClosed },
+    style: { stroke: "var(--sand-11)" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "var(--sand-11)" },
   }));
 
   return (
-    <div className="star-diagram" role="group" aria-label="Star diagram" style={{ height: 520 }}>
+    <div className="star-diagram dawam-flow" role="group" aria-label="Star diagram" style={{ height: 520 }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -69,8 +71,8 @@ export function StarDiagram({ tables }: { tables: DwTable[] }) {
 function TableCard({ table }: { table: DwTable }) {
   return (
     <div className="star-card">
-      <strong>{table.name}</strong>
-      <small>
+      <strong className="star-name">{table.name}</strong>
+      <small className="star-kind">
         {" "}
         {table.kind}
         {table.is_conformed ? " · conformed" : ""}
@@ -80,6 +82,9 @@ function TableCard({ table }: { table: DwTable }) {
           .slice(0, MAX_LINES)
           .map((c) => (
             <li key={c.id}>
+              {c.role === "sk" || c.role === "nk" ? (
+                <KeyRound aria-hidden className="star-key" />
+              ) : null}
               {c.name}
               {c.role === "sk" ? " (SK)" : c.role === "fk" ? " (FK)" : ""}
             </li>
