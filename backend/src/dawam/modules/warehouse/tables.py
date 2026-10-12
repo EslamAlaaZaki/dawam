@@ -457,3 +457,41 @@ class LayerApprovalRecord(Base):
     "approver must not be the last editor"."""
     last_edited_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class DisabledCheckRecord(Base):
+    """A score check an owner switched off for the Data Warehouse, with the reason (spec §6.11
+    ``DisabledCheck``); the check is left out of the formula and listed apart."""
+
+    __tablename__ = "disabled_checks"
+
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE"), primary_key=True
+    )
+    check_code: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
+    reason: Mapped[str] = mapped_column(sa.String(500))
+    disabled_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    disabled_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class ScoreGateRecord(Base):
+    """The approval gate of the Core or Mart Layer (spec §6.11 ``ScoreGate``); a Layer
+    without a row has no gate."""
+
+    __tablename__ = "score_gates"
+    __table_args__ = (
+        sa.CheckConstraint(f"layer IN ({_in(APPROVAL_LAYERS)})", name="layer"),
+        sa.CheckConstraint("min_score >= 0 AND min_score <= 100", name="min_score"),
+    )
+
+    data_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("data_warehouses.id", ondelete="CASCADE"), primary_key=True
+    )
+    layer: Mapped[str] = mapped_column(sa.String(16), primary_key=True)
+    min_score: Mapped[float] = mapped_column(sa.Float, default=0)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

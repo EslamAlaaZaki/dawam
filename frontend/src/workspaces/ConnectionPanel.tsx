@@ -54,7 +54,8 @@ export function ConnectionPanel({
   }
   return (
     <ConnectionForm
-      key={connection.data?.id ?? "new"}
+      // Stable across the first save, so its "Connection saved." message is not lost.
+      key={system.id}
       workspaceId={workspace.id}
       systemId={system.id}
       saved={connection.data}

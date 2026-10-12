@@ -54,6 +54,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(signed_in_client: Test
             "objects.delete",
             "pii.manage_rules",
             "pii.review",
+            "score.manage_settings",
             "source_schema.enhance",
             "source_system.change_code",
             "source_system.create",

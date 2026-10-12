@@ -44,9 +44,9 @@ from dawam.wiring import change_set_handlers, staging_sync_after_snapshot
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
 
 
-def build_change_set_handlers() -> ObjectHandlers:
+def build_change_set_handlers(settings: Settings | None = None) -> ObjectHandlers:
     """Each module that owns objects a Change Set may change registers its handlers here."""
-    return change_set_handlers()
+    return change_set_handlers(settings)
 
 
 def build_document_search(
@@ -127,7 +127,7 @@ def _service_handlers(
         jobs=runner,
         storage=create_storage(settings),
         document_search=documents,
-        change_set_handlers=build_change_set_handlers(),
+        change_set_handlers=build_change_set_handlers(settings),
         llm_adapters=llm_adapters,
     )
     return {

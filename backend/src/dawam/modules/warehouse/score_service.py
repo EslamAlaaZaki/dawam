@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 
 import sqlalchemy as sa
@@ -45,6 +45,7 @@ from .service import NamingRules
 from .tables import (
     ColumnMappingRecord,
     DataWarehouseRecord,
+    DisabledCheckRecord,
     DwColumnRecord,
     DwTableRecord,
     MappingBranchRecord,
@@ -97,6 +98,19 @@ class FailedCheck:
 
 
 @dataclass(frozen=True)
+class DisabledCheck:
+    """A check an owner switched off: left out of the score, listed with its reason."""
+
+    check_code: str
+    title: str
+    category: str
+    severity: str
+    reason: str
+    disabled_by: uuid.UUID | None
+    disabled_at: datetime
+
+
+@dataclass(frozen=True)
 class Score:
     """The latest run, as members see it."""
 
@@ -109,6 +123,7 @@ class Score:
     failed_checks: list[FailedCheck]
     checks_passed: int
     checks_failed: int
+    disabled_checks: list[DisabledCheck] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -201,6 +216,10 @@ class ScoreService:
         self._clock = clock
         self._registry = registry
 
+    @property
+    def registry(self) -> CheckRegistry:
+        return self._registry
+
     # --- reading ---------------------------------------------------------------------
 
     def current(self, user: User, workspace_id: uuid.UUID) -> Score:
@@ -227,7 +246,30 @@ class ScoreService:
                     )
                 )
             )
-        return self._view(run, rows)
+            disabled = self.disabled_checks(db, warehouse_id)
+        return replace(self._view(run, rows), disabled_checks=disabled)
+
+    def disabled_checks(self, db: Session, warehouse_id: uuid.UUID) -> list[DisabledCheck]:
+        """The checks switched off for the Data Warehouse, with their reasons, by code."""
+        out = []
+        for r in db.scalars(
+            sa.select(DisabledCheckRecord)
+            .where(DisabledCheckRecord.data_warehouse_id == warehouse_id)
+            .order_by(DisabledCheckRecord.check_code)
+        ):
+            spec = self._registry.spec(r.check_code)
+            out.append(
+                DisabledCheck(
+                    r.check_code,
+                    spec.title if spec else r.check_code,
+                    spec.category if spec else "",
+                    spec.severity if spec else "",
+                    r.reason,
+                    r.disabled_by,
+                    r.disabled_at,
+                )
+            )
+        return out
 
     def history(
         self, user: User, workspace_id: uuid.UUID, *, limit: int = HISTORY_LIMIT
@@ -328,7 +370,14 @@ class ScoreService:
             ).first()
             if warehouse is None:
                 return None
-            report = evaluate(self._design(db, warehouse), self._registry, disabled=disabled)
+            switched_off = set(disabled) | set(
+                db.scalars(
+                    sa.select(DisabledCheckRecord.check_code).where(
+                        DisabledCheckRecord.data_warehouse_id == warehouse.id
+                    )
+                )
+            )
+            report = evaluate(self._design(db, warehouse), self._registry, disabled=switched_off)
             self._store(db, warehouse.id, report)
             return report
 

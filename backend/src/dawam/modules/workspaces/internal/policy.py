@@ -132,6 +132,10 @@ class Action(StrEnum):
     """Move the Core or Mart Layer between ``draft``, ``in_review`` and ``approved`` (owners
     and editors; spec §4.3 "Move to in review; approve a Layer (core, mart) or KPI", stories
     107, 120). Reading the approval states needs only ``VIEW_WORKSPACE``."""
+    MANAGE_SCORE_SETTINGS = "score.manage_settings"
+    """Disable score checks with a reason and set the minimum score per Layer (owners only;
+    spec §4.3 "Set minimum score gate, disable score checks", stories 119, 120). Reading them
+    needs only ``VIEW_WORKSPACE``."""
     REQUIRE_DISTINCT_APPROVER = "workspace.require_distinct_approver"
     """Switch "approver must not be the last editor" on or off (owners only; spec §4.3)."""
     COMMENT = "comment.create"
@@ -245,6 +249,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
     Action.APPROVE_LAYER: _WorkspaceRule(min_role="editor"),
+    Action.MANAGE_SCORE_SETTINGS: _WorkspaceRule(min_role="owner"),
     Action.REQUIRE_DISTINCT_APPROVER: _WorkspaceRule(min_role="owner"),
     Action.COMMENT: _WorkspaceRule(min_role="viewer"),
     Action.UPLOAD_FILE: _WorkspaceRule(min_role="editor"),

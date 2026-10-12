@@ -19,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from dawam import job_handlers
 from dawam.modules.jobs import Job, JobService, QueuedJobRunner
+from dawam.modules.llm import fake_adapter_factory
 from dawam.platform.clock import system_clock
 from dawam.platform.config import Settings
 from dawam.platform.db import create_engine
@@ -73,8 +74,14 @@ def run_worker(settings: Settings, *, stop: threading.Event) -> None:
         if stop.is_set():
             return
         runner = QueuedJobRunner()
+        if settings.fake_llm:
+            logger.warning("DAWAM_FAKE_LLM is on: every LLM provider is a fake. Tests only.")
         job_handlers.register_job_handlers(
-            runner, engine=engine, settings=settings, clock=system_clock
+            runner,
+            engine=engine,
+            settings=settings,
+            clock=system_clock,
+            llm_adapters=fake_adapter_factory if settings.fake_llm else None,
         )
         jobs = JobService(
             engine,
