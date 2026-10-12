@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { useChangePassword, useSignOutEverywhere, useUpdateDisplayName } from "../api/account";
 import { useMe, type Me } from "../api/queries";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import { Input } from "../components/ui/input";
 
 /** The signed-in user's own account: display name, password and sessions. */
@@ -34,7 +35,9 @@ function DisplayNameForm({ me }: { me: Me }) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    update.mutate(String(new FormData(event.currentTarget).get("display_name") ?? ""));
+    update.mutate(String(new FormData(event.currentTarget).get("display_name") ?? ""), {
+      onSuccess: () => toast.success("Display name saved."),
+    });
   }
 
   return (
@@ -60,7 +63,6 @@ function DisplayNameForm({ me }: { me: Me }) {
             {update.error.message}
           </p>
         )}
-        {update.isSuccess && <p className="text-sm text-grass-11">Display name saved.</p>}
         <Button type="submit" variant="primary" className="self-start" disabled={update.isPending}>
           Save name
         </Button>
@@ -88,7 +90,12 @@ function ChangePasswordForm() {
         current_password: String(form.get("current_password") ?? ""),
         new_password: next,
       },
-      { onSuccess: () => formElement.reset() },
+      {
+        onSuccess: () => {
+          formElement.reset();
+          toast.success("Password changed. Your other sessions have been signed out.");
+        },
+      },
     );
   }
 
@@ -126,11 +133,6 @@ function ChangePasswordForm() {
         {problem && (
           <p className="text-sm text-red-11" role="alert">
             {problem}
-          </p>
-        )}
-        {change.isSuccess && !mismatch && (
-          <p className="text-sm text-grass-11">
-            Password changed. Your other sessions have been signed out.
           </p>
         )}
         <Button type="submit" variant="primary" className="self-start" disabled={change.isPending}>

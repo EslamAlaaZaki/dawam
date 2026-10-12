@@ -174,7 +174,9 @@ function TestEmail() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    send.mutate(to.trim() || null);
+    send.mutate(to.trim() || null, {
+      onSuccess: (sent) => toast.success(`Test email sent to ${sent.to}.`),
+    });
   }
 
   return (
@@ -192,11 +194,6 @@ function TestEmail() {
       <Button type="submit" className="self-start" disabled={send.isPending}>
         Send test email
       </Button>
-      {send.isSuccess && (
-        <p className="text-sm text-sand-11" role="status">
-          Test email sent to {send.data.to}.
-        </p>
-      )}
       {send.isError && <ErrorText>{send.error.message}</ErrorText>}
     </form>
   );

@@ -17,6 +17,7 @@ import { ApiError } from "../api/client";
 import { allows, useWorkspace, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
 import {
   Actions,
@@ -82,11 +83,6 @@ function Report({ result }: { result: ApplyResult }) {
       role="status"
       className="flex flex-col gap-1.5 rounded-lg border border-sand-5 bg-sand-2 p-3 text-sm"
     >
-      <p>
-        {result.accepted.length === 1
-          ? "1 item applied."
-          : `${result.accepted.length} items applied.`}
-      </p>
       {result.skipped.length > 0 && (
         <>
           <p>Not applied, because something changed since the proposal:</p>
@@ -157,7 +153,15 @@ export function ChangeSetReview({
     setResult(null);
     try {
       if (verb === "accept") {
-        setResult(await accept.mutateAsync(ids));
+        const applied = await accept.mutateAsync(ids);
+        const count = applied.accepted.length;
+        toast.success(count === 1 ? "1 item applied." : `${count} items applied.`);
+        // Only what needs the reviewer's attention stays on the page.
+        setResult(
+          applied.skipped.length > 0 || applied.needs_owner.length > 0
+            ? applied
+            : null,
+        );
       } else {
         await reject.mutateAsync(ids);
       }
