@@ -29,6 +29,7 @@ from .model_api import router as model_router
 from .platforms import PLATFORM_PROFILES, TARGET_PLATFORMS, TargetPlatform
 from .score_api import router as score_router
 from .score_export_api import router as score_export_router
+from .score_gate_api import router as score_gate_router
 from .service import CaseStyle, DataWarehouseService, Weekday
 from .staging_api import router as staging_router
 from .validation_api import router as validation_router
@@ -40,6 +41,7 @@ router.include_router(lineage_router)
 router.include_router(ddl_router)
 router.include_router(score_router)
 router.include_router(score_export_router)
+router.include_router(score_gate_router)
 router.include_router(evaluation_router)
 router.include_router(mapping_export_router)
 router.include_router(mapping_import_router)
