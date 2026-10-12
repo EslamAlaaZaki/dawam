@@ -1332,6 +1332,13 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
     Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/helper-queries",
+        "Run extraction / Schema Import / profiling (the helper queries)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        query={"engine": "postgresql"},
+    ),
+    Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/validate",
         "Run extraction / Schema Import / profiling (validate an upload)",
