@@ -163,11 +163,42 @@ describe("the lineage layout", () => {
     expect(edgeStyle("lookup").strokeDasharray).not.toEqual(edgeStyle("uses").strokeDasharray);
   });
 
+  it("draws every edge kind in a theme token, never a fixed colour", () => {
+    for (const kind of ["value", "kpi", "uses", "lookup"] as const) {
+      expect(edgeStyle(kind).stroke).toMatch(/^var\(--[a-z0-9-]+\)$/);
+    }
+  });
+
   it("merges graphs, each node and edge once", () => {
     const merged = merge(KPI_LINEAGE, SRC_DOWNSTREAM);
 
     expect(merged.nodes).toHaveLength(9);
     expect(merged.edges).toHaveLength(7);
+  });
+
+  it("marks the nodes the PII view lists, matched by id and not by label", () => {
+    const twin = node(50, "dw_column", MART.label, "mart");
+    const pii = new Map([
+      [SRC.id, { kind: "protected" as const, pseudonymised: false }],
+      [MART.id, { kind: "derived" as const, pseudonymised: true }],
+      [KPI.id, { kind: "influenced" as const, pseudonymised: false }],
+    ]);
+    render(
+      <LineageGraph
+        nodes={[SRC, MART, twin, STG, KPI]}
+        edges={[]}
+        startId={SRC.id}
+        selectedId={null}
+        onSelect={() => {}}
+        pii={pii}
+      />,
+    );
+    const graph = within(screen.getByRole("group", { name: "Lineage graph" }));
+    expect(graph.getByRole("img", { name: "Protected Column" })).toBeInTheDocument();
+    expect(graph.getByRole("img", { name: "PII-influenced KPI" })).toBeInTheDocument();
+    expect(graph.getByRole("img", { name: "PII-derived, pseudonymised" })).toBeInTheDocument();
+    // The same-label twin and the unlisted STG node stay unmarked.
+    expect(graph.getAllByRole("img")).toHaveLength(3);
   });
 
   it("renders a 500-node graph in under 2 s", () => {
@@ -186,5 +217,15 @@ describe("the lineage layout", () => {
     expect(screen.getByRole("group", { name: "Lineage graph" })).toBeInTheDocument();
 
     expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe("the PII marks of the lineage graph", () => {
+  it("labels a KPI that links PII-derived columns as depending on them", () => {
+    const pii = new Map([[KPI.id, { kind: "dependent" as const, pseudonymised: false }]]);
+    render(
+      <LineageGraph nodes={[KPI]} edges={[]} startId={KPI.id} selectedId={null} onSelect={() => {}} pii={pii} />,
+    );
+    expect(screen.getByRole("img", { name: "Depends on PII-derived columns" })).toBeInTheDocument();
   });
 });

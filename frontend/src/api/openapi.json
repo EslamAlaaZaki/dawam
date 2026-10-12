@@ -22788,6 +22788,57 @@
         ],
         "title": "PiiFindingPage"
       },
+      "PiiKpi": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "src_column",
+              "dw_column",
+              "dw_table",
+              "kpi"
+            ],
+            "title": "Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "source",
+              "staging",
+              "core",
+              "mart",
+              "kpi"
+            ],
+            "title": "Layer"
+          },
+          "influence": {
+            "type": "string",
+            "enum": [
+              "derived",
+              "influenced"
+            ],
+            "title": "Influence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "label",
+          "layer",
+          "influence"
+        ],
+        "title": "PiiKpi"
+      },
       "PiiRuleCreate": {
         "properties": {
           "name": {
@@ -23013,12 +23064,28 @@
             },
             "type": "array",
             "title": "Tables"
+          },
+          "source_columns": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Source Columns"
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/PiiKpi"
+            },
+            "type": "array",
+            "title": "Kpis"
           }
         },
         "type": "object",
         "required": [
           "columns",
-          "tables"
+          "tables",
+          "source_columns",
+          "kpis"
         ],
         "title": "PiiViewReport"
       },

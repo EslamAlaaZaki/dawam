@@ -4,7 +4,9 @@ import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node } fro
 import "@xyflow/react/dist/style.css";
 import { useMemo } from "react";
 
+import { NO_PII, piiMarkLabel, type PiiMarks } from "../api/piiView";
 import { LAYER_LABELS, type LineageEdge, type LineageNode } from "../api/lineage";
+import { PiiMarker } from "./PiiMarker";
 import { NODE_HEIGHT, NODE_WIDTH, edgeStyle, layout } from "./lineageLayout";
 
 /** React Flow draws the lineage graph, one column per Layer; `uses` and `lookup` edges are
@@ -15,12 +17,15 @@ export function LineageGraph({
   startId,
   selectedId,
   onSelect,
+  pii = NO_PII,
 }: {
   nodes: LineageNode[];
   edges: LineageEdge[];
   startId: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** The PII view's marks, matched to nodes by id. */
+  pii?: PiiMarks;
 }) {
   const flowNodes: Node[] = useMemo(
     () =>
@@ -39,6 +44,7 @@ export function LineageGraph({
               onClick={() => onSelect(node.id)}
             >
               {node.label}
+              {pii.has(node.id) ? <PiiMarker label={piiMarkLabel(pii.get(node.id)!, node.type === "kpi" ? "KPI" : "")} /> : null}
             </button>
           ),
         },
@@ -50,7 +56,7 @@ export function LineageGraph({
         ].join(" "),
         draggable: false,
       })),
-    [nodes, startId, selectedId, onSelect],
+    [nodes, startId, selectedId, onSelect, pii],
   );
   const flowEdges: Edge[] = useMemo(
     () =>
@@ -60,13 +66,13 @@ export function LineageGraph({
         target: e.to_id,
         style: edgeStyle(e.kind),
         className: `lineage-edge lineage-edge-${e.kind}`,
-        markerEnd: { type: MarkerType.ArrowClosed },
+        markerEnd: { type: MarkerType.ArrowClosed, color: edgeStyle(e.kind).stroke },
       })),
     [edges],
   );
 
   return (
-    <div className="lineage-graph" role="group" aria-label="Lineage graph" style={{ height: 560 }}>
+    <div className="lineage-graph dawam-flow" role="group" aria-label="Lineage graph" style={{ height: 560 }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}

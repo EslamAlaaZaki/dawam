@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 
 import { useDwTable, useDwTables, type DwLayer } from "../api/dwModel";
 import { useKpis } from "../api/kpis";
+import { usePiiMarks } from "../api/piiView";
 import {
   EDGE_KIND_LABELS,
   LAYER_LABELS,
@@ -89,6 +90,7 @@ function LineageView({
 }) {
   const lineage = useLineage(workspaceId, { node: start, direction: "both" });
   const fetchLineage = useFetchLineage(workspaceId);
+  const pii = usePiiMarks(workspaceId);
   const [added, setAdded] = useState<Shown>({ nodes: [], edges: [] });
   const [selected, setSelected] = useState<string | null>(start);
   const [impactFor, setImpactFor] = useState<string | null>(null);
@@ -134,6 +136,7 @@ function LineageView({
           edges={shown.edges}
           startId={lineage.data.start.id}
           selectedId={selected}
+          pii={pii}
           onSelect={(id) => {
             setSelected(id);
             setImpactFor(null);

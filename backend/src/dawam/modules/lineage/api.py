@@ -104,6 +104,12 @@ class PiiColumn(LineageNode):
     """The column's optional handling note."""
 
 
+class PiiKpi(LineageNode):
+    influence: Literal["derived", "influenced"]
+    """`derived`: a linked column is PII-derived. `influenced`: PII reaches the KPI only
+    through a `uses` or `lookup` edge."""
+
+
 class PiiViewReport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +117,10 @@ class PiiViewReport(BaseModel):
     """PII-derived DW columns: fed by a confirmed PII column through value edges."""
     tables: list[LineageNode]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
+    source_columns: list[LineageNode]
+    """Protected Columns that feed the model (a marker for the lineage graph)."""
+    kpis: list[PiiKpi]
+    """KPIs that depend on PII, derived or only influenced (a marker for the lineage graph)."""
 
 
 @router.get("/pii", operation_id="getPiiView")

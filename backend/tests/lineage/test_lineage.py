@@ -322,7 +322,7 @@ def test_join_only_use_marks_the_table_not_its_columns(graph, roles):
 
 
 def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph, roles):
-    assert pii_view(roles) == {"columns": [], "tables": []}
+    assert pii_view(roles) == {"columns": [], "tables": [], "source_columns": [], "kpis": []}
     confirm_pii(roles, graph["src_amount"])
     map_direct(roles, graph["core"], graph["amount_c"], f"{graph['stg']['name']}.status", version=1)
 
@@ -330,3 +330,100 @@ def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph
 
     assert "fact_orders.amount_c" not in labels_now
     assert labels_now == [f"{graph['stg']['name']}.amount"]
+
+
+def test_the_view_names_protected_sources_and_the_kpis_that_depend_on_pii(graph, roles):
+    assert pii_view(roles)["source_columns"] == []
+
+    confirm_pii(roles, graph["src_amount"])
+    body = pii_view(roles)
+
+    # The confirmed source column feeds the model; the KPI links a PII-derived Mart column.
+    assert [c["label"] for c in body["source_columns"]] == ["crm.dbo.orders.amount"]
+    assert [k["label"] for k in body["kpis"]] == ["Revenue"]
+    assert body["kpis"][0]["id"] == graph["kpi"]
+    assert body["kpis"][0]["influence"] == "derived"
+
+
+def test_a_flagged_sensitive_source_is_protected_but_derives_no_kpi_pii(graph, roles):
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(
+            sa.text("update src_columns set is_sensitive = true where id = :c"),
+            {"c": graph["src_status"]},
+        )
+
+    body = pii_view(roles)
+
+    assert [c["label"] for c in body["source_columns"]] == ["crm.dbo.orders.status"]
+    assert body["kpis"] == []
+
+
+def test_a_kpi_reached_only_through_a_join_or_filter_is_pii_influenced(graph, roles):
+    # The staged status is PII and only filters fact_orders (a `uses` edge); the KPI links
+    # the Mart amount, which reads fact_orders.amount_c.
+    confirm_pii(roles, graph["src_status"])
+
+    [kpi] = pii_view(roles)["kpis"]
+
+    assert (kpi["label"], kpi["influence"]) == ("Revenue", "influenced")
+
+
+def test_a_kpi_reached_only_through_a_lookup_is_pii_influenced(graph, roles):
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(sa.text("delete from lineage_edges where kind = 'uses'"))
+    edge(roles, "lookup", "dw_column", graph["stg_status"], "dw_table", graph["mart"])
+    confirm_pii(roles, graph["src_status"])
+
+    [kpi] = pii_view(roles)["kpis"]
+
+    assert (kpi["label"], kpi["influence"]) == ("Revenue", "influenced")
+
+
+def test_derived_wins_over_influenced_for_a_kpi(graph, roles):
+    confirm_pii(roles, graph["src_amount"])
+    confirm_pii(roles, graph["src_status"])
+
+    [kpi] = pii_view(roles)["kpis"]
+
+    assert kpi["influence"] == "derived"
+
+
+def test_a_kpi_without_a_link_to_pii_is_not_marked(graph, roles):
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(sa.text("delete from lineage_edges where kind = 'kpi'"))
+    confirm_pii(roles, graph["src_amount"])
+
+    body = pii_view(roles)
+
+    assert body["columns"] != []  # derived columns exist, but no KPI edge reaches a KPI
+    assert body["kpis"] == []
+
+
+def test_a_dismissed_finding_does_not_protect_a_source_column(graph, roles):
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "insert into pii_findings (id, src_column_id, rule, category, confidence,"
+                " evidence, status, detected_at) values (:id, :c, 'national_id',"
+                " 'direct_identifier', 0.9, 'name', 'dismissed', :now)"
+            ),
+            {"id": uuid.uuid4(), "c": graph["src_amount"], "now": datetime.now(UTC)},
+        )
+
+    assert pii_view(roles)["source_columns"] == []
+
+
+def test_another_workspaces_pii_never_marks_this_one(graph, roles):
+    confirm_pii(roles, graph["src_amount"])
+    other = roles.client("owner").post(
+        "/api/v1/workspaces", json={"name": "Other", "description": "", "domain": "Testing"}
+    )
+    assert other.status_code == 201, other.text
+    other_dw = f"/api/v1/workspaces/{other.json()['id']}/data-warehouse"
+    created_dw = roles.client("owner").post(other_dw, json={"target_platform": "postgresql"})
+    assert created_dw.status_code == 201, created_dw.text
+
+    body = ok(roles.client("owner").get(f"{other_dw}/pii"))
+
+    assert body == {"columns": [], "tables": [], "source_columns": [], "kpis": []}
+    assert pii_view(roles)["source_columns"] != []

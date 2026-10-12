@@ -7566,6 +7566,31 @@ export interface components {
              */
             items: components["schemas"]["PiiFinding"][];
         };
+        /** PiiKpi */
+        PiiKpi: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "src_column" | "dw_column" | "dw_table" | "kpi";
+            /** Label */
+            label: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "source" | "staging" | "core" | "mart" | "kpi";
+            /**
+             * Influence
+             * @enum {string}
+             */
+            influence: "derived" | "influenced";
+        };
         /** PiiRuleCreate */
         PiiRuleCreate: {
             /**
@@ -7657,6 +7682,10 @@ export interface components {
             columns: components["schemas"]["PiiColumn"][];
             /** Tables */
             tables: components["schemas"]["LineageNode"][];
+            /** Source Columns */
+            source_columns: components["schemas"]["LineageNode"][];
+            /** Kpis */
+            kpis: components["schemas"]["PiiKpi"][];
         };
         /** Platform */
         Platform: {

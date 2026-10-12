@@ -214,7 +214,14 @@ from .mapping_import import MappingImportReport, MappingImportResult, MappingImp
 from .mapping_service import MappingService
 from .model_service import ModelService
 from .pii_hashing import PiiHashingService
-from .pii_propagation import PiiPropagation, pii_notes, pii_origins, propagate_pii
+from .pii_propagation import (
+    PiiPropagation,
+    pii_dependent_kpis,
+    pii_notes,
+    pii_origins,
+    propagate_pii,
+    source_columns_in_lineage,
+)
 from .platforms import (
     PLATFORM_PROFILES,
     TARGET_PLATFORMS,
@@ -375,6 +382,7 @@ __all__ = [
     "mart_columns_reading",
     "max_identifier_length",
     "open_impacts",
+    "pii_dependent_kpis",
     "pii_notes",
     "pii_origins",
     "plan_propagation",
@@ -387,6 +395,7 @@ __all__ = [
     "rename_in_sql",
     "replace_kpi_edges",
     "router",
+    "source_columns_in_lineage",
     "sql_reads",
     "staged_system_check",
     "staging_deletion",

@@ -14,11 +14,19 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Literal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from .tables import ColumnMappingRecord, DwColumnRecord, LineageEdgeRecord
+from .tables import (
+    DELETED,
+    ColumnMappingRecord,
+    DataWarehouseRecord,
+    DwColumnRecord,
+    DwTableRecord,
+    LineageEdgeRecord,
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +72,72 @@ def propagate_pii(db: Session, pii_column_ids: Iterable[uuid.UUID]) -> PiiPropag
         else set()
     )
     return PiiPropagation(frozenset(derived), frozenset(influenced), frozenset(pseudonymised))
+
+
+def source_columns_in_lineage(db: Session, workspace_id: uuid.UUID) -> set[uuid.UUID]:
+    """The source columns some lineage edge from them reaches the Workspace's Data Warehouse
+    with: the ones that feed its model (other Workspaces' edges are never read)."""
+    in_workspace = (
+        sa.select(DwTableRecord.id)
+        .join(DataWarehouseRecord, DataWarehouseRecord.id == DwTableRecord.data_warehouse_id)
+        .where(DataWarehouseRecord.workspace_id == workspace_id, DwTableRecord.status != DELETED)
+    )
+    columns = sa.select(DwColumnRecord.id).where(DwColumnRecord.table_id.in_(in_workspace))
+    return set(
+        db.scalars(
+            sa.select(LineageEdgeRecord.from_id)
+            .where(
+                LineageEdgeRecord.from_type == "src_column",
+                sa.or_(
+                    sa.and_(
+                        LineageEdgeRecord.to_type == "dw_column",
+                        LineageEdgeRecord.to_id.in_(columns),
+                    ),
+                    sa.and_(
+                        LineageEdgeRecord.to_type == "dw_table",
+                        LineageEdgeRecord.to_id.in_(in_workspace),
+                    ),
+                ),
+            )
+            .distinct()
+        )
+    )
+
+
+def pii_dependent_kpis(
+    db: Session, propagation: PiiPropagation
+) -> dict[uuid.UUID, Literal["derived", "influenced"]]:
+    """The KPIs that depend on PII, by how (``kpi`` edges run from a linked DW column to
+    its KPI): ``derived`` when a linked column is PII-derived, else ``influenced`` when a
+    linked column belongs to a PII-influenced table or is fed by value edges from one (so
+    its PII reaches the KPI only through a ``uses`` or ``lookup`` edge). One walk, shared
+    with ``propagate_pii``, whatever the number of KPIs."""
+    steered: set[uuid.UUID] = set()
+    if propagation.influenced_tables:
+        steered = set(
+            db.scalars(
+                sa.select(DwColumnRecord.id).where(
+                    DwColumnRecord.table_id.in_(propagation.influenced_tables)
+                )
+            )
+        )
+        steered |= _downstream(db, steered)
+    carriers = propagation.derived_columns | steered
+    if not carriers:
+        return {}
+    kpis: dict[uuid.UUID, Literal["derived", "influenced"]] = {}
+    for column_id, kpi_id in db.execute(
+        sa.select(LineageEdgeRecord.from_id, LineageEdgeRecord.to_id).where(
+            LineageEdgeRecord.kind == "kpi",
+            LineageEdgeRecord.to_type == "kpi",
+            LineageEdgeRecord.from_id.in_(carriers),
+        )
+    ):
+        if column_id in propagation.derived_columns:
+            kpis[kpi_id] = "derived"
+        else:
+            kpis.setdefault(kpi_id, "influenced")
+    return kpis
 
 
 def pii_origins(
