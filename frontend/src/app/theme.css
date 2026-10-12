@@ -22,13 +22,14 @@
   --sand-7: #cfceca;
   --sand-8: #bcbbb5;
   --sand-9: #8d8d86;
+  --sand-10: #6f6f6a;
   --sand-11: #63635e;
   --sand-12: #21201c;
   --jade-2: #f4fbf7;
   --jade-3: #e6f7ed;
   --jade-4: #d6f1e3;
   --jade-7: #8bceb6;
-  --jade-11: #208368;
+  --jade-11: #1d7a60;
   --jade-12: #1d3b31;
   --accent-solid: #1f7a61;
   --accent-solid-hover: #1a6b55;
@@ -41,8 +42,10 @@
   --grass-3: #e9f6e9;
   --grass-11: #2a7e3b;
   /* WCAG AA where the prototype's pairs fall short in light: small text on the accent
-     and warning pills (jade-11 on jade-3 is 4.2:1, amber-11 on amber-3 4.3:1), and the
-     edge of a text field (sand-6 is 1.4:1; 1.4.11 asks 3:1). */
+     and warning pills (jade-11 on jade-3 is 4.2:1, amber-11 on amber-3 4.3:1), the edge
+     of a text field (sand-6 is 1.4:1; 1.4.11 asks 3:1), jade-11 text on sand-2 (4.4:1,
+     darkened above) and placeholders (sand-9 is 3.3:1; sand-10 is the readable one).
+     contrast.test.ts pins every pair, in both themes. */
   --pill-accent-fg: var(--jade-12);
   --pill-warning-fg: var(--amber-12);
   --control-edge: var(--sand-9);
@@ -60,6 +63,7 @@
   --sand-7: #494844;
   --sand-8: #62605b;
   --sand-9: #6f6d66;
+  --sand-10: #8a8983;
   --sand-11: #b5b3ad;
   --sand-12: #eeeeec;
   --jade-2: #121c18;
@@ -99,6 +103,7 @@
   --color-sand-7: var(--sand-7);
   --color-sand-8: var(--sand-8);
   --color-sand-9: var(--sand-9);
+  --color-sand-10: var(--sand-10);
   --color-sand-11: var(--sand-11);
   --color-sand-12: var(--sand-12);
   --color-jade-2: var(--jade-2);
