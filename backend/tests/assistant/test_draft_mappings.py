@@ -216,8 +216,13 @@ def test_several_tables_run_as_a_job_that_ends_in_one_change_set(
         f"{dw(staged)}/lineage/columns/{by_name['amount']['column_id']}"
     )
     assert lineage.status_code == 200, lineage.text
-    [edge] = lineage.json()["edges"]
-    assert edge["kind"] == "value" and edge["from_label"].endswith("orders.amount")
+    # Upstream also reaches the staging mappings; the one edge into the column is the draft's.
+    [edge] = [
+        e
+        for e in lineage.json()["edges"]
+        if e["kind"] == "value" and e["to_id"] == by_name["amount"]["column_id"]
+    ]
+    assert edge["from_label"].endswith("orders.amount")
 
 
 # -- the job's collection, without a database -----------------------------------------------
