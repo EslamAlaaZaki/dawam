@@ -13,13 +13,37 @@ import {
   useSetLlmRoles,
   useSetWorkspaceBudget,
 } from "../api/llmSettings";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import {
+  ErrorText,
+  NativeSelect,
+  PageHead,
+  TableCard,
+  labelClasses,
+} from "./parts";
+
+const cardClasses =
+  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
 
 /** Model roles, monthly token budgets and AI usage (admins only). */
 export function LlmSettingsPage() {
   return (
-    <section className="page admin-page">
-      <h2>AI roles, budgets and usage</h2>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="AI roles, budgets and usage"
+        description="Which models play which role, how many tokens each Workspace may use per month, and what was used."
+      />
       <RolesSection />
       <BudgetsSection />
       <UsageSection />
@@ -41,9 +65,9 @@ function ModelSelect({
   required?: boolean;
 }) {
   return (
-    <label>
+    <label className={labelClasses}>
       {label}
-      <select name={name} defaultValue={value ?? ""} required={required}>
+      <NativeSelect name={name} defaultValue={value ?? ""} required={required}>
         {!required && <option value="">None</option>}
         {required && <option value="">Choose a model</option>}
         {models.map((model) => (
@@ -51,7 +75,7 @@ function ModelSelect({
             {model.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </label>
   );
 }
@@ -64,7 +88,7 @@ function RolesSection() {
     return <Loading />;
   }
   if (roles.isError || providers.isError) {
-    return <p role="alert">Could not load the model roles.</p>;
+    return <ErrorText>Could not load the model roles.</ErrorText>;
   }
   // Only models that passed "Test connection" can be assigned.
   const tested = providers.data.flatMap((provider) =>
@@ -82,23 +106,31 @@ function RolesSection() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    save.mutate({
-      agent_model_id: String(data.get("agent")),
-      light_model_id: String(data.get("light") ?? "") || null,
-      embedding_model_id: String(data.get("embedding") ?? "") || null,
-    });
+    save.mutate(
+      {
+        agent_model_id: String(data.get("agent")),
+        light_model_id: String(data.get("light") ?? "") || null,
+        embedding_model_id: String(data.get("embedding") ?? "") || null,
+      },
+      { onSuccess: () => toast.success("Roles saved.") },
+    );
   }
 
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="Model roles">
-      <h3>Model roles</h3>
+    <form className={cardClasses} onSubmit={onSubmit} aria-label="Model roles">
+      <h3 className="text-lg font-semibold">Model roles</h3>
       {roles.data.reindex_needed && (
-        <p role="status">
+        <p
+          role="status"
+          className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5 text-sm"
+        >
           Documents must be indexed again: the embedding model or its vector
           dimension changed.
         </p>
       )}
-      <p>Only models that passed &quot;Test connection&quot; are offered.</p>
+      <p className="text-sm text-sand-11">
+        Only models that passed &quot;Test connection&quot; are offered.
+      </p>
       <ModelSelect
         label="Agent model (required)"
         name="agent"
@@ -118,15 +150,15 @@ function RolesSection() {
         models={embedding}
         value={roles.data.embedding_model_id}
       />
-      {save.isError && (
-        <p className="login-error" role="alert">
-          {save.error.message}
-        </p>
-      )}
-      {save.isSuccess && <p role="status">Roles saved.</p>}
-      <button type="submit" disabled={save.isPending}>
+      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+      <Button
+        type="submit"
+        variant="primary"
+        className="self-start"
+        disabled={save.isPending}
+      >
         Save roles
-      </button>
+      </Button>
     </form>
   );
 }
@@ -141,7 +173,7 @@ function BudgetsSection() {
     return <Loading />;
   }
   if (budgets.isError) {
-    return <p role="alert">Could not load the budgets.</p>;
+    return <ErrorText>Could not load the budgets.</ErrorText>;
   }
 
   function onInstallation(event: FormEvent<HTMLFormElement>) {
@@ -164,16 +196,16 @@ function BudgetsSection() {
   const choices = workspaces.data?.pages.flatMap((page) => page.items) ?? [];
   const failure = setInstallation.error ?? setWorkspace.error ?? clear.error;
   return (
-    <div>
-      <h3>Monthly token budgets</h3>
+    <div className="flex flex-col gap-3.5">
+      <h3 className="text-lg font-semibold">Monthly token budgets</h3>
       <form
-        className="admin-form"
+        className={cardClasses}
         onSubmit={onInstallation}
         aria-label="Installation budget"
       >
-        <label>
+        <label className={labelClasses}>
           Installation (tokens per month; empty: unlimited)
-          <input
+          <Input
             name="tokens"
             type="number"
             min={0}
@@ -181,56 +213,68 @@ function BudgetsSection() {
             defaultValue={budgets.data.installation_monthly_token_budget ?? ""}
           />
         </label>
-        <button type="submit" disabled={setInstallation.isPending}>
+        <Button
+          type="submit"
+          className="self-start"
+          disabled={setInstallation.isPending}
+        >
           Save installation budget
-        </button>
+        </Button>
       </form>
       {budgets.data.workspaces.length > 0 && (
-        <ul aria-label="Workspace budgets">
+        <ul
+          aria-label="Workspace budgets"
+          className="flex max-w-xl flex-col divide-y divide-sand-4 rounded-xl border border-sand-5 bg-sand-1"
+        >
           {budgets.data.workspaces.map((budget) => (
-            <li key={budget.workspace_id}>
-              {budget.workspace_name ?? budget.workspace_id}:{" "}
-              {budget.monthly_token_budget.toLocaleString("en")} tokens
-              <button
+            <li
+              key={budget.workspace_id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span>
+                {budget.workspace_name ?? budget.workspace_id}:{" "}
+                {budget.monthly_token_budget.toLocaleString("en")} tokens
+              </span>
+              <Button
                 type="button"
-                className="secondary"
+                size="sm"
                 onClick={() => clear.mutate(budget.workspace_id)}
               >
                 Remove budget for {budget.workspace_name ?? budget.workspace_id}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
       <form
-        className="admin-form"
+        className={cardClasses}
         onSubmit={onWorkspace}
         aria-label="Workspace budget"
       >
-        <label>
+        <label className={labelClasses}>
           Workspace
-          <select name="workspace" required defaultValue="">
+          <NativeSelect name="workspace" required defaultValue="">
             <option value="">Choose a Workspace</option>
             {choices.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
                 {workspace.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={labelClasses}>
           Tokens per month
-          <input name="tokens" type="number" min={0} required />
+          <Input name="tokens" type="number" min={0} required />
         </label>
-        <button type="submit" disabled={setWorkspace.isPending}>
+        <Button
+          type="submit"
+          className="self-start"
+          disabled={setWorkspace.isPending}
+        >
           Set Workspace budget
-        </button>
+        </Button>
       </form>
-      {failure && (
-        <p className="login-error" role="alert">
-          {failure.message}
-        </p>
-      )}
+      {failure && <ErrorText>{failure.message}</ErrorText>}
     </div>
   );
 }
@@ -239,67 +283,79 @@ function UsageSection() {
   const [month, setMonth] = useState("");
   const usage = useLlmUsage(month || undefined);
   return (
-    <div>
-      <h3>Usage</h3>
-      <label>
+    <div className="flex flex-col gap-3.5">
+      <h3 className="text-lg font-semibold">Usage</h3>
+      <label className={`${labelClasses} w-48`}>
         Month
-        <input
+        <Input
           type="month"
           value={month}
           onChange={(event) => setMonth(event.target.value)}
         />
       </label>
       {usage.isPending && <Loading />}
-      {usage.isError && <p role="alert">Could not load the usage.</p>}
+      {usage.isError && <ErrorText>Could not load the usage.</ErrorText>}
       {usage.data && (
         <>
-          <p>
+          <p className="text-sand-11">
             {usage.data.month}:{" "}
             {usage.data.totals.total_tokens.toLocaleString("en")} tokens in{" "}
             {usage.data.totals.calls} calls
             {usage.data.installation_monthly_token_budget !== null &&
               ` (budget ${usage.data.installation_monthly_token_budget.toLocaleString("en")})`}
           </p>
-          <table aria-label="Usage per Workspace">
-            <thead>
-              <tr>
-                <th>Workspace</th>
-                <th>Tokens</th>
-                <th>Calls</th>
-                <th>Budget</th>
-              </tr>
-            </thead>
-            <tbody>
-              {usage.data.workspaces.map((row) => (
-                <tr key={row.workspace_id ?? "none"}>
-                  <td>{row.workspace_name ?? "No Workspace"}</td>
-                  <td>{row.totals.total_tokens.toLocaleString("en")}</td>
-                  <td>{row.totals.calls}</td>
-                  <td>
-                    {row.monthly_token_budget?.toLocaleString("en") ?? "none"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <table aria-label="Usage per user">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Tokens</th>
-                <th>Calls</th>
-              </tr>
-            </thead>
-            <tbody>
-              {usage.data.users.map((row) => (
-                <tr key={row.user_id ?? "none"}>
-                  <td>{row.display_name ?? row.email ?? "System"}</td>
-                  <td>{row.totals.total_tokens.toLocaleString("en")}</td>
-                  <td>{row.totals.calls}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TableCard>
+            <Table aria-label="Usage per Workspace">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Workspace</TableHead>
+                  <TableHead>Tokens</TableHead>
+                  <TableHead>Calls</TableHead>
+                  <TableHead>Budget</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {usage.data.workspaces.map((row) => (
+                  <TableRow key={row.workspace_id ?? "none"}>
+                    <TableCell>
+                      {row.workspace_name ?? "No Workspace"}
+                    </TableCell>
+                    <TableCell>
+                      {row.totals.total_tokens.toLocaleString("en")}
+                    </TableCell>
+                    <TableCell>{row.totals.calls}</TableCell>
+                    <TableCell>
+                      {row.monthly_token_budget?.toLocaleString("en") ?? "none"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableCard>
+          <TableCard>
+            <Table aria-label="Usage per user">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Tokens</TableHead>
+                  <TableHead>Calls</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {usage.data.users.map((row) => (
+                  <TableRow key={row.user_id ?? "none"}>
+                    <TableCell>
+                      {row.display_name ?? row.email ?? "System"}
+                    </TableCell>
+                    <TableCell>
+                      {row.totals.total_tokens.toLocaleString("en")}
+                    </TableCell>
+                    <TableCell>{row.totals.calls}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableCard>
         </>
       )}
     </div>

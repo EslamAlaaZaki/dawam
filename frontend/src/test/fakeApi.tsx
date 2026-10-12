@@ -7,6 +7,7 @@ import { render } from "@testing-library/react";
 import { createApiClient } from "../api/client";
 import { ApiClientContext } from "../api/context";
 import type { Me } from "../api/queries";
+import { Toaster } from "../components/ui/sonner";
 import { setLocation } from "./navigation";
 import { TestApp } from "./TestApp";
 
@@ -200,6 +201,7 @@ export function renderApp(api: FakeApi, path = "/") {
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
         <TestApp />
+        <Toaster />
       </QueryClientProvider>
     </ApiClientContext.Provider>,
   );

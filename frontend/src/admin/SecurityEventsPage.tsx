@@ -2,8 +2,29 @@
 
 import { useState, type FormEvent } from "react";
 
-import { useSecurityEvents, type SecurityEvent, type SecurityEventFilters } from "../api/users";
+import {
+  useSecurityEvents,
+  type SecurityEvent,
+  type SecurityEventFilters,
+} from "../api/users";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import {
+  ErrorText,
+  NativeSelect,
+  PageHead,
+  TableCard,
+  labelClasses,
+} from "./parts";
 
 /** The event types DAWAM records, for the filter. */
 const EVENT_TYPES = [
@@ -59,65 +80,82 @@ export function SecurityEventsPage() {
   }
 
   return (
-    <section className="page admin-page">
-      <h2>Security events</h2>
-      <form className="admin-filters" onSubmit={onFilter}>
-        <label>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Security events"
+        description="Sign-ins, role changes, deactivations and other security-relevant activity."
+      />
+      <form
+        className="flex flex-wrap items-end gap-2"
+        aria-label="Filter security events"
+        onSubmit={onFilter}
+      >
+        <label className={labelClasses}>
           Event type
-          <select name="event_type" defaultValue="">
+          <NativeSelect name="event_type" defaultValue="">
             <option value="">Any event</option>
             {EVENT_TYPES.map((type) => (
               <option key={type} value={type}>
                 {type}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={labelClasses}>
           Actor email
-          <input name="actor" type="search" />
+          <Input name="actor" type="search" />
         </label>
-        <label>
+        <label className={labelClasses}>
           From
-          <input name="from" type="date" />
+          <Input name="from" type="date" />
         </label>
-        <label>
+        <label className={labelClasses}>
           To
-          <input name="to" type="date" />
+          <Input name="to" type="date" />
         </label>
-        <button type="submit">Filter</button>
+        <Button type="submit" className="h-[34px]">
+          Filter
+        </Button>
       </form>
       {events.isPending ? (
         <Loading />
       ) : events.isError ? (
-        <p role="alert">Could not load the security events: {events.error.message}</p>
+        <ErrorText>
+          Could not load the security events: {events.error.message}
+        </ErrorText>
       ) : (
         <>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">When</th>
-                <th scope="col">Event</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Details</th>
-                <th scope="col">IP address</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.data.pages.flatMap((page) =>
-                page.items.map((event) => <EventRow key={event.id} event={event} />),
-              )}
-            </tbody>
-          </table>
-          {events.data.pages[0]?.items.length === 0 && <p>No events match.</p>}
+          <TableCard>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">When</TableHead>
+                  <TableHead scope="col">Event</TableHead>
+                  <TableHead scope="col">Actor</TableHead>
+                  <TableHead scope="col">Details</TableHead>
+                  <TableHead scope="col">IP address</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {events.data.pages.flatMap((page) =>
+                  page.items.map((event) => (
+                    <EventRow key={event.id} event={event} />
+                  )),
+                )}
+              </TableBody>
+            </Table>
+          </TableCard>
+          {events.data.pages[0]?.items.length === 0 && (
+            <p className="text-sand-11">No events match.</p>
+          )}
           {events.hasNextPage && (
-            <button
-              type="button"
+            <Button
+              className="self-start"
               onClick={() => void events.fetchNextPage()}
               disabled={events.isFetchingNextPage}
             >
               Load more
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -127,15 +165,20 @@ export function SecurityEventsPage() {
 
 function EventRow({ event }: { event: SecurityEvent }) {
   const details = Object.entries(event.metadata)
-    .map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`)
+    .map(
+      ([key, value]) =>
+        `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
+    )
     .join(", ");
   return (
-    <tr aria-label={`${event.event_type} at ${when(event.created_at)}`}>
-      <td>{when(event.created_at)}</td>
-      <td>{event.event_type}</td>
-      <td>{event.actor_email ?? event.actor_id ?? "—"}</td>
-      <td>{details}</td>
-      <td>{event.ip ?? "—"}</td>
-    </tr>
+    <TableRow aria-label={`${event.event_type} at ${when(event.created_at)}`}>
+      <TableCell className="text-sand-11">{when(event.created_at)}</TableCell>
+      <TableCell>{event.event_type}</TableCell>
+      <TableCell>{event.actor_email ?? event.actor_id ?? "—"}</TableCell>
+      <TableCell className="whitespace-normal break-words text-sand-11">
+        {details}
+      </TableCell>
+      <TableCell className="text-sand-11">{event.ip ?? "—"}</TableCell>
+    </TableRow>
   );
 }

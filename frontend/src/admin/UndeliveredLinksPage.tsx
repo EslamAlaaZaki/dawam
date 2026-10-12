@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 
-import { useDismissUndeliveredLink, useUndeliveredLinks, type UndeliveredLink } from "../api/mail";
+import {
+  useDismissUndeliveredLink,
+  useUndeliveredLinks,
+  type UndeliveredLink,
+} from "../api/mail";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Loading } from "../shell/Loading";
+import { ErrorText, PageHead } from "./parts";
 
 const PURPOSES: Record<string, string> = {
   password_reset: "Password reset",
@@ -26,22 +33,19 @@ export function UndeliveredLinksPage() {
   }
   if (links.isError) {
     return (
-      <p className="page" role="alert">
-        Could not load the links: {links.error.message}
-      </p>
+      <ErrorText>Could not load the links: {links.error.message}</ErrorText>
     );
   }
   return (
-    <section className="page admin-page">
-      <h2>Links to share</h2>
-      <p>
-        Links DAWAM could not email. Pass each one to its recipient only, through a channel
-        you trust: whoever has a link can use it. A link leaves this list when it expires.
-      </p>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Links to share"
+        description="Links DAWAM could not email. Pass each one to its recipient only, through a channel you trust: whoever has a link can use it. A link leaves this list when it expires."
+      />
       {links.data.length === 0 ? (
-        <p>There are no links to share.</p>
+        <p className="text-sand-11">There are no links to share.</p>
       ) : (
-        <ul className="link-list">
+        <ul className="flex max-w-3xl flex-col gap-3">
           {links.data.map((link) => (
             <LinkItem key={link.id} link={link} />
           ))}
@@ -65,30 +69,38 @@ function LinkItem({ link }: { link: UndeliveredLink }) {
   }
 
   return (
-    <li className="link-item" aria-label={`Link for ${link.recipient}`}>
+    <li
+      className="flex flex-col gap-2.5 rounded-xl border border-sand-5 bg-sand-1 p-4"
+      aria-label={`Link for ${link.recipient}`}
+    >
       <p>
-        <strong>{PURPOSES[link.purpose] ?? link.purpose}</strong> for {link.recipient}
+        <strong>{PURPOSES[link.purpose] ?? link.purpose}</strong> for{" "}
+        {link.recipient}
         <br />
-        <small>
+        <small className="text-sand-11">
           {REASONS[link.reason]} · created {when(link.created_at)} · expires{" "}
           {when(link.expires_at)}
         </small>
       </p>
-      <input readOnly value={link.url} aria-label="Link" onFocus={(e) => e.target.select()} />
-      <div className="admin-actions">
-        <button type="button" onClick={copy}>
+      <Input
+        readOnly
+        value={link.url}
+        aria-label="Link"
+        onFocus={(e) => e.target.select()}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" onClick={copy}>
           {copied ? "Copied" : "Copy link"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="secondary"
           onClick={() => dismiss.mutate(link.id)}
           disabled={dismiss.isPending}
         >
           Remove
-        </button>
+        </Button>
       </div>
-      {dismiss.isError && <p role="alert">{dismiss.error.message}</p>}
+      {dismiss.isError && <ErrorText>{dismiss.error.message}</ErrorText>}
     </li>
   );
 }
