@@ -5,6 +5,7 @@ import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node } fro
 import "@xyflow/react/dist/style.css";
 
 import type { DwTable } from "../api/dwModel";
+import { NO_PII, piiMarkLabel, type PiiMarks } from "../api/piiView";
 import { PiiMarker } from "./PiiMarker";
 import { isFact, linksOf, ranks } from "./starModel";
 
@@ -17,18 +18,19 @@ const LINE = 18;
 const MAX_LINES = 6;
 
 /** The columns worth drawing: keys, and a fact's measures. */
-function keyColumns(t: DwTable, pii: Map<string, boolean>) {
+function keyColumns(t: DwTable, pii: PiiMarks) {
   return t.columns.filter((c) => ["sk", "nk", "fk", "measure"].includes(c.role) || pii.has(c.id));
 }
 
 /** React Flow draws the Layer's tables as nodes and its foreign keys as role-labelled edges.
- * `pii` holds the PII-derived DW columns (id to pseudonymised); they are always drawn, marked. */
+ * `pii` holds the PII view's marks by id: PII-derived columns are always drawn, marked, and a
+ * table with marks (derived columns, or influenced by PII) carries a table-level marker. */
 export function StarDiagram({
   tables,
-  pii = new Map(),
+  pii = NO_PII,
 }: {
   tables: DwTable[];
-  pii?: Map<string, boolean>;
+  pii?: PiiMarks;
 }) {
   const links = linksOf(tables);
   const rank = ranks(tables, links);
@@ -76,10 +78,21 @@ export function StarDiagram({
   );
 }
 
-function TableCard({ table, pii }: { table: DwTable; pii: Map<string, boolean> }) {
+function TableCard({ table, pii }: { table: DwTable; pii: PiiMarks }) {
+  const derived = table.columns.filter((c) => pii.get(c.id)?.kind === "derived");
+  const influenced = pii.get(table.id)?.kind === "influenced";
+  const tableLabel = [
+    derived.length > 0
+      ? `${derived.length} PII-derived ${derived.length === 1 ? "column" : "columns"}: ${derived.map((c) => c.name).join(", ")}`
+      : "",
+    influenced ? "PII-influenced table" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
   return (
     <div className="star-card">
       <strong className="star-name">{table.name}</strong>
+      {tableLabel ? <PiiMarker label={tableLabel} /> : null}
       <small className="star-kind">
         {" "}
         {table.kind}
@@ -90,12 +103,12 @@ function TableCard({ table, pii }: { table: DwTable; pii: Map<string, boolean> }
           .slice(0, MAX_LINES)
           .map((c) => (
             <li key={c.id}>
-              {c.role === "sk" || c.role === "nk" ? (
+              {c.role === "sk" ? (
                 <KeyRound aria-hidden className="star-key" />
               ) : null}
               {c.name}
-              {pii.has(c.id) ? (
-                <PiiMarker label={pii.get(c.id) ? "PII-derived, pseudonymised" : "PII-derived"} />
+              {pii.get(c.id)?.kind === "derived" ? (
+                <PiiMarker label={piiMarkLabel(pii.get(c.id)!)} />
               ) : null}
               {c.role === "sk" ? " (SK)" : c.role === "fk" ? " (FK)" : ""}
             </li>
