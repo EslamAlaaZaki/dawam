@@ -16,6 +16,7 @@ import { toast } from "../components/ui/sonner";
 import {
   Actions,
   DetailList,
+  EmptyState,
   ErrorText,
   Hint,
   Panel,
@@ -84,9 +85,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       return <WorkspaceNotFound />;
     }
     return (
-      <p className="page" role="alert">
-        Could not load the Workspace: {error.message}
-      </p>
+      <ErrorText>Could not load the Workspace: {error.message}</ErrorText>
     );
   }
   // Whether the Data Warehouse is set up decides which of its folders exist, so do not
@@ -123,13 +122,6 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const modelLayer = (["staging", "core", "mart"] as const).find(
     (layer) => folder.id === `dw/${layer}/model`,
   );
-
-  // The folders already in the new design drop out of the legacy wrapper.
-  const restyled =
-    folder.id === "" ||
-    folder.id === "systems" ||
-    folder.id === "dw/files" ||
-    !!(openSystem || connectionSystem || schemaSystem || documentsSystem);
 
   function ask(asked: Omit<AssistantRequest, "nonce">) {
     setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }));
@@ -168,26 +160,20 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
         {workspace.data.status === "archived" && (
           <p
             role="status"
-            className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5 text-sm"
+            className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
           >
             This Workspace is archived and read-only. Exports and reading still
             work.
           </p>
         )}
         <StageProgressPanel workspaceId={workspaceId} />
-        <div
-          className={
-            restyled
-              ? "flex min-w-0 flex-col gap-6"
-              : "legacy-page min-w-0 rounded-lg border border-line p-5"
-          }
-        >
+        <div className="flex min-w-0 flex-col gap-6">
           {inDataWarehouse && warehouse.isPending ? (
             <Loading />
           ) : inDataWarehouse && warehouse.isError ? (
-            <p role="alert">
+            <ErrorText>
               Could not load the Data Warehouse: {warehouse.error.message}
-            </p>
+            </ErrorText>
           ) : folder.id === "" ? (
             <>
               <WorkspaceDetails
@@ -271,10 +257,12 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               system={erSystem}
             />
           ) : (
-            <section aria-labelledby="folder-title">
-              <h3 id="folder-title">{folder.label}</h3>
-              <p className="empty-state">{folder.empty}</p>
-            </section>
+            <Panel aria-labelledby="folder-title">
+              <h3 id="folder-title" className={h3Classes}>
+                {folder.label}
+              </h3>
+              <EmptyState>{folder.empty}</EmptyState>
+            </Panel>
           )}
         </div>
       </div>
@@ -291,7 +279,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
         className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(340px,100vw)] overflow-y-auto border-l outline-none border-line bg-sand-1 shadow-lg lg:shadow-none"
       >
         {assistantUsed && (
-          <div className="legacy-page min-h-full p-4">
+          <div className="min-h-full p-4">
             <AssistantPanel
               workspace={workspace.data}
               request={request}

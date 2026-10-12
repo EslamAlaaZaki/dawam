@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import { nonceFromPolicy } from "../security/headers";
 import { Shell } from "../shell/Shell";
 import "./theme.css";
-import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {

@@ -2,9 +2,8 @@
    approved prototype, variant A "Crisp". Radix Colors: sand neutrals, jade accent, red
    (danger), amber (warning) and grass (success), light and dark.
 
-   Tailwind's preflight is left out on purpose: pages not redesigned yet still rely on
-   the browser's defaults and globals.css. The redesigned parts get a small reset of
-   their own instead, scoped to `.dawam-ui` and to shadcn/ui parts (`[data-slot]`). */
+   Tailwind's preflight is left out on purpose: a small reset of our own stands in for it,
+   scoped to `.dawam-ui` and to shadcn/ui parts (`[data-slot]`). */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -145,6 +144,14 @@
 }
 
 @layer base {
+  /* The ground every page sits on, so the dark theme has no light flash or margin. */
+  body {
+    margin: 0;
+    background: var(--color-sand-1);
+    color: var(--color-sand-12);
+    font: 400 var(--text-base) / 1.45 var(--font-sans);
+  }
+
   /* The redesign's own reset, standing in for Tailwind's preflight (see the top). */
   :where(.dawam-ui, .dawam-ui *, [data-slot], [data-slot] *),
   :where(.dawam-ui, .dawam-ui *, [data-slot], [data-slot] *)::before,

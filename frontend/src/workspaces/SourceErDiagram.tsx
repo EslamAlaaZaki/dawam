@@ -23,6 +23,7 @@ import {
   relationshipEdges,
   type ErEdge,
 } from "./erGraph";
+import { Loading } from "../shell/Loading";
 
 type SourceTable = NonNullable<ReturnType<typeof useSourceSchema>["data"]>["tables"][number];
 
@@ -65,7 +66,7 @@ export function SourceErDiagram({
   }, [schema.data, accepted.data, dbSchema, tableId]);
 
   if (schema.isPending || accepted.isPending) {
-    return <p>Loading the ER diagram…</p>;
+    return <Loading label="Loading the ER diagram…" className="p-0" />;
   }
   if (schema.isError || accepted.isError) {
     const message = (schema.error ?? accepted.error)?.message;
@@ -155,7 +156,7 @@ export function SourceErDiagram({
         <EmptyState>No tables match these filters.</EmptyState>
       ) : (
         <div
-          className="er-diagram dawam-flow"
+          className="dawam-flow"
           style={{ height: 480 }}
           aria-label="ER diagram canvas"
         >

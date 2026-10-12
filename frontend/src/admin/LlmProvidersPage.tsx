@@ -53,7 +53,7 @@ export function LlmProvidersPage() {
       {setup.data?.complete && !setup.data.has_internal_agent_model && (
         <p
           role="status"
-          className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5"
+          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5"
         >
           No internal agent model is registered: new Workspaces will default to
           not internal-only.

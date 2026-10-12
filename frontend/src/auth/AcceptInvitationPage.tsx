@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { AuthCard, AuthError, AuthField, AuthHint } from "./AuthFrame";
 import { useFragmentToken } from "./fragmentToken";
+import { Loading } from "../shell/Loading";
 
 /** Join DAWAM from an invitation link: choose a display name and password (story 10). */
 export function AcceptInvitationPage() {
@@ -43,7 +44,7 @@ export function AcceptInvitationPage() {
 
   let content;
   if (token === null || (token && link.isPending)) {
-    content = <p className="text-sand-11">Loading…</p>;
+    content = <Loading className="p-0" />;
   } else if (invalid) {
     content = (
       <p role="alert" className="text-red-11">

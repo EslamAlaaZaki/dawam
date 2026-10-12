@@ -33,6 +33,7 @@ import {
   monoClasses,
   preClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 type SchemaTable = SourceSchema["tables"][number];
 type Routine = SourceSchema["routines"][number];
@@ -90,7 +91,7 @@ export function SchemaBrowser({
   const results = useSchemaSearch(workspaceId, systemId, query);
 
   if (schema.isPending) {
-    return <p className="text-sand-11">Loading the Source Schema…</p>;
+    return <Loading label="Loading the Source Schema…" className="p-0" />;
   }
   if (schema.isError) {
     return (

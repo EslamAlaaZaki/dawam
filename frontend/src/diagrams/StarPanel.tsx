@@ -7,6 +7,7 @@ import { h4Classes } from "../workspaces/parts";
 import { BusMatrix } from "./BusMatrix";
 import { StarDiagram } from "./StarDiagram";
 import { linksOf } from "./starModel";
+import { Loading } from "../shell/Loading";
 
 /**
  * A Layer's star/snowflake diagram and bus matrix (stories 94, 95), under its model list.
@@ -17,7 +18,7 @@ export function StarPanel({ workspaceId, layer }: { workspaceId: string; layer: 
   const pii = usePiiMarks(workspaceId);
 
   if (model.isPending) {
-    return <p>Loading diagram…</p>;
+    return <Loading label="Loading diagram…" className="p-0" />;
   }
   if (model.error) {
     return <p role="alert">Could not load the diagram: {model.error.message}</p>;

@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
+import { Loading } from "../shell/Loading";
 
 const STATUS_LABELS: Record<JobStatus, string> = {
   queued: "Queued",
@@ -78,7 +79,7 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
         aria-label="Background jobs"
         role="region"
       >
-        {jobs.isPending && <p className="text-sand-11">Loading…</p>}
+        {jobs.isPending && <Loading className="p-0" />}
         {jobs.isError && (
           <p role="alert">Could not load the jobs: {jobs.error.message}</p>
         )}

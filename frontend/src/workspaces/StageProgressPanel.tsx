@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 
 import { useStageProgress, type StageStatus } from "../api/workspaces";
+import { Loading } from "../shell/Loading";
 
 const STATUS_LABELS: Record<StageStatus, string> = {
   not_started: "Not started",
@@ -25,7 +26,7 @@ export function StageProgressPanel({ workspaceId }: { workspaceId: string }) {
       <h3 id="stage-progress-title" className="sr-only">
         Stage progress
       </h3>
-      {progress.isPending && <p className="text-sand-11">Loading…</p>}
+      {progress.isPending && <Loading className="p-0" />}
       {progress.isError && (
         <p role="alert">
           Could not load the stage progress: {progress.error.message}

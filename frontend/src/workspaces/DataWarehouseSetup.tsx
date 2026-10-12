@@ -26,6 +26,7 @@ import {
   h3Classes,
   labelClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 const WEEKDAYS = [
   "monday",
@@ -47,7 +48,7 @@ const PLATFORMS = Object.keys(PLATFORM_LABELS) as TargetPlatform[];
 export function DataWarehouseSetup({ workspace }: { workspace: Workspace }) {
   const warehouse = useDataWarehouse(workspace.id);
   if (warehouse.isPending) {
-    return <p>Loading…</p>;
+    return <Loading className="p-0" />;
   }
   if (warehouse.isError) {
     return (

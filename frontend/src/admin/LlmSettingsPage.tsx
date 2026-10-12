@@ -122,7 +122,7 @@ function RolesSection() {
       {roles.data.reindex_needed && (
         <p
           role="status"
-          className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5 text-sm"
+          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
         >
           Documents must be indexed again: the embedding model or its vector
           dimension changed.

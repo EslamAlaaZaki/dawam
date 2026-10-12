@@ -4,6 +4,7 @@ import { useSourceSummary } from "../api/sourceSummary";
 import type { SourceSystem } from "../api/systems";
 import { Badge } from "../components/ui/badge";
 import { DetailList, EmptyState, ErrorText, Panel, h3Classes } from "./parts";
+import { Loading } from "../shell/Loading";
 
 const STATUS_LABELS = {
   not_started: "Not started",
@@ -32,7 +33,7 @@ export function SourceSummaryPanel({
       <h3 id="source-summary-title" className={h3Classes}>
         Source summary
       </h3>
-      {summary.isPending && <p>Loading…</p>}
+      {summary.isPending && <Loading className="p-0" />}
       {summary.isError && (
         <ErrorText>
           Could not load the source summary: {summary.error.message}

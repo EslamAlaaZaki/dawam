@@ -72,7 +72,7 @@ export function LineageGraph({
   );
 
   return (
-    <div className="lineage-graph dawam-flow" role="group" aria-label="Lineage graph" style={{ height: 560 }}>
+    <div className="dawam-flow" role="group" aria-label="Lineage graph" style={{ height: 560 }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
