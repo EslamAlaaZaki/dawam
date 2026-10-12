@@ -7657,6 +7657,10 @@ export interface components {
             columns: components["schemas"]["PiiColumn"][];
             /** Tables */
             tables: components["schemas"]["LineageNode"][];
+            /** Source Columns */
+            source_columns: components["schemas"]["LineageNode"][];
+            /** Kpis */
+            kpis: components["schemas"]["LineageNode"][];
         };
         /** Platform */
         Platform: {

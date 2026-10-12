@@ -322,7 +322,7 @@ def test_join_only_use_marks_the_table_not_its_columns(graph, roles):
 
 
 def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph, roles):
-    assert pii_view(roles) == {"columns": [], "tables": []}
+    assert pii_view(roles) == {"columns": [], "tables": [], "source_columns": [], "kpis": []}
     confirm_pii(roles, graph["src_amount"])
     map_direct(roles, graph["core"], graph["amount_c"], f"{graph['stg']['name']}.status", version=1)
 
@@ -330,3 +330,28 @@ def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph
 
     assert "fact_orders.amount_c" not in labels_now
     assert labels_now == [f"{graph['stg']['name']}.amount"]
+
+
+def test_the_view_names_protected_sources_and_the_kpis_that_depend_on_pii(graph, roles):
+    assert pii_view(roles)["source_columns"] == []
+
+    confirm_pii(roles, graph["src_amount"])
+    body = pii_view(roles)
+
+    # The confirmed source column feeds the model; the KPI links a PII-derived Mart column.
+    assert [c["label"] for c in body["source_columns"]] == ["crm.dbo.orders.amount"]
+    assert [k["label"] for k in body["kpis"]] == ["Revenue"]
+    assert body["kpis"][0]["id"] == graph["kpi"]
+
+
+def test_a_flagged_sensitive_source_is_protected_but_derives_no_kpi_pii(graph, roles):
+    with roles.app.state.engine.begin() as connection:
+        connection.execute(
+            sa.text("update src_columns set is_sensitive = true where id = :c"),
+            {"c": graph["src_status"]},
+        )
+
+    body = pii_view(roles)
+
+    assert [c["label"] for c in body["source_columns"]] == ["crm.dbo.orders.status"]
+    assert body["kpis"] == []

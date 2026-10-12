@@ -66,6 +66,34 @@ def propagate_pii(db: Session, pii_column_ids: Iterable[uuid.UUID]) -> PiiPropag
     return PiiPropagation(frozenset(derived), frozenset(influenced), frozenset(pseudonymised))
 
 
+def source_columns_in_lineage(db: Session) -> set[uuid.UUID]:
+    """The source columns some lineage edge starts from: the ones that feed the model."""
+    return set(
+        db.scalars(
+            sa.select(LineageEdgeRecord.from_id)
+            .where(LineageEdgeRecord.from_type == "src_column")
+            .distinct()
+        )
+    )
+
+
+def pii_dependent_kpis(db: Session, derived_columns: Iterable[uuid.UUID]) -> set[uuid.UUID]:
+    """The KPIs that link a PII-derived DW column (``kpi`` edges run from a column to its
+    KPI), and so depend on PII."""
+    derived = list(derived_columns)
+    if not derived:
+        return set()
+    return set(
+        db.scalars(
+            sa.select(LineageEdgeRecord.to_id).where(
+                LineageEdgeRecord.kind == "kpi",
+                LineageEdgeRecord.to_type == "kpi",
+                LineageEdgeRecord.from_id.in_(derived),
+            )
+        )
+    )
+
+
 def pii_origins(
     db: Session, pii_column_ids: Iterable[uuid.UUID]
 ) -> dict[uuid.UUID, set[uuid.UUID]]:

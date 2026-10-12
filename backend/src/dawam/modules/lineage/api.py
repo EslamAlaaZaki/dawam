@@ -111,6 +111,10 @@ class PiiViewReport(BaseModel):
     """PII-derived DW columns: fed by a confirmed PII column through value edges."""
     tables: list[LineageNode]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
+    source_columns: list[LineageNode]
+    """Protected Columns that feed the model (a marker for the lineage graph)."""
+    kpis: list[LineageNode]
+    """KPIs that link a PII-derived DW column (a marker for the lineage graph)."""
 
 
 @router.get("/pii", operation_id="getPiiView")

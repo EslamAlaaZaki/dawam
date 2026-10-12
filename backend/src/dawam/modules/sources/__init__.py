@@ -121,7 +121,7 @@ from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_changes import SourceEnhancementHandler
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
-from .internal.pii import is_protected
+from .internal.pii import is_protected, protected_column_ids
 from .internal.query_guard import (
     GuardCatalog,
     GuardColumn,
@@ -241,6 +241,7 @@ __all__ = [
     "hidden_source_system_ids",
     "is_protected",
     "load_guard_catalog",
+    "protected_column_ids",
     "purge_source_system",
     "router",
     "source_column_labels",

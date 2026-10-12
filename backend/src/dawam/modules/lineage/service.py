@@ -10,7 +10,7 @@ shown only when both its ends are.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import sqlalchemy as sa
@@ -18,13 +18,19 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
 from dawam.modules.kpis import kpi_names
-from dawam.modules.sources import confirmed_pii_column_ids, source_column_labels
+from dawam.modules.sources import (
+    confirmed_pii_column_ids,
+    protected_column_ids,
+    source_column_labels,
+)
 from dawam.modules.warehouse import (
     LineageEdge,
     lineage_edges,
     lineage_nodes,
+    pii_dependent_kpis,
     pii_notes,
     propagate_pii,
+    source_columns_in_lineage,
 )
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
@@ -90,6 +96,11 @@ class PiiView:
     """PII-derived DW columns: fed by a confirmed PII column through value edges."""
     tables: list[Node]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
+    source_columns: list[Node] = field(default_factory=list)
+    """Protected Columns (flagged sensitive, or with a suggested or confirmed finding) that
+    feed the model; marks for the lineage graph, not exported as PII columns."""
+    kpis: list[Node] = field(default_factory=list)
+    """KPIs that link a PII-derived DW column; marks for the lineage graph."""
 
 
 def _order(node: Node) -> tuple[int, str]:
@@ -150,6 +161,9 @@ class LineageService:
                 db, workspace_id, result.derived_columns | result.influenced_tables
             )
             notes = pii_notes(db, result.derived_columns)
+            sources = source_column_labels(db, workspace_id, source_columns_in_lineage(db))
+            protected = protected_column_ids(db, sources)
+            kpis = kpi_names(db, workspace_id, pii_dependent_kpis(db, result.derived_columns))
         found = [Node(n.id, n.type, n.label, n.layer) for n in nodes.values()]  # type: ignore[arg-type]
         return PiiView(
             columns=[
@@ -164,6 +178,10 @@ class LineageService:
                 for n in sorted((n for n in found if n.type == "dw_column"), key=_order)
             ],
             tables=sorted((n for n in found if n.type == "dw_table"), key=_order),
+            source_columns=sorted(
+                (Node(i, "src_column", sources[i], "source") for i in protected), key=_order
+            ),
+            kpis=sorted((Node(i, "kpi", name, "kpi") for i, name in kpis.items()), key=_order),
         )
 
     def _start(self, db: Session, workspace_id: uuid.UUID, node_id: uuid.UUID) -> Node:

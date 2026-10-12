@@ -157,6 +157,8 @@ function backend(tables: DwTable[], pii: { id: string; pseudonymised: boolean }[
             pii_note: null,
           })),
           tables: [],
+          source_columns: [],
+          kpis: [],
         });
       case `GET ${TABLES}`:
         return json({
@@ -243,6 +245,8 @@ describe("the star diagram", () => {
             tables: [
               { id: DATE.id, type: "dw_table", label: "dim_date", layer: "core" },
             ],
+            source_columns: [],
+            kpis: [],
           })
         : backend([DATE, customer, SALES])(r);
     renderApp(spy, `${PATH}?folder=dw/core/model`);

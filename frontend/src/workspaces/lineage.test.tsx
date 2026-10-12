@@ -179,13 +179,13 @@ describe("the lineage layout", () => {
   it("marks the nodes the PII view lists, matched by id and not by label", () => {
     const twin = node(50, "dw_column", MART.label, "mart");
     const pii = new Map([
-      [SRC.id, { kind: "derived" as const, pseudonymised: false }],
+      [SRC.id, { kind: "protected" as const, pseudonymised: false }],
       [MART.id, { kind: "derived" as const, pseudonymised: true }],
-      [KPI.id, { kind: "derived" as const, pseudonymised: false }],
+      [KPI.id, { kind: "dependent" as const, pseudonymised: false }],
     ]);
     render(
       <LineageGraph
-        nodes={[SRC, MART, twin, STG]}
+        nodes={[SRC, MART, twin, STG, KPI]}
         edges={[]}
         startId={SRC.id}
         selectedId={null}
@@ -194,10 +194,11 @@ describe("the lineage layout", () => {
       />,
     );
     const graph = within(screen.getByRole("group", { name: "Lineage graph" }));
-    expect(graph.getByRole("img", { name: "PII-derived" })).toBeInTheDocument();
+    expect(graph.getByRole("img", { name: "Protected Column" })).toBeInTheDocument();
+    expect(graph.getByRole("img", { name: "Depends on PII-derived columns" })).toBeInTheDocument();
     expect(graph.getByRole("img", { name: "PII-derived, pseudonymised" })).toBeInTheDocument();
-    // The same-label twin and the unlisted STG node stay unmarked; the KPI is not drawn.
-    expect(graph.getAllByRole("img")).toHaveLength(2);
+    // The same-label twin and the unlisted STG node stay unmarked.
+    expect(graph.getAllByRole("img")).toHaveLength(3);
   });
 
   it("renders a 500-node graph in under 2 s", () => {

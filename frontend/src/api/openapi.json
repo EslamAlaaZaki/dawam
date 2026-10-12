@@ -23013,12 +23013,28 @@
             },
             "type": "array",
             "title": "Tables"
+          },
+          "source_columns": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Source Columns"
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Kpis"
           }
         },
         "type": "object",
         "required": [
           "columns",
-          "tables"
+          "tables",
+          "source_columns",
+          "kpis"
         ],
         "title": "PiiViewReport"
       },
