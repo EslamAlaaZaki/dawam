@@ -14,14 +14,16 @@ function Toaster(props: ToasterProps) {
     <Sonner
       theme={resolvedTheme === "dark" ? "dark" : "light"}
       position="bottom-right"
-      icons={{ success: <CircleCheck className="size-4 text-accent-7" aria-hidden /> }}
+      icons={{ success: <CircleCheck className="size-4 text-jade-7 dark:text-[#1f7a61]" aria-hidden /> }}
       toastOptions={{
         unstyled: true,
         classNames: {
           toast:
-            "flex w-full items-center gap-2.5 rounded-lg bg-n12 px-3.5 py-2.5 text-n1 shadow-overlay",
+            "flex w-full items-center gap-2.5 rounded-lg bg-sand-12 px-3.5 py-2.5 text-sand-1 shadow-overlay",
           title: "font-medium",
-          description: "text-n1/80",
+          description: "text-sand-1/80",
+          actionButton:
+            "ml-auto h-[26px] shrink-0 rounded-md border border-sand-1/40 px-2 text-mono font-medium text-sand-1 hover:bg-sand-1/10",
         },
       }}
       {...props}

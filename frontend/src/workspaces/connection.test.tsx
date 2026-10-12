@@ -145,7 +145,7 @@ describe("a Source System's Connection", () => {
     fireEvent.change(within(form).getByLabelText("Password"), { target: { value: "s3cret" } });
     fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
 
-    expect(await within(form).findByText(/Connection works \(PostgreSQL 16.4\)/)).toBeVisible();
+    expect(await screen.findByText(/Connection works \(PostgreSQL 16.4\)/)).toBeVisible();
     expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
       host: "db.internal",
       port: 5432,
@@ -179,7 +179,7 @@ describe("a Source System's Connection", () => {
     fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
     fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
 
-    expect(await within(form).findByText(/Connection works \(SQL Server 16.0.4135\)/)).toBeVisible();
+    expect(await screen.findByText(/Connection works \(SQL Server 16.0.4135\)/)).toBeVisible();
     expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
       engine: "sqlserver",
       port: 1433,
@@ -208,7 +208,7 @@ describe("a Source System's Connection", () => {
     });
     fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
 
-    expect(await within(form).findByText(/Connection works \(MySQL \/ MariaDB 8.4.0\)/)).toBeVisible();
+    expect(await screen.findByText(/Connection works \(MySQL \/ MariaDB 8.4.0\)/)).toBeVisible();
     expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
       engine: "mysql",
       port: 3306,

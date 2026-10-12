@@ -22,10 +22,10 @@ import {
   Actions,
   EmptyState,
   ErrorText,
-  OkText,
   h3Classes,
   listCardClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 /**
  * A Source System's Source Schema (spec stories 45, 46, 54): the browser over its latest
@@ -73,7 +73,14 @@ export function SourceSchemaPanel({
               type="button"
               variant="primary"
               disabled={extract.isPending}
-              onClick={() => extract.mutate()}
+              onClick={() =>
+                extract.mutate(undefined, {
+                  onSuccess: () =>
+                    toast.success(
+                      "Extraction started. Follow it under Background jobs; a new Snapshot appears here only if something changed.",
+                    ),
+                })
+              }
             >
               Extract metadata
             </Button>
@@ -81,13 +88,7 @@ export function SourceSchemaPanel({
         )}
       </div>
       {extract.isError && <ErrorText>{extract.error.message}</ErrorText>}
-      {extract.isSuccess && (
-        <OkText role="status">
-          Extraction started. Follow it under Background jobs; a new Snapshot
-          appears here only if something changed.
-        </OkText>
-      )}
-      {snapshots.isPending && <p className="text-sand-11">Loading…</p>}
+      {snapshots.isPending && <Loading className="p-0" />}
       {snapshots.isError && (
         <ErrorText>
           Could not load the Snapshots: {snapshots.error.message}

@@ -20,13 +20,13 @@ import {
   ErrorText,
   Hint,
   NativeSelect,
-  OkText,
   Panel,
   formCardClasses,
   h3Classes,
   labelClasses,
   monoClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 function parseSchemas(text: string): string[] {
   return text
@@ -81,9 +81,7 @@ function ConnectionSection({
   }
   if (connection.isPending) {
     return (
-      <p role="status" className="text-sand-11">
-        Loading the Connection…
-      </p>
+      <Loading label="Loading the Connection…" className="p-0" />
     );
   }
   if (connection.isError) {
@@ -315,11 +313,6 @@ function ConnectionForm({
       {result && !result.ok && (
         <ErrorText>Connection failed: {result.error}</ErrorText>
       )}
-      {result?.ok && (
-        <OkText role="status">
-          Connection works ({ENGINES[engine].label} {result.server_version}).
-        </OkText>
-      )}
       {result?.ok && result.missing_schemas.length > 0 && (
         <ErrorText>
           These Database Schemas were not found:{" "}
@@ -342,7 +335,15 @@ function ConnectionForm({
             onClick={(event) => {
               const form = event.currentTarget.form;
               if (form?.reportValidity()) {
-                test.mutate(read(form));
+                test.mutate(read(form), {
+                  onSuccess: (outcome) => {
+                    if (outcome.ok) {
+                      toast.success(
+                        `Connection works (${ENGINES[engine].label} ${outcome.server_version}).`,
+                      );
+                    }
+                  },
+                });
               }
             }}
           >
