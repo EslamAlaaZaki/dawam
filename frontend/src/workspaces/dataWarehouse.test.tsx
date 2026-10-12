@@ -7,6 +7,7 @@ import { ApiClientContext } from "../api/context";
 import type { DataWarehouse } from "../api/dataWarehouse";
 import type { Me } from "../api/queries";
 import type { Workspace, WorkspaceRole } from "../api/workspaces";
+import { Toaster, toast } from "../components/ui/sonner";
 import { setLocation } from "../test/navigation";
 import { TestApp } from "../test/TestApp";
 
@@ -129,6 +130,7 @@ function open(
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
         <TestApp />
+        <Toaster />
       </QueryClientProvider>
     </ApiClientContext.Provider>,
   );
@@ -140,6 +142,7 @@ beforeEach(() => {
 
 afterEach(() => {
   document.cookie = "dawam_csrf=; path=/; max-age=0";
+  toast.dismiss();
 });
 
 function names() {
@@ -237,7 +240,7 @@ describe("the Data Warehouse folder after setup", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Set up Data Warehouse" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
+    expect(await screen.findByText("Saved.")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Data Warehouse setup" })).toBeInTheDocument();
     expect(names()).toContain("Staging");
     expect(names()).not.toContain("Set up Data Warehouse");

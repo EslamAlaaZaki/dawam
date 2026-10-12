@@ -15,6 +15,37 @@ import {
   type KpiTarget,
 } from "../api/kpis";
 import { allows, type Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import { Textarea } from "../components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { Loading } from "../shell/Loading";
+import {
+  Actions,
+  DetailList,
+  EmptyState,
+  ErrorText,
+  Hint,
+  NativeSelect,
+  TableCard,
+  formCardClasses,
+  h3Classes,
+  h4Classes,
+  labelClasses,
+  linkButtonClasses,
+  monoClasses,
+} from "./parts";
+
+const STATUS_VARIANTS = { draft: "neutral", in_review: "warning", approved: "success" } as const;
 
 const STATUSES = Object.keys(KPI_STATUS_LABELS) as KpiStatus[];
 const TARGETS_HINT = "One per line, as `label: value` (e.g. `FY2027: 95%`).";
@@ -78,26 +109,26 @@ function readFields(form: HTMLFormElement): Fields | string {
 function KpiFields({ initial }: { initial?: Kpi }) {
   return (
     <>
-      <label>
+      <label className={labelClasses}>
         Name
-        <input name="name" required maxLength={200} defaultValue={initial?.name} />
+        <Input name="name" required maxLength={200} defaultValue={initial?.name} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Business definition
-        <textarea name="definition" rows={3} maxLength={4000} defaultValue={initial?.definition} />
+        <Textarea name="definition" rows={3} maxLength={4000} defaultValue={initial?.definition} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Formula in words
-        <textarea
+        <Textarea
           name="formula_text"
           rows={2}
           maxLength={4000}
           defaultValue={initial?.formula_text}
         />
       </label>
-      <label>
+      <label className={labelClasses}>
         Formula SQL
-        <textarea
+        <Textarea
           name="formula_sql"
           rows={3}
           maxLength={20000}
@@ -105,37 +136,37 @@ function KpiFields({ initial }: { initial?: Kpi }) {
           aria-describedby="kpi-sql-hint"
         />
       </label>
-      <p id="kpi-sql-hint" className="form-hint">
+      <Hint id="kpi-sql-hint">
         Optional. Written against the DW Schema, so it can wait until the Data Warehouse exists.
-      </p>
-      <label>
+      </Hint>
+      <label className={labelClasses}>
         Unit
-        <input name="unit" maxLength={50} defaultValue={initial?.unit} />
+        <Input name="unit" maxLength={50} defaultValue={initial?.unit} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Aggregation
-        <input name="aggregation" maxLength={50} defaultValue={initial?.aggregation} />
+        <Input name="aggregation" maxLength={50} defaultValue={initial?.aggregation} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Owner
-        <input name="owner" maxLength={200} defaultValue={initial?.owner} />
+        <Input name="owner" maxLength={200} defaultValue={initial?.owner} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Refresh frequency
-        <input name="refresh_frequency" maxLength={100} defaultValue={initial?.refresh_frequency} />
+        <Input name="refresh_frequency" maxLength={100} defaultValue={initial?.refresh_frequency} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Targets
-        <textarea
+        <Textarea
           name="targets"
           rows={3}
           defaultValue={targetsToText(initial?.targets ?? [])}
           aria-describedby="kpi-targets-hint"
         />
       </label>
-      <p id="kpi-targets-hint" className="form-hint">
+      <Hint id="kpi-targets-hint">
         {TARGETS_HINT}
-      </p>
+      </Hint>
     </>
   );
 }
@@ -158,50 +189,62 @@ export function KpiCatalog({
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (kpis.isPending) {
-    return <p>Loading…</p>;
+    return <Loading />;
   }
   if (kpis.isError) {
-    return <p role="alert">Could not load the KPIs: {kpis.error.message}</p>;
+    return <ErrorText>Could not load the KPIs: {kpis.error.message}</ErrorText>;
   }
   const open = kpis.data.find((kpi) => kpi.id === openId);
 
   return (
-    <section aria-labelledby="folder-title">
-      <h3 id="folder-title">{title}</h3>
+    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
+      <h3 id="folder-title" className={h3Classes}>
+        {title}
+      </h3>
       {kpis.data.length === 0 ? (
-        <p className="empty-state">
+        <EmptyState>
           {scope.systemId
             ? "No KPIs yet. KPIs based on this system will be listed here."
             : "No KPIs yet. KPIs that span systems will be listed here."}
-        </p>
+        </EmptyState>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Status</th>
-              <th scope="col">Unit</th>
-              <th scope="col">Owner</th>
-              <th scope="col">Refresh</th>
-            </tr>
-          </thead>
-          <tbody>
-            {kpis.data.map((kpi) => (
-              <tr key={kpi.id}>
-                <td>
-                  <button type="button" className="secondary" onClick={() => setOpenId(kpi.id)}>
-                    {kpi.name}
-                  </button>
-                  {kpi.origin === "ai" && <AiLabel />}
-                </td>
-                <td>{KPI_STATUS_LABELS[kpi.status]}</td>
-                <td>{kpi.unit || "—"}</td>
-                <td>{kpi.owner || "—"}</td>
-                <td>{kpi.refresh_frequency || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Name</TableHead>
+                <TableHead scope="col">Status</TableHead>
+                <TableHead scope="col">Unit</TableHead>
+                <TableHead scope="col">Owner</TableHead>
+                <TableHead scope="col">Refresh</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {kpis.data.map((kpi) => (
+                <TableRow key={kpi.id}>
+                  <TableCell>
+                    <button
+                      type="button"
+                      className={linkButtonClasses}
+                      onClick={() => setOpenId(kpi.id)}
+                    >
+                      {kpi.name}
+                    </button>
+                    {kpi.origin === "ai" && <AiLabel />}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
+                      {KPI_STATUS_LABELS[kpi.status]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{kpi.unit || "—"}</TableCell>
+                  <TableCell>{kpi.owner || "—"}</TableCell>
+                  <TableCell>{kpi.refresh_frequency || "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
       {open && (
         <KpiDetails
@@ -214,7 +257,7 @@ export function KpiCatalog({
       {allows(workspace, "kpi.edit") ? (
         <AddKpiForm workspaceId={workspace.id} scope={scope} onAdded={(kpi) => setOpenId(kpi.id)} />
       ) : (
-        <p>Only owners and editors can document KPIs.</p>
+        <Hint>Only owners and editors can document KPIs.</Hint>
       )}
     </section>
   );
@@ -223,10 +266,9 @@ export function KpiCatalog({
 /** Marks a KPI the AI suggested. */
 function AiLabel() {
   return (
-    <span className="badge" title="Suggested by the AI">
-      {" "}
+    <Badge variant="accent" title="Suggested by the AI" className="ml-2">
       AI-generated
-    </span>
+    </Badge>
   );
 }
 
@@ -236,9 +278,9 @@ function AiRationale({ kpi }: { kpi: Kpi }) {
     return null;
   }
   return (
-    <p className="form-hint" aria-label="AI rationale">
+    <Hint aria-label="AI rationale">
       <AiLabel /> {kpi.rationale ?? "No rationale was given."}
-    </p>
+    </Hint>
   );
 }
 
@@ -275,19 +317,17 @@ function AddKpiForm({
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label="Add KPI">
-      <h4>Document a KPI</h4>
+    <form className={formCardClasses} onSubmit={onSubmit} aria-label="Add KPI">
+      <h4 className={h4Classes}>Document a KPI</h4>
       <KpiFields />
       {(problem || create.isError) && (
-        <p className="form-error" role="alert">
-          {problem ?? create.error?.message}
-        </p>
+        <ErrorText>{problem ?? create.error?.message}</ErrorText>
       )}
-      <div className="form-actions">
-        <button type="submit" disabled={create.isPending}>
+      <Actions>
+        <Button type="submit" variant="primary" disabled={create.isPending}>
           Add KPI
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }
@@ -310,18 +350,22 @@ function KpiDetails({
 
   if (!allows(workspace, "kpi.edit")) {
     return (
-      <section aria-label={`KPI ${kpi.name}`}>
-        <h4>{kpi.name}</h4>
+      <section aria-label={`KPI ${kpi.name}`} className={formCardClasses}>
+        <h4 className={h4Classes}>{kpi.name}</h4>
         <AiRationale kpi={kpi} />
-        <dl className="details">
+        <DetailList>
           <dt>Status</dt>
-          <dd>{KPI_STATUS_LABELS[kpi.status]}</dd>
+          <dd>
+            <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
+              {KPI_STATUS_LABELS[kpi.status]}
+            </Badge>
+          </dd>
           <dt>Business definition</dt>
           <dd>{kpi.definition || "—"}</dd>
           <dt>Formula in words</dt>
           <dd>{kpi.formula_text || "—"}</dd>
           <dt>Formula SQL</dt>
-          <dd>{kpi.formula_sql ? <code>{kpi.formula_sql}</code> : "—"}</dd>
+          <dd>{kpi.formula_sql ? <code className={monoClasses}>{kpi.formula_sql}</code> : "—"}</dd>
           <dt>Unit</dt>
           <dd>{kpi.unit || "—"}</dd>
           <dt>Aggregation</dt>
@@ -332,10 +376,12 @@ function KpiDetails({
           <dd>{kpi.refresh_frequency || "—"}</dd>
           <dt>Targets</dt>
           <dd>{kpi.targets.length ? targetsToText(kpi.targets) : "—"}</dd>
-        </dl>
-        <button type="button" className="secondary" onClick={onClose}>
-          Close
-        </button>
+        </DetailList>
+        <Actions>
+          <Button type="button" onClick={onClose}>
+            Close
+          </Button>
+        </Actions>
       </section>
     );
   }
@@ -352,70 +398,70 @@ function KpiDetails({
     }
     setProblem(null);
     const status = String(new FormData(form).get("status")) as KpiStatus;
-    update.mutate({ version: kpi.version, ...fields, status });
+    update.mutate(
+      { version: kpi.version, ...fields, status },
+      { onSuccess: () => toast.success("Saved.") },
+    );
   }
 
   return (
     // A new version (saved, or reloaded) refills the inputs.
     <form
       key={`${kpi.id}-${kpi.version}`}
-      className="form"
+      className={formCardClasses}
       onSubmit={onSubmit}
       aria-label={`KPI ${kpi.name}`}
     >
-      <h4>{kpi.name}</h4>
+      <h4 className={h4Classes}>{kpi.name}</h4>
       <AiRationale kpi={kpi} />
-      <label>
+      <label className={labelClasses}>
         Status
-        <select name="status" defaultValue={kpi.status}>
+        <NativeSelect name="status" defaultValue={kpi.status}>
           {STATUSES.map((status) => (
             <option key={status} value={status}>
               {KPI_STATUS_LABELS[status]}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <KpiFields initial={kpi} />
       {versionConflict ? (
-        <div className="form-error" role="alert">
+        <div role="alert" className="flex flex-col items-start gap-2 text-sm text-red-11">
           <p>
             Someone else changed this KPI since you opened it. Reload it to see their changes,
             then edit again.
           </p>
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={() => {
               update.reset();
               reload();
             }}
           >
             Reload
-          </button>
+          </Button>
         </div>
       ) : (
         (problem || update.isError || remove.isError) && (
-          <p className="form-error" role="alert">
-            {problem ?? update.error?.message ?? remove.error?.message}
-          </p>
+          <ErrorText>{problem ?? update.error?.message ?? remove.error?.message}</ErrorText>
         )
       )}
-      {update.isSuccess && <p role="status">Saved.</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={update.isPending}>
+      <Actions>
+        <Button type="submit" variant="primary" disabled={update.isPending}>
           Save
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="secondary"
           disabled={remove.isPending}
           onClick={() => remove.mutate(undefined, { onSuccess: onClose })}
         >
           Delete KPI
-        </button>
-        <button type="button" className="secondary" onClick={onClose}>
+        </Button>
+        <Button type="button" onClick={onClose}>
           Close
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }

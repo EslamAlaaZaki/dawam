@@ -72,10 +72,6 @@ body {
     gap: 1rem;
   }
 
-  .form-error {
-    margin: 0;
-    color: #ab091e;
-  }
 
   .details dt {
     font-weight: 600;
@@ -84,11 +80,6 @@ body {
 
   .details dd {
     margin: 0 0 0.75rem;
-    .form-hint {
-      margin: 0;
-      font-size: 0.8125rem;
-      color: #52606d;
-    }
 
     /* Folder tree and stage progress. Colours keep WCAG AA: 4.5:1 for text, 3:1 for the
    focus ring, which is also never the only sign of selection (bold + marker). */
@@ -147,36 +138,11 @@ body {
       color: #8a1c1c;
     }
 
-    .change-set {
-      margin: 1rem 0;
-      padding: 0.5rem 0.75rem;
-      border: 1px solid #bcccdc;
-    }
 
-    .change-items {
-      list-style: none;
-      padding: 0;
-    }
 
-    .change-item {
-      padding: 0.25rem 0;
-    }
 
-    .change-diff {
-      margin: 0.25rem 0 0 1.5rem;
-      padding: 0;
-      list-style: none;
-      overflow-wrap: anywhere;
-    }
 
-    .change-diff del {
-      color: #8a1c1c;
-    }
 
-    .change-diff ins {
-      color: #1f6f3d;
-      text-decoration: none;
-    }
 
     .assistant-tools {
       font-size: 0.875rem;
@@ -192,10 +158,6 @@ body {
       width: 100%;
     }
 
-    .status-badge {
-      font-size: 0.8125rem;
-      font-style: italic;
-    }
 
     /* Two blocks above were never closed (`.form input, .form textarea`
    and `.details dd`), so every rule after them is nested inside them and

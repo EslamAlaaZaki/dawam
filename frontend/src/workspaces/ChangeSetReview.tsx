@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 
 import {
   ITEM_STATUS_LABELS,
@@ -11,13 +11,41 @@ import {
   useRejectItems,
   type ApplyResult,
   type ChangeSetItem,
+  type ItemStatus,
 } from "../api/changeSets";
 import { ApiError } from "../api/client";
 import { allows, useWorkspace, type Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Loading } from "../shell/Loading";
+import {
+  Actions,
+  ErrorText,
+  Hint,
+  checkClasses,
+  h4Classes,
+  linkClasses,
+} from "./parts";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
 const OPEN = new Set<string>(["pending", "needs_owner"]);
+
+const ITEM_VARIANTS: Record<ItemStatus, ComponentProps<typeof Badge>["variant"]> = {
+  pending: "neutral",
+  needs_owner: "warning",
+  accepted: "success",
+  rejected: "danger",
+  stale: "warning",
+  expired: "neutral",
+};
+
+const SET_VARIANTS = {
+  pending: "accent",
+  applied: "success",
+  partially_applied: "warning",
+  rejected: "danger",
+  superseded: "neutral",
+} as const;
 
 function show(value: unknown): string {
   return value === null || value === undefined
@@ -31,14 +59,14 @@ function show(value: unknown): string {
 function Diff({ item }: { item: ChangeSetItem }) {
   const fields = Object.keys(item.payload);
   return (
-    <ul className="change-diff">
+    <ul className="mt-1.5 ml-6 flex flex-col gap-0.5 text-mono [overflow-wrap:anywhere]">
       {fields.map((field) => (
         <li key={field}>
-          <code>{field}</code>:{" "}
+          <code className="font-mono">{field}</code>:{" "}
           {item.base_values && field in item.base_values && (
-            <del>{show(item.base_values[field])}</del>
+            <del className="text-red-11">{show(item.base_values[field])}</del>
           )}{" "}
-          <ins>{show(item.payload[field])}</ins>
+          <ins className="text-grass-11 no-underline">{show(item.payload[field])}</ins>
         </li>
       ))}
     </ul>
@@ -50,7 +78,10 @@ function Report({ result }: { result: ApplyResult }) {
     result.change_set.items.map((i) => [i.id, i.label || i.object_type]),
   );
   return (
-    <div role="status" className="change-report">
+    <div
+      role="status"
+      className="flex flex-col gap-1.5 rounded-lg border border-sand-5 bg-sand-2 p-3 text-sm"
+    >
       <p>
         {result.accepted.length === 1
           ? "1 item applied."
@@ -107,7 +138,7 @@ export function ChangeSetReview({
   }
   if (detail.isError) {
     return (
-      <p role="alert">Could not load the Change Set: {detail.error.message}</p>
+      <ErrorText>Could not load the Change Set: {detail.error.message}</ErrorText>
     );
   }
   const { change_set: changeSet, items } = detail.data;
@@ -137,28 +168,33 @@ export function ChangeSetReview({
   }
 
   return (
-    <article className="change-set" aria-label={changeSet.title}>
-      <h4>
+    <article
+      aria-label={changeSet.title}
+      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-4"
+    >
+      <h4 className={`${h4Classes} flex flex-wrap items-center gap-2`}>
         {link ? (
           <Link
             href={`/workspaces/${workspace.id}/change-sets/${changeSet.id}`}
+            className={linkClasses}
           >
             {changeSet.title}
           </Link>
         ) : (
           changeSet.title
         )}{" "}
-        <span className={`status-badge change-set-${changeSet.status}`}>
+        <Badge variant={SET_VARIANTS[changeSet.status]} dot>
           {changeSet.status.replace("_", " ")}
-        </span>
+        </Badge>
       </h4>
-      <ul className="change-items">
+      <ul className="flex flex-col divide-y divide-sand-4 rounded-lg border border-sand-5">
         {items.map((item) => (
-          <li key={item.id} className={`change-item change-${item.status}`}>
-            <label>
+          <li key={item.id} className="px-3.5 py-2.5">
+            <label className="inline-flex items-center gap-2">
               {canDecide && OPEN.has(item.status) && (
                 <input
                   type="checkbox"
+                  className={checkClasses}
                   checked={ticked.has(item.id)}
                   aria-label={`Select ${item.label || item.object_type}`}
                   onChange={(event) => {
@@ -174,59 +210,59 @@ export function ChangeSetReview({
               )}{" "}
               <strong>{item.label || item.object_type}</strong>
             </label>{" "}
-            <span className="status-badge">
-              {ITEM_STATUS_LABELS[item.status]}
+            <span className="inline-flex flex-wrap gap-1.5 align-middle">
+              <Badge variant={ITEM_VARIANTS[item.status]} dot>
+                {ITEM_STATUS_LABELS[item.status]}
+              </Badge>
+              {item.required_role === "owner" && item.status !== "accepted" && (
+                <Badge variant="accent">owner only</Badge>
+              )}
+              {item.is_conflict && <Badge variant="danger">conflict</Badge>}
             </span>
-            {item.required_role === "owner" && item.status !== "accepted" && (
-              <span className="status-badge"> owner only</span>
-            )}
-            {item.is_conflict && (
-              <span className="status-badge"> conflict</span>
-            )}
             <Diff item={item} />
             {item.status_reason && (
-              <p className="assistant-note">{item.status_reason}</p>
+              <Hint className="mt-1">{item.status_reason}</Hint>
             )}
           </li>
         ))}
       </ul>
       {canDecide && open.length > 0 && (
-        <div className="form-actions">
-          <button
+        <Actions>
+          <Button
             type="button"
+            size="sm"
             disabled={chosen.length === 0 || accept.isPending}
             onClick={() => decide("accept", chosen)}
           >
             Accept selected
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             disabled={accept.isPending}
             onClick={() => decide("accept")}
           >
             Accept all
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             disabled={chosen.length === 0 || reject.isPending}
             onClick={() => decide("reject", chosen)}
           >
             Reject selected
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             disabled={reject.isPending}
             onClick={() => decide("reject")}
           >
             Reject all
-          </button>
-        </div>
+          </Button>
+        </Actions>
       )}
-      {problem && (
-        <p role="alert" className="form-error">
-          {problem}
-        </p>
-      )}
+      {problem && <ErrorText>{problem}</ErrorText>}
       {result && <Report result={result} />}
     </article>
   );
@@ -252,8 +288,8 @@ export function ConversationChangeSets({
     return null;
   }
   return (
-    <section aria-label="Proposed changes" className="change-sets">
-      <h4>Proposed changes</h4>
+    <section aria-label="Proposed changes" className="flex flex-col gap-3">
+      <h4 className={h4Classes}>Proposed changes</h4>
       {sets.data.map((set) => (
         <ChangeSetReview
           key={set.id}
@@ -282,11 +318,13 @@ export function ChangeSetPage({
     return <WorkspaceNotFound />;
   }
   return (
-    <div className="page">
+    <div className="flex max-w-3xl flex-col gap-3">
       <p>
-        <Link href={`/workspaces/${workspaceId}`}>{workspace.data.name}</Link>
+        <Link href={`/workspaces/${workspaceId}`} className={linkClasses}>
+          {workspace.data.name}
+        </Link>
       </p>
-      <h2>Change Set</h2>
+      <h2 className="text-2xl font-semibold tracking-[-0.01em]">Change Set</h2>
       <ChangeSetReview workspace={workspace.data} changeSetId={changeSetId} />
     </div>
   );
