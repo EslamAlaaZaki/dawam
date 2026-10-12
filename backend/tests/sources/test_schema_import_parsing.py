@@ -191,3 +191,17 @@ def test_the_same_sheet_twice_is_an_error():
     _, report = read_catalog([*csvs(**good()), ("tables.csv", TABLES.encode())])
 
     assert any("twice" in e.message for e in report.errors)
+
+
+def test_source_code_keeps_its_surrounding_whitespace():
+    # A Connector reads a view's SQL as the database stores it (PostgreSQL starts it with a
+    # space); an import must give the same text or the Snapshots would differ.
+    tables = 'schema,table,kind,definition\nsales,v_c,view,"  select 1\n"\n'
+    columns = "schema,table,column,data_type\nsales,v_c,id,integer\n"
+
+    catalog, report = read_catalog(
+        [("tables.csv", tables.encode()), ("columns.csv", columns.encode())]
+    )
+
+    assert report.errors == [] and catalog is not None
+    assert catalog.tables[0].definition == "  select 1\n"

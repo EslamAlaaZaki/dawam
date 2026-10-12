@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from dawam.modules.auth import CurrentUser
@@ -130,6 +130,43 @@ def download_template(
         imports.template(user, workspace_id, system_id),
         media_type=XLSX_MIME,
         headers={"Content-Disposition": 'attachment; filename="schema-import-template.xlsx"'},
+    )
+
+
+@router.get(
+    "/helper-queries",
+    operation_id="downloadSchemaImportHelperQueries",
+    response_class=Response,
+    responses={200: {"content": {"application/sql": {}}, "description": "The SQL script."}},
+)
+def download_helper_queries(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    user: CurrentUser,
+    imports: ImportServiceDep,
+    engine: Annotated[
+        str,
+        Query(
+            description="`postgresql`, `mysql`, `mariadb`, `sqlserver`, `oracle`, `db2` or "
+            "`teradata`."
+        ),
+    ],
+    schemas: Annotated[
+        str | None,
+        Query(description="Comma-separated Database Schemas to limit the queries to."),
+    ] = None,
+) -> Response:
+    """The helper queries for an engine (owners and editors): one catalog query per
+    template sheet, each returning exactly that sheet's columns, as a SQL script. Without
+    `schemas` they cover every non-system schema. 422 `unsupported_engine`."""
+    names = tuple(n.strip() for n in (schemas or "").split(",") if n.strip())
+    script = imports.helper_queries(user, workspace_id, system_id, engine, names)
+    return Response(
+        script,
+        media_type="application/sql",
+        headers={
+            "Content-Disposition": f'attachment; filename="schema-import-queries-{engine}.sql"'
+        },
     )
 
 

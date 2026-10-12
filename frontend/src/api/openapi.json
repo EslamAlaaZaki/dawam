@@ -6767,6 +6767,96 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/helper-queries": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Download Helper Queries",
+        "description": "The helper queries for an engine (owners and editors): one catalog query per\ntemplate sheet, each returning exactly that sheet's columns, as a SQL script. Without\n`schemas` they cover every non-system schema. 422 `unsupported_engine`.",
+        "operationId": "downloadSchemaImportHelperQueries",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "`postgresql`, `mysql`, `mariadb`, `sqlserver`, `oracle`, `db2` or `teradata`.",
+              "title": "Engine"
+            },
+            "description": "`postgresql`, `mysql`, `mariadb`, `sqlserver`, `oracle`, `db2` or `teradata`."
+          },
+          {
+            "name": "schemas",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated Database Schemas to limit the queries to.",
+              "title": "Schemas"
+            },
+            "description": "Comma-separated Database Schemas to limit the queries to."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The SQL script.",
+            "content": {
+              "application/sql": {}
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/import/validate": {
       "post": {
         "tags": [
