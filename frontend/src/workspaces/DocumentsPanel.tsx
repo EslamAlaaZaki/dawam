@@ -17,6 +17,7 @@ import {
 import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
 import {
   Table,
@@ -31,7 +32,6 @@ import {
   EmptyState,
   ErrorText,
   Hint,
-  OkText,
   TableCard,
   formCardClasses,
   h3Classes,
@@ -178,7 +178,12 @@ export function DocumentsPanel({
     const input = form.elements.namedItem("file") as HTMLInputElement;
     const file = input.files?.[0];
     if (file) {
-      upload.mutate(file, { onSuccess: () => form.reset() });
+      upload.mutate(file, {
+        onSuccess: () => {
+          toast.success("Uploaded.");
+          form.reset();
+        },
+      });
     }
   }
 
@@ -303,7 +308,6 @@ export function DocumentsPanel({
             up to 25 MB. A file with the same name is replaced.
           </Hint>
           {upload.isError && <ErrorText>{upload.error.message}</ErrorText>}
-          {upload.isSuccess && <OkText role="status">Uploaded.</OkText>}
           <Actions>
             <Button type="submit" variant="primary" disabled={upload.isPending}>
               Upload

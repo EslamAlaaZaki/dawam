@@ -12,12 +12,12 @@ import {
   type Workspace,
 } from "../api/workspaces";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import {
   Actions,
   DetailList,
   ErrorText,
   Hint,
-  OkText,
   Panel,
   formCardClasses,
   h3Classes,
@@ -352,10 +352,16 @@ function WorkspaceDetails({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    update.mutate({
-      version: workspace.version,
-      ...readDetails(event.currentTarget),
-    });
+    // The form remounts on the new version, so a callback on mutate() would be dropped.
+    update
+      .mutateAsync({
+        version: workspace.version,
+        ...readDetails(event.currentTarget),
+      })
+      .then(
+        () => toast.success("Saved."),
+        () => {},
+      );
   }
 
   return (
@@ -392,7 +398,6 @@ function WorkspaceDetails({
       ) : (
         update.isError && <ErrorText>{update.error.message}</ErrorText>
       )}
-      {update.isSuccess && <OkText role="status">Saved.</OkText>}
       <Actions>
         <Button type="submit" variant="primary" disabled={update.isPending}>
           Save

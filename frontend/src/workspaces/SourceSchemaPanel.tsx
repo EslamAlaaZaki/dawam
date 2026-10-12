@@ -15,6 +15,7 @@ import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import { SchemaBrowser } from "./SchemaBrowser";
 import { SnapshotDiffView } from "./SnapshotDiffView";
 import {
@@ -108,7 +109,12 @@ export function SourceSchemaPanel({
             <Button
               type="button"
               disabled={save.isPending}
-              onClick={() => save.mutate()}
+              onClick={() =>
+                save.mutate(undefined, {
+                  onSuccess: (file) =>
+                    toast.success(`Saved ${file.name} to the file area.`),
+                })
+              }
             >
               Save data dictionary to files
             </Button>
@@ -116,9 +122,6 @@ export function SourceSchemaPanel({
         </Actions>
       )}
       {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      {save.isSuccess && (
-        <OkText role="status">Saved {save.data.name} to the file area.</OkText>
-      )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
         <SchemaBrowser workspace={workspace} systemId={system.id} />
       )}

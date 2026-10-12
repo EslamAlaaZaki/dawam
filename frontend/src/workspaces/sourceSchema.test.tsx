@@ -330,9 +330,9 @@ describe("a Source System's Source Schema", () => {
       }),
     );
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Saved data-dictionary-cbs.xlsx",
-    );
+    expect(
+      await screen.findByText(/Saved data-dictionary-cbs.xlsx/),
+    ).toBeInTheDocument();
     expect(requests.find((r) => r.method === "POST")).toMatchObject({
       csrf: CSRF_TOKEN,
     });

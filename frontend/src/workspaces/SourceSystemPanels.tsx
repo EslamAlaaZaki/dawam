@@ -12,6 +12,7 @@ import {
 import { allows, type Workspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import {
   Table,
   TableBody,
@@ -27,7 +28,6 @@ import {
   EmptyState,
   ErrorText,
   Hint,
-  OkText,
   Panel,
   TableCard,
   formCardClasses,
@@ -267,10 +267,16 @@ export function SystemDetails({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    update.mutate({
-      version: system.version,
-      ...readFields(event.currentTarget),
-    });
+    // The form remounts on the new version, so a callback on mutate() would be dropped.
+    update
+      .mutateAsync({
+        version: system.version,
+        ...readFields(event.currentTarget),
+      })
+      .then(
+        () => toast.success("Saved."),
+        () => {},
+      );
   }
 
   return (
@@ -310,7 +316,6 @@ export function SystemDetails({
       ) : (
         update.isError && <ErrorText>{update.error.message}</ErrorText>
       )}
-      {update.isSuccess && <OkText role="status">Saved.</OkText>}
       <Actions>
         <Button type="submit" variant="primary" disabled={update.isPending}>
           Save

@@ -13,6 +13,7 @@ import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import { SchemaImportPanel } from "./SchemaImportPanel";
 import {
   Actions,
@@ -166,6 +167,7 @@ function ConnectionForm({
     save.mutate(read(form), {
       // The saved password is never shown again: do not keep the typed one either.
       onSuccess: () => {
+        toast.success("Connection saved.");
         (form.elements.namedItem("password") as HTMLInputElement).value = "";
       },
     });
@@ -332,7 +334,6 @@ function ConnectionForm({
       )}
 
       {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      {save.isSuccess && <OkText role="status">Connection saved.</OkText>}
       {!readOnly && (
         <Actions>
           <Button

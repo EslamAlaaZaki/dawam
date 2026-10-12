@@ -275,7 +275,7 @@ describe("a Source System's Connection", () => {
     const body = requests.find((r) => r.method === "PUT")?.body as Record<string, unknown>;
     expect(body).toMatchObject({ host: "db.internal", allowed_schemas: ["core"] });
     expect(body).not.toHaveProperty("password");
-    expect(await within(form).findByText("Connection saved.")).toBeVisible();
+    expect(await screen.findByText("Connection saved.")).toBeVisible();
   });
 
   it("is shown read-only to owners of an archived Workspace", async () => {

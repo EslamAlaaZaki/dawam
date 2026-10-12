@@ -22,6 +22,7 @@ import {
 } from "../api/workspaces";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import {
   Table,
   TableBody,
@@ -114,7 +115,18 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
         email: String(data.get("email") ?? "").trim(),
         role: String(data.get("role")) as WorkspaceRole,
       },
-      { onSuccess: () => form.reset() },
+      {
+        onSuccess: (outcome) => {
+          form.reset();
+          if (outcome.outcome === "added") {
+            toast.success(
+              `${outcome.member.display_name} is now ${withArticle(outcome.member.role)}.`,
+            );
+          } else if (outcome.delivery === "sent") {
+            toast.success(`Invitation emailed to ${outcome.invitation.email}.`);
+          }
+        },
+      },
     );
   }
 
@@ -143,14 +155,6 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
         </Button>
       </Actions>
       {add.isError && <ErrorText>{add.error.message}</ErrorText>}
-      {result?.outcome === "added" && (
-        <OkText>
-          {result.member.display_name} is now {withArticle(result.member.role)}.
-        </OkText>
-      )}
-      {result?.outcome === "invited" && result.delivery === "sent" && (
-        <OkText>Invitation emailed to {result.invitation.email}.</OkText>
-      )}
       {result?.outcome === "invited" &&
         result.delivery === "link_for_admin" && (
           <OkText>
