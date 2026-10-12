@@ -1,0 +1,26 @@
+# DAWAM API (FastAPI). Applies database migrations on startup.
+# Install: deploy/README.md, "Linux server".
+
+[Unit]
+Description=DAWAM API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dawam
+Group=dawam
+EnvironmentFile=/etc/dawam/dawam.env
+WorkingDirectory=/var/lib/dawam
+ExecStart=/opt/dawam/venv/bin/python -m dawam serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dawam
+
+[Install]
+WantedBy=multi-user.target

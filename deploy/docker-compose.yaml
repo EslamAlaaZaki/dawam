@@ -1,0 +1,189 @@
+# DAWAM with every component in one file, over plain HTTP (HTTPS disabled):
+#   edge, web, app, worker, db        DAWAM itself
+#   ollama + ollama-pull              local LLM server, with its models pulled on first start
+#   mailpit                           SMTP server that catches every email (web UI :8025)
+#   source-db (profile "demo")        a small seeded PostgreSQL source to try Connections on
+#
+# From the repository root:
+#   cp .env.example .env              # set DAWAM_ENCRYPTION_KEY (and the first admin)
+#   docker compose -f deploy/docker-compose.yaml --env-file .env up -d --build
+#   docker compose -f deploy/docker-compose.yaml --env-file .env --profile demo up -d --build
+# Use the same command (same -f and --env-file) every time. Relative paths below are
+# relative to this file. deploy/README.md, "All-in-one Compose file", has the rest.
+
+name: dawam
+
+x-dawam: &dawam
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  env_file:
+    - path: ../.env
+      required: true
+  environment:
+    DAWAM_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dawam}:${POSTGRES_PASSWORD:-dawam}@db:5432/${POSTGRES_DB:-dawam}
+    DAWAM_STORAGE_BACKEND: local
+    DAWAM_STORAGE_PATH: /var/lib/dawam/files
+    # Only `edge` may tell the app who the client is.
+    DAWAM_FORWARDED_ALLOW_IPS: 172.30.126.10
+    # HTTPS disabled: never send Strict-Transport-Security.
+    DAWAM_HSTS_MAX_AGE_SECONDS: "0"
+  volumes:
+    - file-data:/var/lib/dawam/files
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  # --- DAWAM ---------------------------------------------------------------------
+
+  edge:
+    build: nginx
+    environment:
+      # HTTPS disabled: no TLS proxy is trusted, so every request is plain HTTP.
+      DAWAM_TRUSTED_PROXY_CIDRS: ""
+    ports:
+      - "${DAWAM_PORT:-8000}:8080"
+    networks:
+      default:
+        ipv4_address: 172.30.126.10
+    depends_on:
+      app:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ../frontend
+    environment:
+      DAWAM_HSTS_MAX_AGE_SECONDS: "0"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+    restart: unless-stopped
+
+  app:
+    <<: *dawam
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  worker:
+    <<: *dawam
+    command: ["python", "-m", "dawam", "worker"]
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dawam}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dawam}
+      POSTGRES_DB: ${POSTGRES_DB:-dawam}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # --- Local LLM -----------------------------------------------------------------
+  # Add it in Admin > LLM as an OpenAI-compatible provider at http://ollama:11434/v1
+  # (no API key), then assign the models to the agent, light and embedding roles.
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+    restart: unless-stopped
+    # NVIDIA GPU: uncomment (needs the NVIDIA Container Toolkit on the host).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Pulls OLLAMA_MODELS once and exits; models already pulled are skipped quickly.
+  ollama-pull:
+    image: ollama/ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS_TO_PULL: ${OLLAMA_MODELS:-qwen2.5:7b nomic-embed-text}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'for m in $$OLLAMA_MODELS_TO_PULL; do echo "pulling $$m"; ollama pull "$$m" || exit 1; done'
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  # --- Email ---------------------------------------------------------------------
+  # Catches every email DAWAM sends; read them at http://localhost:8025. Set it in
+  # Admin > Email: host mailpit, port 1025, no TLS, no login. For real delivery, enter
+  # your own SMTP server there instead.
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    restart: unless-stopped
+
+  # --- Demo source database (profile "demo") ------------------------------------
+  # A small shop in schema `sales`. Add a Connection: PostgreSQL, host source-db,
+  # port 5432, database shop, user reader, password reader (read-only).
+
+  source-db:
+    image: postgres:16
+    profiles: ["demo"]
+    environment:
+      POSTGRES_USER: source
+      POSTGRES_PASSWORD: source
+      POSTGRES_DB: shop
+    volumes:
+      - ../e2e/source-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - source-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U source -d shop"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        # If this clashes with a network on your host, change it, edge's ipv4_address
+        # and DAWAM_FORWARDED_ALLOW_IPS together.
+        - subnet: 172.30.126.0/24
+          ip_range: 172.30.126.128/25
+
+volumes:
+  db-data:
+  file-data:
+  ollama-data:
+  source-data:

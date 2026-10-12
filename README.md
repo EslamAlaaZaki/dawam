@@ -1,352 +1,179 @@
+<div align="center">
+
 # DAWAM
 
-DAWAM (Data Analysis & Warehouse Architecture Modeler) helps teams analyse source
-systems and design a data warehouse from them, with every design artifact traceable
-back to the real source schema. The product spec is [`docs/spec.md`](docs/spec.md);
-the domain glossary is [`CONTEXT.md`](CONTEXT.md).
+**Data Analysis & Warehouse Architecture Modeler**
 
-Licensed under the [Apache License 2.0](LICENSE).
+Analyse your source systems and design your data warehouse in one place, with every
+design decision traceable to the real source schema and an AI assistant at each step.
 
-## Run DAWAM
+[![CI](https://github.com/EslamAlaaZaki/dawam/actions/workflows/ci.yml/badge.svg)](https://github.com/EslamAlaaZaki/dawam/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-informational)
 
-You need Docker with Docker Compose v2.24 or newer.
+[Quick start](#quick-start) · [Use cases](#use-cases) · [Features](#features) ·
+[Deployment](deploy/README.md) · [Documentation](#documentation) ·
+[Contributing](CONTRIBUTING.md)
 
-Every setting has a default except `DAWAM_ENCRYPTION_KEY`, the key that encrypts the
-credentials DAWAM stores: neither Compose nor DAWAM starts without it. Like every
-secret, it is read only from the environment (or `.env`). Generate one per
-installation, keep it secret and back it up; stored credentials cannot be read
-without it.
+</div>
+
+---
+
+> **Status:** under active development toward Release 1. Expect changes to features and
+> the API between versions.
+
+## Why DAWAM
+
+Building a data warehouse usually means the same disconnected sequence on every project:
+
+1. **Source analysis by hand.** You explore tables, guess relationships that were never
+   declared as foreign keys, and dig through scattered documentation.
+2. **Design in drawings and documents** that drift out of date as soon as they are written.
+3. **Mapping sheets in Excel**, the contract between analyst and engineer, with no
+   validation and no link to the actual source schema.
+4. **Lineage in people's heads.** When a source changes, nobody knows which mappings and
+   KPIs are affected.
+
+DAWAM keeps all of this in one self-hosted web application. Each Workspace holds your
+source systems and one data warehouse design. Every table, mapping and KPI stays linked
+to the real source schema, and every change, whether from a person, the AI or a schema
+sync, arrives as a reviewable **Change Set**.
+
+## Use cases
+
+| You want to… | How DAWAM helps |
+|--------------|-----------------|
+| **Understand an undocumented source system** | Connect to the database (or import its schema from files), profile the data, discover undeclared relationships, and let the AI draft table descriptions, labels and a gaps report. |
+| **Find personal data before it reaches the warehouse** | Scan column names and sampled values with Arabic and English PII rules (Saudi-focused, PDPL-aware), review the findings, and follow PII through lineage into the warehouse. |
+| **Define what the business needs** | Build a KPI catalog per source system or for the whole warehouse, with AI-suggested KPIs based on the source analysis. |
+| **Design a Kimball warehouse** | Generate staging automatically, have the AI propose Core and Mart models (facts, dimensions, grain, SCD types) from your sources and KPIs, then edit everything. |
+| **Replace mapping spreadsheets** | Maintain validated source-to-target mappings per layer, always linked to real columns. |
+| **Answer "where does this number come from?"** | Trace lineage from any KPI or warehouse column back to its source columns. |
+| **Handle source schema changes safely** | Re-sync a source, see every affected Asset, and apply the propagated changes as a Change Set you accept in full or in part. |
+| **Check design quality** | Get a rule-based score per warehouse, layer and table, with fix hints and an approval gate per layer, plus an advisory AI evaluation. |
+| **Hand over to engineering** | Export DDL and design documentation from the finished model. |
+| **Work in a restricted environment** | Run fully air-gapped with self-hosted models (Ollama, vLLM, SGLang); nothing has to leave your network. |
+
+## Features
+
+DAWAM follows the stages of a warehouse project:
+
+| Stage | What happens | Outputs |
+|-------|--------------|---------|
+| **1. Source System Analysis** | Live Connections or Schema Import, Snapshots, profiling, relationship discovery, PII detection, documents | Enhanced Source Schema, profiles, PII findings, documentation |
+| **2. KPIs** | User-entered and AI-suggested KPIs | KPI catalog |
+| **3. DW Modeling** | Generated staging; AI-assisted Core and Mart; mappings per layer; scoring and evaluation | DW Schema, mappings, scores, lineage, DDL |
+| **4. DW Implementation** *(next phase)* | Turn mappings into implementation artifacts | dbt skeleton, SQL transforms, load-order plan |
+
+Across all stages:
+
+- **AI assistant.** An agentic chat in every Workspace that explores sources using real
+  schema, statistics and data rather than guesses. It runs on any model: OpenAI-compatible
+  servers (Ollama, vLLM, SGLang, OpenAI), Anthropic, Azure OpenAI, Gemini or AWS Bedrock.
+- **Nothing changes silently.** AI output, regenerations, syncs and propagated changes all
+  arrive as Change Sets. Fields you override are remembered and never silently undone.
+- **Collaboration.** Workspaces with Owner, Editor and Viewer roles, invitations, activity,
+  notifications and an audit trail.
+- **Source engines.** Live connections to PostgreSQL, SQL Server, MySQL/MariaDB and Oracle.
+  Schema Import from files also covers Snowflake and BigQuery.
+- **Security built in.** Credentials encrypted with AES-256-GCM, database-backed sessions,
+  CSRF protection, account lockout and rate limiting, a strict Content-Security-Policy, and
+  a security event log. Details are in [`docs/reference.md`](docs/reference.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    user(["Browser"]) --> edge["edge<br/>nginx"]
+    edge -- "/api/*" --> app["app<br/>FastAPI"]
+    edge -- "pages" --> web["web<br/>Next.js"]
+    app --> db[("PostgreSQL 16<br/>+ pgvector")]
+    worker["worker<br/>background jobs"] --> db
+    app & worker --> files[("File storage<br/>volume or S3")]
+    app & worker --> llm["LLM providers<br/>local or cloud"]
+    app & worker --> sources[("Source databases<br/>read-only")]
+    app --> smtp["SMTP"]
+```
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js (App Router), React, TypeScript, TanStack Query, generated OpenAPI client |
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, a modular monolith |
+| Storage | PostgreSQL 16 with pgvector; files on a local volume or S3-compatible storage |
+| Delivery | Docker Compose with nginx as the single entry point |
+
+[`deploy/README.md`](deploy/README.md#components) describes every component and the
+network access each one needs.
+
+## Quick start
+
+You need **Docker** with **Compose v2.24+**.
 
 ```sh
-cp .env.example .env   # see the comments inside
-# set DAWAM_ENCRYPTION_KEY in .env to the output of:
-python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
-docker compose up --build
+git clone https://github.com/EslamAlaaZaki/dawam.git
+cd dawam
+cp .env.example .env
 ```
 
-Then open <http://localhost:8000> (`DAWAM_PORT`) and sign in. To get the first admin
-account, set `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` in `.env` before the first
-start (see [Sign in](#sign-in)). Compose starts five services:
-
-| Service  | What it is |
-|----------|------------|
-| `edge`   | nginx (`deploy/nginx/`), the only service published on the host: it sends `/api/`, `/healthz` and `/readyz` to `app` and everything else to `web`, so the browser sees a single origin. |
-| `web`    | The Next.js web UI (pages only). |
-| `app`    | The FastAPI backend: the API, and the only place that authenticates, authorizes and stores data. Applies database migrations on startup. |
-| `worker` | The background worker process. |
-| `db`     | PostgreSQL 16 with pgvector, the only metadata store (data in the `db-data` volume). |
-
-Everything else is reachable only inside the Compose network, so every request
-passes through `edge`. It overwrites `X-Forwarded-For` and `X-Forwarded-Proto` with
-the client's address and scheme, and `app` believes those headers from `edge`'s
-address alone (`DAWAM_FORWARDED_ALLOW_IPS`, set by Compose): whatever a client sends
-in them is ignored. The Compose network has a fixed subnet (`172.30.126.0/24`) so
-that `edge` can have a fixed address; if it clashes with a network on your host,
-change the three addresses in `compose.yaml` together.
-
-An optional local LLM server is declared but off by default:
-`docker compose --profile ollama up`.
-
-Useful endpoints:
-
-- `GET /healthz`: 200 when the process is up.
-- `GET /readyz`: 200 only when the database is reachable and migrations are at head
-  (503 `not_ready` otherwise). Compose uses it as the `app` health check.
-- `GET /api/v1/version`, and the API docs at `/api/v1/docs`
-  (OpenAPI spec at `/api/v1/openapi.json`). The docs page loads Swagger UI from
-  cdn.jsdelivr.net, so the browser needs internet access to show it.
-
-Every response carries the security headers of the spec's baseline: a
-Content-Security-Policy (with `frame-ancestors 'none'`), `X-Content-Type-Options:
-nosniff` and `Referrer-Policy: same-origin`. FastAPI sets them on the API responses,
-and `web` on the pages and files it serves. Next.js puts inline scripts in every page,
-so the pages' policy allows scripts only from DAWAM itself or carrying a nonce that is
-new on every request (`frontend/src/security/headers.ts`); that is why every page is
-rendered per request.
-
-For anything beyond local use, put DAWAM behind a TLS-terminating reverse proxy in
-front of `edge` (`DAWAM_PORT`) and list the proxy's addresses in
-`DAWAM_TRUSTED_PROXY_CIDRS`. From those addresses only, `edge` takes the client from
-`X-Forwarded-For` and the scheme from `X-Forwarded-Proto`; requests that arrived over
-HTTPS then get `Strict-Transport-Security` (pages and API) and `Secure` cookies (see
-`.env.example`).
-
-Logs are JSON lines on stdout (`docker compose logs -f app web edge`). Every request gets a
-request id: send `X-Request-ID` to choose it, and it is returned in the response and
-on every log line for that request.
-
-### Sign in
-
-- **First admin.** When the app starts and no admin exists, it creates one from
-  `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` (the spec's `ADMIN_EMAIL` /
-  `ADMIN_PASSWORD`, with DAWAM's `DAWAM_` prefix). Once an admin exists, later starts
-  never create or change one. If no admin exists but a non-admin user already has
-  `DAWAM_ADMIN_EMAIL`, startup fails with an error naming that variable, and the user
-  is left unchanged.
-- **Sessions** are stored in the database. The browser holds only a random token in
-  the `dawam_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` when served over
-  HTTPS). A session ends after `DAWAM_SESSION_IDLE_TIMEOUT_HOURS` (default 8) without
-  a request, or `DAWAM_SESSION_ABSOLUTE_TIMEOUT_DAYS` (default 14) after sign-in.
-  Behind a TLS-terminating proxy, cookies are `Secure` only once
-  `DAWAM_FORWARDED_ALLOW_IPS` trusts it (see above).
-- **CSRF.** Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` must send the value
-  of the `dawam_csrf` cookie in the `X-CSRF-Token` header (double submit); any
-  response sets that cookie for a client without one.
-- **Lockout.** After `DAWAM_LOGIN_MAX_FAILURES` (default 5) consecutive failed
-  sign-ins an account is locked for `DAWAM_LOGIN_LOCKOUT_MINUTES` (default 15): even
-  the right password gets `429 account_locked` (with `Retry-After`) until then. A
-  successful sign-in resets the count, and failures more than a day apart do not add
-  up. An email without an account behaves the same, so the lock does not reveal which
-  emails have accounts.
-- **Rate limiting per address.** A client address with `DAWAM_LOGIN_IP_MAX_FAILURES`
-  (default 20) failed sign-ins in the last `DAWAM_LOGIN_IP_WINDOW_MINUTES` (default
-  15) gets `429 too_many_attempts` until the oldest leaves the window. Only that
-  address waits; users behind one shared NAT address share its limit. Both limits are
-  kept in PostgreSQL, so they need no extra service and hold across restarts.
-- **Security events.** Successful and failed sign-ins, lockouts, sign-ups, password
-  changes, signing out everywhere and changes to the registration settings are
-  recorded (who, if known, the account, the client address and the time; never a
-  password) in the `security_events` table, for the admin's security log.
-- **Passwords** must be at least 10 characters long and not on DAWAM's list of
-  common passwords (compared ignoring case), whenever one is set: sign-up, the first
-  admin, and every password change. The list ships with DAWAM, so it works offline: it
-  is zxcvbn's list of 47,000 common passwords, under the MIT licence
-  (`backend/src/dawam/modules/auth/internal/common_passwords.LICENSE.txt`).
-- **Self-registration** is off until an admin turns it on (Admin settings, or
-  `PUT /api/v1/admin/settings`), optionally only for some email domains (exact
-  matches; list subdomains separately). While it is off the login page shows no
-  sign-up link and `POST /api/v1/auth/register` answers `403 registration_closed`; an
-  email outside the allowed domains gets `403 email_domain_not_allowed`. An address
-  that tried to sign up `DAWAM_REGISTER_IP_MAX_ATTEMPTS` (default 10) times in the
-  last `DAWAM_REGISTER_IP_WINDOW_MINUTES` (default 60) gets `429 too_many_attempts`.
-- **Profile.** Users edit their display name, change their password (which needs the
-  current one and signs out every other session of theirs) and sign out everywhere. A
-  wrong current password counts towards the lockout like a failed sign-in.
-- Endpoints: `POST /api/v1/auth/login`, `/auth/logout`, `/auth/logout-all`,
-  `/auth/register`, `/auth/password/change`, `/auth/password/forgot`,
-  `/auth/password/reset`; `GET /api/v1/auth/registration` (is
-  sign-up open?); `GET|PATCH /api/v1/me`; `GET|PUT /api/v1/admin/settings` (admins
-  only).
-- **Forgotten passwords.** The sign-in page links to "Forgot your password?", which
-  emails a reset link (`POST /api/v1/auth/password/forgot`; the answer is the same
-  whether or not the email belongs to a user). The link is single-use and valid
-  for 30 minutes; DAWAM stores only its SHA-256. Setting a new password with it
-  (`POST /api/v1/auth/password/reset`) ends every session of that user. Links start
-  with `DAWAM_PUBLIC_URL` (default `http://localhost:8000`), never with the
-  request's host.
-- **Invitations.** An admin invites someone by email from **Users → Invite user**
-  (`POST /api/v1/admin/users/invite`); an email that already has an account gets `409
-  email_taken`, and inviting the same email again replaces the pending invitation. The
-  link is single-use, valid 7 days and bound to that email; DAWAM stores only its
-  SHA-256. The invitee opens it, chooses a display name and password (same policy) and
-  is signed in (`POST /api/v1/auth/invitations/lookup` and `/accept`, the token in the
-  body), whether or not self-registration is open. Admins see pending invitations and
-  revoke them (`GET /api/v1/admin/invitations`, `DELETE
-  /api/v1/admin/invitations/{invitation_id}`). Without SMTP the link waits in **Links
-  to share**.
-
-### Email
-
-An admin sets up SMTP in the web UI (**Email settings**, `GET|PUT|DELETE
-/api/v1/admin/smtp`): host, port, `none` / `starttls` / `tls` (certificates are
-always verified), optional username and password, and the From address. **Send test
-email** (`POST /api/v1/admin/smtp/test`) sends one right away and shows the server's
-error if it fails. The SMTP password is stored encrypted with `DAWAM_ENCRYPTION_KEY`
-(AES-256-GCM) and never returned (the API says `has_password` instead); changing the
-host, port or username needs it entered again, so it cannot be sent to another
-server unseen. The SMTP host is whatever the admin enters, so DAWAM will connect to
-any address it can reach, internal ones included (the test email shows the server's
-error). That is accepted because only admins can set it; keep admin accounts few.
-
-Forgot-password is throttled without telling anyone: at most one reset email per
-account per `DAWAM_PASSWORD_RESET_COOLDOWN_MINUTES` (5), and at most
-`DAWAM_PASSWORD_RESET_IP_MAX_REQUESTS` (10) per client address per
-`DAWAM_PASSWORD_RESET_IP_WINDOW_MINUTES` (60). A throttled request gets the same
-answer, sends nothing and stores nothing.
-
-**Without SMTP** (air-gapped installs), or when sending fails, links DAWAM would
-email are kept for admins instead: **Links to share** (`GET
-/api/v1/admin/undelivered-links`) lists each with its recipient, so an admin can
-copy it to them. A link leaves the list when it expires, when it stops working
-(a used or voided reset link, an accepted or revoked invitation) or when an admin
-removes it;
-it is stored encrypted too.
-
-### Workspaces
-
-Any signed-in user can create a Workspace and becomes its owner. The list shows only
-the Workspaces you are a member of, with your role (owner, editor or viewer); only
-owners edit a Workspace's details. Anyone who is not a member, admins included, gets
-404 for a Workspace, so its existence is not revealed. Edits carry the `version` the
-client last saw, and a stale one gets `409 version_conflict`. List endpoints are
-paged with `limit` and an opaque `cursor` (the previous page's `next_cursor`).
-
-- Endpoints: `GET|POST /api/v1/workspaces`, `GET|PATCH /api/v1/workspaces/{workspace_id}`,
-  `GET /api/v1/workspaces/{workspace_id}/progress` (stage progress: Source Analysis per
-  Source System, KPIs, DW Modeling per Layer; every member sees the same).
-- A Workspace opens as a folder tree (Systems; Data Warehouse with KPIs, Staging, Core and
-  Mart, each with Model, Mappings and Evaluation; Lineage, Score, DDL). The selected folder
-  is the `folder` URL parameter, so it can be linked and reloaded.
-- Members: every member sees who belongs (`GET .../members`, not paged: a team's worth
-  of members, by display name) and can leave (`POST
-  .../leave`). Owners add an existing user by email with a role (`POST .../members`),
-  change roles and remove members (`PATCH|DELETE .../members/{member_id}`; access ends at
-  once), and transfer ownership (`POST .../transfer-ownership`: the other member becomes
-  an owner, you an editor). An email with no account gets an invitation into the Workspace
-  instead, which only an admin may send, or anyone while self-registration is open to that
-  email (`403 invite_not_allowed` otherwise); accepting it joins the Workspace, unless its
-  sender is no longer an owner there (`400 invalid_invitation`). A Workspace
-  always keeps an owner: the last one cannot leave, be removed or be demoted (`409
-  last_owner`), backed by a database trigger.
-
-### Files and documents
-
-Owners and editors upload documents (PDF, DOCX, XLSX, Markdown, text, and PNG, JPEG, GIF
-or WebP images) to a Source System's file area, shown as its Documents folder; any member
-lists and downloads them. A *document* is simply an uploaded file with extracted text
-(pypdf, python-docx, openpyxl, or the raw text); a PDF with no text layer, such as a scan,
-is marked "no text found". Uploads are limited to `DAWAM_UPLOAD_MAX_MB` (default 25; the
-`edge` proxy allows up to 100). The type is sniffed from the content and must match the
-extension (`415 unsupported_file_type` otherwise; SVG and HTML are never accepted), files
-are stored under random keys (the uploaded name is only a label), and downloads are always
-`Content-Disposition: attachment`. A file with the same name in an area is replaced.
-
-- Endpoints: `GET|POST /api/v1/workspaces/{workspace_id}/systems/{system_id}/files` (the
-  upload is `multipart/form-data` with a `file` part), `GET
-  /api/v1/workspaces/{workspace_id}/files/{file_id}/download`.
-- Storage: by default a directory, `DAWAM_STORAGE_PATH` (Compose mounts the `file-data`
-  volume there; back it up with the database). For an S3-compatible bucket set
-  `DAWAM_STORAGE_BACKEND=s3`, `DAWAM_S3_BUCKET` and optionally `DAWAM_S3_ENDPOINT_URL`,
-  `DAWAM_S3_REGION`, `DAWAM_S3_ACCESS_KEY_ID` and `DAWAM_S3_SECRET_ACCESS_KEY`, and install
-  DAWAM with the `s3` extra (`pip install "dawam[s3]"`).
-
-## Develop
-
-Repository layout:
-
-```
-backend/    FastAPI app (Python 3.12+), Alembic migrations, tests, tools/
-frontend/   Next.js (App Router) + TypeScript app, TanStack Query, generated API client,
-            its own Dockerfile (the `web` service)
-deploy/     nginx/: the `edge` service (Dockerfile, config template, trusted-proxy script)
-scripts/    generate-api-client.sh, check-api-client.sh
-compose.yaml, Dockerfile (the `app` and `worker` image), .env.example
-```
-
-### Backend
+Edit `.env` and set at least these values:
 
 ```sh
-cd backend
-python -m venv .venv
-. .venv/bin/activate              # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-
-ruff check . && ruff format --check .   # lint
-python tools/check_boundaries.py        # module-boundary check
-pytest                                  # tests (needs Docker, see below)
+DAWAM_ENCRYPTION_KEY=<output of: openssl rand -base64 32>   # required; back it up
+DAWAM_ADMIN_EMAIL=admin@example.com                         # first admin, created on first start
+DAWAM_ADMIN_PASSWORD=<at least 10 characters>
 ```
 
-To run the API outside Docker, point it at any PostgreSQL 16 server with the pgvector extension, for example:
+Then start DAWAM:
 
 ```sh
-docker run -d --name dawam-dev-db -p 5432:5432 \
-  -e POSTGRES_USER=dawam -e POSTGRES_PASSWORD=dawam pgvector/pgvector:pg16
-export DAWAM_DATABASE_URL=postgresql+psycopg://dawam:dawam@localhost:5432/dawam
-export DAWAM_ENCRYPTION_KEY=...   # a key you generated once (see above); keep reusing it
-python -m dawam serve     # API on :8000, migrates on startup
-python -m dawam worker    # background worker
+docker compose up -d --build
 ```
 
-Code is organised as a modular monolith: business modules live in
-`backend/src/dawam/modules/` and may use each other only through their public
-interface; shared infrastructure lives in `backend/src/dawam/platform/`. Read
-[`backend/src/dawam/modules/README.md`](backend/src/dawam/modules/README.md) before
-adding a module or tables. Migrations are in `backend/src/dawam/migrations/`; create
-one with `alembic revision --autogenerate -m "..."` in `backend/`.
+Open **<http://localhost:8000>** and sign in. To use AI features, add a model in
+**Admin > LLM**.
 
-### Frontend
+**Want everything at once?** The all-in-one file also starts a local LLM (Ollama, with
+models pulled automatically), a mail catcher and a demo source database:
 
 ```sh
-cd frontend
-npm ci
-npm run dev      # http://localhost:3000; only `next dev` forwards /api, /healthz and
-                 # /readyz itself, to http://localhost:8000 (DAWAM_DEV_API_URL)
-npm run lint     # ESLint, with the Next.js rules
-npm test         # component tests: Vitest + Testing Library
-npm run build    # next build (also type-checks)
+docker compose -f deploy/docker-compose.yaml --env-file .env --profile demo up -d --build
 ```
 
-The build is a standalone server (`output: "standalone"`), which `next start` cannot
-run. The `web` image runs it; to run it yourself after `npm run build`:
+## Deployment
 
-```sh
-cp -r .next/static .next/standalone/.next/
-node .next/standalone/server.js   # pages only: put edge (or another proxy) in front for /api
-```
+| Option | Best for | Guide |
+|--------|----------|-------|
+| Docker Compose | Evaluation and single-server installs | [Method 1](deploy/README.md#1-docker-compose) |
+| All-in-one Compose file | Trying every feature, including a local LLM and demo data | [Method 2](deploy/README.md#2-all-in-one-compose-file) |
+| Local development | Working on the code with hot reload | [Method 3](deploy/README.md#3-local-development) |
+| Local run without Docker | Running the built app directly on your machine | [Method 4](deploy/README.md#4-local-run-without-docker) |
+| Linux server with systemd | Hosts where containers are not allowed | [Method 5](deploy/README.md#5-linux-server-without-docker-systemd) |
 
-The app lives in `frontend/src/`: routes in `app/` (`login/`, `signup/`,
-`forgot-password/`, `reset-password/`, `accept-invitation/`, and the signed-in pages in the `(signed-in)`
-group, `profile/` and `admin/` (settings, email) among them, whose layout sends anyone
-not signed in to `/login?from=<page>`), screens in `auth/`, `profile/`, `admin/`,
-`shell/` and `workspaces/`, the API client and its
-TanStack Query hooks in `api/`, and the security headers in `security/` and
-`proxy.ts`. Screens are client components that call the API from the browser;
-server components only lay out the static shell. The frontend has no API routes,
-server actions or database access: FastAPI is the only backend (ADR 0003).
+All settings are environment variables, documented in [`.env.example`](.env.example).
+Only `DAWAM_ENCRYPTION_KEY` is required.
 
-Component tests render the screens without Next.js: `src/test/TestApp.tsx` puts the
-pages and layouts together as Next.js routes them, `src/test/navigation.ts` stands in
-for `next/navigation` (and `link.tsx` for `next/link`), and each test fakes the API
-behind the generated client (`src/test/fakeApi.tsx` fakes the account API).
+## Documentation
 
-### The generated API client
+| Document | What's in it |
+|----------|--------------|
+| [`deploy/README.md`](deploy/README.md) | Deployment methods, components and the production checklist |
+| [`docs/install.md`](docs/install.md) | Configuration, local LLM servers, air-gapped installation |
+| [`docs/operations.md`](docs/operations.md) | Backups, upgrades, key rotation, monitoring, troubleshooting |
+| [`docs/reference.md`](docs/reference.md) | Accounts, security controls, email, Workspaces, files and their API endpoints |
+| [`docs/spec.md`](docs/spec.md) | The full product specification (large; search it by heading) |
+| [`CONTEXT.md`](CONTEXT.md) | The domain glossary: Workspace, Source System, Snapshot, Change Set… |
+| [`docs/adr/`](docs/adr/) | Architecture decision records |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, conventions, tests and the pull request process |
 
-The frontend never hand-writes API types. `frontend/src/api/openapi.json` is exported
-from the backend and `frontend/src/api/schema.d.ts` is generated from it with
-openapi-typescript; requests go through openapi-fetch (`frontend/src/api/client.ts`).
-After changing any API route or schema, regenerate and commit both files:
+The API is documented live at `/api/v1/docs`, and its OpenAPI spec is at
+`/api/v1/openapi.json`.
 
-```sh
-scripts/generate-api-client.sh   # needs the backend installed and `npm ci` done
-```
+## Contributing
 
-CI fails if they are out of date (`scripts/check-api-client.sh`); the backend test
-`tests/test_openapi_client_is_current.py` catches a stale spec locally too.
+Contributions are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers setting up the
+development environment, running the tests and opening a pull request. Bugs and feature
+requests go in [GitHub Issues](https://github.com/EslamAlaaZaki/dawam/issues).
 
-## Tests
+## License
 
-Backend tests (`backend/tests/`) drive the HTTP API through a test client against a
-real PostgreSQL 16 that Testcontainers starts once per test run, so **Docker must be
-running**. The SQL Server connector tests also start a SQL Server 2022 container
-(`mcr.microsoft.com/mssql/server`, about 1.5 GB to pull, x86-64 only) on first use, and the MySQL / MariaDB
-connector tests start MySQL 8.4 and MariaDB 11.4 containers. The harness in `backend/tests/conftest.py` provides:
-
-- `anonymous_client`: a test client with no session (entering it runs app startup,
-  including migrations);
-- `signed_in_client`: a client signed in through the API as `signed_in_user` (a
-  regular user); it sends the CSRF token on every request;
-- `admin_client`: the same, signed in as `admin_user` (an admin);
-- `create_user`: creates a user (regular by default) and returns its credentials;
-  sign in with `tests.helpers.sign_in(client, email, password)`;
-- `clock`: the app's clock, a `FakeClock` that tests move with `clock.advance(...)`;
-- `outbox`: every email the app sends, readable as `outbox.messages` /
-  `outbox.sent_to(address)` (it stands in for the SMTP server, so a test saves
-  SMTP settings first; without them links go to the admins' list, as in
-  production; `outbox.fail_with(reason)` makes sending fail);
-- `jobs`: the job runner; background work runs inline in tests, before `submit`
-  returns;
-- `fresh_database_url`: an empty, unmigrated database;
-- `roles`: a client per role of the permission matrix (anonymous, non-member user,
-  viewer, editor, owner, non-member admin) on one Workspace (`tests/roles.py`).
-
-Application tables are emptied between tests.
-
-The permission suite (`tests/authz/test_permission_matrix.py`) sends every endpoint
-as every one of those roles and checks the outcome (allowed, 401, 403 or 404)
-against the spec's §4.3 matrix. It finds the routes from the app itself and fails
-for any route without a row, so a new endpoint needs one (see
-`tests/authz/matrix.py`).
-
-CI (GitHub Actions, `.github/workflows/ci.yml`) runs on every push and pull request:
-backend lint and tests, the module-boundary check, frontend lint, tests and build, and
-the API client staleness check.
+DAWAM is licensed under the [Apache License 2.0](LICENSE).

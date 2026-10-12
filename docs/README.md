@@ -4,8 +4,11 @@ This directory contains documentation for DAWAM, a self-hosted data warehouse me
 
 ## Quick Links
 
+- **[Deployment Guide](../deploy/README.md)** — Every way to run DAWAM (Docker Compose, all-in-one, local, systemd) and its components.
 - **[Installation Guide](./install.md)** — Get DAWAM up and running with Docker Compose, including local LLM setup (Ollama, vLLM, SGLang).
 - **[Operations Guide](./operations.md)** — Run DAWAM in production: backups, monitoring, troubleshooting, and maintenance.
+- **[Feature Reference](./reference.md)** — Accounts, security controls, email, Workspaces and files, with their settings and API endpoints.
+- **[Contributing](../CONTRIBUTING.md)** — Development setup, conventions, tests and pull requests.
 - **[Specification](./spec.md)** — Full product specification (§ 6 covers features and modules).
 - **[Architecture Decision Records](./adr/)** — Design decisions and their rationale.
 
@@ -72,6 +75,7 @@ docs/
 ├── README.md                 # This file
 ├── install.md               # Installation & setup guide
 ├── operations.md            # Backups, monitoring, maintenance
+├── reference.md             # Accounts, security, email, Workspaces, files
 ├── spec.md                  # Full product specification
 └── adr/                     # Architecture Decision Records
     ├── 0001-*.md

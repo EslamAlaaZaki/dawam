@@ -1,0 +1,28 @@
+# DAWAM web UI: the Next.js standalone server (pages only; nginx routes /api to the app).
+# It holds no secrets, so it does not read /etc/dawam/dawam.env.
+
+[Unit]
+Description=DAWAM web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dawam
+Group=dawam
+WorkingDirectory=/opt/dawam/web
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

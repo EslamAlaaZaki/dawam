@@ -1,0 +1,29 @@
+# DAWAM background worker. Same code and environment as dawam-app.service.
+
+[Unit]
+Description=DAWAM worker
+After=network-online.target postgresql.service dawam-app.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dawam
+Group=dawam
+EnvironmentFile=/etc/dawam/dawam.env
+WorkingDirectory=/var/lib/dawam
+ExecStart=/opt/dawam/venv/bin/python -m dawam worker
+Restart=on-failure
+RestartSec=5
+# On SIGTERM the worker finishes the job it is running and takes no new one; a job
+# cut off by the timeout is failed by the next worker start (stale-job sweep).
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dawam
+
+[Install]
+WantedBy=multi-user.target
