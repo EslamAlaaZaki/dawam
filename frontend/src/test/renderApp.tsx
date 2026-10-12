@@ -6,6 +6,7 @@ import { ThemeProvider } from "next-themes";
 
 import { createApiClient } from "../api/client";
 import { ApiClientContext } from "../api/context";
+import { Toaster } from "../components/ui/sonner";
 import { setLocation } from "./navigation";
 import { TestApp } from "./TestApp";
 
@@ -92,6 +93,7 @@ export function renderApp(api: FakeApi, path: string): ApiRequest[] {
           enableColorScheme={false}
         >
           <TestApp />
+          <Toaster />
         </ThemeProvider>
       </QueryClientProvider>
     </ApiClientContext.Provider>,

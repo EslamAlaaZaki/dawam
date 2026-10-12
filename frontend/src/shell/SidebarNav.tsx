@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   Cpu,
   Folders,
   Link2,
@@ -8,12 +9,14 @@ import {
   MailPlus,
   Settings,
   Shield,
+  ShieldCheck,
   Users,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Fragment } from "react";
 
 import { useMe } from "../api/queries";
 import { ApiStatus } from "./ApiStatus";
@@ -52,63 +55,97 @@ function Label({ children }: { children: string }) {
 /** The Workspaces list is current on the home page and while creating one. */
 const WORKSPACE_LIST_PATHS = new Set(["/", "/workspaces/new"]);
 
+/** The Admin sidebar's groups (prototype "Admin" screen). */
+const ADMIN_GROUPS: {
+  label: string;
+  links: { href: string; icon: LucideIcon; name: string }[];
+}[] = [
+  {
+    label: "People",
+    links: [
+      { href: "/admin/users", icon: Users, name: "Users" },
+      { href: "/admin/invitations", icon: MailPlus, name: "Invitations" },
+      { href: "/admin/workspaces", icon: Folders, name: "Workspaces" },
+    ],
+  },
+  {
+    label: "Security",
+    links: [
+      { href: "/admin/security-events", icon: Shield, name: "Security events" },
+      { href: "/admin/settings", icon: Settings, name: "Admin settings" },
+    ],
+  },
+  {
+    label: "Email",
+    links: [
+      { href: "/admin/email", icon: Mail, name: "Settings" },
+      { href: "/admin/email/links", icon: Link2, name: "Links to share" },
+    ],
+  },
+  {
+    label: "AI",
+    links: [
+      { href: "/admin/llm", icon: Cpu, name: "Language models" },
+      { href: "/admin/llm/settings", icon: Wallet, name: "Roles, budgets & usage" },
+    ],
+  },
+];
+
 /**
  * The sidebar's content (prototype "Workspace" and "Admin" screens), shared by the fixed
- * sidebar and the drawer. Outside a Workspace: the Workspaces list, and for admins the
- * Admin links. The in-Workspace navigation (switcher and folders) is a later ticket and
- * replaces the middle section for /workspaces/<id> pages.
+ * sidebar and the drawer. Under /admin, admins get the grouped Admin navigation and a way
+ * back; elsewhere the Workspaces list, and for admins one Admin entry. The in-Workspace
+ * navigation (switcher and folders) is a later ticket and replaces the middle section for
+ * /workspaces/<id> pages.
  */
 export function SidebarNav() {
   const me = useMe();
   const pathname = usePathname();
   const admin = me.data?.system_role === "admin" && !me.data.must_change_password;
-  const here = (href: string) => pathname === href;
+  const inAdmin = admin && pathname.startsWith("/admin");
   return (
     <>
       <Wordmark className="px-2 pt-1 pb-3" />
-      <nav aria-label="Workspaces" className="flex flex-col gap-0.5">
-        <NavLink href="/" icon={Folders} current={WORKSPACE_LIST_PATHS.has(pathname)}>
-          Workspaces
-        </NavLink>
-      </nav>
-      {admin && (
-        <nav aria-label="Administration" className="flex flex-col gap-0.5">
-          <Label>People</Label>
-          <NavLink href="/admin/users" icon={Users} current={here("/admin/users")}>
-            Users
-          </NavLink>
-          <NavLink href="/admin/invitations" icon={MailPlus} current={here("/admin/invitations")}>
-            Invitations
-          </NavLink>
-          <NavLink href="/admin/workspaces" icon={Folders} current={here("/admin/workspaces")}>
-            Workspaces
-          </NavLink>
-          <Label>Security</Label>
-          <NavLink
-            href="/admin/security-events"
-            icon={Shield}
-            current={here("/admin/security-events")}
-          >
-            Security events
-          </NavLink>
-          <NavLink href="/admin/settings" icon={Settings} current={here("/admin/settings")}>
-            Admin settings
-          </NavLink>
-          <Label>Email</Label>
-          <NavLink href="/admin/email" icon={Mail} current={here("/admin/email")}>
-            Email settings
-          </NavLink>
-          <NavLink href="/admin/email/links" icon={Link2} current={here("/admin/email/links")}>
-            Links to share
-          </NavLink>
-          <Label>AI</Label>
-          <NavLink href="/admin/llm" icon={Cpu} current={here("/admin/llm")}>
-            Language models
-          </NavLink>
-          <NavLink href="/admin/llm/settings" icon={Wallet} current={here("/admin/llm/settings")}>
-            AI roles, budgets &amp; usage
-          </NavLink>
-        </nav>
+      {inAdmin ? (
+        <>
+          <nav aria-label="Workspaces" className="flex flex-col gap-0.5">
+            <NavLink href="/" icon={ArrowLeft} current={false}>
+              Back to Workspaces
+            </NavLink>
+          </nav>
+          <nav aria-label="Administration" className="flex flex-col gap-0.5">
+            {ADMIN_GROUPS.map((group) => (
+              <Fragment key={group.label}>
+                <Label>{group.label}</Label>
+                {group.links.map((link) => (
+                  <NavLink
+                    key={link.href}
+                    href={link.href}
+                    icon={link.icon}
+                    current={pathname === link.href}
+                  >
+                    {link.name}
+                  </NavLink>
+                ))}
+              </Fragment>
+            ))}
+          </nav>
+        </>
+      ) : (
+        <>
+          <nav aria-label="Workspaces" className="flex flex-col gap-0.5">
+            <NavLink href="/" icon={Folders} current={WORKSPACE_LIST_PATHS.has(pathname)}>
+              Workspaces
+            </NavLink>
+          </nav>
+          {admin && (
+            <nav aria-label="Administration" className="flex flex-col gap-0.5">
+              <NavLink href="/admin/users" icon={ShieldCheck} current={false}>
+                Admin
+              </NavLink>
+            </nav>
+          )}
+        </>
       )}
       <p className="mt-auto flex items-center p-2 text-xs text-sand-11">
         <ApiStatus dot />

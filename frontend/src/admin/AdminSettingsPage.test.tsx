@@ -25,7 +25,7 @@ function signedInAs(me = ROOT, registration = CLOSED) {
 
 describe("the admin settings page", () => {
   it("is linked from the sidebar for admins and shows the current settings", async () => {
-    renderApp(signedInAs(ROOT, { enabled: true, allowed_email_domains: ["example.com"] }));
+    renderApp(signedInAs(ROOT, { enabled: true, allowed_email_domains: ["example.com"] }), "/admin/users");
 
     const nav = await screen.findByRole("navigation", { name: "Administration" });
     fireEvent.click(within(nav).getByRole("link", { name: "Admin settings" }));

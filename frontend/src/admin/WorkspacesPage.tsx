@@ -8,7 +8,27 @@ import {
   type AdminWorkspace,
 } from "../api/adminWorkspaces";
 import { useUsers } from "../api/users";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
+import { toast } from "../components/ui/sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import { ErrorText, NativeSelect, PageHead, TableCard, labelClasses } from "./parts";
 
 function day(iso: string): string {
   return new Date(iso).toLocaleDateString();
@@ -23,43 +43,50 @@ export function WorkspacesPage() {
   const workspaces = useAdminWorkspaces();
 
   return (
-    <section className="page admin-page">
-      <h2>Workspaces</h2>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Workspaces"
+        description="Every Workspace's name, owners and size. Never its content."
+      />
       {workspaces.isPending ? (
         <Loading />
       ) : workspaces.isError ? (
-        <p role="alert">Could not load the Workspaces: {workspaces.error.message}</p>
+        <ErrorText>Could not load the Workspaces: {workspaces.error.message}</ErrorText>
       ) : (
         <>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Status</th>
-                <th scope="col">Owners</th>
-                <th scope="col">Members</th>
-                <th scope="col">Created</th>
-                <th scope="col">Updated</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workspaces.data.pages.flatMap((page) =>
-                page.items.map((workspace) => (
-                  <WorkspaceRow key={workspace.id} workspace={workspace} />
-                )),
-              )}
-            </tbody>
-          </table>
-          {workspaces.data.pages[0]?.items.length === 0 && <p>There are no Workspaces.</p>}
+          <TableCard>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Name</TableHead>
+                  <TableHead scope="col">Status</TableHead>
+                  <TableHead scope="col">Owners</TableHead>
+                  <TableHead scope="col">Members</TableHead>
+                  <TableHead scope="col">Created</TableHead>
+                  <TableHead scope="col">Updated</TableHead>
+                  <TableHead scope="col">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {workspaces.data.pages.flatMap((page) =>
+                  page.items.map((workspace) => (
+                    <WorkspaceRow key={workspace.id} workspace={workspace} />
+                  )),
+                )}
+              </TableBody>
+            </Table>
+          </TableCard>
+          {workspaces.data.pages[0]?.items.length === 0 && (
+            <p className="text-sand-11">There are no Workspaces.</p>
+          )}
           {workspaces.hasNextPage && (
-            <button
-              type="button"
+            <Button
+              className="self-start"
               onClick={() => void workspaces.fetchNextPage()}
               disabled={workspaces.isFetchingNextPage}
             >
               Load more
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -69,22 +96,26 @@ export function WorkspacesPage() {
 
 function WorkspaceRow({ workspace }: { workspace: AdminWorkspace }) {
   return (
-    <tr aria-label={workspace.name}>
-      <td>{workspace.name}</td>
-      <td>{workspace.status === "archived" ? "Archived" : "Active"}</td>
-      <td>
+    <TableRow aria-label={workspace.name}>
+      <TableCell className="font-medium">{workspace.name}</TableCell>
+      <TableCell>
+        <Badge variant={workspace.status === "archived" ? "neutral" : "success"} dot>
+          {workspace.status === "archived" ? "Archived" : "Active"}
+        </Badge>
+      </TableCell>
+      <TableCell>
         {workspace.owners.map((owner) => (
           <div key={owner.user_id}>
             {owner.display_name} ({owner.email})
             {!owner.is_active && " — deactivated"}
           </div>
         ))}
-      </td>
-      <td>{workspace.member_count}</td>
-      <td>{day(workspace.created_at)}</td>
-      <td>{day(workspace.updated_at)}</td>
-      <td>{!workspace.has_active_owner && <Reassign workspace={workspace} />}</td>
-    </tr>
+      </TableCell>
+      <TableCell>{workspace.member_count}</TableCell>
+      <TableCell className="text-sand-11">{day(workspace.created_at)}</TableCell>
+      <TableCell className="text-sand-11">{day(workspace.updated_at)}</TableCell>
+      <TableCell>{!workspace.has_active_owner && <Reassign workspace={workspace} />}</TableCell>
+    </TableRow>
   );
 }
 
@@ -95,48 +126,60 @@ function Reassign({ workspace }: { workspace: AdminWorkspace }) {
   const users = useUsers({ active: true });
   const candidates = users.data?.pages.flatMap((page) => page.items) ?? [];
 
-  if (!asking) {
-    return (
-      <button type="button" className="secondary" onClick={() => setAsking(true)}>
-        Reassign ownership
-      </button>
-    );
-  }
-
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const userId = String(new FormData(event.currentTarget).get("user") ?? "");
     if (userId) {
-      reassign.mutate({ workspaceId: workspace.id, userId });
+      reassign.mutate(
+        { workspaceId: workspace.id, userId },
+        {
+          onSuccess: () => {
+            setAsking(false);
+            toast.success(`New owner set for ${workspace.name}.`);
+          },
+        },
+      );
     }
   }
 
   return (
-    <form className="admin-actions" onSubmit={onSubmit} aria-label={`Reassign ${workspace.name}`}>
-      <label>
-        New owner
-        <select name="user" defaultValue="">
-          <option value="" disabled>
-            Choose a user
-          </option>
-          {candidates.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.display_name} ({user.email})
-            </option>
-          ))}
-        </select>
-      </label>
-      <button type="submit" disabled={reassign.isPending}>
-        Make owner
-      </button>
-      <button type="button" className="secondary" onClick={() => setAsking(false)}>
-        Cancel
-      </button>
-      {reassign.isError && (
-        <p className="form-error" role="alert">
-          {reassign.error.message}
-        </p>
-      )}
-    </form>
+    <Dialog open={asking} onOpenChange={setAsking}>
+      <DialogTrigger asChild>
+        <Button size="sm">Reassign ownership</Button>
+      </DialogTrigger>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>Reassign {workspace.name}</DialogTitle>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-3.5"
+          onSubmit={onSubmit}
+          aria-label={`Reassign ${workspace.name}`}
+        >
+          <label className={labelClasses}>
+            New owner
+            <NativeSelect name="user" defaultValue="">
+              <option value="" disabled>
+                Choose a user
+              </option>
+              {candidates.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.display_name} ({user.email})
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          {reassign.isError && <ErrorText>{reassign.error.message}</ErrorText>}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setAsking(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={reassign.isPending}>
+              Make owner
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

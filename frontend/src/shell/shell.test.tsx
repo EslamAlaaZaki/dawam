@@ -82,6 +82,16 @@ describe("the sidebar", () => {
     cleanup();
 
     renderApp(backend(ROOT), "/");
+    const entry = await screen.findByRole("navigation", {
+      name: "Administration",
+    });
+    expect(within(entry).getByRole("link", { name: "Admin" })).toHaveAttribute(
+      "href",
+      "/admin/users",
+    );
+    cleanup();
+
+    renderApp(backend(ROOT), "/admin/users");
     const admin = await screen.findByRole("navigation", {
       name: "Administration",
     });

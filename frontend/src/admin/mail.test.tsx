@@ -55,10 +55,10 @@ afterEach(() => clearCookie());
 
 describe("admin navigation", () => {
   it("shows the email pages to admins", async () => {
-    renderApp(as(ROOT), "/");
+    renderApp(as(ROOT), "/admin/email");
 
     const nav = await screen.findByRole("navigation", { name: "Administration" });
-    expect(within(nav).getByRole("link", { name: "Email settings" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
       "/admin/email",
     );
