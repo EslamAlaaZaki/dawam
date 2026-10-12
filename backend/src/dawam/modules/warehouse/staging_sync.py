@@ -38,6 +38,7 @@ from .staging_rows import _quote, _Rows, build_staging, write_rows
 from .staging_types import translate_type
 from .tables import (
     NAME_MAX_LENGTH,
+    ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
     DwTableRecord,
@@ -358,6 +359,7 @@ class _Handler:
 
 class StagingTableHandler(_Handler):
     object_type = TABLE
+    _UPDATABLE = ("status", "name", "review_flags")
 
     def validate(
         self,
@@ -371,8 +373,16 @@ class StagingTableHandler(_Handler):
             if not payload.get("source_table_id") or not payload.get("columns"):
                 raise _invalid("A staging table create names its source table and columns.")
             return
-        if operation == "update" and set(payload) != {"status"}:
-            raise _invalid("A staging table item changes only its status.")
+        if operation == "update":
+            if not payload or any(f not in self._UPDATABLE for f in payload):
+                raise _invalid(
+                    f"A staging table item changes some of {', '.join(self._UPDATABLE)}."
+                )
+            name = payload.get("name")
+            if "name" in payload and (
+                not isinstance(name, str) or not name or len(name) > NAME_MAX_LENGTH
+            ):
+                raise _invalid(f"A staging table name is 1 to {NAME_MAX_LENGTH} characters.")
         if self._table(db, workspace_id, object_id) is None:
             raise _invalid("The Staging Table does not exist.")
 
@@ -396,8 +406,8 @@ class StagingTableHandler(_Handler):
             return None
         values: dict[str, Any] = {}
         for field in fields:
-            if field == "status":
-                values[field] = table.status
+            if field in ("status", "name", "review_flags"):
+                values[field] = getattr(table, field)
             elif field == "downstream_uses":
                 ids = list(
                     db.scalars(
@@ -423,13 +433,26 @@ class StagingTableHandler(_Handler):
         if table is None:  # pragma: no cover - the engine checked staleness under the lock
             raise ApiError(409, "version_conflict", "The Staging Table no longer exists.")
         if operation == "update":
-            old = table.status
-            table.status = payload["status"]
+            renamed = "name" in payload and payload["name"].lower() != table.name.lower()
+            if renamed and db.scalar(
+                sa.select(DwTableRecord.id).where(
+                    DwTableRecord.data_warehouse_id == table.data_warehouse_id,
+                    DwTableRecord.layer == "staging",
+                    sa.func.lower(DwTableRecord.name) == payload["name"].lower(),
+                    DwTableRecord.id != table.id,
+                )
+            ):
+                raise ApiError(
+                    409, "name_taken", f"A Staging Table is named {payload['name']} already."
+                )
+            old = {f: getattr(table, f) for f in payload}
+            for field, value in payload.items():
+                setattr(table, field, value)
             table.version += 1
             table.updated_at = at
             db.flush()
             return AppliedChange(
-                TABLE, table.id, {"status": old}, {"status": table.status}, table.name
+                TABLE, table.id, old, {f: getattr(table, f) for f in payload}, table.name
             )
         warehouse_id = table.data_warehouse_id
         if table.source_table_id is not None:
@@ -526,7 +549,9 @@ class StagingTableHandler(_Handler):
 
 class StagingColumnHandler(_Handler):
     object_type = COLUMN
-    _UPDATABLE = ("data_type", "is_nullable", "review_flags", "status")
+    _UPDATABLE = ("data_type", "is_nullable", "review_flags", "status", "sql_expression")
+    """``sql_expression`` is the column's mapping SQL (the ``source_system`` audit column holds
+    the System Code, so a System Code change rewrites it)."""
 
     def validate(
         self,
@@ -571,6 +596,12 @@ class StagingColumnHandler(_Handler):
         for field in fields:
             if field == "downstream_uses":
                 values[field] = _uses(db, [column.id])
+            elif field == "sql_expression":
+                values[field] = db.scalar(
+                    sa.select(ColumnMappingRecord.sql_expression).where(
+                        ColumnMappingRecord.dw_column_id == column.id
+                    )
+                )
             else:
                 values[field] = getattr(column, field)
         return values
@@ -603,15 +634,33 @@ class StagingColumnHandler(_Handler):
             for ordinal, remaining in enumerate(siblings, start=1):
                 remaining.ordinal = ordinal
             return AppliedChange(COLUMN, object_id or column.id, old, None, column.name)
-        old = {f: getattr(column, f) for f in payload}
+        label = f"{table.name}.{column.name}"
+        if "sql_expression" in payload:
+            mapping = db.scalars(
+                sa.select(ColumnMappingRecord)
+                .where(ColumnMappingRecord.dw_column_id == column.id)
+                .with_for_update()
+            ).first()
+            if mapping is None:  # pragma: no cover - every staging column has its mapping
+                raise ApiError(409, "version_conflict", "The column's mapping no longer exists.")
+            changes = {f: v for f, v in payload.items() if f != "sql_expression"}
+            before = {"sql_expression": mapping.sql_expression}
+            mapping.sql_expression = payload["sql_expression"]
+            mapping.version += 1
+            mapping.updated_at = at
+            db.flush()
+            if not changes:
+                return AppliedChange(COLUMN, column.id, before, dict(payload), label)
+        old = {f: getattr(column, f) for f in payload if f != "sql_expression"}
         for field, value in payload.items():
-            setattr(column, field, value)
+            if field != "sql_expression":
+                setattr(column, field, value)
         # Taking the source's value ends the user's override of it.
         column.edited_fields = [f for f in column.edited_fields if f not in payload]
         column.version += 1
         column.updated_at = at
         db.flush()
-        return AppliedChange(COLUMN, column.id, old, dict(payload), f"{table.name}.{column.name}")
+        return AppliedChange(COLUMN, column.id, old, dict(payload), label)
 
     def _create(
         self, db: Session, workspace_id: uuid.UUID, payload: Mapping[str, Any], at: datetime

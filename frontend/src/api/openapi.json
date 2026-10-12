@@ -4423,6 +4423,83 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/mapping-sheet/import": {
+      "post": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse"
+        ],
+        "summary": "Import Mapping Sheet",
+        "description": "Import a mapping sheet in the layout of the export (owners and editors). It reports\nfirst: rows naming a table, column or branch that does not exist fail validation and\ncreate nothing, Staging rows are ignored, and a `lookup`, `system` or `hashed` mapping\nmay only be repeated as it is. With `dry_run=false`, everything that differs from the Data\nWarehouse becomes one pending Change Set (origin `import`) for review: mappings are\ncreated or their type, rule and SQL changed, and branch join paths, filters, group-by and\nhaving changed. Approval states are never changed by the import. An unreadable file is 422\n`invalid_sheet`; 404 before the Data Warehouse is set up.",
+        "operationId": "importMappingSheet",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only validate and report; propose nothing. The default.",
+              "default": true,
+              "title": "Dry Run"
+            },
+            "description": "Only validate and report; propose nothing. The default."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_importMappingSheet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingImportOutcome"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/validation": {
       "get": {
         "tags": [
@@ -4625,7 +4702,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProposedChangeSet"
+                  "$ref": "#/components/schemas/dawam__modules__warehouse__staging_api__ProposedChangeSet"
                 }
               }
             }
@@ -4680,7 +4757,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProposedChangeSet"
+                  "$ref": "#/components/schemas/dawam__modules__warehouse__staging_api__ProposedChangeSet"
                 }
               }
             }
@@ -5416,7 +5493,7 @@
           "sources"
         ],
         "summary": "Update Source System",
-        "description": "Edit a Source System (owners and editors); fields left out stay as they are.\nChanging the System Code is for owners only (403 for editors). Until staging\nexists, a code change applies directly.",
+        "description": "Edit a Source System (owners and editors); fields left out stay as they are.\nChanging the System Code is for owners only (403 for editors). Once the system has\nStaging Tables a code change is a Change Set (409 `use_change_set`; see\n`proposeSystemCodeChange`); before that it applies directly.",
         "operationId": "updateSourceSystem",
         "parameters": [
           {
@@ -10453,6 +10530,144 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/code-change": {
+      "post": {
+        "tags": [
+          "propagation"
+        ],
+        "summary": "Propose System Code Change",
+        "description": "Propose changing a Source System's System Code (owners only; 403 for editors). One\n`system_code_change` Change Set renames every Staging Table named after the old code and\nupdates the `source_system` audit column; accepting it applies the change, and the Core and\nMart SQL reading a renamed table follows through the propagation Change Set the rename\ntriggers. A pending one for the same system is superseded. 404 `not_found`; 409\n`system_code_unchanged`; 422 `invalid_change_set` for a code that is not identifier-safe\nor is taken.",
+        "operationId": "proposeSystemCodeChange",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemCodeChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dawam__modules__propagation__api__ProposedChangeSet"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/platform-change": {
+      "post": {
+        "tags": [
+          "propagation"
+        ],
+        "summary": "Propose Platform Change",
+        "description": "Propose moving the Data Warehouse to another target platform (owners only; 403 for\neditors). One `platform_change` Change Set carries the platform, the Staging column types\ntranslated again for it and every stored SQL text (Core and Mart mappings and branches, KPI\nformulas) transpiled to its dialect; text sqlglot cannot translate stays as it is and is\nflagged \"manual\" (`manual`, and a `manual_review` item). Accepting the platform is\nstructural: it returns an approved Core and Mart to draft. 404 `not_set_up`; 409\n`platform_unchanged`.",
+        "operationId": "proposePlatformChange",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dawam__modules__propagation__api__ProposedChangeSet"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/data-warehouse/lineage": {
       "get": {
         "tags": [
@@ -15150,6 +15365,21 @@
           "next_cursor"
         ],
         "title": "AuditPage"
+      },
+      "Body_importMappingSheet": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "The mapping sheet (.xlsx)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_importMappingSheet"
       },
       "Body_replaceFile": {
         "properties": {
@@ -20961,6 +21191,104 @@
         ],
         "title": "MappingBranch"
       },
+      "MappingImportIssue": {
+        "properties": {
+          "sheet": {
+            "type": "string",
+            "title": "Sheet",
+            "description": "`Mapping` or `Branches`."
+          },
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row",
+            "description": "The row in the sheet (the header is row 1)."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sheet",
+          "row",
+          "message"
+        ],
+        "title": "MappingImportIssue"
+      },
+      "MappingImportOutcome": {
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/MappingImportReportOut"
+          },
+          "change_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Set Id",
+            "description": "The pending Change Set (origin `import`) to review at `/change-sets/{id}`; null on a dry run and when nothing differs."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report",
+          "change_set_id"
+        ],
+        "title": "MappingImportOutcome"
+      },
+      "MappingImportReportOut": {
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/MappingImportIssue"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Rows that failed validation. They propose nothing; the rest still do."
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows",
+            "description": "Mapping and branch rows read."
+          },
+          "ignored_staging_rows": {
+            "type": "integer",
+            "title": "Ignored Staging Rows"
+          },
+          "unchanged": {
+            "type": "integer",
+            "title": "Unchanged",
+            "description": "Rows that already match the Data Warehouse."
+          },
+          "changes": {
+            "type": "integer",
+            "title": "Changes",
+            "description": "Items proposed, or that would be on a dry run."
+          }
+        },
+        "type": "object",
+        "required": [
+          "errors",
+          "rows",
+          "ignored_staging_rows",
+          "unchanged",
+          "changes"
+        ],
+        "title": "MappingImportReportOut"
+      },
       "MappingInput": {
         "properties": {
           "kind": {
@@ -22088,6 +22416,26 @@
         ],
         "title": "Platform"
       },
+      "PlatformChangeRequest": {
+        "properties": {
+          "target_platform": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "sqlserver",
+              "oracle",
+              "snowflake",
+              "bigquery"
+            ],
+            "title": "Target Platform"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_platform"
+        ],
+        "title": "PlatformChangeRequest"
+      },
       "PlatformList": {
         "properties": {
           "items": {
@@ -22228,40 +22576,6 @@
           "status"
         ],
         "title": "ProfilingStarted"
-      },
-      "ProposedChangeSet": {
-        "properties": {
-          "change_set_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Change Set Id",
-            "description": "The pending Change Set, to review at `/change-sets/{id}`; null when there is nothing to change."
-          },
-          "items": {
-            "type": "integer",
-            "title": "Items",
-            "description": "How many changes it proposes."
-          },
-          "conflicts": {
-            "type": "integer",
-            "title": "Conflicts",
-            "description": "Items that would overwrite a field a user overrode."
-          }
-        },
-        "type": "object",
-        "required": [
-          "change_set_id",
-          "items",
-          "conflicts"
-        ],
-        "title": "ProposedChangeSet"
       },
       "ReassignOwnerRequest": {
         "properties": {
@@ -25442,6 +25756,21 @@
         ],
         "title": "SyncRequest"
       },
+      "SystemCodeChangeRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Code",
+            "description": "The new System Code."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "SystemCodeChangeRequest"
+      },
       "SystemProgress": {
         "properties": {
           "system_id": {
@@ -27566,6 +27895,70 @@
           "next_cursor"
         ],
         "title": "WorkspacePage"
+      },
+      "dawam__modules__propagation__api__ProposedChangeSet": {
+        "properties": {
+          "change_set_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Change Set Id",
+            "description": "The pending Change Set, to review at `/change-sets/{id}`."
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items",
+            "description": "How many changes it proposes."
+          },
+          "manual": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Manual",
+            "description": "Stored SQL sqlglot could not translate, flagged \"manual\" (platform changes)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set_id",
+          "items",
+          "manual"
+        ],
+        "title": "ProposedChangeSet"
+      },
+      "dawam__modules__warehouse__staging_api__ProposedChangeSet": {
+        "properties": {
+          "change_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Set Id",
+            "description": "The pending Change Set, to review at `/change-sets/{id}`; null when there is nothing to change."
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items",
+            "description": "How many changes it proposes."
+          },
+          "conflicts": {
+            "type": "integer",
+            "title": "Conflicts",
+            "description": "Items that would overwrite a field a user overrode."
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set_id",
+          "items",
+          "conflicts"
+        ],
+        "title": "ProposedChangeSet"
       }
     }
   }
