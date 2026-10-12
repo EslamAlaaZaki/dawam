@@ -2,7 +2,9 @@
 retype goes through ``generation.DwColumnHandler``.
 
 - ``ColumnMappingHandler`` (``column_mapping``): rewrites a column mapping's SQL or lookup
-  inputs to follow a rename, or makes it ``unmapped`` when an input was removed.
+  inputs to follow a rename, or makes it ``unmapped`` when an input was removed. A mapping
+  sheet import also creates a mapping and sets its type (never ``lookup``, ``system`` or
+  ``hashed``), rule and SQL; those values are checked as a save checks them.
 - ``MappingBranchHandler`` (``mapping_branch``): rewrites a branch's driving input, joins,
   filters, GROUP BY or HAVING to follow a rename.
 
@@ -59,10 +61,11 @@ def _warehouse(db: Session, workspace_id: uuid.UUID) -> DataWarehouseRecord | No
 
 class _UpdateOnly:
     object_type: str
+    operations: tuple[str, ...] = ("update",)
 
     def required_action(self, operation: str) -> Action:
-        if operation != "update":
-            raise ValueError(f"Change Sets only update {self.object_type} objects.")
+        if operation not in self.operations:
+            raise ValueError(f"Change Sets cannot {operation} {self.object_type} objects.")
         return Action.EDIT_DW_SCHEMA
 
 
@@ -70,9 +73,22 @@ def _broken(message: str) -> dict[str, Any]:
     return {"unparsed": False, "errors": [{"code": "broken_reference", "message": message}]}
 
 
+IMPORTABLE_TYPES = ("direct", "derived", "constant", "unmapped", "not_in_branch")
+"""The mapping types an import may set; the others are made by the tool itself."""
+
+
+def _uuid(value: Any, what: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        raise _invalid(f"`{what}` is an id.") from None
+
+
 class ColumnMappingHandler(_UpdateOnly):
     object_type = "column_mapping"
-    FIELDS = ("mapping_type", "sql_expression", "lookup")
+    operations = ("update", "create")
+    FIELDS = ("mapping_type", "rule_text", "sql_expression", "lookup")
+    CREATE_FIELDS = ("dw_column_id", "branch_id", "mapping_type", "rule_text", "sql_expression")
 
     def validate(
         self,
@@ -82,12 +98,67 @@ class ColumnMappingHandler(_UpdateOnly):
         object_id: uuid.UUID | None,
         payload: Mapping[str, Any],
     ) -> None:
+        if operation == "create":
+            if any(f not in self.CREATE_FIELDS for f in payload) or "mapping_type" not in payload:
+                raise _invalid(f"A new column_mapping has {', '.join(self.CREATE_FIELDS)}.")
+            column_id = _uuid(payload.get("dw_column_id"), "dw_column_id")
+            branch_id = payload.get("branch_id")
+            found = self._column(db, workspace_id, column_id)
+            if found is None:
+                raise _invalid("The column does not exist.")
+            if branch_id is not None and not self._in_table(
+                db, _uuid(branch_id, "branch_id"), found[1]
+            ):
+                raise _invalid("The branch does not belong to the column's table.")
+            self.check(db, workspace_id, column_id, branch_id is not None, payload)
+            return
         if not payload or any(f not in self.FIELDS for f in payload):
             raise _invalid(f"A column_mapping item changes some of {', '.join(self.FIELDS)}.")
-        if payload.get("mapping_type", "unmapped") != "unmapped":
-            raise _invalid("A column_mapping item can only make a mapping unmapped.")
-        if self._mapping(db, workspace_id, object_id) is None:
+        found_mapping = self._mapping(db, workspace_id, object_id)
+        if found_mapping is None:
             raise _invalid("The column mapping does not exist.")
+        if payload.get("mapping_type", "unmapped") != "unmapped":
+            self.check(
+                db,
+                workspace_id,
+                found_mapping[1].id,
+                found_mapping[0].branch_id is not None,
+                payload,
+            )
+
+    def check(
+        self,
+        db: Session,
+        workspace_id: uuid.UUID,
+        column_id: uuid.UUID,
+        in_branch: bool,
+        fields: Mapping[str, Any],
+    ) -> None:
+        """Refuse a type, rule and SQL a save would refuse, and SQL naming a column the Layer
+        below does not have (422 ``invalid_change_set``)."""
+        found = self._column(db, workspace_id, column_id)
+        warehouse = _warehouse(db, workspace_id)
+        if found is None or warehouse is None:
+            raise _invalid("The column does not exist.")
+        column, table = found
+        mapping_type = fields.get("mapping_type")
+        if mapping_type not in IMPORTABLE_TYPES:
+            raise _invalid(f"The type must be one of {', '.join(IMPORTABLE_TYPES)}.")
+        helpers = _helpers(db)
+        values = {
+            "mapping_type": mapping_type,
+            "rule_text": fields.get("rule_text") or "",
+            "sql_expression": fields.get("sql_expression") or "",
+        }
+        try:
+            _, _, sql = helpers._fields(values, in_branch=in_branch, column=column)
+            parsed, validation = helpers._parse(warehouse, mapping_type, sql)
+            if validation["unparsed"]:
+                raise ApiError(422, "invalid_mapping", validation["errors"][0]["message"])
+            if parsed:
+                helpers._resolve(db, warehouse, table, parsed)
+        except ApiError as exc:
+            raise _invalid(exc.message) from None
 
     def current_values(
         self,
@@ -109,8 +180,11 @@ class ColumnMappingHandler(_UpdateOnly):
         *,
         at: datetime,
     ) -> AppliedChange:
-        found = self._mapping(db, workspace_id, object_id, lock=True)
         warehouse = _warehouse(db, workspace_id)
+        if operation == "create":
+            found = self._create(db, workspace_id, payload, at)
+        else:
+            found = self._mapping(db, workspace_id, object_id, lock=True)
         if found is None or warehouse is None:  # pragma: no cover - checked under the lock
             raise ApiError(409, "version_conflict", "The column mapping no longer exists.")
         record, column, table = found
@@ -122,7 +196,7 @@ class ColumnMappingHandler(_UpdateOnly):
         parsed = dimension = None
         validation: dict[str, Any] = {"unparsed": False, "errors": []}
         inputs: dict[Any, Any] = {}
-        if mapping_type == "unmapped":
+        if mapping_type in ("unmapped", "not_in_branch"):
             sql, lookup = "", None
         else:
             try:
@@ -137,6 +211,7 @@ class ColumnMappingHandler(_UpdateOnly):
                 parsed, dimension, inputs = None, None, {}
                 validation = _broken(exc.message)
         record.mapping_type = mapping_type
+        record.rule_text = payload.get("rule_text", record.rule_text) or ""
         record.sql_expression = sql
         record.lookup = lookup
         record.validation = validation
@@ -150,9 +225,85 @@ class ColumnMappingHandler(_UpdateOnly):
         return AppliedChange(
             "column_mapping",
             record.id,
-            {f: old[f] for f in changed},
+            None if operation == "create" else {f: old[f] for f in changed},
             {f: new[f] for f in changed},
             f"{table.name}.{column.name}",
+        )
+
+    def _create(
+        self, db: Session, workspace_id: uuid.UUID, payload: Mapping[str, Any], at: datetime
+    ) -> tuple[ColumnMappingRecord, DwColumnRecord, DwTableRecord] | None:
+        """The mapping to fill: the column's existing one if someone made it meanwhile,
+        else a new empty one."""
+        column_id = _uuid(payload["dw_column_id"], "dw_column_id")
+        found = self._column(db, workspace_id, column_id, lock=True)
+        if found is None:
+            return None
+        column, table = found
+        raw_branch = payload.get("branch_id")
+        branch_id = _uuid(raw_branch, "branch_id") if raw_branch else None
+        same_branch = (
+            ColumnMappingRecord.branch_id.is_(None)
+            if branch_id is None
+            else ColumnMappingRecord.branch_id == branch_id
+        )
+        record = db.scalars(
+            sa.select(ColumnMappingRecord)
+            .where(ColumnMappingRecord.dw_column_id == column.id, same_branch)
+            .with_for_update()
+        ).first()
+        if record is None:
+            table_mapping = _helpers(db)._table_mapping(db, table, at)
+            record = ColumnMappingRecord(
+                id=uuid.uuid4(),
+                table_mapping_id=table_mapping.id,
+                branch_id=branch_id,
+                dw_column_id=column.id,
+                mapping_type="unmapped",
+                rule_text="",
+                sql_expression="",
+                lookup=None,
+                validation={"unparsed": False, "errors": []},
+                updated_at=at,
+                version=0,
+            )
+            db.add(record)
+            db.flush()
+        return record, column, table
+
+    @staticmethod
+    def _column(
+        db: Session, workspace_id: uuid.UUID, column_id: uuid.UUID, *, lock: bool = False
+    ) -> tuple[DwColumnRecord, DwTableRecord] | None:
+        query = (
+            sa.select(DwColumnRecord, DwTableRecord)
+            .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+            .join(DataWarehouseRecord, DataWarehouseRecord.id == DwTableRecord.data_warehouse_id)
+            .where(
+                DataWarehouseRecord.workspace_id == workspace_id,
+                DwTableRecord.layer.in_(MODEL_LAYERS),
+                DwColumnRecord.id == column_id,
+            )
+        )
+        if lock:
+            query = query.with_for_update(of=DwColumnRecord)
+        row = db.execute(query).first()
+        return None if row is None else (row[0], row[1])
+
+    @staticmethod
+    def _in_table(db: Session, branch_id: uuid.UUID, table: DwTableRecord) -> bool:
+        return (
+            db.scalars(
+                sa.select(MappingBranchRecord.id)
+                .join(
+                    TableMappingRecord,
+                    TableMappingRecord.id == MappingBranchRecord.table_mapping_id,
+                )
+                .where(
+                    MappingBranchRecord.id == branch_id, TableMappingRecord.dw_table_id == table.id
+                )
+            ).first()
+            is not None
         )
 
     @staticmethod
@@ -194,6 +345,21 @@ class MappingBranchHandler(_UpdateOnly):
             raise _invalid(f"A mapping_branch item changes some of {', '.join(BRANCH_PARTS)}.")
         if self._branch(db, workspace_id, object_id) is None:
             raise _invalid("The mapping branch does not exist.")
+
+    def check(
+        self, db: Session, workspace_id: uuid.UUID, table_id: uuid.UUID, fields: Mapping[str, Any]
+    ) -> None:
+        """Refuse branch text a save would refuse: SQL that does not parse, or naming a table
+        the Layer below does not have (422 ``invalid_change_set``). ``fields`` holds the
+        branch's ``name`` and its ``BRANCH_PARTS``."""
+        warehouse = _warehouse(db, workspace_id)
+        table = db.get(DwTableRecord, table_id)
+        if warehouse is None or table is None:
+            raise _invalid("The table does not exist.")
+        try:
+            _helpers(db)._branch_values(db, warehouse, table, fields)
+        except ApiError as exc:
+            raise _invalid(exc.message) from None
 
     def current_values(
         self,

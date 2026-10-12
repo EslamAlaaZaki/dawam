@@ -39,7 +39,10 @@ def source_system_service(request: Request) -> SourceSystemService:
     state = request.app.state
     clock = state.services.clock
     return SourceSystemService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        clock=clock,
+        has_staging=getattr(state, "system_has_staging", None),
     )
 
 
@@ -156,8 +159,9 @@ def update_source_system(
     systems: SourceSystemServiceDep,
 ) -> SourceSystem:
     """Edit a Source System (owners and editors); fields left out stay as they are.
-    Changing the System Code is for owners only (403 for editors). Until staging
-    exists, a code change applies directly."""
+    Changing the System Code is for owners only (403 for editors). Once the system has
+    Staging Tables a code change is a Change Set (409 `use_change_set`; see
+    `proposeSystemCodeChange`); before that it applies directly."""
     return _out(
         systems.update(
             user,

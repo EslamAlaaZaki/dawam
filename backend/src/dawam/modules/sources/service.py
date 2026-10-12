@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -108,14 +109,27 @@ def _code_taken() -> ApiError:
     )
 
 
+SystemStagedCheck = Callable[[uuid.UUID, uuid.UUID], bool]
+"""``(workspace_id, system_id)`` to whether the system has Staging Tables. ``sources`` cannot
+import ``warehouse``, so the composition root fills this port."""
+
+
 class SourceSystemService:
     """Source Systems of a Workspace. Every method that acts for a user authorizes
     through the workspaces module's policy first; callers add no checks of their own."""
 
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        has_staging: SystemStagedCheck | None = None,
+    ) -> None:
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._has_staging = has_staging
 
     def create(
         self,
@@ -248,6 +262,13 @@ class SourceSystemService:
                 code_changes = new_code != record.code
                 if code_changes:
                     self._workspaces.authorize(user, Action.CHANGE_SYSTEM_CODE, record.workspace_id)
+                    if self._has_staging is not None and self._has_staging(workspace_id, system_id):
+                        raise ApiError(
+                            409,
+                            "use_change_set",
+                            "This Source System has Staging Tables named after its System Code. "
+                            "Propose the change as a Change Set instead.",
+                        )
                 if name is not None:
                     record.name = _clean(name, "name", NAME_MAX_LENGTH, required=True)
                 if description is not None:
@@ -261,9 +282,8 @@ class SourceSystemService:
                         technical_owner, "technical owner", OWNER_MAX_LENGTH
                     )
                 if code_changes:
-                    # Staging does not exist yet; once it does, this is where the rename
-                    # Change Set for every affected Staging Table is produced (spec story
-                    # 39). Until then the change applies directly.
+                    # Without Staging Tables there is nothing to rename: the change applies
+                    # directly. With them, it is a ``system_code_change`` Change Set (above).
                     record.code = new_code
                 record.version += 1
                 record.updated_at = self._clock()
