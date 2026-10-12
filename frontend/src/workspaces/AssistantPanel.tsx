@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
@@ -16,6 +17,7 @@ import {
   type ToolCall,
 } from "../api/assistant";
 import { ApiError } from "../api/client";
+import { Button } from "../components/ui/button";
 import { isActive, useCancelJob, useJob } from "../api/jobs";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConversationChangeSets } from "./ChangeSetReview";
@@ -183,11 +185,14 @@ export function AssistantPanel({
   workspace,
   context,
   request = null,
+  onClose,
 }: {
   workspace: Workspace;
   context: PageContext | null;
   /** A question to ask on the member's behalf (a page action), once per `nonce`. */
   request?: AssistantRequest | null;
+  /** Closes the panel (the overlay below 1024px has no other way out). */
+  onClose?: () => void;
 }) {
   const conversations = useConversations(workspace.id);
   const create = useCreateConversation(workspace.id);
@@ -261,7 +266,13 @@ export function AssistantPanel({
   // Ask a page action's question once, in the current conversation or a new one.
   const asked = useRef(0);
   useEffect(() => {
-    if (!request || request.nonce === asked.current || !canAsk || archived || running) {
+    if (
+      !request ||
+      request.nonce === asked.current ||
+      !canAsk ||
+      archived ||
+      running
+    ) {
       return;
     }
     asked.current = request.nonce;
@@ -284,7 +295,19 @@ export function AssistantPanel({
 
   return (
     <section className="assistant" aria-labelledby="assistant-title">
-      <h3 id="assistant-title">Assistant</h3>
+      <div className="assistant-header">
+        <h3 id="assistant-title">Assistant</h3>
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Close Assistant"
+            onClick={onClose}
+          >
+            <X aria-hidden />
+          </Button>
+        )}
+      </div>
       {archived && (
         <p className="assistant-note">
           This Workspace is archived: conversations are read-only.
@@ -364,7 +387,8 @@ export function AssistantPanel({
       {selected &&
         messages.some((m) =>
           m.run?.tool_calls.some(
-            (t) => t.name === "propose_changes" || t.name === "propose_check_fix",
+            (t) =>
+              t.name === "propose_changes" || t.name === "propose_check_fix",
           ),
         ) && (
           <ConversationChangeSets

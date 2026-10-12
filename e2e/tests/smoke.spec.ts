@@ -126,6 +126,8 @@ test("the main path: sign in to lineage", async ({ page }) => {
 
   await test.step("generate the core layer with the assistant and accept the Change Set", async () => {
     await page.goto(`/workspaces/${workspaceId}`);
+    // The Assistant panel starts closed; its header button opens it.
+    await page.getByRole("button", { name: "Assistant", exact: true }).click();
     await page.getByLabel("Ask the assistant").fill("Generate the core layer");
     await page.getByRole("button", { name: "Send" }).click();
 

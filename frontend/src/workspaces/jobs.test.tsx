@@ -4,7 +4,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Job } from "../api/jobs";
 import type { Me } from "../api/queries";
 import type { Workspace } from "../api/workspaces";
-import { CSRF_TOKEN, json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
+import {
+  CSRF_TOKEN,
+  json,
+  renderApp,
+  setCsrfCookie,
+  type ApiRequest,
+} from "../test/renderApp";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const PATH = `/workspaces/${WORKSPACE_ID}`;
@@ -84,7 +90,11 @@ function backend(role: Workspace["role"]) {
       case `GET ${API}`:
         return json(workspace(role));
       case `GET ${API}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET ${API}/members`:
         return json({ items: [] });
       case `GET ${API}/jobs`:
@@ -103,40 +113,70 @@ beforeEach(() => {
 });
 afterEach(() => clearCookie());
 
+/** The jobs are a Popover behind the top bar's Jobs button. */
+async function openJobs() {
+  fireEvent.click(await screen.findByRole("button", { name: /^Jobs/ }));
+}
+
 describe("background jobs", () => {
+  it("counts the jobs still running on the top bar's button", async () => {
+    renderApp(backend("editor"), PATH);
+
+    // Profile ERP is running and Scan CRM queued; Export model failed.
+    expect(
+      await screen.findByRole("button", { name: "Jobs, 2 running" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows each job's status, progress, log and why it failed", async () => {
     renderApp(backend("editor"), PATH);
+    await openJobs();
 
     const mine = await screen.findByRole("listitem", { name: "Profile ERP" });
     expect(within(mine).getByText("Running")).toBeInTheDocument();
-    expect((within(mine).getByRole("progressbar") as HTMLProgressElement).value).toBe(40);
+    expect(
+      (within(mine).getByRole("progressbar") as HTMLProgressElement).value,
+    ).toBe(40);
     expect(within(mine).getByText(/reading tables/)).toBeInTheDocument();
     const failed = screen.getByRole("listitem", { name: "Export model" });
     expect(within(failed).getByText("Failed")).toBeInTheDocument();
-    expect(within(failed).getByText("the source refused the connection")).toBeInTheDocument();
+    expect(
+      within(failed).getByText("the source refused the connection"),
+    ).toBeInTheDocument();
   });
 
   it("lets a member cancel only the jobs they started", async () => {
     const requests = renderApp(backend("editor"), PATH);
+    await openJobs();
 
     const mine = await screen.findByRole("listitem", { name: "Profile ERP" });
     const graces = screen.getByRole("listitem", { name: "Scan CRM" });
-    expect(within(graces).queryByRole("button", { name: "Cancel job" })).not.toBeInTheDocument();
+    expect(
+      within(graces).queryByRole("button", { name: "Cancel job" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(within(mine).getByRole("button", { name: "Cancel job" }));
 
     expect(await within(mine).findByText("Cancelled")).toBeInTheDocument();
     expect(
-      requests.find((r) => r.method === "POST" && r.path === `/api/v1/jobs/${MINE.id}/cancel`),
+      requests.find(
+        (r) =>
+          r.method === "POST" && r.path === `/api/v1/jobs/${MINE.id}/cancel`,
+      ),
     ).toMatchObject({ csrf: CSRF_TOKEN });
   });
 
   it("lets an owner cancel anyone's active job", async () => {
     renderApp(backend("owner"), PATH);
+    await openJobs();
 
     const graces = await screen.findByRole("listitem", { name: "Scan CRM" });
-    expect(within(graces).getByRole("button", { name: "Cancel job" })).toBeInTheDocument();
+    expect(
+      within(graces).getByRole("button", { name: "Cancel job" }),
+    ).toBeInTheDocument();
     const failed = screen.getByRole("listitem", { name: "Export model" });
-    expect(within(failed).queryByRole("button", { name: "Cancel job" })).not.toBeInTheDocument();
+    expect(
+      within(failed).queryByRole("button", { name: "Cancel job" }),
+    ).not.toBeInTheDocument();
   });
 });

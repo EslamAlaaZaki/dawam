@@ -138,6 +138,11 @@ beforeEach(() => {
 });
 afterEach(() => clearCookie());
 
+/** The Assistant is a side panel behind a button in the Workspace's header. */
+async function openAssistant() {
+  fireEvent.click(await screen.findByRole("button", { name: "Assistant" }));
+}
+
 async function ask(question: string) {
   fireEvent.change(await screen.findByLabelText("Ask the assistant"), {
     target: { value: question },
@@ -182,6 +187,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     await ask("What is Net Revenue?");
 
@@ -252,6 +258,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     await ask("Count them");
 
@@ -301,6 +308,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     await ask("Explore everything");
 
@@ -343,6 +351,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     await ask("Dig into it");
     expect(await screen.findByText("Looking")).toBeInTheDocument();
@@ -381,6 +390,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     await ask("Hello?");
 
@@ -409,6 +419,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     expect(await screen.findByText("An old question")).toBeInTheDocument();
     expect(screen.getByText(/conversations are read-only/)).toBeInTheDocument();
@@ -434,6 +445,7 @@ describe("the assistant's chat panel", () => {
       }),
       PATH,
     );
+    await openAssistant();
 
     fireEvent.click(await screen.findByLabelText(/Share with the Workspace/));
 
@@ -514,15 +526,20 @@ describe("explaining and fixing a failed check", () => {
       withChecks(["assistant.ask", "workspace.view"]),
       `${PATH}?folder=dw/score`,
     );
+    await openAssistant();
 
     fireEvent.click(await screen.findByRole("button", { name: "Explain" }));
 
     await waitFor(() =>
       expect(
-        requests.some((r) => r.method === "POST" && r.path.endsWith("/messages")),
+        requests.some(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        ),
       ).toBe(true),
     );
-    const sent = requests.find((r) => r.method === "POST" && r.path.endsWith("/messages"));
+    const sent = requests.find(
+      (r) => r.method === "POST" && r.path.endsWith("/messages"),
+    );
     expect(sent).toMatchObject({
       body: {
         content: expect.stringContaining("fact_loan"),
@@ -537,36 +554,55 @@ describe("explaining and fixing a failed check", () => {
       withChecks(["assistant.ask", "change_set.review", "workspace.view"]),
       `${PATH}?folder=dw/score`,
     );
+    await openAssistant();
 
-    expect(await screen.findByRole("button", { name: "Propose fix" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Propose fix" }),
+    ).toBeInTheDocument();
     // This check is not about a change's impacts: nothing for propagation to fix.
     expect(screen.queryByRole("button", { name: "Fix impacts" })).toBeNull();
   });
 
   it("offers an editor Fix impacts for a check a change's impacts fail", async () => {
-    const broken = { ...CHECK, check_code: "inputs_exist", title: "All mapped input columns exist" };
+    const broken = {
+      ...CHECK,
+      check_code: "inputs_exist",
+      title: "All mapped input columns exist",
+    };
     const requests = renderApp(
-      withChecks(["assistant.ask", "change_set.review", "workspace.view"], [broken]),
+      withChecks(
+        ["assistant.ask", "change_set.review", "workspace.view"],
+        [broken],
+      ),
       `${PATH}?folder=dw/score`,
     );
+    await openAssistant();
 
     fireEvent.click(await screen.findByRole("button", { name: "Fix impacts" }));
 
-    expect(await screen.findByRole("link", { name: "Review it" })).toHaveAttribute(
+    expect(
+      await screen.findByRole("link", { name: "Review it" }),
+    ).toHaveAttribute(
       "href",
       `/workspaces/${WORKSPACE_ID}/change-sets/77777777-7777-4777-8777-777777777777`,
     );
     expect(screen.getByText(/1 impacted Asset\./)).toBeInTheDocument();
     expect(
-      requests.find((r) => r.method === "POST" && r.path === `${API}/fix-impacts`),
+      requests.find(
+        (r) => r.method === "POST" && r.path === `${API}/fix-impacts`,
+      ),
     ).toMatchObject({ csrf: CSRF_TOKEN });
   });
 
   it("does not offer Fix impacts to a viewer", async () => {
     renderApp(
-      withChecks(["assistant.ask", "workspace.view"], [{ ...CHECK, check_code: "inputs_exist" }]),
+      withChecks(
+        ["assistant.ask", "workspace.view"],
+        [{ ...CHECK, check_code: "inputs_exist" }],
+      ),
       `${PATH}?folder=dw/score`,
     );
+    await openAssistant();
 
     await screen.findByRole("button", { name: "Explain" });
     expect(screen.queryByRole("button", { name: "Fix impacts" })).toBeNull();

@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import type { Folder } from "./folders";
@@ -21,13 +22,18 @@ function visibleRows(
   if (collapsed.has(folder.id)) {
     return [row];
   }
-  return [row, ...folder.children.flatMap((child) => visibleRows(child, collapsed, level + 1, row))];
+  return [
+    row,
+    ...folder.children.flatMap((child) =>
+      visibleRows(child, collapsed, level + 1, row),
+    ),
+  ];
 }
 
 /** A folder id and its ancestors' ids, nearest first, ending with the root (""). */
 function withAncestors(id: string): string[] {
   const ids = [id];
-  for (let at = id; at !== ""; ) {
+  for (let at = id; at !== "";) {
     at = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : "";
     ids.push(at);
   }
@@ -60,19 +66,24 @@ export function FolderTree({
   // is showing (a collapse can hide both); the tree always keeps one tab stop.
   const shown = new Set(rows.map((r) => r.folder.id));
   const tabStop =
-    [...withAncestors(focused), ...withAncestors(selected)].find((id) => shown.has(id)) ??
-    rows[0]!.folder.id;
+    [...withAncestors(focused), ...withAncestors(selected)].find((id) =>
+      shown.has(id),
+    ) ?? rows[0]!.folder.id;
 
   useEffect(() => {
     if (moveFocus.current) {
       moveFocus.current = false;
-      treeRef.current?.querySelector<HTMLElement>(`[data-folder="${tabStop}"]`)?.focus();
+      treeRef.current
+        ?.querySelector<HTMLElement>(`[data-folder="${tabStop}"]`)
+        ?.focus();
     }
   });
 
   function focusOn(id: string) {
     if (id === tabStop) {
-      treeRef.current?.querySelector<HTMLElement>(`[data-folder="${id}"]`)?.focus();
+      treeRef.current
+        ?.querySelector<HTMLElement>(`[data-folder="${id}"]`)
+        ?.focus();
       return;
     }
     setFocused(id);
@@ -92,7 +103,9 @@ export function FolderTree({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLUListElement>) {
-    const id = (event.target as HTMLElement).closest<HTMLElement>("[data-folder]")?.dataset.folder;
+    const id = (event.target as HTMLElement).closest<HTMLElement>(
+      "[data-folder]",
+    )?.dataset.folder;
     const index = rows.findIndex((r) => r.folder.id === id);
     if (index < 0 || event.altKey || event.ctrlKey || event.metaKey) {
       return;
@@ -156,7 +169,7 @@ export function FolderTree({
         aria-selected={folder.id === selected}
         aria-expanded={hasChildren ? open : undefined}
         tabIndex={folder.id === tabStop ? 0 : -1}
-        className="folder-item"
+        className="outline-none [&[aria-selected=true]>.folder-label]:bg-sand-4 [&[aria-selected=true]>.folder-label]:font-medium [&[aria-selected=true]>.folder-label]:text-sand-12 [&:focus-visible>.folder-label]:outline-2 [&:focus-visible>.folder-label]:outline-offset-[-2px] [&:focus-visible>.folder-label]:outline-jade-11"
         onFocus={(event) => {
           if (event.target === event.currentTarget) {
             setFocused(folder.id);
@@ -168,25 +181,38 @@ export function FolderTree({
           onSelect(folder.id);
         }}
       >
-        <span className="folder-label">
-          {hasChildren && (
-            <span
-              className="folder-toggle"
-              aria-hidden="true"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpen(folder.id, !open);
-                focusOn(folder.id);
-              }}
-            >
-              {open ? "▾" : "▸"}
-            </span>
-          )}
-          <span id={labelId}>{folder.label}</span>
+        <span
+          className="folder-label flex cursor-pointer items-center gap-1.5 rounded-md py-[5px] pr-2 text-sand-11 hover:bg-sand-3 hover:text-sand-12"
+          style={{ paddingLeft: `${8 + (level - 1) * 16}px` }}
+        >
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            {hasChildren && (
+              <span
+                className="flex"
+                aria-hidden="true"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen(folder.id, !open);
+                  focusOn(folder.id);
+                }}
+              >
+                {open ? (
+                  <ChevronDown className="size-4" />
+                ) : (
+                  <ChevronRight className="size-4" />
+                )}
+              </span>
+            )}
+          </span>
+          <span id={labelId} className="min-w-0 truncate">
+            {folder.label}
+          </span>
         </span>
         {hasChildren && open && (
-          <ul role="group" className="folder-group">
-            {folder.children.map((child) => renderRow({ folder: child, level: level + 1, parent: row }))}
+          <ul role="group" className="m-0 list-none p-0">
+            {folder.children.map((child) =>
+              renderRow({ folder: child, level: level + 1, parent: row }),
+            )}
           </ul>
         )}
       </li>
@@ -198,7 +224,7 @@ export function FolderTree({
       ref={treeRef}
       role="tree"
       aria-label="Workspace folders"
-      className="folder-tree"
+      className="m-0 list-none p-0"
       onKeyDown={onKeyDown}
     >
       {renderRow(rows[0]!)}

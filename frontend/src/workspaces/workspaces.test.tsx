@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApiClient } from "../api/client";
@@ -31,7 +37,12 @@ const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
   viewer: ["workspace.leave", "workspace.view"],
 };
 
-function workspace(id: string, name: string, role: WorkspaceRole, more: Partial<Workspace> = {}) {
+function workspace(
+  id: string,
+  name: string,
+  role: WorkspaceRole,
+  more: Partial<Workspace> = {},
+) {
   return {
     id,
     name,
@@ -49,13 +60,23 @@ function workspace(id: string, name: string, role: WorkspaceRole, more: Partial<
   } satisfies Workspace;
 }
 
-const RETAIL = workspace("11111111-1111-4111-8111-111111111111", "Retail DW", "owner", {
-  description: "The retail bank's warehouse",
-  domain: "Retail banking",
-});
-const CLAIMS = workspace("22222222-2222-4222-8222-222222222222", "Claims", "viewer", {
-  domain: "Insurance",
-});
+const RETAIL = workspace(
+  "11111111-1111-4111-8111-111111111111",
+  "Retail DW",
+  "owner",
+  {
+    description: "The retail bank's warehouse",
+    domain: "Retail banking",
+  },
+);
+const CLAIMS = workspace(
+  "22222222-2222-4222-8222-222222222222",
+  "Claims",
+  "viewer",
+  {
+    domain: "Insurance",
+  },
+);
 
 interface Recorded {
   method: string;
@@ -72,15 +93,26 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiError(status: number, code: string, message: string, details = {}): Response {
+function apiError(
+  status: number,
+  code: string,
+  message: string,
+  details = {},
+): Response {
   return json({ error: { code, message, details } }, status);
 }
 
 /** A stand-in for the backend: Ada is signed in and belongs to `workspaces`. */
 function fakeBackend(
-  options: { workspaces?: Workspace[]; pageSize?: number; createFails?: boolean } = {},
+  options: {
+    workspaces?: Workspace[];
+    pageSize?: number;
+    createFails?: boolean;
+  } = {},
 ) {
-  const store = new Map((options.workspaces ?? []).map((w) => [w.id, { ...w }]));
+  const store = new Map(
+    (options.workspaces ?? []).map((w) => [w.id, { ...w }]),
+  );
   const pageSize = options.pageSize ?? 50;
   const requests: Recorded[] = [];
 
@@ -93,10 +125,20 @@ function fakeBackend(
     const text = await request.text();
     const body = text ? JSON.parse(text) : undefined;
     const csrf = request.headers.get("X-CSRF-Token");
-    requests.push({ method: request.method, path: url.pathname, search: url.search, csrf, body });
+    requests.push({
+      method: request.method,
+      path: url.pathname,
+      search: url.search,
+      csrf,
+      body,
+    });
 
     if (request.method !== "GET" && csrf !== CSRF_TOKEN) {
-      return apiError(403, "csrf_failed", "The request has no valid CSRF token.");
+      return apiError(
+        403,
+        "csrf_failed",
+        "The request has no valid CSRF token.",
+      );
     }
     if (/^\/api\/v1\/workspaces\/[^/]+\/members$/.test(url.pathname)) {
       return json({ items: [] });
@@ -119,9 +161,14 @@ function fakeBackend(
       }
       if (request.method === "PATCH") {
         if (body.version !== found.version) {
-          return apiError(409, "version_conflict", "Someone else changed this Workspace.", {
-            current_version: found.version,
-          });
+          return apiError(
+            409,
+            "version_conflict",
+            "Someone else changed this Workspace.",
+            {
+              current_version: found.version,
+            },
+          );
         }
         const { version, ...changes } = body;
         const edited = { ...found, ...changes, version: version + 1 };
@@ -137,17 +184,23 @@ function fakeBackend(
       case "GET /api/v1/workspaces": {
         const start = Number(url.searchParams.get("cursor") ?? 0);
         const items = sorted().slice(start, start + pageSize);
-        const next = start + pageSize < store.size ? String(start + pageSize) : null;
+        const next =
+          start + pageSize < store.size ? String(start + pageSize) : null;
         return json({ items, next_cursor: next });
       }
       case "POST /api/v1/workspaces": {
         if (options.createFails) {
           return apiError(422, "validation_error", "The request is not valid.");
         }
-        const created = workspace("33333333-3333-4333-8333-333333333333", body.name, "owner", {
-          description: body.description,
-          domain: body.domain,
-        });
+        const created = workspace(
+          "33333333-3333-4333-8333-333333333333",
+          body.name,
+          "owner",
+          {
+            description: body.description,
+            domain: body.domain,
+          },
+        );
         store.set(created.id, created);
         return json(created, 201);
       }
@@ -168,8 +221,13 @@ function renderApp(backend: ReturnType<typeof fakeBackend>, path = "/") {
   setLocation(path);
   const fetchStub = async (input: RequestInfo | URL, init?: RequestInit) =>
     backend.handle(new Request(input, init));
-  const client = createApiClient({ baseUrl: "http://dawam.test", fetch: fetchStub });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createApiClient({
+    baseUrl: "http://dawam.test",
+    fetch: fetchStub,
+  });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
@@ -199,7 +257,11 @@ describe("the Workspace list", () => {
     const rows = within(table)
       .getAllByRole("row")
       .slice(1)
-      .map((row) => within(row).getAllByRole("cell").map((cell) => cell.textContent));
+      .map((row) =>
+        within(row)
+          .getAllByRole("cell")
+          .map((cell) => cell.textContent),
+      );
     expect(rows).toEqual([
       ["Claims", "Insurance", "Viewer"],
       ["Retail DW", "Retail banking", "Owner"],
@@ -214,7 +276,9 @@ describe("the Workspace list", () => {
     renderApp(fakeBackend());
 
     expect(
-      await screen.findByText("You are not a member of any Workspace yet. Create one to get started."),
+      await screen.findByText(
+        "You are not a member of any Workspace yet. Create one to get started.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -222,15 +286,25 @@ describe("the Workspace list", () => {
     const backend = fakeBackend({ workspaces: [RETAIL, CLAIMS], pageSize: 1 });
     renderApp(backend);
 
-    expect(await screen.findByRole("link", { name: "Claims" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Retail DW" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "Claims" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Retail DW" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
-    expect(await screen.findByRole("link", { name: "Retail DW" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "Retail DW" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Claims" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
-    expect(backend.requests.map((r) => r.search).filter(Boolean)).toContain("?cursor=1");
+    expect(
+      screen.queryByRole("button", { name: "Show more" }),
+    ).not.toBeInTheDocument();
+    expect(backend.requests.map((r) => r.search).filter(Boolean)).toContain(
+      "?cursor=1",
+    );
   });
 
   it("opens a Workspace from the list", async () => {
@@ -238,7 +312,9 @@ describe("the Workspace list", () => {
 
     fireEvent.click(await screen.findByRole("link", { name: "Retail DW" }));
 
-    expect(await screen.findByRole("heading", { name: "Retail DW" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Retail DW" }),
+    ).toBeInTheDocument();
     expect(currentLocation()).toBe(`/workspaces/${RETAIL.id}`);
   });
 });
@@ -249,15 +325,21 @@ describe("creating a Workspace", () => {
     renderApp(backend);
 
     fireEvent.click(await screen.findByRole("link", { name: "New Workspace" }));
-    expect(await screen.findByRole("heading", { name: "New Workspace" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "New Workspace" }),
+    ).toBeInTheDocument();
     fill("Name", "Retail DW");
     fill("Description", "The retail bank's warehouse");
     fill("Business domain", "Retail banking");
     fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
 
-    expect(await screen.findByRole("heading", { name: "Retail DW" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Retail DW" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Your role: Owner")).toBeInTheDocument();
-    expect(currentLocation()).toBe("/workspaces/33333333-3333-4333-8333-333333333333");
+    expect(currentLocation()).toBe(
+      "/workspaces/33333333-3333-4333-8333-333333333333",
+    );
     expect(backend.requests.find((r) => r.method === "POST")).toMatchObject({
       path: "/api/v1/workspaces",
       csrf: CSRF_TOKEN,
@@ -268,8 +350,13 @@ describe("creating a Workspace", () => {
       },
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "All Workspaces" }));
-    expect(await screen.findByRole("link", { name: "Retail DW" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Switch Workspace/ }));
+    fireEvent.click(
+      await screen.findByRole("link", { name: "All Workspaces" }),
+    );
+    expect(
+      await screen.findByRole("link", { name: "Retail DW" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the API's message when the Workspace cannot be created", async () => {
@@ -279,7 +366,9 @@ describe("creating a Workspace", () => {
     fill("Name", "Retail DW");
     fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("The request is not valid.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The request is not valid.",
+    );
     expect(currentLocation()).toBe("/workspaces/new");
   });
 });
@@ -295,7 +384,9 @@ describe("a Workspace's page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
-    expect(screen.getByRole("heading", { name: "Retail warehouse" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Retail warehouse" }),
+    ).toBeInTheDocument();
     expect(backend.requests.find((r) => r.method === "PATCH")).toMatchObject({
       path: `/api/v1/workspaces/${RETAIL.id}`,
       csrf: CSRF_TOKEN,
@@ -322,12 +413,16 @@ describe("a Workspace's page", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
-    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Renamed elsewhere"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Name")).toHaveValue("Renamed elsewhere"),
+    );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fill("Name", "My rename");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
-    expect(backend.requests.filter((r) => r.method === "PATCH").at(-1)?.body).toMatchObject({
+    expect(
+      backend.requests.filter((r) => r.method === "PATCH").at(-1)?.body,
+    ).toMatchObject({
       version: 2,
       name: "My rename",
     });
@@ -338,24 +433,44 @@ describe("a Workspace's page", () => {
     ["viewer", "Viewer"],
   ] as const)("shows the details read-only to an %s", async (role, label) => {
     const shared = { ...RETAIL, role, permissions: PERMISSIONS[role] };
-    renderApp(fakeBackend({ workspaces: [shared] }), `/workspaces/${RETAIL.id}`);
+    renderApp(
+      fakeBackend({ workspaces: [shared] }),
+      `/workspaces/${RETAIL.id}`,
+    );
 
-    expect(await screen.findByRole("heading", { name: "Retail DW" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Retail DW" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(`Your role: ${label}`)).toBeInTheDocument();
     expect(screen.getByText("The retail bank's warehouse")).toBeInTheDocument();
     expect(screen.getByText("Retail banking")).toBeInTheDocument();
-    expect(screen.getByText("Only owners can edit these details.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Only owners can edit these details."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a not-found page for a Workspace the API does not show the user", async () => {
-    renderApp(fakeBackend({ workspaces: [RETAIL] }), `/workspaces/${CLAIMS.id}`);
+    renderApp(
+      fakeBackend({ workspaces: [RETAIL] }),
+      `/workspaces/${CLAIMS.id}`,
+    );
 
-    expect(await screen.findByRole("heading", { name: "Workspace not found" })).toBeInTheDocument();
-    expect(screen.getByText("It does not exist, or you are not a member of it.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("link", { name: "Back to your Workspaces" }));
-    expect(await screen.findByRole("link", { name: "Retail DW" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Workspace not found" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("It does not exist, or you are not a member of it."),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("link", { name: "Back to your Workspaces" }),
+    );
+    expect(
+      await screen.findByRole("link", { name: "Retail DW" }),
+    ).toBeInTheDocument();
     expect(currentLocation()).toBe("/");
   });
 });
