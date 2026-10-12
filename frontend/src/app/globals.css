@@ -535,8 +535,8 @@ body {
   font-style: italic;
 }
 
-/* Three blocks above were never closed (`.form label`, `.form input, .form textarea`
-   and `.details dd`), so every rule after `.form label` is nested inside them and
+/* Two blocks above were never closed (`.form input, .form textarea`
+   and `.details dd`), so every rule after them is nested inside them and
    matches almost nothing. The old build closed them at the end of the file; PostCSS
    (Tailwind) refuses an unclosed block, so they are closed here to keep these pages
    exactly as they rendered. Remove this, and the dead rules, as pages move over. */
