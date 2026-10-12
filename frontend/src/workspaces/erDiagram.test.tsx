@@ -187,6 +187,28 @@ async function relationships() {
 }
 
 describe("Source ER diagram", () => {
+  it("marks tables that have Protected Columns, naming them", async () => {
+    const column = (name: string, is_protected: boolean) =>
+      ({ id: `c-${name}`, name, ordinal: 1, is_protected }) as unknown as SourceSchema["tables"][number]["columns"][number];
+    renderApp(
+      (r) =>
+        r.path === `${SYSTEM}/schema`
+          ? json({
+              ...SCHEMA,
+              tables: SCHEMA.tables.map((t) =>
+                t.id === "t-cust"
+                  ? { ...t, columns: [column("email", true), column("ssn", true), column("id", false)] }
+                  : t,
+              ),
+            })
+          : api(r),
+      FOLDER,
+    );
+    const canvas = within(await screen.findByLabelText("ER diagram canvas"));
+    expect(canvas.getByRole("img", { name: "2 Protected Columns: email, ssn" })).toBeInTheDocument();
+    expect(canvas.getAllByRole("img")).toHaveLength(1);
+  });
+
   it("draws every table and tells declared from accepted-inferred relationships", async () => {
     const requests = renderApp(api, FOLDER);
     const list = await relationships();

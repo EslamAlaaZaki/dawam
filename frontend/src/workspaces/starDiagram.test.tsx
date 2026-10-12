@@ -114,7 +114,7 @@ function summary(t: DwTable): DwTableSummary {
   return { ...rest, column_count: columns.length, naming_violation_count: 0 };
 }
 
-function backend(tables: DwTable[]) {
+function backend(tables: DwTable[], pii: { id: string; pseudonymised: boolean }[] = []) {
   return (r: ApiRequest) => {
     const key = `${r.method} ${r.path}`;
     switch (key) {
@@ -147,6 +147,17 @@ function backend(tables: DwTable[]) {
         return json({ set_up: true, version: 1 });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/systems`:
         return json({ items: [], next_cursor: null });
+      case `GET /api/v1/workspaces/${WORKSPACE_ID}/data-warehouse/pii`:
+        return json({
+          columns: pii.map((p) => ({
+            ...p,
+            type: "dw_column",
+            label: "x",
+            layer: "core",
+            pii_note: null,
+          })),
+          tables: [],
+        });
       case `GET ${TABLES}`:
         return json({
           items: tables.filter((t) => t.layer === r.query.layer).map(summary),
@@ -193,6 +204,36 @@ describe("the star diagram", () => {
     expect(diagram).toHaveClass("dawam-flow");
     expect(diagram.querySelectorAll("svg.star-key")).toHaveLength(2);
     expect(within(diagram).getByText(/customer_sk/)).toBeInTheDocument();
+  });
+
+  it("marks PII-derived columns, with a label and in the list", async () => {
+    const customer = table(2, "dim_customer", {
+      is_conformed: true,
+      columns: [
+        column(10, id(2), "customer_sk", { role: "sk" }),
+        column(12, id(2), "email", { role: "attribute" }),
+        column(13, id(2), "phone", { role: "attribute" }),
+      ],
+    });
+    const pii = [
+      { id: customer.columns[1]!.id, pseudonymised: false },
+      { id: customer.columns[2]!.id, pseudonymised: true },
+    ];
+    renderApp(backend([DATE, customer, SALES], pii), `${PATH}?folder=dw/core/model`);
+
+    const diagram = await screen.findByRole("group", { name: "Star diagram" });
+    expect(await within(diagram).findByRole("img", { name: "PII-derived" })).toBeInTheDocument();
+    expect(within(diagram).getByRole("img", { name: "PII-derived, pseudonymised" })).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "PII-derived columns" });
+    expect(within(list).getByText("dim_customer.email (PII-derived)")).toBeInTheDocument();
+    expect(within(list).getByText("dim_customer.phone (PII-derived, pseudonymised)")).toBeInTheDocument();
+  });
+
+  it("draws no PII marker when nothing is PII-derived", async () => {
+    renderApp(backend([DATE, CUSTOMER, SALES]), `${PATH}?folder=dw/core/model`);
+
+    const diagram = await screen.findByRole("group", { name: "Star diagram" });
+    expect(within(diagram).queryByRole("img", { name: /PII/ })).not.toBeInTheDocument();
   });
 
   it("includes the Core conformed dimensions a Mart fact points at", async () => {

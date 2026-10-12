@@ -360,3 +360,17 @@
   vertical-align: -1px;
   color: var(--amber-11);
 }
+
+/* The PII marker (a shield icon with a label) in diagrams: red-11 reads on sand-1, jade-2
+   and the dark grounds. */
+.dawam-flow .pii-marker {
+  display: inline-flex;
+  flex: none;
+  margin-left: 4px;
+  color: var(--red-11);
+}
+
+.dawam-flow .pii-marker svg {
+  width: 12px;
+  height: 12px;
+}

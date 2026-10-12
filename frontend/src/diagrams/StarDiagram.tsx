@@ -5,6 +5,7 @@ import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node } fro
 import "@xyflow/react/dist/style.css";
 
 import type { DwTable } from "../api/dwModel";
+import { PiiMarker } from "./PiiMarker";
 import { isFact, linksOf, ranks } from "./starModel";
 
 const NODE_WIDTH = 220;
@@ -16,12 +17,19 @@ const LINE = 18;
 const MAX_LINES = 6;
 
 /** The columns worth drawing: keys, and a fact's measures. */
-function keyColumns(t: DwTable) {
-  return t.columns.filter((c) => ["sk", "nk", "fk", "measure"].includes(c.role));
+function keyColumns(t: DwTable, pii: Map<string, boolean>) {
+  return t.columns.filter((c) => ["sk", "nk", "fk", "measure"].includes(c.role) || pii.has(c.id));
 }
 
-/** React Flow draws the Layer's tables as nodes and its foreign keys as role-labelled edges. */
-export function StarDiagram({ tables }: { tables: DwTable[] }) {
+/** React Flow draws the Layer's tables as nodes and its foreign keys as role-labelled edges.
+ * `pii` holds the PII-derived DW columns (id to pseudonymised); they are always drawn, marked. */
+export function StarDiagram({
+  tables,
+  pii = new Map(),
+}: {
+  tables: DwTable[];
+  pii?: Map<string, boolean>;
+}) {
   const links = linksOf(tables);
   const rank = ranks(tables, links);
   const seen = new Map<number, number>();
@@ -36,8 +44,8 @@ export function StarDiagram({ tables }: { tables: DwTable[] }) {
         y: r * (ROW_HEIGHT + ROW_GAP),
       },
       width: NODE_WIDTH,
-      height: HEAD + LINE * Math.min(keyColumns(t).length, MAX_LINES),
-      data: { label: <TableCard table={t} /> },
+      height: HEAD + LINE * Math.min(keyColumns(t, pii).length, MAX_LINES),
+      data: { label: <TableCard table={t} pii={pii} /> },
       className: isFact(t) ? "star-node star-fact" : "star-node star-dimension",
       draggable: false,
     };
@@ -68,7 +76,7 @@ export function StarDiagram({ tables }: { tables: DwTable[] }) {
   );
 }
 
-function TableCard({ table }: { table: DwTable }) {
+function TableCard({ table, pii }: { table: DwTable; pii: Map<string, boolean> }) {
   return (
     <div className="star-card">
       <strong className="star-name">{table.name}</strong>
@@ -78,7 +86,7 @@ function TableCard({ table }: { table: DwTable }) {
         {table.is_conformed ? " · conformed" : ""}
       </small>
       <ul>
-        {keyColumns(table)
+        {keyColumns(table, pii)
           .slice(0, MAX_LINES)
           .map((c) => (
             <li key={c.id}>
@@ -86,6 +94,9 @@ function TableCard({ table }: { table: DwTable }) {
                 <KeyRound aria-hidden className="star-key" />
               ) : null}
               {c.name}
+              {pii.has(c.id) ? (
+                <PiiMarker label={pii.get(c.id) ? "PII-derived, pseudonymised" : "PII-derived"} />
+              ) : null}
               {c.role === "sk" ? " (SK)" : c.role === "fk" ? " (FK)" : ""}
             </li>
           ))}

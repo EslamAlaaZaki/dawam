@@ -15,12 +15,16 @@ import { useAcceptedRelationships } from "../api/relationships";
 import { useSourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
+import { PiiMarker } from "../diagrams/PiiMarker";
+import { EmptyState, Hint, NativeSelect, Panel, h3Classes, labelClasses } from "./parts";
 import {
   filterGraph,
   qualified,
   relationshipEdges,
   type ErEdge,
 } from "./erGraph";
+
+type SourceTable = NonNullable<ReturnType<typeof useSourceSchema>["data"]>["tables"][number];
 
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 40;
@@ -82,7 +86,7 @@ export function SourceErDiagram({
       x: (index % COLUMNS) * (NODE_WIDTH + 60),
       y: Math.floor(index / COLUMNS) * (NODE_HEIGHT + 80),
     },
-    data: { label: qualified(table) },
+    data: { label: <ErNode table={table} /> },
     width: NODE_WIDTH,
     height: NODE_HEIGHT,
     selected: table.id === tableId,
@@ -102,11 +106,15 @@ export function SourceErDiagram({
   }));
 
   return (
-    <section aria-labelledby="folder-title">
-      <h3 id="folder-title">ER diagram</h3>
-      <div className="form">
-        <label htmlFor="er-schema">Database Schema</label>
-        <select
+    <Panel aria-labelledby="folder-title">
+      <h3 id="folder-title" className={h3Classes}>
+        ER diagram
+      </h3>
+      <div className="flex max-w-xl flex-col gap-3.5">
+        <label htmlFor="er-schema" className={labelClasses}>
+          Database Schema
+        </label>
+        <NativeSelect
           id="er-schema"
           value={dbSchema}
           onChange={(event) => {
@@ -120,9 +128,11 @@ export function SourceErDiagram({
               {s.name}
             </option>
           ))}
-        </select>
-        <label htmlFor="er-table">Focus on a table</label>
-        <select
+        </NativeSelect>
+        <label htmlFor="er-table" className={labelClasses}>
+          Focus on a table
+        </label>
+        <NativeSelect
           id="er-table"
           value={tableId}
           onChange={(event) => setTableId(event.target.value)}
@@ -135,14 +145,14 @@ export function SourceErDiagram({
                 {qualified(t)}
               </option>
             ))}
-        </select>
+        </NativeSelect>
       </div>
-      <p>
+      <Hint>
         Solid lines are foreign keys declared in the Snapshot; dashed lines are
-        accepted inferred relationships.
-      </p>
+        accepted inferred relationships. A shield marks a table with Protected Columns.
+      </Hint>
       {tables.length === 0 ? (
-        <p className="empty-state">No tables match these filters.</p>
+        <EmptyState>No tables match these filters.</EmptyState>
       ) : (
         <div
           className="er-diagram dawam-flow"
@@ -162,7 +172,7 @@ export function SourceErDiagram({
           </ReactFlow>
         </div>
       )}
-      <ul aria-label="Relationships">
+      <ul aria-label="Relationships" className="text-sm text-sand-11">
         {edges.map((edge) => (
           <li key={edge.id}>
             {qualified(byId.get(edge.from)!)} to {qualified(byId.get(edge.to)!)}
@@ -173,6 +183,21 @@ export function SourceErDiagram({
           </li>
         ))}
       </ul>
-    </section>
+    </Panel>
+  );
+}
+
+/** A table's name, with the PII marker when it has Protected Columns (named in its label). */
+function ErNode({ table }: { table: SourceTable }) {
+  const protectedNames = table.columns.filter((c) => c.is_protected).map((c) => c.name);
+  return (
+    <span className="inline-flex items-center">
+      {qualified(table)}
+      {protectedNames.length > 0 && (
+        <PiiMarker
+          label={`${protectedNames.length} Protected ${protectedNames.length === 1 ? "Column" : "Columns"}: ${protectedNames.join(", ")}`}
+        />
+      )}
+    </span>
   );
 }
