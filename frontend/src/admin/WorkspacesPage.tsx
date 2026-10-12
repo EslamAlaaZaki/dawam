@@ -28,7 +28,13 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, TableCard, labelClasses } from "./parts";
+import {
+  ErrorText,
+  NativeSelect,
+  PageHead,
+  TableCard,
+  labelClasses,
+} from "./parts";
 
 function day(iso: string): string {
   return new Date(iso).toLocaleDateString();
@@ -51,7 +57,9 @@ export function WorkspacesPage() {
       {workspaces.isPending ? (
         <Loading />
       ) : workspaces.isError ? (
-        <ErrorText>Could not load the Workspaces: {workspaces.error.message}</ErrorText>
+        <ErrorText>
+          Could not load the Workspaces: {workspaces.error.message}
+        </ErrorText>
       ) : (
         <>
           <TableCard>
@@ -99,7 +107,10 @@ function WorkspaceRow({ workspace }: { workspace: AdminWorkspace }) {
     <TableRow aria-label={workspace.name}>
       <TableCell className="font-medium">{workspace.name}</TableCell>
       <TableCell>
-        <Badge variant={workspace.status === "archived" ? "neutral" : "success"} dot>
+        <Badge
+          variant={workspace.status === "archived" ? "neutral" : "success"}
+          dot
+        >
           {workspace.status === "archived" ? "Archived" : "Active"}
         </Badge>
       </TableCell>
@@ -112,9 +123,15 @@ function WorkspaceRow({ workspace }: { workspace: AdminWorkspace }) {
         ))}
       </TableCell>
       <TableCell>{workspace.member_count}</TableCell>
-      <TableCell className="text-sand-11">{day(workspace.created_at)}</TableCell>
-      <TableCell className="text-sand-11">{day(workspace.updated_at)}</TableCell>
-      <TableCell>{!workspace.has_active_owner && <Reassign workspace={workspace} />}</TableCell>
+      <TableCell className="text-sand-11">
+        {day(workspace.created_at)}
+      </TableCell>
+      <TableCell className="text-sand-11">
+        {day(workspace.updated_at)}
+      </TableCell>
+      <TableCell>
+        {!workspace.has_active_owner && <Reassign workspace={workspace} />}
+      </TableCell>
     </TableRow>
   );
 }
@@ -171,10 +188,18 @@ function Reassign({ workspace }: { workspace: AdminWorkspace }) {
           </label>
           {reassign.isError && <ErrorText>{reassign.error.message}</ErrorText>}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setAsking(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setAsking(false)}
+            >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={reassign.isPending}>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={reassign.isPending}
+            >
               Make owner
             </Button>
           </DialogFooter>

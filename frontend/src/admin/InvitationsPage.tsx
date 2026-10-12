@@ -42,7 +42,9 @@ export function InvitationsPage() {
       {invitations.isPending ? (
         <Loading />
       ) : invitations.isError ? (
-        <ErrorText>Could not load the invitations: {invitations.error.message}</ErrorText>
+        <ErrorText>
+          Could not load the invitations: {invitations.error.message}
+        </ErrorText>
       ) : invitations.data.pages[0]?.items.length === 0 ? (
         <p className="text-sand-11">No pending invitations.</p>
       ) : (
@@ -61,7 +63,10 @@ export function InvitationsPage() {
               <TableBody>
                 {invitations.data.pages.flatMap((page) =>
                   page.items.map((invitation) => (
-                    <InvitationRow key={invitation.id} invitation={invitation} />
+                    <InvitationRow
+                      key={invitation.id}
+                      invitation={invitation}
+                    />
                   )),
                 )}
               </TableBody>
@@ -110,14 +115,23 @@ function InviteForm() {
         Email
         <Input name="email" type="email" autoComplete="off" required />
       </label>
-      <Button type="submit" variant="primary" className="self-start" disabled={invite.isPending}>
+      <Button
+        type="submit"
+        variant="primary"
+        className="self-start"
+        disabled={invite.isPending}
+      >
         Send invitation
       </Button>
       {invite.isError && <ErrorText>{invite.error.message}</ErrorText>}
       {sent?.delivery === "link_for_admin" && (
         <p className="text-sm text-sand-11">
-          The invitation for {sent.invitation.email} could not be emailed: copy its link from{" "}
-          <Link href="/admin/email/links" className="font-medium text-sand-12 underline">
+          The invitation for {sent.invitation.email} could not be emailed: copy
+          its link from{" "}
+          <Link
+            href="/admin/email/links"
+            className="font-medium text-sand-12 underline"
+          >
             Links to share
           </Link>{" "}
           and pass it on.
@@ -133,10 +147,18 @@ function InvitationRow({ invitation }: { invitation: PendingInvitation }) {
     <TableRow aria-label={invitation.email}>
       <TableCell>{invitation.email}</TableCell>
       <TableCell>{invitation.invited_by.display_name}</TableCell>
-      <TableCell className="text-sand-11">{when(invitation.created_at)}</TableCell>
-      <TableCell className="text-sand-11">{when(invitation.expires_at)}</TableCell>
+      <TableCell className="text-sand-11">
+        {when(invitation.created_at)}
+      </TableCell>
+      <TableCell className="text-sand-11">
+        {when(invitation.expires_at)}
+      </TableCell>
       <TableCell>
-        <Button size="sm" disabled={revoke.isPending} onClick={() => revoke.mutate(invitation.id)}>
+        <Button
+          size="sm"
+          disabled={revoke.isPending}
+          onClick={() => revoke.mutate(invitation.id)}
+        >
           Revoke
         </Button>
         {revoke.isError && <ErrorText>{revoke.error.message}</ErrorText>}

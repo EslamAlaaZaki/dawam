@@ -22,7 +22,9 @@ export interface ApiRequest {
 }
 
 /** Answers a request, or returns `undefined` for a 404. */
-export type FakeApi = (request: ApiRequest) => Response | undefined | Promise<Response | undefined>;
+export type FakeApi = (
+  request: ApiRequest,
+) => Response | undefined | Promise<Response | undefined>;
 
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -31,7 +33,11 @@ export function json(body: unknown, status = 200): Response {
   });
 }
 
-export function apiError(status: number, code: string, message: string): Response {
+export function apiError(
+  status: number,
+  code: string,
+  message: string,
+): Response {
   return json({ error: { code, message, details: {} } }, status);
 }
 
@@ -69,7 +75,11 @@ export function renderApp(api: FakeApi, path: string): ApiRequest[] {
     };
     requests.push(recorded);
     if (recorded.method !== "GET" && recorded.csrf !== CSRF_TOKEN) {
-      return apiError(403, "csrf_failed", "The request has no valid CSRF token.");
+      return apiError(
+        403,
+        "csrf_failed",
+        "The request has no valid CSRF token.",
+      );
     }
     if (`${recorded.method} ${recorded.path}` === "GET /api/v1/version") {
       return json({ name: "DAWAM", version: "1.2.3" });

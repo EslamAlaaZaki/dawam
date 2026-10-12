@@ -54,7 +54,12 @@ export function CreateUserPage() {
         </label>
         <label className={labelClasses}>
           Display name
-          <Input name="display_name" autoComplete="off" maxLength={200} required />
+          <Input
+            name="display_name"
+            autoComplete="off"
+            maxLength={200}
+            required
+          />
         </label>
         <label className={labelClasses}>
           System role
@@ -65,11 +70,17 @@ export function CreateUserPage() {
         </label>
         <label className={labelClasses}>
           Temporary password
-          <Input name="temporary_password" type="text" autoComplete="off" required />
+          <Input
+            name="temporary_password"
+            type="text"
+            autoComplete="off"
+            required
+          />
         </label>
         <p className="text-sm text-sand-11">
-          At least 10 characters, and not a common password. Give it to the user through a
-          channel you trust; they must replace it when they first sign in.
+          At least 10 characters, and not a common password. Give it to the user
+          through a channel you trust; they must replace it when they first sign
+          in.
         </p>
         {create.isError && <ErrorText>{create.error.message}</ErrorText>}
         <div className="flex items-center gap-2">

@@ -1,7 +1,13 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { CSRF_TOKEN, fakeApi, renderApp, setCsrfCookie, user } from "../test/fakeApi";
+import {
+  CSRF_TOKEN,
+  fakeApi,
+  renderApp,
+  setCsrfCookie,
+  user,
+} from "../test/fakeApi";
 import { currentLocation } from "../test/navigation";
 
 beforeEach(setCsrfCookie);
@@ -25,15 +31,29 @@ function signedInAs(me = ROOT, registration = CLOSED) {
 
 describe("the admin settings page", () => {
   it("is linked from the sidebar for admins and shows the current settings", async () => {
-    renderApp(signedInAs(ROOT, { enabled: true, allowed_email_domains: ["example.com"] }), "/admin/users");
+    renderApp(
+      signedInAs(ROOT, {
+        enabled: true,
+        allowed_email_domains: ["example.com"],
+      }),
+      "/admin/users",
+    );
 
-    const nav = await screen.findByRole("navigation", { name: "Administration" });
+    const nav = await screen.findByRole("navigation", {
+      name: "Administration",
+    });
     fireEvent.click(within(nav).getByRole("link", { name: "Admin settings" }));
 
-    expect(await screen.findByRole("heading", { name: "Admin settings" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Admin settings" }),
+    ).toBeInTheDocument();
     expect(currentLocation()).toBe("/admin/settings");
-    expect(await screen.findByLabelText("Allow self-registration")).toBeChecked();
-    expect(screen.getByLabelText("Allowed email domains")).toHaveValue("example.com");
+    expect(
+      await screen.findByLabelText("Allow self-registration"),
+    ).toBeChecked();
+    expect(screen.getByLabelText("Allowed email domains")).toHaveValue(
+      "example.com",
+    );
   });
 
   it("turns self-registration on for the listed domains", async () => {
@@ -54,7 +74,10 @@ describe("the admin settings page", () => {
       path: "/api/v1/admin/settings",
       csrf: CSRF_TOKEN,
       body: {
-        registration: { enabled: true, allowed_email_domains: ["example.com", "acme.org"] },
+        registration: {
+          enabled: true,
+          allowed_email_domains: ["example.com", "acme.org"],
+        },
       },
     });
     expect(api.state.registration).toEqual({
@@ -80,8 +103,14 @@ describe("the admin settings page", () => {
     const api = signedInAs(user());
     renderApp(api, "/admin/settings");
 
-    expect(await screen.findByText("Only admins can change these settings.")).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "Administration" })).not.toBeInTheDocument();
-    expect(api.requests.some((r) => r.path === "/api/v1/admin/settings")).toBe(false);
+    expect(
+      await screen.findByText("Only admins can change these settings."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Administration" }),
+    ).not.toBeInTheDocument();
+    expect(api.requests.some((r) => r.path === "/api/v1/admin/settings")).toBe(
+      false,
+    );
   });
 });

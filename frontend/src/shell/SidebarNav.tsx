@@ -37,7 +37,11 @@ function NavLink({
   children: string;
 }) {
   return (
-    <Link href={href} className={linkClasses} aria-current={current ? "page" : undefined}>
+    <Link
+      href={href}
+      className={linkClasses}
+      aria-current={current ? "page" : undefined}
+    >
       <Icon aria-hidden />
       {children}
     </Link>
@@ -86,7 +90,11 @@ const ADMIN_GROUPS: {
     label: "AI",
     links: [
       { href: "/admin/llm", icon: Cpu, name: "Language models" },
-      { href: "/admin/llm/settings", icon: Wallet, name: "Roles, budgets & usage" },
+      {
+        href: "/admin/llm/settings",
+        icon: Wallet,
+        name: "Roles, budgets & usage",
+      },
     ],
   },
 ];
@@ -101,7 +109,8 @@ const ADMIN_GROUPS: {
 export function SidebarNav() {
   const me = useMe();
   const pathname = usePathname();
-  const admin = me.data?.system_role === "admin" && !me.data.must_change_password;
+  const admin =
+    me.data?.system_role === "admin" && !me.data.must_change_password;
   const inAdmin = admin && pathname.startsWith("/admin");
   return (
     <>
@@ -134,7 +143,11 @@ export function SidebarNav() {
       ) : (
         <>
           <nav aria-label="Workspaces" className="flex flex-col gap-0.5">
-            <NavLink href="/" icon={Folders} current={WORKSPACE_LIST_PATHS.has(pathname)}>
+            <NavLink
+              href="/"
+              icon={Folders}
+              current={WORKSPACE_LIST_PATHS.has(pathname)}
+            >
               Workspaces
             </NavLink>
           </nav>

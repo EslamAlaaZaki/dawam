@@ -25,7 +25,13 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, TableCard, labelClasses } from "./parts";
+import {
+  ErrorText,
+  NativeSelect,
+  PageHead,
+  TableCard,
+  labelClasses,
+} from "./parts";
 
 const ROLES = { admin: "Admin", user: "User" } as const;
 
@@ -112,7 +118,8 @@ export function UsersPage() {
           <TableCard
             footer={
               <span>
-                {users.data.pages.reduce((n, page) => n + page.items.length, 0)} users
+                {users.data.pages.reduce((n, page) => n + page.items.length, 0)}{" "}
+                users
                 {users.hasNextPage && " so far"}
               </span>
             }
@@ -130,12 +137,16 @@ export function UsersPage() {
               </TableHeader>
               <TableBody>
                 {users.data.pages.flatMap((page) =>
-                  page.items.map((user) => <UserRow key={user.id} user={user} />),
+                  page.items.map((user) => (
+                    <UserRow key={user.id} user={user} />
+                  )),
                 )}
               </TableBody>
             </Table>
           </TableCard>
-          {users.data.pages[0]?.items.length === 0 && <p className="text-sand-11">No users match.</p>}
+          {users.data.pages[0]?.items.length === 0 && (
+            <p className="text-sand-11">No users match.</p>
+          )}
           {users.hasNextPage && (
             <Button
               className="self-start"
@@ -156,7 +167,11 @@ function UserRow({ user }: { user: AdminUser }) {
   const update = useUpdateUser();
   const reset = useForcePasswordReset();
   const isMe = me.data?.id === user.id;
-  const problem = update.isError ? update.error : reset.isError ? reset.error : null;
+  const problem = update.isError
+    ? update.error
+    : reset.isError
+      ? reset.error
+      : null;
 
   let status = user.is_active ? "Active" : "Deactivated";
   if (user.is_active && user.must_change_password) {
@@ -175,7 +190,16 @@ function UserRow({ user }: { user: AdminUser }) {
         )}
       </TableCell>
       <TableCell>
-        <Badge variant={!user.is_active ? "danger" : user.must_change_password ? "warning" : "success"} dot>
+        <Badge
+          variant={
+            !user.is_active
+              ? "danger"
+              : user.must_change_password
+                ? "warning"
+                : "success"
+          }
+          dot
+        >
           {status}
         </Badge>
       </TableCell>
@@ -197,7 +221,9 @@ function UserRow({ user }: { user: AdminUser }) {
           <Button
             size="sm"
             disabled={update.isPending}
-            onClick={() => update.mutate({ id: user.id, is_active: !user.is_active })}
+            onClick={() =>
+              update.mutate({ id: user.id, is_active: !user.is_active })
+            }
           >
             {user.is_active ? "Deactivate" : "Reactivate"}
           </Button>
@@ -209,7 +235,9 @@ function UserRow({ user }: { user: AdminUser }) {
                 reset.mutate(user.id, {
                   onSuccess: (result) => {
                     if (result.delivery === "sent") {
-                      toast.success(`Sessions ended; a reset link was emailed to ${user.email}.`);
+                      toast.success(
+                        `Sessions ended; a reset link was emailed to ${user.email}.`,
+                      );
                     }
                   },
                 })
@@ -223,7 +251,10 @@ function UserRow({ user }: { user: AdminUser }) {
         {reset.data?.delivery === "link_for_admin" && (
           <p className="mt-1.5 text-sm text-sand-11">
             Sessions ended. The reset link could not be emailed: share it from{" "}
-            <Link href="/admin/email/links" className="font-medium text-sand-12 underline">
+            <Link
+              href="/admin/email/links"
+              className="font-medium text-sand-12 underline"
+            >
               Links to share
             </Link>
             .
