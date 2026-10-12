@@ -44,7 +44,7 @@ export function LineageGraph({
               onClick={() => onSelect(node.id)}
             >
               {node.label}
-              {pii.has(node.id) ? <PiiMarker label={piiMarkLabel(pii.get(node.id)!)} /> : null}
+              {pii.has(node.id) ? <PiiMarker label={piiMarkLabel(pii.get(node.id)!, node.type === "kpi" ? "KPI" : "")} /> : null}
             </button>
           ),
         },

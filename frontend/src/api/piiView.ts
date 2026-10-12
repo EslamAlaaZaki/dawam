@@ -32,7 +32,8 @@ export function usePiiView(workspaceId: string) {
 /** What the PII view says of a node: derived from confirmed PII (value edges) or only
  * influenced by it (join, filter, lookup); `pseudonymised` is hashed or fed by hashed data. */
 export type PiiMark = {
-  /** `protected`: a source Protected Column; `dependent`: a KPI linking PII-derived columns. */
+  /** `protected`: a source Protected Column; `dependent`: a KPI linking PII-derived columns
+   * (a KPI only influenced by PII is `influenced`, like a table). */
   kind: "derived" | "influenced" | "protected" | "dependent";
   pseudonymised: boolean;
 };
@@ -48,8 +49,11 @@ const KIND_LABELS: Record<PiiMark["kind"], string> = {
   dependent: "Depends on PII-derived columns",
 };
 
-export const piiMarkLabel = (m: PiiMark) =>
-  `${KIND_LABELS[m.kind]}${m.pseudonymised ? ", pseudonymised" : ""}`;
+/** `noun` names what an influenced mark is on ("PII-influenced KPI"). */
+export const piiMarkLabel = (m: PiiMark, noun = "") =>
+  `${KIND_LABELS[m.kind]}${m.kind === "influenced" && noun ? ` ${noun}` : ""}${
+    m.pseudonymised ? ", pseudonymised" : ""
+  }`;
 
 /**
  * The PII view as marks by node id (every column, table and KPI it lists). If the view
@@ -61,6 +65,8 @@ export function usePiiMarks(workspaceId: string): PiiMarks {
     if (!data) {
       return NO_PII;
     }
+    // The view lists each id once and an id has one type, so the lists never collide;
+    // the order only decides a repeated id, where PII-derived is the strongest claim.
     const marks = new Map<string, PiiMark>();
     for (const t of data.tables) {
       marks.set(t.id, { kind: "influenced", pseudonymised: false });
@@ -69,7 +75,10 @@ export function usePiiMarks(workspaceId: string): PiiMarks {
       marks.set(s.id, { kind: "protected", pseudonymised: false });
     }
     for (const k of data.kpis) {
-      marks.set(k.id, { kind: "dependent", pseudonymised: false });
+      marks.set(k.id, {
+        kind: k.influence === "derived" ? "dependent" : "influenced",
+        pseudonymised: false,
+      });
     }
     for (const c of data.columns) {
       marks.set(c.id, { kind: "derived", pseudonymised: c.pseudonymised });

@@ -181,7 +181,7 @@ describe("the lineage layout", () => {
     const pii = new Map([
       [SRC.id, { kind: "protected" as const, pseudonymised: false }],
       [MART.id, { kind: "derived" as const, pseudonymised: true }],
-      [KPI.id, { kind: "dependent" as const, pseudonymised: false }],
+      [KPI.id, { kind: "influenced" as const, pseudonymised: false }],
     ]);
     render(
       <LineageGraph
@@ -195,7 +195,7 @@ describe("the lineage layout", () => {
     );
     const graph = within(screen.getByRole("group", { name: "Lineage graph" }));
     expect(graph.getByRole("img", { name: "Protected Column" })).toBeInTheDocument();
-    expect(graph.getByRole("img", { name: "Depends on PII-derived columns" })).toBeInTheDocument();
+    expect(graph.getByRole("img", { name: "PII-influenced KPI" })).toBeInTheDocument();
     expect(graph.getByRole("img", { name: "PII-derived, pseudonymised" })).toBeInTheDocument();
     // The same-label twin and the unlisted STG node stay unmarked.
     expect(graph.getAllByRole("img")).toHaveLength(3);
@@ -217,5 +217,15 @@ describe("the lineage layout", () => {
     expect(screen.getByRole("group", { name: "Lineage graph" })).toBeInTheDocument();
 
     expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe("the PII marks of the lineage graph", () => {
+  it("labels a KPI that links PII-derived columns as depending on them", () => {
+    const pii = new Map([[KPI.id, { kind: "dependent" as const, pseudonymised: false }]]);
+    render(
+      <LineageGraph nodes={[KPI]} edges={[]} startId={KPI.id} selectedId={null} onSelect={() => {}} pii={pii} />,
+    );
+    expect(screen.getByRole("img", { name: "Depends on PII-derived columns" })).toBeInTheDocument();
   });
 });

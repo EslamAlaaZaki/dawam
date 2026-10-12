@@ -91,6 +91,13 @@ class PiiColumn:
 
 
 @dataclass(frozen=True)
+class PiiKpi(Node):
+    influence: Literal["derived", "influenced"]
+    """``derived``: a linked column is PII-derived; ``influenced``: PII reaches it only
+    through a ``uses`` or ``lookup`` edge."""
+
+
+@dataclass(frozen=True)
 class PiiView:
     columns: list[PiiColumn]
     """PII-derived DW columns: fed by a confirmed PII column through value edges."""
@@ -99,8 +106,8 @@ class PiiView:
     source_columns: list[Node] = field(default_factory=list)
     """Protected Columns (flagged sensitive, or with a suggested or confirmed finding) that
     feed the model; marks for the lineage graph, not exported as PII columns."""
-    kpis: list[Node] = field(default_factory=list)
-    """KPIs that link a PII-derived DW column; marks for the lineage graph."""
+    kpis: list[PiiKpi] = field(default_factory=list)
+    """KPIs that depend on PII, derived or only influenced; marks for the lineage graph."""
 
 
 def _order(node: Node) -> tuple[int, str]:
@@ -153,7 +160,10 @@ class LineageService:
     def pii_view(self, user: User, workspace_id: uuid.UUID) -> PiiView:
         """The PII-derived DW columns (each marked pseudonymised or not, with its handling
         note) and, separately, the PII-influenced DW tables (spec §6.12, stories 137 and
-        138), computed from the lineage edges and mappings as they stand now."""
+        138), computed from the lineage edges and mappings as they stand now. It also names,
+        as marks for the lineage graph, the Protected source columns that feed the model and
+        the KPIs that depend on PII (derived, or only influenced through a ``uses`` or
+        ``lookup`` edge); neither is exported as a PII column."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
             result = propagate_pii(db, confirmed_pii_column_ids(db, workspace_id))
@@ -161,9 +171,12 @@ class LineageService:
                 db, workspace_id, result.derived_columns | result.influenced_tables
             )
             notes = pii_notes(db, result.derived_columns)
-            sources = source_column_labels(db, workspace_id, source_columns_in_lineage(db))
+            sources = source_column_labels(
+                db, workspace_id, source_columns_in_lineage(db, workspace_id)
+            )
             protected = protected_column_ids(db, sources)
-            kpis = kpi_names(db, workspace_id, pii_dependent_kpis(db, result.derived_columns))
+            dependent = pii_dependent_kpis(db, result)
+            kpis = kpi_names(db, workspace_id, dependent)
         found = [Node(n.id, n.type, n.label, n.layer) for n in nodes.values()]  # type: ignore[arg-type]
         return PiiView(
             columns=[
@@ -181,7 +194,10 @@ class LineageService:
             source_columns=sorted(
                 (Node(i, "src_column", sources[i], "source") for i in protected), key=_order
             ),
-            kpis=sorted((Node(i, "kpi", name, "kpi") for i, name in kpis.items()), key=_order),
+            kpis=sorted(
+                (PiiKpi(i, "kpi", name, "kpi", dependent[i]) for i, name in kpis.items()),
+                key=_order,
+            ),
         )
 
     def _start(self, db: Session, workspace_id: uuid.UUID, node_id: uuid.UUID) -> Node:
