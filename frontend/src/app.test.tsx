@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApiClient } from "./api/client";
 import { ApiClientContext } from "./api/context";
 import type { Me } from "./api/queries";
+import { openMenu } from "./test/menus";
 import { currentLocation, setLocation } from "./test/navigation";
 import { TestApp } from "./test/TestApp";
 
@@ -117,7 +118,7 @@ describe("signing in", () => {
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(currentLocation()).toBe("/login");
-    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
   });
 
   it("signs in with email and password, sending the CSRF token", async () => {
@@ -230,19 +231,27 @@ describe("the sign-in pages", () => {
 });
 
 describe("the signed-in shell", () => {
-  it("shows the product name and the user's display name in the header", async () => {
+  it("shows the product name in the sidebar and the user's display name in the top bar", async () => {
     renderApp(fakeBackend({ signedIn: true }));
 
     const header = await screen.findByRole("banner");
-    expect(within(header).getByRole("heading", { name: "DAWAM" })).toBeInTheDocument();
     expect(await within(header).findByText("Ada Lovelace")).toBeInTheDocument();
+    const sidebar = screen.getByRole("complementary", { name: "Navigation" });
+    expect(within(sidebar).getByText("DAWAM")).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "Workspaces" })).toHaveAttribute("href", "/");
+    expect(within(sidebar).getByText("API version 1.2.3")).toBeInTheDocument();
+    expect(within(header).getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent(
+      "Workspaces",
+    );
   });
 
   it("signs out on the server and returns to the login page", async () => {
     const backend = fakeBackend({ signedIn: true });
     renderApp(backend);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    const header = await screen.findByRole("banner");
+    openMenu(await within(header).findByRole("button", { name: "Ada Lovelace" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(currentLocation()).toBe("/login");

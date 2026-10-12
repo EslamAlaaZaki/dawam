@@ -1,7 +1,7 @@
 "use client";
 
+import { Bell } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 
 import {
   useMarkAllNotificationsRead,
@@ -9,70 +9,82 @@ import {
   useNotifications,
 } from "../api/notifications";
 import { useMe } from "../api/queries";
+import { Button } from "../components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 
-/** The header's unread notifications: a count, and the list when opened. */
+/** The top bar's Notifications: a bell with an unread dot, and the list in a Popover. */
 export function NotificationBell() {
   const me = useMe();
   const notifications = useNotifications(!!me.data && !me.data.must_change_password);
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
-  const [open, setOpen] = useState(false);
 
   if (!notifications.data) {
     return null;
   }
   const { items, unread_count: unread } = notifications.data;
   return (
-    <div className="shell-notifications">
-      <button
-        type="button"
-        className="secondary"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        Notifications ({unread})
-      </button>
-      {open && (
-        <section className="notification-list" aria-label="Unread notifications">
-          {items.length === 0 ? (
-            <p className="empty-state">You have no unread notifications.</p>
-          ) : (
-            <>
-              <ul>
-                {items.map((notification) => (
-                  <li key={notification.id}>
-                    <span>
-                      {notification.workspace_id ? (
-                        <Link href={`/workspaces/${notification.workspace_id}`}>
-                          {notification.message}
-                        </Link>
-                      ) : (
-                        notification.message
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={markRead.isPending}
-                      onClick={() => markRead.mutate(notification.id)}
-                    >
-                      Mark read
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                className="secondary"
-                disabled={markAllRead.isPending}
-                onClick={() => markAllRead.mutate()}
-              >
-                Mark all read
-              </button>
-            </>
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label={`Notifications (${unread})`}
+        >
+          <Bell aria-hidden />
+          {unread > 0 && (
+            <span
+              aria-hidden
+              className="absolute top-[7px] right-2 size-[7px] rounded-full bg-red-11 ring-2 ring-sand-1"
+            />
           )}
-        </section>
-      )}
-    </div>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(22rem,calc(100vw-2rem))]"
+        aria-label="Unread notifications"
+        role="region"
+      >
+        {items.length === 0 ? (
+          <p className="text-sand-11">You have no unread notifications.</p>
+        ) : (
+          <>
+            <ul className="mb-2 flex flex-col">
+              {items.map((notification) => (
+                <li
+                  key={notification.id}
+                  className="flex items-start justify-between gap-3 border-b border-sand-4 py-2 first:pt-0"
+                >
+                  <span>
+                    {notification.workspace_id ? (
+                      <Link
+                        href={`/workspaces/${notification.workspace_id}`}
+                        className="text-jade-11 underline decoration-jade-7 underline-offset-2"
+                      >
+                        {notification.message}
+                      </Link>
+                    ) : (
+                      notification.message
+                    )}
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={markRead.isPending}
+                    onClick={() => markRead.mutate(notification.id)}
+                  >
+                    Mark read
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <Button size="sm" disabled={markAllRead.isPending} onClick={() => markAllRead.mutate()}>
+              Mark all read
+            </Button>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

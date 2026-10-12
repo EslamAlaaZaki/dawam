@@ -16,6 +16,25 @@ globalThis.DOMMatrixReadOnly = class {
   m22 = 1;
 } as unknown as typeof DOMMatrixReadOnly;
 
+// The theme switcher asks whether the system prefers dark; jsdom has no media queries.
+if (typeof window !== "undefined") {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      onchange: null,
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+
 afterEach(() => {
   cleanup();
+  if (typeof window !== "undefined") {
+    localStorage.clear();
+    document.documentElement.className = "";
+  }
 });

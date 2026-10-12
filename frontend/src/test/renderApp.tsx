@@ -2,6 +2,7 @@
 // about, and the fake checks the CSRF token on every state-changing request.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
+import { ThemeProvider } from "next-themes";
 
 import { createApiClient } from "../api/client";
 import { ApiClientContext } from "../api/context";
@@ -74,12 +75,24 @@ export function renderApp(api: FakeApi, path: string): ApiRequest[] {
     }
     return (await api(recorded)) ?? apiError(404, "not_found", "Not Found");
   };
-  const client = createApiClient({ baseUrl: "http://dawam.test", fetch: fetchStub });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createApiClient({
+    baseUrl: "http://dawam.test",
+    fetch: fetchStub,
+  });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
-        <TestApp />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          enableColorScheme={false}
+        >
+          <TestApp />
+        </ThemeProvider>
       </QueryClientProvider>
     </ApiClientContext.Provider>,
   );
