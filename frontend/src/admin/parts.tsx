@@ -59,6 +59,26 @@ export function TableCard({
   );
 }
 
+/** A card of fields: the panel's form, one control per row. */
+export const formCardClasses =
+  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+
+/** Headings inside a panel; the reset leaves them unstyled. */
+export const h3Classes = "text-md font-semibold tracking-[-0.005em]";
+
+/** What a list shows when it has nothing yet. */
+export function EmptyState({ className, ...props }: ComponentProps<"p">) {
+  return (
+    <p
+      className={cn(
+        "max-w-xl rounded-lg border border-dashed border-sand-8 px-4 py-3 text-sand-11",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function ErrorText({ children }: { children: ReactNode }) {
   return (
     <p className="text-sm text-red-11" role="alert">

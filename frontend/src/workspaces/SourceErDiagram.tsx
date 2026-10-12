@@ -16,7 +16,7 @@ import { useSourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
 import { PiiMarker } from "../diagrams/PiiMarker";
-import { EmptyState, Hint, NativeSelect, Panel, h3Classes, labelClasses } from "./parts";
+import { EmptyState, Hint, NativeSelect, Panel, h3Classes, labelClasses, ErrorText } from "./parts";
 import {
   filterGraph,
   qualified,
@@ -70,7 +70,7 @@ export function SourceErDiagram({
   }
   if (schema.isError || accepted.isError) {
     const message = (schema.error ?? accepted.error)?.message;
-    return <p role="alert">Could not load the ER diagram: {message}</p>;
+    return <ErrorText>Could not load the ER diagram: {message}</ErrorText>;
   }
   if (!graph) {
     return null;

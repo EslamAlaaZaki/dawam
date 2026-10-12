@@ -23,6 +23,7 @@ import {
   Actions,
   ErrorText,
   Hint,
+  PageHead,
   checkClasses,
   h4Classes,
   linkClasses,
@@ -323,12 +324,14 @@ export function ChangeSetPage({
   }
   return (
     <div className="flex max-w-3xl flex-col gap-3">
-      <p>
-        <Link href={`/workspaces/${workspaceId}`} className={linkClasses}>
-          {workspace.data.name}
-        </Link>
-      </p>
-      <h2 className="text-2xl font-semibold tracking-[-0.01em]">Change Set</h2>
+      <PageHead
+        title="Change Set"
+        description={
+          <Link href={`/workspaces/${workspaceId}`} className={linkClasses}>
+            {workspace.data.name}
+          </Link>
+        }
+      />
       <ChangeSetReview workspace={workspace.data} changeSetId={changeSetId} />
     </div>
   );

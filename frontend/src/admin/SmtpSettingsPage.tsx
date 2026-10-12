@@ -14,10 +14,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import { ErrorText, NativeSelect, PageHead, labelClasses, formCardClasses } from "./parts";
 
-const cardClasses =
-  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+const cardClasses = formCardClasses;
 
 const SECURITY_OPTIONS: {
   value: SmtpSettingsInput["security"];

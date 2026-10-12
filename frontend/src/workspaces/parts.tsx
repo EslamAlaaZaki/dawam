@@ -3,8 +3,12 @@ import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../lib/utils";
 
 export {
+  EmptyState,
+  formCardClasses,
+  h3Classes,
   ErrorText,
   NativeSelect,
+  PageHead,
   TableCard,
   labelClasses,
 } from "../admin/parts";
@@ -13,13 +17,8 @@ export {
 export const monoClasses = "font-mono text-mono";
 
 /** Headings inside a panel; the reset leaves them unstyled. */
-export const h3Classes = "text-md font-semibold tracking-[-0.005em]";
 export const h4Classes = "text-base font-semibold";
 export const h5Classes = "text-sm font-semibold text-sand-11";
-
-/** A card of fields: the panel's form, one control per row. */
-export const formCardClasses =
-  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
 
 /** A panel's section: a card around its content. */
 export function Panel({ className, ...props }: ComponentProps<"section">) {
@@ -42,19 +41,6 @@ export function Hint({ className, ...props }: ComponentProps<"p">) {
 /** A success note, shown inline where the user acted. */
 export function OkText({ className, ...props }: ComponentProps<"p">) {
   return <p className={cn("text-sm text-grass-11", className)} {...props} />;
-}
-
-/** What a list shows when it has nothing yet. */
-export function EmptyState({ className, ...props }: ComponentProps<"p">) {
-  return (
-    <p
-      className={cn(
-        "max-w-xl rounded-lg border border-dashed border-sand-8 px-4 py-3 text-sand-11",
-        className,
-      )}
-      {...props}
-    />
-  );
 }
 
 /** Term and value pairs; use plain `dt` and `dd` inside. */

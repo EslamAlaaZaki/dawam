@@ -8,6 +8,7 @@ import { BusMatrix } from "./BusMatrix";
 import { StarDiagram } from "./StarDiagram";
 import { linksOf } from "./starModel";
 import { Loading } from "../shell/Loading";
+import { ErrorText } from "../admin/parts";
 
 /**
  * A Layer's star/snowflake diagram and bus matrix (stories 94, 95), under its model list.
@@ -21,7 +22,7 @@ export function StarPanel({ workspaceId, layer }: { workspaceId: string; layer: 
     return <Loading label="Loading diagram…" className="p-0" />;
   }
   if (model.error) {
-    return <p role="alert">Could not load the diagram: {model.error.message}</p>;
+    return <ErrorText>Could not load the diagram: {model.error.message}</ErrorText>;
   }
   if (model.tables.length === 0) {
     return null;

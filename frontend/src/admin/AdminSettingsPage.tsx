@@ -12,7 +12,7 @@ import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
 import { Loading } from "../shell/Loading";
-import { ErrorText, PageHead, labelClasses } from "./parts";
+import { ErrorText, PageHead, labelClasses, formCardClasses, h3Classes } from "./parts";
 
 /** Installation-wide settings; only admins can read or change them (the API enforces it). */
 export function AdminSettingsPage() {
@@ -83,10 +83,10 @@ function RegistrationForm({
 
   return (
     <section
-      className="flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      className={formCardClasses}
       aria-labelledby="registration-title"
     >
-      <h3 id="registration-title" className="text-lg font-semibold">
+      <h3 id="registration-title" className={h3Classes}>
         Self-registration
       </h3>
       <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>

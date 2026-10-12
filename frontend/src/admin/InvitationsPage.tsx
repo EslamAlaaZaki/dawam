@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Loading } from "../shell/Loading";
-import { ErrorText, PageHead, TableCard, labelClasses } from "./parts";
+import { ErrorText, PageHead, TableCard, labelClasses, EmptyState, formCardClasses, h3Classes } from "./parts";
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -38,7 +38,7 @@ export function InvitationsPage() {
         description="An invitation lets someone join while self-registration is off: they get a link, valid 7 days, to choose a display name and password."
       />
       <InviteForm />
-      <h3 className="text-lg font-semibold">Pending invitations</h3>
+      <h3 className={h3Classes}>Pending invitations</h3>
       {invitations.isPending ? (
         <Loading />
       ) : invitations.isError ? (
@@ -46,7 +46,7 @@ export function InvitationsPage() {
           Could not load the invitations: {invitations.error.message}
         </ErrorText>
       ) : invitations.data.pages[0]?.items.length === 0 ? (
-        <p className="text-sand-11">No pending invitations.</p>
+        <EmptyState>No pending invitations.</EmptyState>
       ) : (
         <>
           <TableCard>
@@ -107,7 +107,7 @@ function InviteForm() {
   const sent = invite.data;
   return (
     <form
-      className="flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      className={formCardClasses}
       onSubmit={onSubmit}
       aria-label="Invite user"
     >

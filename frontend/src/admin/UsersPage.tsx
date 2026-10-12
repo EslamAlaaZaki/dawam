@@ -30,8 +30,7 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
-  labelClasses,
-} from "./parts";
+  labelClasses, EmptyState } from "./parts";
 
 const ROLES = { admin: "Admin", user: "User" } as const;
 
@@ -145,7 +144,7 @@ export function UsersPage() {
             </Table>
           </TableCard>
           {users.data.pages[0]?.items.length === 0 && (
-            <p className="text-sand-11">No users match.</p>
+            <EmptyState>No users match.</EmptyState>
           )}
           {users.hasNextPage && (
             <Button

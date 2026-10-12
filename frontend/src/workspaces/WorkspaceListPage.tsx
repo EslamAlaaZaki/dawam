@@ -14,7 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
+import { PageHead } from "../admin/parts";
 import { Loading } from "../shell/Loading";
+import { EmptyState, ErrorText } from "./parts";
 
 /** The Workspaces the signed-in user is a member of, with their role in each. */
 export function WorkspaceListPage() {
@@ -23,28 +25,28 @@ export function WorkspaceListPage() {
 
   return (
     <section className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-[-0.01em] text-balance">Workspaces</h2>
-          <p className="mt-0.5 text-sand-11">The Workspaces you are a member of.</p>
-        </div>
-        <Button asChild variant="primary" className="ml-auto">
-          <Link href="/workspaces/new">
-            <Plus aria-hidden />
-            New Workspace
-          </Link>
-        </Button>
-      </div>
+      <PageHead
+        title="Workspaces"
+        description="The Workspaces you are a member of."
+        actions={
+          <Button asChild variant="primary">
+            <Link href="/workspaces/new">
+              <Plus aria-hidden />
+              New Workspace
+            </Link>
+          </Button>
+        }
+      />
       {workspaces.isPending ? (
         <Loading />
       ) : workspaces.isError ? (
-        <p role="alert" className="text-red-11">
+        <ErrorText>
           Could not load your Workspaces: {workspaces.error.message}
-        </p>
+        </ErrorText>
       ) : items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-sand-7 p-6 text-sand-11">
+        <EmptyState>
           You are not a member of any Workspace yet. Create one to get started.
-        </p>
+        </EmptyState>
       ) : (
         <>
           <div className="overflow-hidden rounded-lg border border-line bg-sand-1">
