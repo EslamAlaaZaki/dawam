@@ -1,7 +1,7 @@
 // @vitest-environment node
 // WCAG AA (spec #231) for the theme's colour pairs, in both themes: 4.5:1 for text, 3:1
 // for the edge of a control and the focus ring (1.4.3, 1.4.11).
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -72,4 +72,45 @@ describe("the theme's colour pairs", () => {
       });
     }
   }
+});
+
+/** `fg` at `alpha` over `bg`, as a hex colour. */
+function blend(fg: string, bg: string, alpha: number): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
+  return `#${[1, 3, 5]
+    .map((i) =>
+      Math.round(alpha * channel(fg, i) + (1 - alpha) * channel(bg, i))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+describe("text drawn with an opacity", () => {
+  // The toast description is `text-sand-1/80` on the inverted `bg-sand-12`.
+  for (const [name, theme] of Object.entries(themes)) {
+    it(`the toast description keeps 4.5:1 in ${name}`, () => {
+      const bg = resolve(theme, "sand-12");
+      const text = blend(resolve(theme, "sand-1"), bg, 0.8);
+      expect(ratio(text, bg)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it("no other component sets text colour with an opacity", () => {
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) {
+          walk(path);
+        } else if (name.endsWith(".tsx") && !name.endsWith(".test.tsx")) {
+          for (const m of readFileSync(path, "utf8").matchAll(/text-[a-z0-9-]+\/[0-9]+/g)) {
+            found.push(`${name}: ${m[0]}`);
+          }
+        }
+      }
+    };
+    walk(join(__dirname, ".."));
+    expect(found).toEqual(["sonner.tsx: text-sand-1/80"]);
+  });
 });

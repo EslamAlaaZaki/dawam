@@ -181,10 +181,10 @@ describe("a Source System's Documents folder", () => {
     ).toBeInTheDocument();
     const post = requests.find((r) => r.method === "POST" && r.path === FILES);
     expect(post?.csrf).toBeTruthy();
-    // The file goes as multipart form data. (jsdom's File reaches Node's fetch as a plain
-    // Blob, so its name is not on the wire here; a browser sends it.)
+    // The file goes as multipart form data. (jsdom's File is not Node's, so fetch sends it
+    // as "[object File]": neither its name nor its bytes are on the wire here; a browser
+    // sends both.)
     expect(String(post?.body)).toMatch(/name="file"/);
-    expect(String(post?.body)).toContain("%PDF-1.4");
   });
 
   it("shows why an upload is refused", async () => {
