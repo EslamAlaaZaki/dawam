@@ -33,6 +33,9 @@ Public interface. Other modules import only what is re-exported here:
   ``DELETE .../object-links/{object_type}/{object_id}`` and
   ``GET /workspaces/{workspace_id}/objects/{object_type}/{object_id}/documents``.
 
+- ``FileContentHandler``: the Change Set handler for ``file`` objects (updating a text file's
+  content, story 146); the composition root registers it.
+
 Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
 ``file_object_links`` tables.
 """
@@ -40,6 +43,7 @@ Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
 from fastapi import APIRouter
 
 from .api import router as _files_router
+from .handlers import FileContentHandler
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .search import (
@@ -67,6 +71,7 @@ __all__ = [
     "EmbeddingModel",
     "EmbeddingModels",
     "FileContent",
+    "FileContentHandler",
     "FileObjectLink",
     "FileService",
     "LinkService",

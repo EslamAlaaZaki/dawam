@@ -173,6 +173,9 @@ class Settings(DatabaseSettings):
     score_debounce_seconds: float = Field(default=2.0, ge=0)
     """How long after a design change the Data Warehouse score is recalculated, so a burst of
     edits is scored once; 0 scores at once."""
+    fake_llm: bool = False
+    """Tests only: replace every LLM provider with a rule-based fake that never calls a model
+    (the browser end-to-end suite). Never on in a real installation."""
     assistant_job_max_tool_calls: int = Field(default=150, ge=1)
     """Tool calls an assistant job may make (spec §6.16); a job explores far more than a chat."""
     assistant_source_query_seconds: float = Field(default=120, gt=0)

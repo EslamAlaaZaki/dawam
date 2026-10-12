@@ -37,7 +37,26 @@ def states(roles: RoleClients) -> dict[str, str]:
     return {item["layer"]: item["status"] for item in response.json()["items"]}
 
 
-def move(roles: RoleClients, layer: str, status: str, role="owner"):
+def clear_errors(roles: RoleClients) -> None:
+    """Disable the Core and Mart checks that fail as errors: errors block approval (spec
+    §6.11), and these designs are sketches, not clean models."""
+    result = roles.client("owner").get(f"{dw(roles)}/score").json()
+    codes = {
+        f["check_code"]
+        for f in result["failed_checks"]
+        if f["severity"] == "error" and f["layer"] in ("core", "mart")
+    }
+    for code in codes:
+        response = roles.client("owner").put(
+            f"{dw(roles)}/score/disabled-checks/{code}", json={"reason": "A sketch model"}
+        )
+        assert response.status_code == 200, response.text
+
+
+def move(roles: RoleClients, layer: str, status: str, role="owner", *, clear=True):
+    """Move a Layer; approving first disables the failing error checks unless ``clear`` is off."""
+    if status == "approved" and clear:
+        clear_errors(roles)
     return roles.client(role).put(f"{approvals(roles)}/{layer}", json={"status": status})
 
 

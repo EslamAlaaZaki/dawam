@@ -17,6 +17,8 @@ from dawam.modules.workspaces import WorkspaceService
 
 from . import approvals as svc
 from .approvals import ApprovalService
+from .score_api import score_service
+from .score_gate import ScoreGateService
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/data-warehouse/approvals", tags=["data-warehouse"]
@@ -26,8 +28,12 @@ router = APIRouter(
 def approval_service(request: Request) -> ApprovalService:
     state = request.app.state
     clock = state.services.clock
+    workspaces = WorkspaceService(state.engine, clock=clock)
+    gates = ScoreGateService(
+        state.engine, workspaces=workspaces, clock=clock, scores=score_service(request)
+    )
     return ApprovalService(
-        state.engine, workspaces=WorkspaceService(state.engine, clock=clock), clock=clock
+        state.engine, workspaces=workspaces, clock=clock, gate=gates.verify_approval
     )
 
 
@@ -81,7 +87,8 @@ def move_layer_approval(
     """Move the Core or Mart Layer to `draft`, `in_review` or `approved` (owners and
     editors). 409 `core_not_approved` when approving Mart while Core is not approved;
     409 `approver_is_last_editor` when the Workspace requires another approver than the
-    Layer's last editor. Moving Core away from `approved` returns an approved Mart to
-    `draft`. Every move is in the audit trail."""
+    Layer's last editor; 409 `score_gate_failed` when the Layer has errors or scores below
+    the minimum an owner set. Moving Core away from `approved` returns an
+    approved Mart to `draft`. Every move is in the audit trail."""
     result: svc.LayerApproval = approvals.move(user, workspace_id, layer, body.status)
     return LayerApproval.model_validate(result)

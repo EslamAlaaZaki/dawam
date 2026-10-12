@@ -73,6 +73,18 @@ class FailedCheck(BaseModel):
     link: str = Field(description="An app path to the object at fault.")
 
 
+class DisabledCheck(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    check_code: str
+    title: str
+    category: str
+    severity: Literal["error", "warning", "info"] | None
+    reason: str
+    disabled_by: uuid.UUID | None
+    disabled_at: datetime
+
+
 class Score(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,6 +101,9 @@ class Score(BaseModel):
     failed_checks: list[FailedCheck] = Field(description="Errors first.")
     checks_passed: int
     checks_failed: int
+    disabled_checks: list[DisabledCheck] = Field(
+        description="Left out of the score, with the owner's reason."
+    )
 
 
 class ScoreRun(BaseModel):

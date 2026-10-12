@@ -110,7 +110,11 @@ Public interface. Other modules import only what is re-exported here:
   object (``REVOKING_FIELDS``), whoever made it, returns the Layer to ``draft``, audited with its
   cause; text fields never revoke and staging changes revoke nothing. ``install_approval_clock``
   (the composition root) times those revocations. ``GET .../data-warehouse/approvals`` and
-  ``PUT .../approvals/{layer}``.
+  ``PUT .../approvals/{layer}``, refused (409 ``score_gate_failed``) while the Layer has errors
+  or scores below the minimum an owner set.
+- ``ScoreGateService``: owners disable score checks with a reason (left out of the score, listed
+  apart) and set a minimum score per Core and Mart Layer (``.../score/disabled-checks``,
+  ``.../score/gates``); ``verify_approval`` is the gate ``ApprovalService`` asks.
 - ``DwChangeService``: owners ``propose_system_code_change`` (the code plus a rename of every
   affected Staging Table and the ``source_system`` audit constant, origin ``system_code_change``)
   and ``propose_platform_change`` (the platform, Staging column types translated again, and every
@@ -130,7 +134,8 @@ Public interface. Other modules import only what is re-exported here:
 
 Owns the ``data_warehouses``, ``dw_tables``, ``dw_columns``, ``table_mappings``,
 ``column_mappings``, ``lineage_edges``, ``tombstones``, ``score_runs``,
-``score_check_results``, ``ai_evaluations`` and ``layer_approvals`` tables.
+``score_check_results``, ``ai_evaluations``, ``layer_approvals``, ``disabled_checks`` and
+``score_gates`` tables.
 """
 
 from .api import router
@@ -215,6 +220,7 @@ from .schema_reader import (
 )
 from .score_export import ScoreExportService, ScoreReportFile
 from .score_export_api import ScoreExportServiceDep, ScoreReportFormatQuery
+from .score_gate import ScoreGateService
 from .score_service import KpiReader, Score, ScoreService
 from .score_trigger import ScoreScheduler
 from .score_trigger import install as install_score_recalculation
@@ -301,6 +307,7 @@ __all__ = [
     "Score",
     "ScoreExportService",
     "ScoreExportServiceDep",
+    "ScoreGateService",
     "ScoreReportFile",
     "ScoreReportFormatQuery",
     "ScoreScheduler",
