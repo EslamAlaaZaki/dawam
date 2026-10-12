@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { type FormEvent } from "react";
 
 import { useCreateUser } from "../api/users";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
 
 /**
  * Create a user with a temporary password (story 15a): they must change it at first
@@ -17,54 +21,75 @@ export function CreateUserPage() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const email = String(form.get("email") ?? "");
     create.mutate(
       {
-        email: String(form.get("email") ?? ""),
+        email,
         display_name: String(form.get("display_name") ?? ""),
         system_role: form.get("system_role") === "admin" ? "admin" : "user",
         temporary_password: String(form.get("temporary_password") ?? ""),
       },
-      { onSuccess: () => router.push("/admin/users") },
+      {
+        onSuccess: () => {
+          toast.success(`${email} created.`);
+          router.push("/admin/users");
+        },
+      },
     );
   }
 
   return (
-    <section className="page settings">
-      <h2>Create user</h2>
-      <form className="settings-form" onSubmit={onSubmit}>
-        <label>
+    <section className="flex max-w-xl flex-col gap-5">
+      <PageHead
+        title="Create user"
+        description="Set up an account with a temporary password the user replaces at first sign-in."
+      />
+      <form
+        className="flex flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+        onSubmit={onSubmit}
+      >
+        <label className={labelClasses}>
           Email
-          <input name="email" type="email" autoComplete="off" required />
+          <Input name="email" type="email" autoComplete="off" required />
         </label>
-        <label>
+        <label className={labelClasses}>
           Display name
-          <input name="display_name" autoComplete="off" maxLength={200} required />
+          <Input
+            name="display_name"
+            autoComplete="off"
+            maxLength={200}
+            required
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           System role
-          <select name="system_role" defaultValue="user">
+          <NativeSelect name="system_role" defaultValue="user">
             <option value="user">User</option>
             <option value="admin">Admin</option>
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={labelClasses}>
           Temporary password
-          <input name="temporary_password" type="text" autoComplete="off" required />
+          <Input
+            name="temporary_password"
+            type="text"
+            autoComplete="off"
+            required
+          />
         </label>
-        <p className="form-hint">
-          At least 10 characters, and not a common password. Give it to the user through a
-          channel you trust; they must replace it when they first sign in.
+        <p className="text-sm text-sand-11">
+          At least 10 characters, and not a common password. Give it to the user
+          through a channel you trust; they must replace it when they first sign
+          in.
         </p>
-        {create.isError && (
-          <p className="login-error" role="alert">
-            {create.error.message}
-          </p>
-        )}
-        <div className="admin-actions">
-          <button type="submit" disabled={create.isPending}>
+        {create.isError && <ErrorText>{create.error.message}</ErrorText>}
+        <div className="flex items-center gap-2">
+          <Button type="submit" variant="primary" disabled={create.isPending}>
             Create user
-          </button>
-          <Link href="/admin/users">Cancel</Link>
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/admin/users">Cancel</Link>
+          </Button>
         </div>
       </form>
     </section>

@@ -7,14 +7,27 @@ import { useState, type ReactNode } from "react";
 import { AdminNav } from "../admin/AdminNav";
 import { AUTH_PATHS, AuthFrame } from "../auth/AuthFrame";
 import { Button } from "../components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "../components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "../components/ui/sheet";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { NotificationBell } from "./NotificationBell";
 import { SidebarNav } from "./SidebarNav";
 import { UserMenu } from "./UserMenu";
 
 /** Pages in the redesign's look; the others stay light-only until their ticket lands. */
-const REDESIGNED_PATHS: ReadonlySet<string> = new Set(["/", "/workspaces/new", "/profile"]);
+const REDESIGNED_PATHS: ReadonlySet<string> = new Set([
+  "/",
+  "/workspaces/new",
+  "/profile",
+  "/admin/users",
+  "/admin/users/new",
+  "/admin/invitations",
+  "/admin/workspaces",
+]);
 
 const sidebarClasses = "flex flex-col gap-1 bg-sand-2 px-2 py-3 text-base";
 

@@ -9,7 +9,19 @@ import {
   useRevokeInvitation,
   type PendingInvitation,
 } from "../api/invitations";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import { ErrorText, PageHead, TableCard, labelClasses } from "./parts";
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -20,48 +32,54 @@ export function InvitationsPage() {
   const invitations = usePendingInvitations();
 
   return (
-    <section className="page admin-page">
-      <h2>Invitations</h2>
-      <p>
-        An invitation lets someone join while self-registration is off: they get a link,
-        valid 7 days, to choose a display name and password.
-      </p>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Invitations"
+        description="An invitation lets someone join while self-registration is off: they get a link, valid 7 days, to choose a display name and password."
+      />
       <InviteForm />
-      <h3>Pending invitations</h3>
+      <h3 className="text-lg font-semibold">Pending invitations</h3>
       {invitations.isPending ? (
         <Loading />
       ) : invitations.isError ? (
-        <p role="alert">Could not load the invitations: {invitations.error.message}</p>
+        <ErrorText>
+          Could not load the invitations: {invitations.error.message}
+        </ErrorText>
       ) : invitations.data.pages[0]?.items.length === 0 ? (
-        <p>No pending invitations.</p>
+        <p className="text-sand-11">No pending invitations.</p>
       ) : (
         <>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Email</th>
-                <th scope="col">Invited by</th>
-                <th scope="col">Sent</th>
-                <th scope="col">Expires</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invitations.data.pages.flatMap((page) =>
-                page.items.map((invitation) => (
-                  <InvitationRow key={invitation.id} invitation={invitation} />
-                )),
-              )}
-            </tbody>
-          </table>
+          <TableCard>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Email</TableHead>
+                  <TableHead scope="col">Invited by</TableHead>
+                  <TableHead scope="col">Sent</TableHead>
+                  <TableHead scope="col">Expires</TableHead>
+                  <TableHead scope="col">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invitations.data.pages.flatMap((page) =>
+                  page.items.map((invitation) => (
+                    <InvitationRow
+                      key={invitation.id}
+                      invitation={invitation}
+                    />
+                  )),
+                )}
+              </TableBody>
+            </Table>
+          </TableCard>
           {invitations.hasNextPage && (
-            <button
-              type="button"
+            <Button
+              className="self-start"
               onClick={() => void invitations.fetchNextPage()}
               disabled={invitations.isFetchingNextPage}
             >
               Load more
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -76,33 +94,47 @@ function InviteForm() {
     event.preventDefault();
     const form = event.currentTarget;
     const email = String(new FormData(form).get("email") ?? "").trim();
-    invite.mutate(email, { onSuccess: () => form.reset() });
+    invite.mutate(email, {
+      onSuccess: (result) => {
+        form.reset();
+        if (result.delivery === "sent") {
+          toast.success(`Invitation emailed to ${result.invitation.email}.`);
+        }
+      },
+    });
   }
 
   const sent = invite.data;
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="Invite user">
-      <label>
+    <form
+      className="flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      onSubmit={onSubmit}
+      aria-label="Invite user"
+    >
+      <label className={labelClasses}>
         Email
-        <input name="email" type="email" autoComplete="off" required />
+        <Input name="email" type="email" autoComplete="off" required />
       </label>
-      <div className="admin-actions">
-        <button type="submit" disabled={invite.isPending}>
-          Send invitation
-        </button>
-      </div>
-      {invite.isError && (
-        <p className="login-error" role="alert">
-          {invite.error.message}
-        </p>
-      )}
-      {sent?.delivery === "sent" && (
-        <p className="form-ok">Invitation emailed to {sent.invitation.email}.</p>
-      )}
+      <Button
+        type="submit"
+        variant="primary"
+        className="self-start"
+        disabled={invite.isPending}
+      >
+        Send invitation
+      </Button>
+      {invite.isError && <ErrorText>{invite.error.message}</ErrorText>}
       {sent?.delivery === "link_for_admin" && (
-        <p className="form-ok">
-          The invitation for {sent.invitation.email} could not be emailed: copy its link
-          from <Link href="/admin/email/links">Links to share</Link> and pass it on.
+        <p className="text-sm text-sand-11">
+          The invitation for {sent.invitation.email} could not be emailed: copy
+          its link from{" "}
+          <Link
+            href="/admin/email/links"
+            className="font-medium text-sand-12 underline"
+          >
+            Links to share
+          </Link>{" "}
+          and pass it on.
         </p>
       )}
     </form>
@@ -112,24 +144,25 @@ function InviteForm() {
 function InvitationRow({ invitation }: { invitation: PendingInvitation }) {
   const revoke = useRevokeInvitation();
   return (
-    <tr aria-label={invitation.email}>
-      <td>{invitation.email}</td>
-      <td>{invitation.invited_by.display_name}</td>
-      <td>{when(invitation.created_at)}</td>
-      <td>{when(invitation.expires_at)}</td>
-      <td>
-        <div className="admin-actions">
-          <button
-            type="button"
-            className="secondary"
-            disabled={revoke.isPending}
-            onClick={() => revoke.mutate(invitation.id)}
-          >
-            Revoke
-          </button>
-        </div>
-        {revoke.isError && <p role="alert">{revoke.error.message}</p>}
-      </td>
-    </tr>
+    <TableRow aria-label={invitation.email}>
+      <TableCell>{invitation.email}</TableCell>
+      <TableCell>{invitation.invited_by.display_name}</TableCell>
+      <TableCell className="text-sand-11">
+        {when(invitation.created_at)}
+      </TableCell>
+      <TableCell className="text-sand-11">
+        {when(invitation.expires_at)}
+      </TableCell>
+      <TableCell>
+        <Button
+          size="sm"
+          disabled={revoke.isPending}
+          onClick={() => revoke.mutate(invitation.id)}
+        >
+          Revoke
+        </Button>
+        {revoke.isError && <ErrorText>{revoke.error.message}</ErrorText>}
+      </TableCell>
+    </TableRow>
   );
 }

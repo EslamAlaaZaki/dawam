@@ -20,7 +20,12 @@ const ROOT: Me = {
   system_role: "admin",
   must_change_password: false,
 };
-const ADA: Me = { ...ROOT, email: "ada@example.com", display_name: "Ada", system_role: "user" };
+const ADA: Me = {
+  ...ROOT,
+  email: "ada@example.com",
+  display_name: "Ada",
+  system_role: "user",
+};
 
 const SAVED: SmtpSettings = {
   host: "smtp.example.com",
@@ -43,8 +48,12 @@ const LINK: UndeliveredLink = {
   expires_at: "2026-01-05T09:30:00Z",
 };
 
-function as(me: Me, handle: (r: ApiRequest) => Response | undefined = () => undefined) {
-  return (request: ApiRequest) => (request.path === "/api/v1/me" ? json(me) : handle(request));
+function as(
+  me: Me,
+  handle: (r: ApiRequest) => Response | undefined = () => undefined,
+) {
+  return (request: ApiRequest) =>
+    request.path === "/api/v1/me" ? json(me) : handle(request);
 }
 
 let clearCookie: () => void;
@@ -55,17 +64,18 @@ afterEach(() => clearCookie());
 
 describe("admin navigation", () => {
   it("shows the email pages to admins", async () => {
-    renderApp(as(ROOT), "/");
+    renderApp(as(ROOT), "/admin/email");
 
-    const nav = await screen.findByRole("navigation", { name: "Administration" });
-    expect(within(nav).getByRole("link", { name: "Email settings" })).toHaveAttribute(
+    const nav = await screen.findByRole("navigation", {
+      name: "Administration",
+    });
+    expect(within(nav).getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
       "/admin/email",
     );
-    expect(within(nav).getByRole("link", { name: "Links to share" })).toHaveAttribute(
-      "href",
-      "/admin/email/links",
-    );
+    expect(
+      within(nav).getByRole("link", { name: "Links to share" }),
+    ).toHaveAttribute("href", "/admin/email/links");
   });
 
   it("hides them from other users, who cannot open them either", async () => {
@@ -74,7 +84,9 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Only an administrator can see this page.",
     );
-    expect(screen.queryByRole("navigation", { name: "Administration" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Administration" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -83,21 +95,31 @@ describe("email settings", () => {
     const requests = renderApp(
       as(ROOT, (r) => {
         if (r.path !== "/api/v1/admin/smtp") return undefined;
-        return r.method === "PUT" ? json({ ...SAVED, ...(r.body as object) }) : json(null);
+        return r.method === "PUT"
+          ? json({ ...SAVED, ...(r.body as object) })
+          : json(null);
       }),
       "/admin/email",
     );
 
     expect(await screen.findByText(/SMTP is off/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("SMTP host"), { target: { value: "smtp.example.com" } });
-    fireEvent.change(screen.getByLabelText(/^Username/), { target: { value: "dawam" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "smtp secret" } });
+    fireEvent.change(screen.getByLabelText("SMTP host"), {
+      target: { value: "smtp.example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Username/), {
+      target: { value: "dawam" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "smtp secret" },
+    });
     fireEvent.change(screen.getByLabelText("From address"), {
       target: { value: "dawam@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("DAWAM sends email through this SMTP server.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("DAWAM sends email through this SMTP server."),
+    ).toBeInTheDocument();
     expect(requests).toContainEqual({
       method: "PUT",
       path: "/api/v1/admin/smtp",
@@ -116,17 +138,24 @@ describe("email settings", () => {
 
   it("keeps the saved password when the field is left empty", async () => {
     const requests = renderApp(
-      as(ROOT, (r) => (r.path === "/api/v1/admin/smtp" ? json(SAVED) : undefined)),
+      as(ROOT, (r) =>
+        r.path === "/api/v1/admin/smtp" ? json(SAVED) : undefined,
+      ),
       "/admin/email",
     );
 
     const password = await screen.findByLabelText("Password");
     expect(password).toHaveValue("");
-    expect(password).toHaveAttribute("placeholder", "Saved: leave empty to keep it");
+    expect(password).toHaveAttribute(
+      "placeholder",
+      "Saved: leave empty to keep it",
+    );
     expect(screen.getByLabelText("SMTP host")).toHaveValue("smtp.example.com");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "PUT")).toBe(true),
+    );
     const put = requests.find((r) => r.method === "PUT");
     expect(put?.body).not.toHaveProperty("password");
   });
@@ -140,21 +169,33 @@ describe("email settings", () => {
           attempt += 1;
           return attempt === 1
             ? json({ to: ROOT.email })
-            : apiError(502, "smtp_failed", "The SMTP server rejected the username or password.");
+            : apiError(
+                502,
+                "smtp_failed",
+                "The SMTP server rejected the username or password.",
+              );
         }
         return undefined;
       }),
       "/admin/email",
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Send test email" }));
-    expect(await screen.findByText("Test email sent to root@example.com.")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Send test email" }),
+    );
+    expect(
+      await screen.findByText("Test email sent to root@example.com."),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Send test email" }));
     expect(
-      await screen.findByText("The SMTP server rejected the username or password."),
+      await screen.findByText(
+        "The SMTP server rejected the username or password.",
+      ),
     ).toBeInTheDocument();
-    expect(requests.filter((r) => r.path === "/api/v1/admin/smtp/test")[0]?.body).toEqual({
+    expect(
+      requests.filter((r) => r.path === "/api/v1/admin/smtp/test")[0]?.body,
+    ).toEqual({
       to: null,
     });
   });
@@ -168,7 +209,9 @@ describe("email settings", () => {
       "/admin/email",
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Turn SMTP off" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Turn SMTP off" }),
+    );
 
     expect(await screen.findByText(/SMTP is off/)).toBeInTheDocument();
   });
@@ -178,11 +221,18 @@ describe("links to share", () => {
   it("lists links with a copy button, and removes one", async () => {
     let links = [LINK];
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
     renderApp(
       as(ROOT, (r) => {
-        if (r.path === "/api/v1/admin/undelivered-links") return json({ items: links });
-        if (r.method === "DELETE" && r.path === `/api/v1/admin/undelivered-links/${LINK.id}`) {
+        if (r.path === "/api/v1/admin/undelivered-links")
+          return json({ items: links });
+        if (
+          r.method === "DELETE" &&
+          r.path === `/api/v1/admin/undelivered-links/${LINK.id}`
+        ) {
           links = [];
           return noContent();
         }
@@ -191,15 +241,21 @@ describe("links to share", () => {
       "/admin/email/links",
     );
 
-    const item = await screen.findByRole("listitem", { name: "Link for grace@example.com" });
+    const item = await screen.findByRole("listitem", {
+      name: "Link for grace@example.com",
+    });
     expect(within(item).getByText("Password reset")).toBeInTheDocument();
     expect(within(item).getByLabelText("Link")).toHaveValue(LINK.url);
     fireEvent.click(within(item).getByRole("button", { name: "Copy link" }));
-    expect(await within(item).findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(
+      await within(item).findByRole("button", { name: "Copied" }),
+    ).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith(LINK.url);
 
     fireEvent.click(within(item).getByRole("button", { name: "Remove" }));
 
-    expect(await screen.findByText("There are no links to share.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("There are no links to share."),
+    ).toBeInTheDocument();
   });
 });

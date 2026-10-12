@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MailPlus, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { useMe } from "../api/queries";
@@ -11,7 +12,26 @@ import {
   type AdminUser,
   type UserFilters,
 } from "../api/users";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import {
+  ErrorText,
+  NativeSelect,
+  PageHead,
+  TableCard,
+  labelClasses,
+} from "./parts";
 
 const ROLES = { admin: "Admin", user: "User" } as const;
 
@@ -38,67 +58,103 @@ export function UsersPage() {
   }
 
   return (
-    <section className="page admin-page">
-      <h2>Users</h2>
-      <p>
-        <Link href="/admin/users/new">Create user</Link> ·{" "}
-        <Link href="/admin/invitations">Invite user</Link>
-      </p>
-      <form className="admin-filters" role="search" onSubmit={onSearch}>
-        <label>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Users"
+        description="Everyone who can sign in to this DAWAM server."
+        actions={
+          <>
+            <Button asChild>
+              <Link href="/admin/users/new">
+                <UserPlus aria-hidden />
+                Create user
+              </Link>
+            </Button>
+            <Button asChild variant="primary">
+              <Link href="/admin/invitations">
+                <MailPlus aria-hidden />
+                Invite user
+              </Link>
+            </Button>
+          </>
+        }
+      />
+      <form
+        className="flex flex-wrap items-end gap-2"
+        role="search"
+        aria-label="Filter users"
+        onSubmit={onSearch}
+      >
+        <label className={`${labelClasses} w-64`}>
           Search
-          <input name="q" type="search" placeholder="Email or name" />
+          <Input name="q" type="search" placeholder="Email or name" />
         </label>
-        <label>
+        <label className={labelClasses}>
           Role
-          <select name="role" defaultValue="">
+          <NativeSelect name="role" defaultValue="">
             <option value="">Any role</option>
             <option value="admin">Admin</option>
             <option value="user">User</option>
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={labelClasses}>
           Status
-          <select name="status" defaultValue="">
+          <NativeSelect name="status" defaultValue="">
             <option value="">Any status</option>
             <option value="active">Active</option>
             <option value="deactivated">Deactivated</option>
-          </select>
+          </NativeSelect>
         </label>
-        <button type="submit">Search</button>
+        <Button type="submit" className="h-[34px]">
+          Search
+        </Button>
       </form>
       {users.isPending ? (
         <Loading />
       ) : users.isError ? (
-        <p role="alert">Could not load the users: {users.error.message}</p>
+        <ErrorText>Could not load the users: {users.error.message}</ErrorText>
       ) : (
         <>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Email</th>
-                <th scope="col">Name</th>
-                <th scope="col">Role</th>
-                <th scope="col">Status</th>
-                <th scope="col">Last sign-in</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.data.pages.flatMap((page) =>
-                page.items.map((user) => <UserRow key={user.id} user={user} />),
-              )}
-            </tbody>
-          </table>
-          {users.data.pages[0]?.items.length === 0 && <p>No users match.</p>}
+          <TableCard
+            footer={
+              <span>
+                {users.data.pages.reduce((n, page) => n + page.items.length, 0)}{" "}
+                users
+                {users.hasNextPage && " so far"}
+              </span>
+            }
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Email</TableHead>
+                  <TableHead scope="col">Name</TableHead>
+                  <TableHead scope="col">Role</TableHead>
+                  <TableHead scope="col">Status</TableHead>
+                  <TableHead scope="col">Last sign-in</TableHead>
+                  <TableHead scope="col">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.data.pages.flatMap((page) =>
+                  page.items.map((user) => (
+                    <UserRow key={user.id} user={user} />
+                  )),
+                )}
+              </TableBody>
+            </Table>
+          </TableCard>
+          {users.data.pages[0]?.items.length === 0 && (
+            <p className="text-sand-11">No users match.</p>
+          )}
           {users.hasNextPage && (
-            <button
-              type="button"
+            <Button
+              className="self-start"
               onClick={() => void users.fetchNextPage()}
               disabled={users.isFetchingNextPage}
             >
               Load more
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -111,7 +167,11 @@ function UserRow({ user }: { user: AdminUser }) {
   const update = useUpdateUser();
   const reset = useForcePasswordReset();
   const isMe = me.data?.id === user.id;
-  const problem = update.isError ? update.error : reset.isError ? reset.error : null;
+  const problem = update.isError
+    ? update.error
+    : reset.isError
+      ? reset.error
+      : null;
 
   let status = user.is_active ? "Active" : "Deactivated";
   if (user.is_active && user.must_change_password) {
@@ -119,17 +179,35 @@ function UserRow({ user }: { user: AdminUser }) {
   }
 
   return (
-    <tr aria-label={user.email}>
-      <td>{user.email}</td>
-      <td>{user.display_name}</td>
-      <td>{ROLES[user.system_role]}</td>
-      <td>{status}</td>
-      <td>{when(user.last_login_at)}</td>
-      <td>
-        <div className="admin-actions">
-          <button
-            type="button"
-            className="secondary"
+    <TableRow aria-label={user.email}>
+      <TableCell>{user.email}</TableCell>
+      <TableCell>{user.display_name}</TableCell>
+      <TableCell>
+        {user.system_role === "admin" ? (
+          <Badge variant="accent">{ROLES.admin}</Badge>
+        ) : (
+          <span className="text-sand-11">{ROLES.user}</span>
+        )}
+      </TableCell>
+      <TableCell>
+        <Badge
+          variant={
+            !user.is_active
+              ? "danger"
+              : user.must_change_password
+                ? "warning"
+                : "success"
+          }
+          dot
+        >
+          {status}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-sand-11">{when(user.last_login_at)}</TableCell>
+      <TableCell className="whitespace-normal">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
             disabled={update.isPending}
             onClick={() =>
               update.mutate({
@@ -139,37 +217,50 @@ function UserRow({ user }: { user: AdminUser }) {
             }
           >
             {user.system_role === "admin" ? "Make user" : "Make admin"}
-          </button>
-          <button
-            type="button"
-            className="secondary"
+          </Button>
+          <Button
+            size="sm"
             disabled={update.isPending}
-            onClick={() => update.mutate({ id: user.id, is_active: !user.is_active })}
+            onClick={() =>
+              update.mutate({ id: user.id, is_active: !user.is_active })
+            }
           >
             {user.is_active ? "Deactivate" : "Reactivate"}
-          </button>
+          </Button>
           {!isMe && user.is_active && (
-            <button
-              type="button"
-              className="secondary"
+            <Button
+              size="sm"
               disabled={reset.isPending}
-              onClick={() => reset.mutate(user.id)}
+              onClick={() =>
+                reset.mutate(user.id, {
+                  onSuccess: (result) => {
+                    if (result.delivery === "sent") {
+                      toast.success(
+                        `Sessions ended; a reset link was emailed to ${user.email}.`,
+                      );
+                    }
+                  },
+                })
+              }
             >
               Force password reset
-            </button>
+            </Button>
           )}
         </div>
-        {problem && <p role="alert">{problem.message}</p>}
-        {reset.data?.delivery === "sent" && (
-          <p className="form-ok">Sessions ended; a reset link was emailed to {user.email}.</p>
-        )}
+        {problem && <ErrorText>{problem.message}</ErrorText>}
         {reset.data?.delivery === "link_for_admin" && (
-          <p className="form-ok">
+          <p className="mt-1.5 text-sm text-sand-11">
             Sessions ended. The reset link could not be emailed: share it from{" "}
-            <Link href="/admin/email/links">Links to share</Link>.
+            <Link
+              href="/admin/email/links"
+              className="font-medium text-sand-12 underline"
+            >
+              Links to share
+            </Link>
+            .
           </p>
         )}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

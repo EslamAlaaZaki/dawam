@@ -1,9 +1,20 @@
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
 import { openMenu } from "../test/menus";
-import { json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
+import {
+  json,
+  renderApp,
+  setCsrfCookie,
+  type ApiRequest,
+} from "../test/renderApp";
 
 const ADA: Me = {
   id: "8d6f1c1e-1f43-4c1b-9b8f-5a1f2b3c4d5e",
@@ -45,9 +56,15 @@ describe("the theme choice in the user menu", () => {
     renderApp(backend(ADA), "/");
     await openUserMenu("Ada Lovelace");
 
-    expect(await screen.findByRole("menuitemradio", { name: "System" })).toBeChecked();
-    expect(screen.getByRole("menuitemradio", { name: "Light" })).not.toBeChecked();
-    expect(screen.getByRole("menuitemradio", { name: "Dark" })).not.toBeChecked();
+    expect(
+      await screen.findByRole("menuitemradio", { name: "System" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("menuitemradio", { name: "Light" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("menuitemradio", { name: "Dark" }),
+    ).not.toBeChecked();
   });
 
   it("applies the choice at once and keeps it across a reload", async () => {
@@ -63,7 +80,9 @@ describe("the theme choice in the user menu", () => {
     renderApp(backend(ADA), "/");
     await openUserMenu("Ada Lovelace");
 
-    expect(await screen.findByRole("menuitemradio", { name: "Dark" })).toBeChecked();
+    expect(
+      await screen.findByRole("menuitemradio", { name: "Dark" }),
+    ).toBeChecked();
     expect(document.documentElement).toHaveClass("dark");
   });
 });
@@ -74,14 +93,25 @@ describe("the sidebar", () => {
     const sidebar = await screen.findByRole("complementary", {
       name: "Navigation",
     });
-    expect(within(sidebar).getByRole("link", { name: "Workspaces" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.queryByRole("navigation", { name: "Administration" })).not.toBeInTheDocument();
+    expect(
+      within(sidebar).getByRole("link", { name: "Workspaces" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      screen.queryByRole("navigation", { name: "Administration" }),
+    ).not.toBeInTheDocument();
     cleanup();
 
     renderApp(backend(ROOT), "/");
+    const entry = await screen.findByRole("navigation", {
+      name: "Administration",
+    });
+    expect(within(entry).getByRole("link", { name: "Admin" })).toHaveAttribute(
+      "href",
+      "/admin/users",
+    );
+    cleanup();
+
+    renderApp(backend(ROOT), "/admin/users");
     const admin = await screen.findByRole("navigation", {
       name: "Administration",
     });
@@ -101,9 +131,13 @@ describe("the sidebar", () => {
     fireEvent.click(open);
 
     const drawer = await screen.findByRole("dialog", { name: "Navigation" });
-    expect(within(drawer).getByRole("link", { name: "Workspaces" })).toBeInTheDocument();
+    expect(
+      within(drawer).getByRole("link", { name: "Workspaces" }),
+    ).toBeInTheDocument();
     fireEvent.keyDown(drawer, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 });
 
@@ -112,15 +146,15 @@ describe("the user menu", () => {
     renderApp(backend(ADA), "/");
     await openUserMenu("Ada Lovelace");
 
-    expect(await screen.findByRole("menuitem", { name: "Profile" })).toHaveAttribute(
-      "href",
-      "/profile",
-    );
-    expect(screen.getByRole("menuitem", { name: "Change password" })).toHaveAttribute(
-      "href",
-      "/profile#password-title",
-    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Profile" }),
+    ).toHaveAttribute("href", "/profile");
+    expect(
+      screen.getByRole("menuitem", { name: "Change password" }),
+    ).toHaveAttribute("href", "/profile#password-title");
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
   });
 });
