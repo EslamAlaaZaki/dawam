@@ -1,0 +1,546 @@
+<title>DAWAM Redesign Prototype</title>
+<!-- PROTOTYPE, throwaway. Question: what should the redesigned DAWAM look like?
+     Three screens (workspace, admin users, sign in) x three surface treatments
+     (A Crisp, B Inset sheet, C Dark rail), each in light and dark.
+     Structure is fixed by the grilling decisions; variants differ in surface treatment.
+     VERDICT (2026-10-12): variant A "Crisp" chosen, in both light and dark. Build to variant A:
+     its tokens (:root and the two dark blocks), the .app defaults (variant A has no overrides),
+     spacing, radii, type sizes and component styles. Ignore the [data-variant="B"/"C"] rules
+     and the .proto switcher bar. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sidebar | content | assistant. Radix sand neutrals + jade accent, light & dark. */
+:root {
+  --n1:#fdfdfc; --n2:#f9f9f8; --n3:#f1f0ef; --n4:#e9e8e6; --n5:#e2e1de; --n6:#dad9d6;
+  --n7:#cfceca; --n8:#bcbbb5; --n9:#8d8d86; --n11:#63635e; --n12:#21201c;
+  --a2:#f4fbf7; --a3:#e6f7ed; --a4:#d6f1e3; --a7:#8bceb6; --a11:#208368; --a12:#1d3b31;
+  --accent-solid:#1f7a61; --accent-solid-hover:#1a6b55; --on-accent:#ffffff;
+  --red3:#feebec; --red11:#ce2c31; --amber3:#fff7c2; --amber11:#ab6400;
+  --green3:#e9f6e9; --green11:#2a7e3b;
+  --shadow: 0 1px 2px rgb(33 32 28 / .06), 0 4px 16px rgb(33 32 28 / .06);
+  --overlay: rgb(33 32 28 / .32);
+  /* dark rail (variant C) keeps the same values in both themes */
+  --rail-bg:#191918; --rail-fg:#b5b3ad; --rail-fg-strong:#eeeeec; --rail-hover:#2a2a28; --rail-active:#0f2e22; --rail-active-fg:#1fd8a4; --rail-line:#2a2a28;
+  --sans: "Geist", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --n1:#111110; --n2:#191918; --n3:#222221; --n4:#2a2a28; --n5:#31312e; --n6:#3b3a37;
+  --n7:#494844; --n8:#62605b; --n9:#6f6d66; --n11:#b5b3ad; --n12:#eeeeec;
+  --a2:#121c18; --a3:#0f2e22; --a4:#0b3b2c; --a7:#246854; --a11:#1fd8a4; --a12:#adf0d4;
+  --accent-solid:#29a383; --accent-solid-hover:#27b08b; --on-accent:#0d1512;
+  --red3:#3b1219; --red11:#ff9592; --amber3:#302008; --amber11:#ffca16;
+  --green3:#1b2a1e; --green11:#71d083;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .3);
+  --overlay: rgb(0 0 0 / .55);
+  --rail-bg:#0b0b0a; --rail-hover:#1c1c1b; --rail-line:#1f1f1e;
+  color-scheme: dark;
+}}
+:root[data-theme="dark"] {
+  --n1:#111110; --n2:#191918; --n3:#222221; --n4:#2a2a28; --n5:#31312e; --n6:#3b3a37;
+  --n7:#494844; --n8:#62605b; --n9:#6f6d66; --n11:#b5b3ad; --n12:#eeeeec;
+  --a2:#121c18; --a3:#0f2e22; --a4:#0b3b2c; --a7:#246854; --a11:#1fd8a4; --a12:#adf0d4;
+  --accent-solid:#29a383; --accent-solid-hover:#27b08b; --on-accent:#0d1512;
+  --red3:#3b1219; --red11:#ff9592; --amber3:#302008; --amber11:#ffca16;
+  --green3:#1b2a1e; --green11:#71d083;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .3);
+  --overlay: rgb(0 0 0 / .55);
+  --rail-bg:#0b0b0a; --rail-hover:#1c1c1b; --rail-line:#1f1f1e;
+  color-scheme: dark;
+}
+
+/* ---- variant surface tokens ---- */
+.app { --page:var(--n1); --side:var(--n2); --side-fg:var(--n11); --side-fg-strong:var(--n12);
+  --side-hover:var(--n4); --side-active:var(--n4); --side-active-fg:var(--n12); --side-line:var(--n5);
+  --sheet:var(--n1); --radius:6px; --line:var(--n5); }
+.app[data-variant="B"] { --page:var(--n2); --side:var(--n2); --side-hover:var(--n4); --side-active:var(--n1);
+  --radius:10px; --side-line:transparent; }
+.app[data-variant="C"] { --side:var(--rail-bg); --side-fg:var(--rail-fg); --side-fg-strong:var(--rail-fg-strong);
+  --side-hover:var(--rail-hover); --side-active:var(--rail-active); --side-active-fg:var(--rail-active-fg); --side-line:var(--rail-line); --radius:8px; }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin:0; background:var(--n1); color:var(--n12); font: 400 14px/1.45 var(--sans);
+  -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--a11); outline-offset: 2px; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+svg.lucide, [data-lucide] { width:16px; height:16px; stroke-width:1.75; flex:none; }
+
+/* ---- app shell ---- */
+.app { display:grid; grid-template-columns: 248px minmax(0,1fr); min-height:100%; background:var(--page); }
+.app.has-assistant { grid-template-columns: 248px minmax(0,1fr) 340px; }
+.side { background:var(--side); color:var(--side-fg); border-right:1px solid var(--side-line);
+  display:flex; flex-direction:column; gap:4px; padding:12px 8px; min-height:100vh; }
+.brand { display:flex; align-items:center; gap:8px; padding:4px 8px 12px; color:var(--side-fg-strong);
+  font-weight:700; letter-spacing:.14em; font-size:13px; }
+.brand svg { width:22px; height:22px; }
+.switcher { display:flex; align-items:center; gap:8px; padding:8px; border-radius:var(--radius);
+  border:1px solid var(--side-line); color:var(--side-fg-strong); background:transparent; width:100%; text-align:left; cursor:pointer; }
+.app[data-variant="B"] .switcher { background:var(--n1); border-color:var(--n5); box-shadow:0 1px 1px rgb(0 0 0 / .04); }
+.switcher .ws-badge { width:22px; height:22px; border-radius:5px; background:var(--accent-solid); color:var(--on-accent);
+  display:grid; place-items:center; font-size:11px; font-weight:700; }
+.switcher .grow { flex:1; min-width:0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nav-label { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--side-fg);
+  opacity:.8; padding:14px 8px 4px; font-weight:500; }
+.nav a, .tree a { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:calc(var(--radius) - 2px);
+  color:var(--side-fg); text-decoration:none; white-space:nowrap; }
+.nav a:hover, .tree a:hover { background:var(--side-hover); color:var(--side-fg-strong); }
+.nav a[aria-current], .tree a[aria-current] { background:var(--side-active); color:var(--side-active-fg); font-weight:500; }
+.app[data-variant="B"] .tree a[aria-current], .app[data-variant="B"] .nav a[aria-current] { box-shadow:0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--n5); }
+.tree .indent { padding-left:28px; }
+.tree .indent2 { padding-left:48px; }
+.tree .code { margin-left:auto; font-family:var(--mono); font-size:11px; opacity:.7; }
+.side-foot { margin-top:auto; display:flex; align-items:center; gap:8px; padding:8px; font-size:12px; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--green11); }
+
+.main { display:flex; flex-direction:column; min-width:0; }
+.app[data-variant="B"] .main { margin:8px 8px 8px 0; background:var(--sheet); border:1px solid var(--n5);
+  border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+.app[data-variant="B"].has-assistant .main { margin-right:0; }
+.topbar { display:flex; align-items:center; gap:12px; height:48px; padding:0 16px; border-bottom:1px solid var(--line);
+  background:var(--sheet); position:sticky; top:0; z-index:5; }
+.crumbs { display:flex; align-items:center; gap:6px; color:var(--n11); min-width:0; white-space:nowrap; overflow:hidden; }
+.crumbs b { color:var(--n12); font-weight:500; }
+.crumbs .sep { color:var(--n8); }
+.top-actions { margin-left:auto; display:flex; align-items:center; gap:4px; }
+.icon-btn { position:relative; display:inline-grid; place-items:center; width:32px; height:32px; border-radius:6px;
+  border:0; background:transparent; color:var(--n11); cursor:pointer; }
+.icon-btn:hover { background:var(--n3); color:var(--n12); }
+.icon-btn .count { position:absolute; top:3px; right:2px; min-width:15px; height:15px; padding:0 4px; border-radius:8px;
+  background:var(--accent-solid); color:var(--on-accent); font-size:10px; font-weight:600; line-height:15px; }
+.icon-btn .unread { position:absolute; top:7px; right:8px; width:7px; height:7px; border-radius:50%; background:var(--red11); box-shadow:0 0 0 2px var(--sheet); }
+.avatar { width:28px; height:28px; border-radius:50%; background:var(--a4); color:var(--a12); display:grid; place-items:center;
+  font-size:11px; font-weight:600; margin-left:6px; }
+
+.content { padding:20px 24px 96px; display:flex; flex-direction:column; gap:20px; min-width:0; }
+.page-head { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 24px; }
+.page-head h1 { margin:0; font-size:20px; font-weight:600; letter-spacing:-.01em; text-wrap:balance; }
+.page-head p { margin:2px 0 0; color:var(--n11); }
+.page-head .actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+
+/* stage stepper */
+.stepper { display:flex; flex-wrap:wrap; gap:0; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--sheet); }
+.step { flex:1 1 120px; display:flex; align-items:center; gap:8px; padding:8px 12px; border-right:1px solid var(--line); color:var(--n11); font-size:13px; }
+.step:last-child { border-right:0; }
+.step .mark { width:18px; height:18px; border-radius:50%; display:grid; place-items:center; border:1.5px solid var(--n7); font-size:10px; }
+.step.done .mark { background:var(--accent-solid); border-color:var(--accent-solid); color:var(--on-accent); }
+.step.done .mark svg { width:11px; height:11px; stroke-width:3; }
+.step.now { color:var(--n12); font-weight:500; background:var(--a2); }
+.step.now .mark { border-color:var(--a11); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 9px var(--a11); }
+
+/* buttons, pills */
+.btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:6px; border:1px solid var(--n6);
+  background:var(--sheet); color:var(--n12); font-weight:500; cursor:pointer; white-space:nowrap; }
+.btn:hover { background:var(--n3); }
+.btn.primary { background:var(--accent-solid); border-color:var(--accent-solid); color:var(--on-accent); }
+.btn.primary:hover { background:var(--accent-solid-hover); }
+.btn.ghost { border-color:transparent; background:transparent; color:var(--n11); }
+.btn.ghost:hover { background:var(--n3); color:var(--n12); }
+.btn.sm { height:26px; padding:0 8px; font-size:12.5px; }
+.pill { display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 7px; border-radius:10px; font-size:12px; font-weight:500;
+  background:var(--n3); color:var(--n11); white-space:nowrap; }
+.pill.ok { background:var(--green3); color:var(--green11); }
+.pill.warn { background:var(--amber3); color:var(--amber11); }
+.pill.bad { background:var(--red3); color:var(--red11); }
+.pill.accent { background:var(--a3); color:var(--a11); }
+.pill i { width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+/* model panel: table list + columns */
+.split { display:grid; grid-template-columns: 220px minmax(0,1fr); border:1px solid var(--line); border-radius:var(--radius); background:var(--sheet); min-width:0; }
+.app[data-variant="A"] .split { border-radius:6px; }
+.tables { border-right:1px solid var(--line); padding:8px; display:flex; flex-direction:column; gap:2px; }
+.tables .search { display:flex; align-items:center; gap:6px; height:30px; padding:0 8px; border:1px solid var(--n6); border-radius:6px; color:var(--n9); margin-bottom:6px; }
+.tables .search input { border:0; background:transparent; outline:none; min-width:0; width:100%; }
+.tables button { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:6px 8px; border:0; border-radius:5px; background:transparent; cursor:pointer; color:var(--n11); }
+.tables button:hover { background:var(--n3); }
+.tables button[aria-current] { background:var(--a3); color:var(--a12); }
+.tables button .mono { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.tables .kind { font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--n9); }
+.detail { min-width:0; display:flex; flex-direction:column; }
+.detail-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:12px 16px; border-bottom:1px solid var(--line); }
+.detail-head h2 { margin:0; font: 600 15px/1.3 var(--mono); }
+.detail-head .meta { color:var(--n11); font-size:13px; }
+.detail-head .actions { margin-left:auto; display:flex; gap:6px; }
+.tabs { display:flex; gap:16px; padding:0 16px; border-bottom:1px solid var(--line); }
+.tabs button { border:0; background:transparent; padding:10px 0; color:var(--n11); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; font-weight:500; }
+.tabs button[aria-selected="true"] { color:var(--n12); border-color:var(--n12); }
+.scroll-x { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+th { position:sticky; top:0; text-align:left; font-size:12px; font-weight:500; color:var(--n11); background:var(--n2);
+  padding:7px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+td { padding:7px 12px; border-bottom:1px solid var(--n4); white-space:nowrap; vertical-align:middle; }
+tbody tr:hover td { background:var(--n2); }
+tbody tr:last-child td { border-bottom:0; }
+td .src { color:var(--n11); }
+td .key { color:var(--amber11); }
+.muted { color:var(--n11); }
+
+/* assistant panel */
+.assistant { border-left:1px solid var(--line); background:var(--page); display:flex; flex-direction:column; min-width:0; height:100vh; position:sticky; top:0; }
+.app[data-variant="B"] .assistant { border-left:0; }
+.assistant header { display:flex; align-items:center; gap:8px; height:48px; padding:0 12px 0 16px; border-bottom:1px solid var(--line); font-weight:600; }
+.assistant header .ctx { margin-left:auto; }
+.thread { flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:14px; }
+.msg { display:flex; flex-direction:column; gap:4px; max-width:100%; }
+.msg .who { font-size:12px; color:var(--n11); font-weight:500; }
+.msg.me { align-self:flex-end; max-width:85%; }
+.msg.me .body { background:var(--n3); border-radius:10px 10px 2px 10px; padding:8px 11px; }
+.msg .body p { margin:0 0 6px; }
+.msg .body p:last-child { margin:0; }
+.cs-card { border:1px solid var(--line); border-radius:var(--radius); background:var(--sheet); overflow:hidden; }
+.cs-card .row { display:flex; align-items:center; gap:8px; padding:7px 10px; border-top:1px solid var(--n4); font-size:13px; }
+.cs-card .row:first-child { border-top:0; background:var(--n2); font-weight:500; }
+.op { font: 600 10.5px/1 var(--mono); padding:3px 5px; border-radius:4px; }
+.op.add { background:var(--green3); color:var(--green11); }
+.op.mod { background:var(--amber3); color:var(--amber11); }
+.cs-card .foot { display:flex; gap:6px; padding:8px 10px; border-top:1px solid var(--n4); }
+.composer { margin:12px; border:1px solid var(--n6); border-radius:var(--radius); background:var(--sheet); padding:8px; display:flex; flex-direction:column; gap:6px; }
+.composer textarea { border:0; resize:none; outline:none; background:transparent; min-height:44px; }
+.composer .bar { display:flex; align-items:center; gap:6px; color:var(--n11); font-size:12px; }
+.composer .bar .btn { margin-left:auto; }
+
+/* admin */
+.admin-grid { display:flex; flex-direction:column; gap:12px; }
+.toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.field { display:flex; align-items:center; gap:6px; height:32px; padding:0 10px; border:1px solid var(--n6); border-radius:6px; background:var(--sheet); color:var(--n9); min-width:0; }
+.field input { border:0; outline:none; background:transparent; min-width:0; width:220px; max-width:100%; color:var(--n12); }
+.seg { display:inline-flex; border:1px solid var(--n6); border-radius:6px; overflow:hidden; }
+.seg button { border:0; background:var(--sheet); padding:0 10px; height:30px; cursor:pointer; color:var(--n11); border-right:1px solid var(--n6); }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed="true"] { background:var(--n3); color:var(--n12); font-weight:500; }
+.card-table { border:1px solid var(--line); border-radius:var(--radius); background:var(--sheet); overflow:hidden; }
+.user-cell { display:flex; align-items:center; gap:10px; }
+.user-cell .avatar { margin:0; width:26px; height:26px; background:var(--n4); color:var(--n12); }
+.user-cell small { display:block; color:var(--n11); font-size:12px; }
+.table-foot { display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid var(--line); color:var(--n11); font-size:12.5px; }
+.callout { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--amber3); background:var(--amber3); color:var(--n12); border-radius:var(--radius); }
+.callout svg { color:var(--amber11); margin-top:2px; }
+.callout a { color:var(--n12); font-weight:500; }
+
+/* dialog + toast */
+.scrim { position:fixed; inset:0; background:var(--overlay); display:grid; place-items:center; padding:16px; z-index:20; }
+.dialog { width:min(440px, 100%); background:var(--n1); border:1px solid var(--n5); border-radius:12px; box-shadow:var(--shadow); }
+.dialog header { padding:16px 18px 4px; }
+.dialog h2 { margin:0; font-size:16px; font-weight:600; }
+.dialog header p { margin:4px 0 0; color:var(--n11); }
+.dialog form { padding:12px 18px 18px; display:flex; flex-direction:column; gap:14px; }
+.f { display:flex; flex-direction:column; gap:6px; }
+.f label { font-weight:500; font-size:13px; }
+.f input, .f select { height:34px; padding:0 10px; border:1px solid var(--n6); border-radius:6px; background:var(--n1); }
+.f input:focus, .f select:focus { outline:2px solid var(--a7); outline-offset:0; border-color:var(--a11); }
+.f .hint { color:var(--n11); font-size:12px; }
+.dialog .end { display:flex; justify-content:flex-end; gap:8px; padding-top:4px; }
+.toast { position:fixed; right:20px; bottom:76px; z-index:30; display:flex; align-items:center; gap:10px; padding:10px 14px;
+  background:var(--n12); color:var(--n1); border-radius:8px; box-shadow:var(--shadow); max-width:calc(100% - 32px); }
+.toast svg { color:var(--a7); }
+
+/* sign in */
+.signin { min-height:100vh; display:grid; place-items:center; padding:24px 16px 96px; background:var(--n2); }
+.signin-box { width:min(360px, 100%); display:flex; flex-direction:column; gap:20px; }
+.signin .brand { color:var(--n12); padding:0; justify-content:center; font-size:15px; }
+.signin .brand svg { width:26px; height:26px; }
+.signin-card { background:var(--n1); border:1px solid var(--n5); border-radius:12px; padding:24px; display:flex; flex-direction:column; gap:16px; }
+.signin-card h1 { margin:0; font-size:18px; font-weight:600; }
+.signin-card > p { margin:-10px 0 0; color:var(--n11); }
+.signin-card .btn.primary { justify-content:center; height:36px; }
+.row-between { display:flex; justify-content:space-between; align-items:center; }
+.link { color:var(--a11); text-decoration:none; font-weight:500; font-size:13px; }
+.link:hover { text-decoration:underline; }
+.signin-foot { text-align:center; color:var(--n11); font-size:12.5px; }
+.app[data-variant="C"] ~ * {}
+.signin[data-variant="B"] { background:var(--n1); }
+.signin[data-variant="B"] .signin-card { border:0; padding:0; background:transparent; }
+.signin[data-variant="C"] { background:var(--rail-bg); }
+.signin[data-variant="C"] .brand { color:var(--rail-fg-strong); }
+.signin[data-variant="C"] .signin-foot { color:var(--rail-fg); }
+
+/* prototype switcher (not part of the design) */
+.proto { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(14px + env(safe-area-inset-bottom, 0px)); z-index:50;
+  display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; padding:5px; max-width:calc(100% - 24px);
+  background:#0b0b0a; color:#f5f5f4; border-radius:999px; box-shadow:0 6px 24px rgb(0 0 0 / .35); font-size:12.5px; }
+.proto button { border:0; background:transparent; color:inherit; height:28px; padding:0 10px; border-radius:999px; cursor:pointer; }
+.proto button:hover { background:#2a2a28; }
+.proto button[aria-pressed="true"] { background:#f5f5f4; color:#0b0b0a; font-weight:600; }
+.proto .sep { width:1px; height:18px; background:#3b3a37; }
+.proto .vlabel { min-width:120px; text-align:center; font-weight:600; }
+
+@media (max-width: 1100px) { .app.has-assistant { grid-template-columns: 248px minmax(0,1fr); } .assistant { display:none; } }
+@media (max-width: 760px) {
+  .app, .app.has-assistant { grid-template-columns: minmax(0,1fr); }
+  .side { min-height:0; border-right:0; border-bottom:1px solid var(--side-line); }
+  .side .tree, .side .nav, .side .nav-label, .side-foot { display:none; }
+  .app[data-variant="B"] .main { margin:0; border-radius:0; }
+  .split { grid-template-columns: minmax(0,1fr); }
+  .tables { border-right:0; border-bottom:1px solid var(--line); }
+  .content { padding:16px 16px 120px; }
+}
+@media (prefers-reduced-motion: no-preference) { .toast { animation: rise .25s ease-out; } }
+@keyframes rise { from { transform:translateY(8px); opacity:.0; } to { transform:none; opacity:1; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const LOGO = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 21 7.5 12 12 3 7.5Z" fill="var(--accent-solid)"/><path d="M3 12 12 16.5 21 12" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" opacity=".55"/><path d="M3 16.5 12 21 21 16.5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" opacity=".3"/></svg>`;
+const VARIANTS = [["A","Crisp"],["B","Inset sheet"],["C","Dark rail"]];
+const SCREENS = [["workspace","Workspace"],["admin","Admin · Users"],["signin","Sign in"]];
+const state = { screen:"workspace", v:0, dialog:true, toast:true, theme:null };
+const ic = (n) => `<i data-lucide="${n}"></i>`;
+
+const brand = `<div class="brand">${LOGO}<span>DAWAM</span></div>`;
+const topbar = (crumbs) => `
+  <div class="topbar">
+    <nav class="crumbs" aria-label="Breadcrumb">${crumbs.map((c,i)=> i===crumbs.length-1?`<b>${c}</b>`:`<span>${c}</span><span class="sep">/</span>`).join("")}</nav>
+    <div class="top-actions">
+      <button class="icon-btn" aria-label="Jobs, 2 running">${ic("loader")}<span class="count">2</span></button>
+      <button class="icon-btn" aria-label="Notifications, unread">${ic("bell")}<span class="unread"></span></button>
+      <button class="icon-btn" aria-label="Help">${ic("circle-help")}</button>
+      <span class="avatar" title="Noura Al-Harbi">NA</span>
+    </div>
+  </div>`;
+
+function workspace(v) {
+  return `
+  <div class="app has-assistant" data-variant="${v}">
+    <aside class="side" aria-label="Workspace navigation">
+      ${brand}
+      <button class="switcher"><span class="ws-badge">RB</span><span class="grow">Retail Banking DW</span>${ic("chevrons-up-down")}</button>
+      <div class="nav-label">Workspace</div>
+      <nav class="tree" aria-label="Folders">
+        <a href="#">${ic("layout-dashboard")}Overview</a>
+        <a href="#">${ic("database")}Source Systems</a>
+        <a href="#" class="indent">${ic("chevron-down")}Core Banking<span class="code">cbs</span></a>
+        <a href="#" class="indent2">${ic("plug")}Connection</a>
+        <a href="#" class="indent2">${ic("table-2")}Schema</a>
+        <a href="#" class="indent2">${ic("git-fork")}ER diagram</a>
+        <a href="#" class="indent">${ic("chevron-right")}CRM<span class="code">crm</span></a>
+        <a href="#" class="indent">${ic("chevron-right")}Card Switch<span class="code">csw</span></a>
+        <a href="#">${ic("warehouse")}Data Warehouse</a>
+        <a href="#" class="indent">${ic("layers")}Staging</a>
+        <a href="#" class="indent" aria-current="page">${ic("layers")}Core</a>
+        <a href="#" class="indent">${ic("layers")}Mart</a>
+        <a href="#" class="indent">${ic("target")}KPIs</a>
+        <a href="#" class="indent">${ic("workflow")}Lineage</a>
+        <a href="#" class="indent">${ic("gauge")}Design score</a>
+      </nav>
+      <div class="side-foot">${'<span class="dot"></span>'}API connected</div>
+    </aside>
+    <div class="main">
+      ${topbar(["Retail Banking DW","Data Warehouse","Core"])}
+      <div class="content">
+        <div class="page-head">
+          <div>
+            <h1>Core layer</h1>
+            <p>14 tables · 3 mapped from Core Banking, CRM and Card Switch</p>
+          </div>
+          <div class="actions">
+            <span class="pill warn"><i></i>In review</span>
+            <button class="btn">${ic("download")}Export DDL</button>
+            <button class="btn primary">${ic("sparkles")}Regenerate</button>
+          </div>
+        </div>
+        <div class="stepper" aria-label="Stage progress">
+          <div class="step done"><span class="mark">${ic("check")}</span>Connect</div>
+          <div class="step done"><span class="mark">${ic("check")}</span>Profile</div>
+          <div class="step done"><span class="mark">${ic("check")}</span>Staging</div>
+          <div class="step now"><span class="mark"></span>Core model</div>
+          <div class="step"><span class="mark"></span>Mart</div>
+          <div class="step"><span class="mark"></span>Approve</div>
+        </div>
+        <div class="split">
+          <div class="tables">
+            <label class="search">${ic("search")}<input id="tsearch" placeholder="Filter tables"></label>
+            <button><span class="kind">DIM</span><span class="mono">dim_account</span></button>
+            <button aria-current="true"><span class="kind">DIM</span><span class="mono">dim_customer</span></button>
+            <button><span class="kind">DIM</span><span class="mono">dim_branch</span></button>
+            <button><span class="kind">DIM</span><span class="mono">dim_card</span></button>
+            <button><span class="kind">DIM</span><span class="mono">dim_date</span></button>
+            <button><span class="kind">FCT</span><span class="mono">fct_transaction</span></button>
+            <button><span class="kind">FCT</span><span class="mono">fct_card_authorisation</span></button>
+            <button><span class="kind">FCT</span><span class="mono">fct_daily_balance</span></button>
+          </div>
+          <div class="detail">
+            <div class="detail-head">
+              <h2>dim_customer</h2>
+              <span class="pill accent">SCD type 2</span>
+              <span class="meta">from <span class="mono">cbs.customers</span>, <span class="mono">crm.contacts</span></span>
+              <div class="actions"><button class="btn sm ghost">${ic("workflow")}Lineage</button><button class="btn sm">${ic("pencil")}Edit</button></div>
+            </div>
+            <div class="tabs" role="tablist">
+              <button role="tab" aria-selected="true">Columns <span class="muted">11</span></button>
+              <button role="tab" aria-selected="false">Mappings</button>
+              <button role="tab" aria-selected="false">Checks <span class="pill bad">2</span></button>
+              <button role="tab" aria-selected="false">History</button>
+            </div>
+            <div class="scroll-x">
+              <table>
+                <thead><tr><th>Column</th><th>Type</th><th>Source</th><th>PII</th><th>Mapping</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono"><span class="key">${ic("key-round")}</span> customer_sk</td><td class="mono muted">bigint</td><td class="muted">generated</td><td></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                  <tr><td class="mono">customer_id</td><td class="mono muted">varchar(20)</td><td class="mono src">cbs.customers.cust_no</td><td></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                  <tr><td class="mono">national_id_hash</td><td class="mono muted">char(64)</td><td class="mono src">cbs.customers.hawiya</td><td><span class="pill bad">${ic("shield-alert")}Confirmed</span></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                  <tr><td class="mono">full_name_en</td><td class="mono muted">nvarchar(200)</td><td class="mono src">crm.contacts.name_en</td><td><span class="pill warn">Suggested</span></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                  <tr><td class="mono">mobile_hash</td><td class="mono muted">char(64)</td><td class="mono src">crm.contacts.jawal</td><td><span class="pill bad">${ic("shield-alert")}Confirmed</span></td><td><span class="pill warn"><i></i>Needs review</span></td></tr>
+                  <tr><td class="mono">segment_code</td><td class="mono muted">varchar(10)</td><td class="mono src">cbs.customers.seg_cd</td><td></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                  <tr><td class="mono">home_branch_sk</td><td class="mono muted">bigint</td><td class="mono src">cbs.customers.brn_id</td><td></td><td><span class="pill"><i></i>Unmapped</span></td></tr>
+                  <tr><td class="mono">valid_from</td><td class="mono muted">date</td><td class="muted">SCD2</td><td></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                  <tr><td class="mono">valid_to</td><td class="mono muted">date</td><td class="muted">SCD2</td><td></td><td><span class="pill ok"><i></i>Mapped</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="assistant" aria-label="Assistant">
+      <header>${ic("sparkles")}Assistant<span class="pill ctx">Core</span><button class="icon-btn" aria-label="Close assistant">${ic("panel-right-close")}</button></header>
+      <div class="thread">
+        <div class="msg me"><div class="body">Map the home branch on dim_customer and add the customer's open date.</div></div>
+        <div class="msg"><span class="who">Assistant</span>
+          <div class="body">
+            <p><span class="mono">cbs.customers.brn_id</span> joins <span class="mono">cbs.branches.id</span>, so <span class="mono">home_branch_sk</span> can look up <span class="mono">dim_branch</span>. The open date is <span class="mono">cbs.customers.open_dt</span>.</p>
+            <p>I prepared a Change Set:</p>
+          </div>
+          <div class="cs-card">
+            <div class="row">${ic("git-pull-request")}Change Set · 3 changes</div>
+            <div class="row"><span class="op mod">MOD</span><span class="mono">home_branch_sk</span><span class="muted">mapping</span></div>
+            <div class="row"><span class="op add">ADD</span><span class="mono">customer_open_date</span><span class="muted">date</span></div>
+            <div class="row"><span class="op add">ADD</span><span class="mono">stg_cbs_branches</span><span class="muted">join</span></div>
+            <div class="foot"><button class="btn sm primary">Review</button><button class="btn sm ghost">Discard</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea id="ask" aria-label="Ask the assistant" placeholder="Ask about this layer…"></textarea>
+        <div class="bar">${ic("paperclip")}Context: Core layer<button class="btn sm primary" aria-label="Send">${ic("arrow-up")}</button></div>
+      </div>
+    </aside>
+  </div>`;
+}
+
+function admin(v) {
+  const users = [
+    ["NA","Noura Al-Harbi","noura@rbank.sa","Admin","ok","Active","2 min ago"],
+    ["KS","Khalid Al-Shehri","khalid.s@rbank.sa","Member","ok","Active","Yesterday, 16:40"],
+    ["MR","Maha Al-Rashid","maha.r@rbank.sa","Member","ok","Active","8 Oct 2026"],
+    ["OT","Omar Tariq","omar.t@rbank.sa","Member","warn","Must change password","Never"],
+    ["LH","Lina Haddad","lina.h@rbank.sa","Member","", "Invited","—"],
+    ["FA","Faisal Al-Qahtani","faisal.q@rbank.sa","Member","bad","Disabled","12 Aug 2026"],
+  ];
+  return `
+  <div class="app" data-variant="${v}">
+    <aside class="side" aria-label="Admin navigation">
+      ${brand}
+      <nav class="nav"><a href="#">${ic("arrow-left")}Back to Workspaces</a></nav>
+      <div class="nav-label">People</div>
+      <nav class="nav" aria-label="People">
+        <a href="#" aria-current="page">${ic("users")}Users</a>
+        <a href="#">${ic("mail-plus")}Invitations</a>
+        <a href="#">${ic("folders")}Workspaces</a>
+      </nav>
+      <div class="nav-label">Security</div>
+      <nav class="nav"><a href="#">${ic("shield")}Security events</a></nav>
+      <div class="nav-label">Email</div>
+      <nav class="nav"><a href="#">${ic("mail")}Settings</a><a href="#">${ic("link")}Links to share</a></nav>
+      <div class="nav-label">AI</div>
+      <nav class="nav"><a href="#">${ic("cpu")}Language models</a><a href="#">${ic("wallet")}Roles, budgets &amp; usage</a></nav>
+      <div class="side-foot"><span class="dot"></span>API connected</div>
+    </aside>
+    <div class="main">
+      ${topbar(["Admin","People","Users"])}
+      <div class="content">
+        <div class="page-head">
+          <div><h1>Users</h1><p>Everyone who can sign in to this DAWAM server.</p></div>
+          <div class="actions"><button class="btn">${ic("user-plus")}Create user</button><button class="btn primary" data-act="invite">${ic("mail-plus")}Invite user</button></div>
+        </div>
+        <div class="callout">${ic("triangle-alert")}<div>No language model is set up, so the assistant and AI generation are off. <a href="#">Add a model</a></div></div>
+        <div class="admin-grid">
+          <div class="toolbar">
+            <label class="field">${ic("search")}<input id="usearch" placeholder="Search name or email"></label>
+            <div class="seg" role="group" aria-label="Status"><button aria-pressed="true">All 6</button><button aria-pressed="false">Active</button><button aria-pressed="false">Invited</button><button aria-pressed="false">Disabled</button></div>
+          </div>
+          <div class="card-table">
+            <div class="scroll-x"><table>
+              <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead>
+              <tbody>${users.map(u=>`<tr>
+                <td><div class="user-cell"><span class="avatar">${u[0]}</span><div>${u[1]}<small>${u[2]}</small></div></div></td>
+                <td>${u[3]==="Admin"?'<span class="pill accent">Admin</span>':'<span class="muted">Member</span>'}</td>
+                <td><span class="pill ${u[4]}"><i></i>${u[5]}</span></td>
+                <td class="muted">${u[6]}</td>
+                <td style="text-align:right"><button class="icon-btn" aria-label="Actions for ${u[1]}">${ic("ellipsis")}</button></td></tr>`).join("")}
+              </tbody></table></div>
+            <div class="table-foot"><span>6 users</span><span>1 seat invited, not yet accepted</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  ${state.dialog ? `<div class="scrim" data-act="close"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
+    <header><h2 id="dlg-t">Invite a user</h2><p>They get an email with a link to choose a password. The link works for 7 days.</p></header>
+    <form onsubmit="event.preventDefault()">
+      <div class="f"><label for="inv-email">Email</label><input id="inv-email" type="email" value="sara.m@rbank.sa"></div>
+      <div class="f"><label for="inv-role">Role</label><select id="inv-role"><option>Member</option><option>Admin</option></select><span class="hint">Admins manage users, email and language models.</span></div>
+      <div class="end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button type="button" class="btn primary" data-act="send">Send invitation</button></div>
+    </form></div></div>` : ""}
+  ${state.toast ? `<div class="toast" role="status">${ic("circle-check")}Invitation sent to sara.m@rbank.sa</div>` : ""}`;
+}
+
+function signin(v) {
+  return `<div class="signin" data-variant="${v}"><div class="signin-box">
+    <div class="brand">${LOGO}<span>DAWAM</span></div>
+    <form class="signin-card" onsubmit="event.preventDefault()">
+      <h1>Sign in</h1>
+      <p>Use the account your administrator created.</p>
+      <div class="f"><label for="si-email">Email</label><input id="si-email" type="email" value="noura@rbank.sa"></div>
+      <div class="f"><div class="row-between"><label for="si-pass">Password</label><a class="link" href="#">Forgot password?</a></div><input id="si-pass" type="password" value="xxxxxxxxxxxx"></div>
+      <button class="btn primary">Sign in</button>
+      <div class="signin-foot">No account? <a class="link" href="#">Sign up</a></div>
+    </form>
+    <div class="signin-foot">Data Analysis &amp; Warehouse Architecture Modeler</div>
+  </div></div>`;
+}
+
+function render() {
+  const [vk, vn] = VARIANTS[state.v];
+  const body = state.screen==="workspace" ? workspace(vk) : state.screen==="admin" ? admin(vk) : signin(vk);
+  const themeLabel = state.theme ? (state.theme==="dark"?"Dark":"Light") : "System";
+  document.getElementById("root").innerHTML = body + `
+    <div class="proto" aria-label="Prototype controls">
+      ${SCREENS.map(([k,n])=>`<button data-screen="${k}" aria-pressed="${state.screen===k}">${n}</button>`).join("")}
+      <span class="sep"></span>
+      <button data-act="prev" aria-label="Previous variant">←</button>
+      <span class="vlabel">${vk} · ${vn}</span>
+      <button data-act="next" aria-label="Next variant">→</button>
+      <span class="sep"></span>
+      <button data-act="theme">Theme: ${themeLabel}</button>
+      ${state.screen==="admin" ? `<button data-act="invite">Dialog</button><button data-act="toast">Toast</button>` : ""}
+    </div>`;
+  if (window.lucide) lucide.createIcons();
+}
+const cycle = (d) => { state.v = (state.v + d + VARIANTS.length) % VARIANTS.length; render(); };
+document.addEventListener("click", (e) => {
+  const s = e.target.closest("[data-screen]"); if (s) { state.screen = s.dataset.screen; render(); return; }
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act==="close" && e.target!==a && a.classList.contains("scrim")) return;
+  if (act==="prev") cycle(-1);
+  else if (act==="next") cycle(1);
+  else if (act==="theme") { state.theme = state.theme===null?"light":state.theme==="light"?"dark":null;
+    if (state.theme) document.documentElement.setAttribute("data-theme", state.theme); else document.documentElement.removeAttribute("data-theme"); render(); }
+  else if (act==="invite") { state.dialog = !state.dialog; render(); }
+  else if (act==="toast") { state.toast = !state.toast; render(); }
+  else if (act==="close") { state.dialog = false; render(); }
+  else if (act==="send") { state.dialog = false; state.toast = true; render(); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+  if (e.key==="ArrowLeft") cycle(-1);
+  if (e.key==="ArrowRight") cycle(1);
+  if (e.key==="Escape" && state.dialog) { state.dialog=false; render(); }
+});
+render();
+</script>
