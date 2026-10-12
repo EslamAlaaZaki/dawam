@@ -10,9 +10,19 @@ import {
   type SmtpSettings,
   type SmtpSettingsInput,
 } from "../api/mail";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
+import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
 
-const SECURITY_OPTIONS: { value: SmtpSettingsInput["security"]; label: string }[] = [
+const cardClasses =
+  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+
+const SECURITY_OPTIONS: {
+  value: SmtpSettingsInput["security"];
+  label: string;
+}[] = [
   { value: "starttls", label: "STARTTLS (usually port 587)" },
   { value: "tls", label: "TLS from the start (usually port 465)" },
   { value: "none", label: "None: plain SMTP (usually port 25)" },
@@ -25,22 +35,27 @@ export function SmtpSettingsPage() {
   }
   if (settings.isError) {
     return (
-      <p className="page" role="alert">
+      <ErrorText>
         Could not load the SMTP settings: {settings.error.message}
-      </p>
+      </ErrorText>
     );
   }
   return (
-    <section className="page admin-page">
-      <h2>Email settings</h2>
-      <p>
-        {settings.data
-          ? "DAWAM sends email through this SMTP server."
-          : "SMTP is off: links DAWAM would email (such as password resets) are listed under " +
-            "Links to share, for you to pass on."}
-      </p>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Email settings"
+        description={
+          settings.data
+            ? "DAWAM sends email through this SMTP server."
+            : "SMTP is off: links DAWAM would email (such as password resets) are listed under " +
+              "Links to share, for you to pass on."
+        }
+      />
       {/* Remount the form when the saved settings change, so it shows them. */}
-      <SmtpForm key={settings.data?.updated_at ?? "none"} saved={settings.data} />
+      <SmtpForm
+        key={settings.data?.updated_at ?? "none"}
+        saved={settings.data}
+      />
       {settings.data && <TestEmail />}
     </section>
   );
@@ -66,18 +81,24 @@ function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
     if (password) {
       body.password = password;
     }
-    save.mutate(body);
+    save.mutate(body, {
+      onSuccess: () => toast.success("SMTP settings saved."),
+    });
   }
 
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="SMTP settings">
-      <label>
+    <form
+      className={cardClasses}
+      onSubmit={onSubmit}
+      aria-label="SMTP settings"
+    >
+      <label className={labelClasses}>
         SMTP host
-        <input name="host" defaultValue={saved?.host ?? ""} required />
+        <Input name="host" defaultValue={saved?.host ?? ""} required />
       </label>
-      <label>
+      <label className={labelClasses}>
         Port
-        <input
+        <Input
           name="port"
           type="number"
           min={1}
@@ -86,59 +107,63 @@ function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
           required
         />
       </label>
-      <label>
+      <label className={labelClasses}>
         Encryption
-        <select name="security" defaultValue={saved?.security ?? "starttls"}>
+        <NativeSelect
+          name="security"
+          defaultValue={saved?.security ?? "starttls"}
+        >
           {SECURITY_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
-      <label>
+      <label className={labelClasses}>
         Username (empty if the server needs no sign-in)
-        <input name="username" autoComplete="off" defaultValue={saved?.username ?? ""} />
+        <Input
+          name="username"
+          autoComplete="off"
+          defaultValue={saved?.username ?? ""}
+        />
       </label>
-      <label>
+      <label className={labelClasses}>
         Password
-        <input
+        <Input
           name="password"
           type="password"
           autoComplete="new-password"
-          placeholder={saved?.has_password ? "Saved: leave empty to keep it" : ""}
+          placeholder={
+            saved?.has_password ? "Saved: leave empty to keep it" : ""
+          }
         />
       </label>
-      <label>
+      <label className={labelClasses}>
         From address
-        <input name="sender" type="email" defaultValue={saved?.sender ?? ""} required />
+        <Input
+          name="sender"
+          type="email"
+          defaultValue={saved?.sender ?? ""}
+          required
+        />
       </label>
-      {save.isError && (
-        <p className="login-error" role="alert">
-          {save.error.message}
-        </p>
-      )}
-      {save.isSuccess && <p role="status">Saved.</p>}
-      <div className="admin-actions">
-        <button type="submit" disabled={save.isPending}>
+      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           Save
-        </button>
+        </Button>
         {saved && (
-          <button
+          <Button
             type="button"
-            className="secondary"
             onClick={() => clear.mutate()}
             disabled={clear.isPending}
           >
             Turn SMTP off
-          </button>
+          </Button>
         )}
       </div>
-      {clear.isError && (
-        <p className="login-error" role="alert">
-          {clear.error.message}
-        </p>
-      )}
+      {clear.isError && <ErrorText>{clear.error.message}</ErrorText>}
     </form>
   );
 }
@@ -153,21 +178,26 @@ function TestEmail() {
   }
 
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="Test email">
-      <h3>Send a test email</h3>
-      <label>
+    <form className={cardClasses} onSubmit={onSubmit} aria-label="Test email">
+      <h3 className="text-lg font-semibold">Send a test email</h3>
+      <label className={labelClasses}>
         Recipient (empty: your own address)
-        <input name="to" type="email" value={to} onChange={(e) => setTo(e.target.value)} />
+        <Input
+          name="to"
+          type="email"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+        />
       </label>
-      <button type="submit" disabled={send.isPending}>
+      <Button type="submit" className="self-start" disabled={send.isPending}>
         Send test email
-      </button>
-      {send.isSuccess && <p role="status">Test email sent to {send.data.to}.</p>}
-      {send.isError && (
-        <p className="login-error" role="alert">
-          {send.error.message}
+      </Button>
+      {send.isSuccess && (
+        <p className="text-sm text-sand-11" role="status">
+          Test email sent to {send.data.to}.
         </p>
       )}
+      {send.isError && <ErrorText>{send.error.message}</ErrorText>}
     </form>
   );
 }

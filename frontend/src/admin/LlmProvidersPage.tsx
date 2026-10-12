@@ -13,7 +13,13 @@ import {
   type LlmModel,
   type LlmProvider,
 } from "../api/llm";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Loading } from "../shell/Loading";
+import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+
+const cardClasses =
+  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
 
 const ROLE_LABELS: Record<LlmModel["roles"][number], string> = {
   agent: "Agent",
@@ -33,24 +39,32 @@ export function LlmProvidersPage() {
   }
   if (providers.isError) {
     return (
-      <p className="page" role="alert">
+      <ErrorText>
         Could not load the providers: {providers.error.message}
-      </p>
+      </ErrorText>
     );
   }
   return (
-    <section className="page admin-page">
-      <h2>Language models</h2>
+    <section className="flex flex-col gap-5">
+      <PageHead
+        title="Language models"
+        description="The providers and models that DAWAM AI features run on."
+      />
       {setup.data?.complete && !setup.data.has_internal_agent_model && (
-        <p role="status">
-          No internal agent model is registered: new Workspaces will default to not
-          internal-only.
+        <p
+          role="status"
+          className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5"
+        >
+          No internal agent model is registered: new Workspaces will default to
+          not internal-only.
         </p>
       )}
       {providers.data.length === 0 ? (
-        <p>No provider is registered yet.</p>
+        <p className="text-sand-11">No provider is registered yet.</p>
       ) : (
-        providers.data.map((provider) => <ProviderCard key={provider.id} provider={provider} />)
+        providers.data.map((provider) => (
+          <ProviderCard key={provider.id} provider={provider} />
+        ))
       )}
       <ProviderForm />
     </section>
@@ -79,49 +93,64 @@ function ProviderForm() {
   }
 
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="Add a provider">
-      <h3>Add a provider</h3>
-      <label>
+    <form
+      className={cardClasses}
+      onSubmit={onSubmit}
+      aria-label="Add a provider"
+    >
+      <h3 className="text-lg font-semibold">Add a provider</h3>
+      <label className={labelClasses}>
         Name
-        <input name="name" required />
+        <Input name="name" required />
       </label>
-      <label>
+      <label className={labelClasses}>
         Type
-        <select name="adapter" defaultValue="openai_compatible">
-          <option value="openai_compatible">OpenAI-compatible (vLLM, Ollama, OpenAI, ...)</option>
+        <NativeSelect name="adapter" defaultValue="openai_compatible">
+          <option value="openai_compatible">
+            OpenAI-compatible (vLLM, Ollama, OpenAI, ...)
+          </option>
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="azure_openai">Azure OpenAI</option>
           <option value="gemini">Google Gemini (API or Vertex AI)</option>
           <option value="bedrock">AWS Bedrock</option>
-        </select>
+        </NativeSelect>
       </label>
-      <label>
-        Base URL (with its version prefix, e.g. http://vllm:8000/v1 or https://api.anthropic.com/v1)
-        <input name="base_url" type="url" required />
+      <label className={labelClasses}>
+        Base URL (with its version prefix, e.g. http://vllm:8000/v1 or
+        https://api.anthropic.com/v1)
+        <Input name="base_url" type="url" required />
       </label>
-      <label>
+      <label className={labelClasses}>
         API key (optional)
-        <input name="api_key" type="password" autoComplete="off" />
+        <Input name="api_key" type="password" autoComplete="off" />
       </label>
-      <label>
+      <label className={labelClasses}>
         Where it runs
-        <select name="internal" defaultValue="true">
+        <NativeSelect name="internal" defaultValue="true">
           <option value="true">Internal: inside your own infrastructure</option>
           <option value="false">External: a third-party service</option>
-        </select>
+        </NativeSelect>
       </label>
-      <label>
+      <label className={labelClasses}>
         Timeout (seconds)
-        <input name="timeout_seconds" type="number" min={1} max={600} defaultValue={60} required />
+        <Input
+          name="timeout_seconds"
+          type="number"
+          min={1}
+          max={600}
+          defaultValue={60}
+          required
+        />
       </label>
-      {create.isError && (
-        <p className="login-error" role="alert">
-          {create.error.message}
-        </p>
-      )}
-      <button type="submit" disabled={create.isPending}>
+      {create.isError && <ErrorText>{create.error.message}</ErrorText>}
+      <Button
+        type="submit"
+        variant="primary"
+        className="self-start"
+        disabled={create.isPending}
+      >
         Add provider
-      </button>
+      </Button>
     </form>
   );
 }
@@ -129,37 +158,40 @@ function ProviderForm() {
 function ProviderCard({ provider }: { provider: LlmProvider }) {
   const remove = useDeleteLlmProvider();
   return (
-    <article className="admin-card" aria-label={`Provider ${provider.name}`}>
-      <h3>
-        {provider.name} <span>({provider.internal ? "internal" : "external"})</span>
+    <article
+      className="flex max-w-3xl flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      aria-label={`Provider ${provider.name}`}
+    >
+      <h3 className="text-lg font-semibold">
+        {provider.name}{" "}
+        <span className="font-normal text-sand-11">
+          ({provider.internal ? "internal" : "external"})
+        </span>
       </h3>
-      <p>
-        {provider.base_url} · API key {provider.has_api_key ? "saved" : "not set"} · timeout{" "}
+      <p className="text-sm text-sand-11">
+        {provider.base_url} · API key{" "}
+        {provider.has_api_key ? "saved" : "not set"} · timeout{" "}
         {provider.timeout_seconds} s
       </p>
       {provider.models.length === 0 ? (
-        <p>No models yet.</p>
+        <p className="text-sand-11">No models yet.</p>
       ) : (
-        <ul>
+        <ul className="flex flex-col divide-y divide-sand-4 rounded-lg border border-sand-4">
           {provider.models.map((model) => (
             <ModelItem key={model.id} model={model} />
           ))}
         </ul>
       )}
       <ModelForm providerId={provider.id} />
-      {remove.isError && (
-        <p className="login-error" role="alert">
-          {remove.error.message}
-        </p>
-      )}
-      <button
+      {remove.isError && <ErrorText>{remove.error.message}</ErrorText>}
+      <Button
         type="button"
-        className="secondary"
+        className="self-start"
         onClick={() => remove.mutate(provider.id)}
         disabled={remove.isPending}
       >
         Remove provider
-      </button>
+      </Button>
     </article>
   );
 }
@@ -168,40 +200,47 @@ function ModelItem({ model }: { model: LlmModel }) {
   const test = useTestLlmModel();
   const remove = useDeleteLlmModel();
   return (
-    <li aria-label={`Model ${model.name}`}>
-      <strong>{model.name}</strong> ({model.roles.map((role) => ROLE_LABELS[role]).join(", ")})
-      {model.limited && <span> · limited: no native tool calling</span>}
+    <li className="flex flex-col gap-2 p-3" aria-label={`Model ${model.name}`}>
+      <div>
+        <strong>{model.name}</strong> (
+        {model.roles.map((role) => ROLE_LABELS[role]).join(", ")})
+        {model.limited && <span> · limited: no native tool calling</span>}
+      </div>
       {model.test_ok === false && (
-        <p role="alert" className="login-error">
+        <ErrorText>
           Test failed ({model.test_error_code}): {model.test_error}
-        </p>
+        </ErrorText>
       )}
       {model.test_ok && (
-        <p>
-          Tool calling: {yesNo(model.tool_calling)} · streaming: {yesNo(model.streaming)} ·
-          JSON schema: {yesNo(model.json_schema)} · context window:{" "}
-          {model.context_window ?? "unknown"}
-          {model.embedding_dimension !== null && ` · dimension: ${model.embedding_dimension}`}
+        <p className="text-sm text-sand-11">
+          Tool calling: {yesNo(model.tool_calling)} · streaming:{" "}
+          {yesNo(model.streaming)} · JSON schema: {yesNo(model.json_schema)} ·
+          context window: {model.context_window ?? "unknown"}
+          {model.embedding_dimension !== null &&
+            ` · dimension: ${model.embedding_dimension}`}
         </p>
       )}
-      {model.test_ok === null && <p>Not tested yet.</p>}
-      {test.isError && (
-        <p className="login-error" role="alert">
-          {test.error.message}
-        </p>
+      {model.test_ok === null && (
+        <p className="text-sm text-sand-11">Not tested yet.</p>
       )}
-      <div className="admin-actions">
-        <button type="button" onClick={() => test.mutate(model.id)} disabled={test.isPending}>
-          Test connection
-        </button>
-        <button
+      {test.isError && <ErrorText>{test.error.message}</ErrorText>}
+      <div className="flex flex-wrap gap-2">
+        <Button
           type="button"
-          className="secondary"
+          size="sm"
+          onClick={() => test.mutate(model.id)}
+          disabled={test.isPending}
+        >
+          Test connection
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           onClick={() => remove.mutate(model.id)}
           disabled={remove.isPending}
         >
           Remove model
-        </button>
+        </Button>
       </div>
     </li>
   );
@@ -226,31 +265,31 @@ function ModelForm({ providerId }: { providerId: string }) {
   }
 
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="Add a model">
-      <label>
+    <form
+      className="flex flex-col gap-3.5"
+      onSubmit={onSubmit}
+      aria-label="Add a model"
+    >
+      <label className={labelClasses}>
         Model name
-        <input name="name" required />
+        <Input name="name" required />
       </label>
-      <label>
+      <label className={labelClasses}>
         Role
-        <select name="role" defaultValue="agent">
+        <NativeSelect name="role" defaultValue="agent">
           <option value="agent">Agent</option>
           <option value="light">Light</option>
           <option value="embedding">Embedding</option>
-        </select>
+        </NativeSelect>
       </label>
-      <label>
+      <label className={labelClasses}>
         Context window in tokens (empty: ask the server)
-        <input name="context_window" type="number" min={1} />
+        <Input name="context_window" type="number" min={1} />
       </label>
-      {add.isError && (
-        <p className="login-error" role="alert">
-          {add.error.message}
-        </p>
-      )}
-      <button type="submit" disabled={add.isPending}>
+      {add.isError && <ErrorText>{add.error.message}</ErrorText>}
+      <Button type="submit" className="self-start" disabled={add.isPending}>
         Add model
-      </button>
+      </Button>
     </form>
   );
 }

@@ -27,6 +27,12 @@ const REDESIGNED_PATHS: ReadonlySet<string> = new Set([
   "/admin/users/new",
   "/admin/invitations",
   "/admin/workspaces",
+  "/admin/security-events",
+  "/admin/email",
+  "/admin/email/links",
+  "/admin/llm",
+  "/admin/llm/settings",
+  "/admin/settings",
 ]);
 
 const sidebarClasses = "flex flex-col gap-1 bg-sand-2 px-2 py-3 text-base";
