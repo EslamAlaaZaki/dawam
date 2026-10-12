@@ -179,6 +179,22 @@ describe("the star diagram", () => {
     expect(within(links).getByText("fact_sales → dim_customer (customer_key)")).toBeInTheDocument();
   });
 
+  it("marks key columns and sits in the themed canvas", async () => {
+    const keyed = table(2, "dim_customer", {
+      is_conformed: true,
+      columns: [
+        column(10, id(2), "customer_sk", { role: "sk" }),
+        column(11, id(2), "customer_id", { role: "nk" }),
+      ],
+    });
+    renderApp(backend([DATE, keyed, SALES]), `${PATH}?folder=dw/core/model`);
+
+    const diagram = await screen.findByRole("group", { name: "Star diagram" });
+    expect(diagram).toHaveClass("dawam-flow");
+    expect(diagram.querySelectorAll("svg.star-key")).toHaveLength(2);
+    expect(within(diagram).getByText(/customer_sk/)).toBeInTheDocument();
+  });
+
   it("includes the Core conformed dimensions a Mart fact points at", async () => {
     const mart = { ...SALES, layer: "mart" as const };
     renderApp(backend([DATE, CUSTOMER, PRODUCT, mart]), `${PATH}?folder=dw/mart/model`);

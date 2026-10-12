@@ -163,6 +163,12 @@ describe("the lineage layout", () => {
     expect(edgeStyle("lookup").strokeDasharray).not.toEqual(edgeStyle("uses").strokeDasharray);
   });
 
+  it("draws every edge kind in a theme token, never a fixed colour", () => {
+    for (const kind of ["value", "kpi", "uses", "lookup"] as const) {
+      expect(edgeStyle(kind).stroke).toMatch(/^var\(--[a-z0-9-]+\)$/);
+    }
+  });
+
   it("merges graphs, each node and edge once", () => {
     const merged = merge(KPI_LINEAGE, SRC_DOWNSTREAM);
 
