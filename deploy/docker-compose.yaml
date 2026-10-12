@@ -109,6 +109,10 @@ services:
 
   ollama:
     image: ollama/ollama
+    environment:
+      # Ollama's default context is small and it truncates longer prompts silently.
+      # Enter the same value as the model's context window in Admin > Language models.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-32768}
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:
