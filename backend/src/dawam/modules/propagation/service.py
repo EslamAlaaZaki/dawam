@@ -68,6 +68,13 @@ def structural_changes(changes: Sequence[AppliedChange]) -> list[StructuralChang
     inputs) never propagate, and a delete is of something nothing reads."""
     found: list[StructuralChange] = []
     for change in changes:
+        if change.entity_type == "mapping_branch" and change.new:
+            # A mapping draft newly mapped these columns (a Mart ``direct`` one re-points KPIs).
+            found.extend(
+                StructuralChange("dw_column", uuid.UUID(str(i)), "mapped")
+                for i in change.new.get("mapped_column_ids") or ()
+            )
+            continue
         kind = {
             "staging_table": "dw_table",
             "dw_table": "dw_table",

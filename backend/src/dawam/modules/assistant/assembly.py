@@ -30,6 +30,7 @@ from dawam.modules.warehouse import (
     DdlService,
     EvaluationService,
     GenerationService,
+    MappingDraftService,
     MappingExportService,
     MappingService,
     ModelService,
@@ -129,6 +130,7 @@ def build_assistant_service(
             ),
             lineage=LineageService(engine, workspaces=workspaces),
             generation=GenerationService(engine, workspaces=workspaces),
+            mapping_drafts=MappingDraftService(engine, workspaces=workspaces),
             relationships=RelationshipService(
                 engine,
                 workspaces=workspaces,

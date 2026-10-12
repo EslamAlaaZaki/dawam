@@ -506,6 +506,7 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
             "propose_kpi_links",
             "propose_check_fix",
             "generate_dw_schema",
+            "draft_mappings",
         }
         if role != "viewer"
         else set()

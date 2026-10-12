@@ -92,6 +92,11 @@ Public interface. Other modules import only what is re-exported here:
   to one table: ``inputs`` and ``plan`` take ``table``); ``GeneratedTable`` /
   ``GeneratedColumn`` are the model's answer. Only an item of a generation Change Set takes
   the generator's value; any other accepted change to a generated object is a user edit.
+- ``MappingDraftService`` (``resolve``, ``inputs``, ``plan``): the AI mapping drafts behind the
+  assistant's ``draft_mappings`` tool (spec §6.9, story 101). ``plan`` checks the model's
+  branches, column mappings and lookups as a save would and returns a ``MappingDraftPlan``: one
+  ``mapping_draft`` Change Set item per branch (scope ``MAPPING_DRAFT_SCOPE_KIND`` with the
+  table ids); ``MappingDraftHandler`` applies one, never overwriting a mapped column.
 - ``DwTableHandler`` / ``DwColumnHandler``: the ``changesets`` engine's handlers for Core and
   Mart ``dw_table`` and ``dw_column`` items (creates and updates); the composition root
   registers them.
@@ -193,6 +198,16 @@ from .generation import (
 from .lineage_graph import LineageEdge, LineageNode, lineage_edges, lineage_nodes
 from .lineage_sql import DIALECTS as SQL_DIALECTS
 from .lineage_sql import Renames, rename_in_sql, sql_reads
+from .mapping_draft import SCOPE_KIND as MAPPING_DRAFT_SCOPE_KIND
+from .mapping_draft import (
+    DraftBranch,
+    DraftColumn,
+    DraftNote,
+    DraftTable,
+    MappingDraftHandler,
+    MappingDraftPlan,
+    MappingDraftService,
+)
 from .mapping_export import MappingExportService, MappingSheet
 from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_import import MappingImportReport, MappingImportResult, MappingImportService
@@ -250,6 +265,7 @@ from .validation_service import ValidationReport, ValidationService
 
 __all__ = [
     "GENERATION_SCOPE",
+    "MAPPING_DRAFT_SCOPE_KIND",
     "PLATFORM_KEY",
     "PLATFORM_PROFILES",
     "RENAMED_ENTITY_TYPES",
@@ -270,6 +286,10 @@ __all__ = [
     "DdlServiceDep",
     "DeletedDwTable",
     "DesignKpi",
+    "DraftBranch",
+    "DraftColumn",
+    "DraftNote",
+    "DraftTable",
     "DwChangeService",
     "DwColumnHandler",
     "DwSchema",
@@ -295,6 +315,9 @@ __all__ = [
     "ManualNote",
     "ManualReviewHandler",
     "MappingBranchHandler",
+    "MappingDraftHandler",
+    "MappingDraftPlan",
+    "MappingDraftService",
     "MappingExportService",
     "MappingExportServiceDep",
     "MappingImportReport",

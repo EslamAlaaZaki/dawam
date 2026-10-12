@@ -42,6 +42,10 @@ from dawam.modules.sources import (
 )
 from dawam.modules.warehouse import (
     DdlService,
+    DraftBranch,
+    DraftColumn,
+    DraftNote,
+    DraftTable,
     EvaluationService,
     Finding,
     FindingItem,
@@ -49,6 +53,8 @@ from dawam.modules.warehouse import (
     GeneratedTable,
     GenerationPlan,
     GenerationService,
+    MappingDraftPlan,
+    MappingDraftService,
     MappingExportService,
     ScoreService,
     ValidationService,
@@ -65,6 +71,7 @@ MAX_RESULT_CHARS = 20_000
 MAX_FILE_TEXT_CHARS = 15_000
 MAX_PROPOSED_ITEMS = 200
 MAX_JOB_ITEMS = 1000
+MAX_DRAFT_INPUTS = 10
 ASSISTANT_JOB = "assistant_task"
 """The background job type that runs a long assistant task."""
 
@@ -86,6 +93,7 @@ class ToolServices:
     jobs: JobService
     generation: GenerationService
     relationships: RelationshipService
+    mapping_drafts: MappingDraftService
     ddl: DdlService
     mapping_exports: MappingExportService
     dictionaries: DataDictionaryService
@@ -539,6 +547,10 @@ class Proposals:
         self.items: list[ProposedItem] = []
         self.generation: GenerationPlan | None = None
         """The DW Schema generation's items; a later generation replaces an earlier one."""
+        self.mapping_items: list[ProposedItem] = []
+        self.mapping_tables: set[uuid.UUID] = set()
+        self.mapping_notes: list[DraftNote] = []
+        """The mapping drafts' items; a later draft of a table replaces an earlier one."""
 
     def add(self, source_system_id: uuid.UUID, items: Sequence[ProposedItem]) -> int:
         self.check(source_system_id, items)
@@ -547,12 +559,32 @@ class Proposals:
         return len(self.items)
 
     def set_generation(self, plan: GenerationPlan) -> None:
-        if self.items:
+        if self.items or self.mapping_tables:
             raise _one_change_set()
         self.generation = plan
 
+    def add_mapping_draft(self, plan: MappingDraftPlan) -> int:
+        """Collect a mapping draft; the items of a table drafted before are replaced.
+        Returns the items so far."""
+        if self.items or self.generation is not None:
+            raise _one_change_set()
+        tables = {str(i) for i in plan.table_ids}
+        kept = [i for i in self.mapping_items if i.payload["table_id"] not in tables]
+        if len(kept) + len(plan.items) > MAX_JOB_ITEMS:
+            raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
+        self.mapping_items = [*kept, *plan.items]
+        self.mapping_tables |= set(plan.table_ids)
+        self.mapping_notes.extend(plan.notes)
+        return len(self.mapping_items)
+
+    def mapping_draft(self) -> MappingDraftPlan:
+        items = [
+            dataclasses.replace(item, key=f"map{n}") for n, item in enumerate(self.mapping_items)
+        ]
+        return MappingDraftPlan(items, sorted(self.mapping_tables), self.mapping_notes)
+
     def check(self, source_system_id: uuid.UUID, items: Sequence[ProposedItem]) -> None:
-        if self.generation is not None:
+        if self.generation is not None or self.mapping_tables:
             raise _one_change_set()
         if self.source_system_id not in (None, source_system_id):
             raise ApiError(
@@ -573,8 +605,8 @@ def _one_change_set() -> ApiError:
     return ApiError(
         422,
         "one_change_set",
-        "A job's changes go into one Change Set, so a job either generates the DW Schema or "
-        "proposes Source Schema changes, not both.",
+        "A job's changes go into one Change Set, so a job either generates the DW Schema, "
+        "drafts mappings or proposes Source Schema changes, not a mix.",
     )
 
 
@@ -1616,6 +1648,168 @@ def _generate_dw_schema(ctx: ToolContext, args: _GenerateDwSchema) -> Any:
     }
 
 
+MAPPING_DRAFT_TITLE = "Draft mappings"
+MAPPING_DRAFT_NOTE = (
+    "Draft each target table as one or more branches (a table fed by several staging tables or "
+    "systems has one branch for each; branches are combined with UNION ALL). A branch names "
+    "its `driving_input` (a table of the Layer below: staging for Core, Core for Mart), its "
+    "`joins` and `filters` (SQL parts in the target platform's dialect) and, for an aggregate "
+    "table, `group_by`. Map each column in `columns` with a plain-language `rule_text` and, for "
+    "direct, derived or constant, a `sql_expression` in the dialect, writing every input as "
+    "table.column of the Layer below. `direct` is one column; `constant` reads none. A Core "
+    "fact's foreign key (role fk) is a `lookup` with the staging natural-key columns of its "
+    "dimension (and the as-of date for an SCD2 one) as `staging_table.column`; give no SQL. "
+    "Use `not_in_branch` for a column a branch cannot supply (it becomes NULL). Skip surrogate "
+    "keys and SCD or audit columns: DAWAM maps them. Reuse the name of an existing branch to "
+    "fill its unmapped columns; mapped columns are never overwritten."
+)
+
+
+class _DraftLookup(BaseModel):
+    nk_inputs: list[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="The staging columns that hold the dimension's natural key, as "
+        "`staging_table.column`, in the order of the dimension's nk columns.",
+    )
+    as_of_input: str | None = Field(
+        default=None,
+        max_length=300,
+        description="For an SCD2 dimension: the date column, as `staging_table.column`.",
+    )
+
+
+class _DraftColumn(BaseModel):
+    column: str = Field(min_length=1, max_length=128, description="The target column's name.")
+    mapping_type: Literal["direct", "derived", "constant", "lookup", "not_in_branch"]
+    sql_expression: str = Field(default="", max_length=20000)
+    rule_text: str = Field(default="", max_length=4000)
+    lookup: _DraftLookup | None = None
+
+
+class _DraftBranch(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    driving_input: str = Field(min_length=1, max_length=500)
+    joins: str = Field(default="", max_length=20000)
+    filters: str = Field(default="", max_length=20000)
+    group_by: str | None = Field(default=None, max_length=20000)
+    having: str | None = Field(default=None, max_length=20000)
+    columns: list[_DraftColumn] = Field(default_factory=list, max_length=300)
+
+
+class _DraftTableMappings(BaseModel):
+    table: str = Field(min_length=1, max_length=300, description="`name` or `layer.name`.")
+    branches: list[_DraftBranch] = Field(min_length=1, max_length=20)
+
+
+class _DraftMappings(BaseModel):
+    tables: list[str] | None = Field(
+        default=None, max_length=100, description="The target tables (`name` or `layer.name`)."
+    )
+    layer: Literal["core", "mart"] | None = Field(
+        default=None, description="Instead of `tables`: every table of this Layer."
+    )
+    drafts: list[_DraftTableMappings] | None = Field(
+        default=None,
+        max_length=10,
+        description="Leave out to read the inputs. Then the mappings of the tables read.",
+    )
+
+
+def _draft_table(table: _DraftTableMappings) -> DraftTable:
+    return DraftTable(
+        table.table,
+        [
+            DraftBranch(
+                **branch.model_dump(exclude={"columns"}),
+                columns=[
+                    DraftColumn(
+                        **column.model_dump(exclude={"lookup"}),
+                        lookup=column.lookup.model_dump() if column.lookup else None,
+                    )
+                    for column in branch.columns
+                ],
+            )
+            for branch in table.branches
+        ],
+    )
+
+
+def _draft_mappings(ctx: ToolContext, args: _DraftMappings) -> Any:
+    """Several tables are a long task: from a chat they start a job that reads the inputs a
+    few tables at a time and ends in one Change Set. One table is drafted in the chat."""
+    drafts = ctx.services.mapping_drafts
+    if args.drafts is None:
+        if not args.tables and args.layer is None:
+            raise ApiError(422, "invalid_mapping_draft", "Name the tables, or a layer.")
+        names = drafts.resolve(ctx.user, ctx.workspace_id, args.tables or (), args.layer)
+        if ctx.proposals is None and len(names) > 1:
+            reported = _submit_job(
+                ctx,
+                MAPPING_DRAFT_TITLE,
+                "Draft the mappings of these Core and Mart tables: "
+                + ", ".join(names)
+                + ". Call draft_mappings with `tables` (at most 10 at a time) to read the "
+                "inputs, look up source tables, KPIs or documents with your other tools where "
+                "that helps, then call draft_mappings with `drafts` for the tables you read. "
+                "If it lists problems, fix them and call it again. Repeat until every table "
+                "is drafted.",
+            )
+            reported.content["note"] = (
+                "Mapping drafts run as a background job and end in one Change Set for the "
+                "member to review. Tell them it started; do not wait for its result."
+            )
+            return reported
+        if len(names) > MAX_DRAFT_INPUTS:
+            return {
+                "tables": names,
+                "note": f"Call again with `tables` set to at most {MAX_DRAFT_INPUTS} of these "
+                "to read their inputs.",
+            }
+        inputs = drafts.inputs(ctx.user, ctx.workspace_id, names)
+        inputs["note"] = MAPPING_DRAFT_NOTE
+        return inputs
+    try:
+        plan = drafts.plan(ctx.user, ctx.workspace_id, [_draft_table(t) for t in args.drafts])
+    except ApiError as exc:
+        if exc.code != "invalid_mapping_draft":
+            raise
+        return {
+            "status": "not_collected",
+            "problems": (exc.details or {}).get("problems", []),
+            "note": f"{exc.message} Call again with the whole draft of these tables.",
+        }
+    notes = [dataclasses.asdict(n) for n in plan.notes]
+    if ctx.proposals is not None:
+        total = ctx.proposals.add_mapping_draft(plan)
+        return {
+            "status": "collected",
+            "items_so_far": total,
+            "notes": notes,
+            "note": "These changes join the job's Change Set, which the member reviews when "
+            "the job finishes; nothing has been changed yet. Drafting a table again "
+            "replaces its earlier draft.",
+        }
+    if not plan.items:
+        return {"status": "nothing_to_draft", "notes": notes}
+    detail = ctx.services.change_sets.propose(
+        ctx.user,
+        ctx.workspace_id,
+        origin=plan.origin,
+        scope=plan.scope,
+        title=MAPPING_DRAFT_TITLE,
+        conversation_id=ctx.conversation_id,
+        items=plan.items,
+    )
+    return {
+        "change_set_id": detail.change_set.id,
+        "status": "proposed",
+        "items": len(detail.items),
+        "notes": notes,
+        "note": "The member reviews these changes; nothing has been changed yet.",
+    }
+
+
 TOOLS: tuple[Tool, ...] = (
     Tool(
         "search_catalog",
@@ -1843,6 +2037,17 @@ TOOLS: tuple[Tool, ...] = (
         _generate_dw_schema,
     ),
     Tool(
+        "draft_mappings",
+        "Draft the mappings (branches, column mappings and lookups) of Core or Mart tables "
+        "from the Layer below, as one Change Set the member reviews. Several tables run as a "
+        "background job. Call it with `tables` (or `layer`) to read the inputs, then with "
+        "`drafts`.",
+        _DraftMappings,
+        "write",
+        Action.EDIT_DW_SCHEMA,
+        _draft_mappings,
+    ),
+    Tool(
         "start_job",
         "Hand a large task (exploring many tables, generating a whole layer) to a background "
         "job that can make many more tool calls than this chat. It reports progress here and "
@@ -2004,6 +2209,20 @@ class BoundTools:
                 title=title,
                 conversation_id=self._ctx.conversation_id,
                 items=plan.items,
+            )
+            return len(detail.items)
+        if proposals is not None and proposals.mapping_tables:
+            draft = proposals.mapping_draft()
+            if not draft.items:
+                return 0
+            detail = self._ctx.services.change_sets.propose(
+                self._ctx.user,
+                self._ctx.workspace_id,
+                origin=draft.origin,
+                scope=draft.scope,
+                title=title,
+                conversation_id=self._ctx.conversation_id,
+                items=draft.items,
             )
             return len(detail.items)
         if proposals is None or proposals.source_system_id is None:
