@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
@@ -16,6 +17,7 @@ import {
   type ToolCall,
 } from "../api/assistant";
 import { ApiError } from "../api/client";
+import { Button } from "../components/ui/button";
 import { isActive, useCancelJob, useJob } from "../api/jobs";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConversationChangeSets } from "./ChangeSetReview";
@@ -296,14 +298,14 @@ export function AssistantPanel({
       <div className="assistant-header">
         <h3 id="assistant-title">Assistant</h3>
         {onClose && (
-          <button
-            type="button"
-            className="assistant-close"
-            aria-label="Close the assistant"
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Close Assistant"
             onClick={onClose}
           >
-            ×
-          </button>
+            <X aria-hidden />
+          </Button>
         )}
       </div>
       {archived && (

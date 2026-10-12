@@ -171,11 +171,22 @@ describe("the Assistant panel", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Ask the assistant")).toBeVisible();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Close the assistant" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Close Assistant" }));
     expect(screen.getByLabelText("Ask the assistant")).not.toBeVisible();
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("moves focus in on open, and back to the button on Escape", async () => {
+    renderApp(backend(), PATH);
+
+    const toggle = await screen.findByRole("button", { name: "Assistant" });
+    fireEvent.click(toggle);
+    const input = await screen.findByLabelText("Ask the assistant");
+    expect(input.closest("aside")).toHaveFocus();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input).not.toBeVisible();
+    expect(toggle).toHaveFocus();
   });
 
   it("has no keyboard shortcut", async () => {

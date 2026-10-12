@@ -1,7 +1,7 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import {
@@ -44,6 +44,18 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const { folder, wanted, select, warehouse, systems, systemList } =
     useWorkspaceFolders(workspaceId, workspace.data?.name ?? "");
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
+  // Opening moves focus into the panel; closing hands it back to the toggle button.
+  useEffect(() => {
+    if (assistantOpen) {
+      panelRef.current?.focus();
+    } else if (wasOpen.current) {
+      toggleRef.current?.focus();
+    }
+    wasOpen.current = assistantOpen;
+  }, [assistantOpen]);
   // The panel mounts the first time it opens and then stays, so a conversation in
   // progress survives closing it and moving between folders.
   const [assistantUsed, setAssistantUsed] = useState(false);
@@ -123,6 +135,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             </p>
           </div>
           <Button
+            ref={toggleRef}
             className="ml-auto"
             aria-expanded={assistantOpen}
             aria-controls="assistant-panel"
@@ -244,9 +257,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </div>
       <aside
         id="assistant-panel"
-        aria-label="Assistant panel"
+        ref={panelRef}
+        tabIndex={-1}
         hidden={!assistantOpen}
-        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(340px,100vw)] overflow-y-auto border-l border-line bg-sand-1 shadow-lg lg:shadow-none"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setAssistantOpen(false);
+          }
+        }}
+        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(340px,100vw)] overflow-y-auto border-l outline-none border-line bg-sand-1 shadow-lg lg:shadow-none"
       >
         {assistantUsed && (
           <div className="legacy-page min-h-full p-4">
