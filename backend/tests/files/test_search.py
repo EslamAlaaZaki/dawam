@@ -243,3 +243,35 @@ def test_only_owners_and_editors_reindex(roles, policy):
     assert roles.client("viewer").post(url).status_code == 403
     assert roles.client("non_member").post(url).status_code in (403, 404)
     assert roles.client("owner").post(url).status_code == 202
+
+
+def _soft_delete(roles: RoleClients, system_id: str) -> None:
+    response = roles.client("owner").delete(
+        f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id}"
+    )
+    assert response.status_code == 204, response.text
+
+
+def test_a_soft_deleted_systems_documents_are_not_found(roles, policy):
+    kept = system(roles)
+    gone = roles.client("owner").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/systems", json={"name": "CRM", "code": "crm"}
+    )
+    assert gone.status_code == 201, gone.text
+    upload_ok(roles, kept, "kept.md", "# Ledger\nPostings are booked daily.")
+    upload_ok(roles, gone.json()["id"], "gone.md", "# Ledger\nPostings are archived yearly.")
+
+    _soft_delete(roles, gone.json()["id"])
+
+    assert [p["document"] for p in search(roles, "postings").json()["items"]] == ["kept.md"]
+
+
+def test_a_soft_deleted_systems_documents_are_not_found_by_meaning(roles, policy, fake_llm):
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+    upload_ok(roles, sid, "risk.md", "# Risk\nExposure is reviewed quarterly.")
+    _soft_delete(roles, sid)
+
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+    assert search(roles, "zzz").json()["items"] == []

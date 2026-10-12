@@ -131,6 +131,13 @@ def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
 
+_LIVE_OWNER = (
+    " AND NOT EXISTS (SELECT 1 FROM source_systems s WHERE f.owner_kind = 'source_system'"
+    " AND s.id = f.owner_id AND s.status <> 'present')"
+)
+"""Leaves out the files of a Source System that is not ``present`` (soft-deleted, spec §7)."""
+
+
 class DocumentSearchService:
     def __init__(
         self,
@@ -263,7 +270,8 @@ class DocumentSearchService:
         terms = words(query)
         if not terms:
             return []
-        scope = " AND f.owner_id = :system_id" if system_id else ""
+        # A soft-deleted Source System's documents are hidden until it is purged.
+        scope = _LIVE_OWNER + (" AND f.owner_id = :system_id" if system_id else "")
         params: dict[str, Any] = {"w": workspace_id, "system_id": system_id}
         with Session(self._engine) as db:
             ranked: list[list[uuid.UUID]] = [

@@ -198,6 +198,19 @@ def purge_edges_reading(db: Session, column_ids: list[uuid.UUID]) -> None:
         db.execute(sa.delete(LineageEdgeRecord).where(LineageEdgeRecord.from_id.in_(column_ids)))
 
 
+def purge_edges_touching(db: Session, node_ids: list[uuid.UUID]) -> None:
+    """Delete every edge into or out of the given nodes (a soft-deleted table and its
+    columns: lineage no longer shows them, either way)."""
+    if node_ids:
+        db.execute(
+            sa.delete(LineageEdgeRecord).where(
+                sa.or_(
+                    LineageEdgeRecord.from_id.in_(node_ids), LineageEdgeRecord.to_id.in_(node_ids)
+                )
+            )
+        )
+
+
 class MappingService:
     """Column mappings, their derived lineage edges and graph queries over them."""
 
@@ -268,7 +281,9 @@ class MappingService:
                 sa.select(DwColumnRecord.id)
                 .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
                 .where(
-                    DwColumnRecord.id == column_id, DwTableRecord.data_warehouse_id == warehouse.id
+                    DwColumnRecord.id == column_id,
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.status != DELETED,
                 )
             )
             if owned is None:

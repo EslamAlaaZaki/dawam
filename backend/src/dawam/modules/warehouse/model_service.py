@@ -33,7 +33,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .calendar import date_columns, date_dimension_of, time_columns
-from .mapping_service import purge_edges_reading
+from .mapping_service import purge_edges_reading, purge_edges_touching
 from .naming import NamingViolation, check_column_name, check_table_name
 from .pii_propagation import propagate_pii
 from .platforms import SAFE_IDENTIFIER, is_reserved_word, max_identifier_length
@@ -634,7 +634,8 @@ class ModelService:
             removed = StructuralChange(
                 "dw_table", table.id, "removed", layer=table.layer, table_name=table.name
             )
-            purge_edges_reading(db, [c.id for c in self._columns(db, table.id)])
+            # Lineage no longer shows it: edges into and out of its columns go.
+            purge_edges_touching(db, [table.id, *(c.id for c in self._columns(db, table.id))])
             record_audit(
                 db,
                 workspace_id=workspace_id,
@@ -1033,17 +1034,21 @@ class ModelService:
         name: str,
         own_id: uuid.UUID | None,
     ) -> None:
-        taken = db.scalar(
-            sa.select(sa.func.count())
-            .select_from(DwTableRecord)
-            .where(
+        taken = db.scalars(
+            sa.select(DwTableRecord.status).where(
                 DwTableRecord.data_warehouse_id == warehouse.id,
                 DwTableRecord.layer == layer,
                 sa.func.lower(DwTableRecord.name) == name.lower(),
                 DwTableRecord.id != (own_id or uuid.UUID(int=0)),
             )
-        )
-        if taken:
+        ).first()
+        if taken == DELETED:
+            raise ApiError(
+                409,
+                "name_taken",
+                "A deleted table in this Layer holds this name until it is deleted permanently.",
+            )
+        if taken is not None:
             raise _name_taken("table in this Layer")
 
     def _ensure_not_used_from_mart(self, db: Session, table: DwTableRecord) -> None:

@@ -214,6 +214,49 @@ def test_a_branch_reading_a_deleted_table_shows_an_error_and_the_others_stay(
     assert owner.get(f"{base(warehouse)}/tables/{cb['id']}").status_code == 200
 
 
+def attribute(roles: RoleClients, table_id: str, name: str) -> dict:
+    response = roles.client("editor").post(
+        f"{base(roles)}/tables/{table_id}/columns",
+        json={"name": name, "data_type": {"type": "string"}, "role": "attribute"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def lineage(roles: RoleClients, column_id: str, direction: str):
+    return roles.client("viewer").get(
+        f"{base(roles)}/lineage/columns/{column_id}", params={"direction": direction}
+    )
+
+
+def test_lineage_hides_a_deleted_tables_columns_both_ways(warehouse: RoleClients):
+    core = table(warehouse, "crm_customer")
+    name = attribute(warehouse, core["id"], "full_name")
+    mart = table(warehouse, "dim_customer", "mart")
+    mart_name = attribute(warehouse, mart["id"], "name")
+    report = table(warehouse, "dim_report", "mart")
+    report_name = attribute(warehouse, report["id"], "name")
+    for target, column in ((mart, mart_name), (report, report_name)):
+        response = warehouse.client("editor").put(
+            f"{base(warehouse)}/tables/{target['id']}/mapping/columns/{column['id']}",
+            json={"mapping_type": "direct", "sql_expression": "crm_customer.full_name"},
+        )
+        assert response.status_code == 200, response.text
+    assert len(lineage(warehouse, name["id"], "downstream").json()["edges"]) == 2
+    owner = warehouse.client("owner")
+
+    # Downstream: a deleted Mart table's column no longer appears.
+    assert owner.delete(f"{base(warehouse)}/tables/{report['id']}").status_code == 204
+    down = lineage(warehouse, name["id"], "downstream").json()["edges"]
+    assert [e["to_id"] for e in down] == [mart_name["id"]]
+    assert lineage(warehouse, report_name["id"], "upstream").status_code == 404
+
+    # Upstream: a deleted Core table's column no longer feeds anything.
+    assert owner.delete(f"{base(warehouse)}/tables/{core['id']}").status_code == 204
+    assert lineage(warehouse, mart_name["id"], "upstream").json()["edges"] == []
+    assert lineage(warehouse, name["id"], "downstream").status_code == 404
+
+
 def test_purging_a_table_names_the_kpis_that_lose_their_links(warehouse: RoleClients):
     sales = table(warehouse, "fact_sales", kind="fact")
     amount = measure(warehouse, sales["id"], "amount")
