@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useConnection } from "../api/connections";
 import {
   HELPER_ENGINES,
   helperQueriesUrl,
@@ -23,7 +24,14 @@ export function SchemaImportPanel({
   workspace: Workspace;
   system: SourceSystem;
 }) {
-  const [engine, setEngine] = useState<HelperEngine>("postgresql");
+  // The Source System's own engine, when the user may see its Connection (owners).
+  const connection = useConnection(
+    workspace.id,
+    system.id,
+    allows(workspace, "connection.view"),
+  );
+  const [chosen, setChosen] = useState<HelperEngine | null>(null);
+  const engine: HelperEngine = chosen ?? connection.data?.engine ?? "postgresql";
   if (!allows(workspace, "source_system.extract")) {
     return null;
   }
@@ -38,7 +46,7 @@ export function SchemaImportPanel({
         Database engine
         <select
           value={engine}
-          onChange={(event) => setEngine(event.target.value as HelperEngine)}
+          onChange={(event) => setChosen(event.target.value as HelperEngine)}
         >
           {HELPER_ENGINES.map((option) => (
             <option key={option.id} value={option.id}>

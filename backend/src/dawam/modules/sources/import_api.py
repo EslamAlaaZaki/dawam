@@ -18,6 +18,7 @@ from dawam.modules.workspaces import WorkspaceService
 from .import_service import ImportResult as ImportResultRecord
 from .import_service import SchemaImportService
 from .internal.schema_import import ImportReport as ImportReportRecord
+from .internal.schema_import_queries import ENGINES
 from .snapshot_api import SnapshotSummary
 
 router = APIRouter(tags=["sources"])
@@ -161,12 +162,11 @@ def download_helper_queries(
     `schemas` they cover every non-system schema. 422 `unsupported_engine`."""
     names = tuple(n.strip() for n in (schemas or "").split(",") if n.strip())
     script = imports.helper_queries(user, workspace_id, system_id, engine, names)
+    key = next(e for e in ENGINES if e == engine)  # validated by the service
     return Response(
         script,
         media_type="application/sql",
-        headers={
-            "Content-Disposition": f'attachment; filename="schema-import-queries-{engine}.sql"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="schema-import-queries-{key}.sql"'},
     )
 
 

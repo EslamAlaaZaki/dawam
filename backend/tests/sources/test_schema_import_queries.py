@@ -62,3 +62,17 @@ def test_the_download_gives_the_script_per_engine(roles: RoleClients):
     assert (
         roles.client("viewer").get(f"{system}/import/helper-queries?engine=db2").status_code == 403
     )
+
+
+@pytest.mark.parametrize("name", ["a\\", "x\x00y", "line\nbreak"])
+def test_schema_names_with_backslashes_or_control_characters_are_refused(
+    roles: RoleClients, name: str
+):
+    system = add_system(roles)
+
+    response = roles.client("editor").get(
+        f"{system}/import/helper-queries", params={"engine": "mysql", "schemas": name}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_schema_name"

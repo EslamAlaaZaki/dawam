@@ -254,3 +254,27 @@ def test_oracle_round_trip(roles: RoleClients, oracle_source: SampleSource):
         tuple(ORACLE_SCHEMAS),
         run,
     )
+
+
+def test_postgresql_default_scope_has_user_schemas_and_no_system_ones(
+    sample_source: SampleSource,
+):
+    username, password = sample_source.reader
+    with (
+        psycopg.connect(
+            host=sample_source.host,
+            port=sample_source.port,
+            dbname=sample_source.database,
+            user=username,
+            password=password,
+        ) as conn,
+        conn.cursor() as cur,
+    ):
+        cur.execute(helper_query("postgresql", "schemas"))
+        found = {row[0] for row in cur.fetchall()}
+        cur.execute(helper_query("postgresql", "tables"))
+        table_schemas = {row[0] for row in cur.fetchall()}
+
+    assert {"core", "crm"} <= found and {"core", "crm"} <= table_schemas
+    for schema in found | table_schemas:
+        assert schema != "information_schema" and not schema.startswith("pg_")
