@@ -5,7 +5,9 @@ import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import { useAcceptInvitation, useInvitationLink } from "../api/invitations";
-import { Loading } from "../shell/Loading";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { AuthCard, AuthError, AuthField, AuthHint } from "./AuthFrame";
 import { useFragmentToken } from "./fragmentToken";
 
 /** Join DAWAM from an invitation link: choose a display name and password (story 10). */
@@ -41,16 +43,16 @@ export function AcceptInvitationPage() {
 
   let content;
   if (token === null || (token && link.isPending)) {
-    content = <Loading />;
+    content = <p className="text-sand-11">Loading…</p>;
   } else if (invalid) {
     content = (
-      <p role="alert">
+      <p role="alert" className="text-red-11">
         This invitation link is invalid, used, revoked or expired. Ask an admin for a new
         one.
       </p>
     );
   } else if (link.isError) {
-    content = <p role="alert">Could not check the invitation: {link.error.message}</p>;
+    content = <p role="alert" className="text-red-11">Could not check the invitation: {link.error.message}</p>;
   } else {
     const problem = mismatch
       ? "The passwords do not match."
@@ -62,40 +64,43 @@ export function AcceptInvitationPage() {
         <p>
           You are invited to join DAWAM as <strong>{link.data?.email}</strong>.
         </p>
-        <label>
-          Display name
-          <input name="display_name" autoComplete="name" required maxLength={200} />
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="new-password" required />
-        </label>
-        <label>
-          Confirm password
-          <input name="confirm" type="password" autoComplete="new-password" required />
-        </label>
-        <p className="form-hint">
+        <AuthField id="invitation-name" label="Display name">
+          <Input id="invitation-name" name="display_name" autoComplete="name" required maxLength={200} />
+        </AuthField>
+        <AuthField id="invitation-password" label="Password">
+          <Input
+            id="invitation-password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            aria-describedby="invitation-password-hint"
+            required
+          />
+        </AuthField>
+        <AuthField id="invitation-confirm" label="Confirm password">
+          <Input
+            id="invitation-confirm"
+            name="confirm"
+            type="password"
+            autoComplete="new-password"
+            required
+          />
+        </AuthField>
+        <AuthHint id="invitation-password-hint">
           At least 10 characters, and not a common password. A few unrelated words make a
           good one.
-        </p>
-        {problem && (
-          <p className="login-error" role="alert">
-            {problem}
-          </p>
-        )}
-        <button type="submit" disabled={accept.isPending}>
+        </AuthHint>
+        {problem && <AuthError>{problem}</AuthError>}
+        <Button type="submit" variant="primary" size="lg" disabled={accept.isPending}>
           Join DAWAM
-        </button>
+        </Button>
       </>
     );
   }
 
   return (
-    <section className="page login">
-      <form className="login-form" onSubmit={onSubmit} aria-labelledby="invitation-title">
-        <h2 id="invitation-title">Accept your invitation</h2>
-        {content}
-      </form>
-    </section>
+    <AuthCard title="Accept your invitation" titleId="invitation-title" onSubmit={onSubmit}>
+      {content}
+    </AuthCard>
   );
 }

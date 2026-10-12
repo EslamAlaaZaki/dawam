@@ -8,7 +8,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import nextConfigFor from "../../next.config";
 import { config as proxyConfig, proxy } from "../proxy";
-import { contentSecurityPolicy, hstsMaxAgeSeconds, strictTransportSecurity } from "./headers";
+import {
+  contentSecurityPolicy,
+  hstsMaxAgeSeconds,
+  nonceFromPolicy,
+  strictTransportSecurity,
+  TOAST_STYLE_HASH,
+} from "./headers";
 
 function directivesOf(policy: string): Record<string, string[]> {
   const directives: Record<string, string[]> = {};
@@ -43,7 +49,17 @@ describe("the Content-Security-Policy of a page", () => {
     expect(policy["form-action"]).toEqual(["'self'"]);
     expect(policy["img-src"]).toEqual(["'self'", "data:"]);
     expect(policy["script-src"]).toEqual(["'self'", expect.stringMatching(/^'nonce-[A-Za-z0-9+/]{22}=='$/)]);
-    expect(policy["style-src"]).toEqual(["'self'", policy["script-src"]![1]]);
+    // Plus the one fixed <style> the toast library (Sonner) injects; see toastStyle.test.ts.
+    expect(policy["style-src"]).toEqual(["'self'", policy["script-src"]![1], TOAST_STYLE_HASH]);
+  });
+
+  it("gives the page renderer its nonce back", () => {
+    const policy = proxy(pageRequest("/")).headers.get("Content-Security-Policy")!;
+    const nonce = directivesOf(policy)["script-src"]![1]!.slice("'nonce-".length, -1);
+
+    expect(nonceFromPolicy(policy)).toBe(nonce);
+    expect(nonceFromPolicy(contentSecurityPolicy("abc", { dev: true }))).toBe("abc");
+    expect(nonceFromPolicy(null)).toBeUndefined();
   });
 
   it("has no unsafe sources and no other origins in production", () => {

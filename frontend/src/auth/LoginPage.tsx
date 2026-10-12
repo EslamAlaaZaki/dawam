@@ -6,6 +6,9 @@ import { useEffect, type FormEvent } from "react";
 
 import { useRegistration } from "../api/account";
 import { useMe, useSignIn } from "../api/queries";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { AuthCard, AuthError, AuthField, AuthHint, authLinkClasses } from "./AuthFrame";
 import { safeReturnPath } from "./returnPath";
 
 export function LoginPage() {
@@ -38,34 +41,39 @@ export function LoginPage() {
   }
 
   return (
-    <section className="page login">
-      <form className="login-form" onSubmit={onSubmit} aria-labelledby="login-title">
-        <h2 id="login-title">Sign in</h2>
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="username" required />
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="current-password" required />
-        </label>
-        {signIn.isError && (
-          <p className="login-error" role="alert">
-            {signIn.error.message}
-          </p>
-        )}
-        <button type="submit" disabled={signIn.isPending}>
-          Sign in
-        </button>
-        {registrationOpen && (
-          <p className="form-hint">
-            New here? <Link href="/signup">Create an account</Link>
-          </p>
-        )}
-        <p className="form-hint">
-          <Link href="/forgot-password">Forgot your password?</Link>
-        </p>
-      </form>
-    </section>
+    <AuthCard title="Sign in" titleId="login-title" onSubmit={onSubmit}>
+      <AuthField id="login-email" label="Email">
+        <Input id="login-email" name="email" type="email" autoComplete="username" required />
+      </AuthField>
+      <AuthField
+        id="login-password"
+        label="Password"
+        aside={
+          <Link href="/forgot-password" className={authLinkClasses}>
+            Forgot your password?
+          </Link>
+        }
+      >
+        <Input
+          id="login-password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+        />
+      </AuthField>
+      {signIn.isError && <AuthError>{signIn.error.message}</AuthError>}
+      <Button type="submit" variant="primary" size="lg" disabled={signIn.isPending}>
+        Sign in
+      </Button>
+      {registrationOpen && (
+        <AuthHint className="text-center">
+          New here?{" "}
+          <Link href="/signup" className={authLinkClasses}>
+            Create an account
+          </Link>
+        </AuthHint>
+      )}
+    </AuthCard>
   );
 }

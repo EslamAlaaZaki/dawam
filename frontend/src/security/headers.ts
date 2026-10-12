@@ -21,19 +21,34 @@ export const STATIC_SECURITY_HEADERS = [
  * `next dev` also needs `'unsafe-eval'` (React rebuilds server error stacks with
  * `eval`) and `'unsafe-inline'` styles (it injects CSS as `<style>` tags without a
  * nonce). Neither is ever in the policy of a production build.
+ *
+ * Sonner (the toasts) adds one fixed `<style>` element of its own when it loads, which
+ * production allows by its hash, `TOAST_STYLE_HASH`.
  */
 export function contentSecurityPolicy(nonce: string, options: { dev: boolean }): string {
   const { dev } = options;
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'${dev ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' ${dev ? "'unsafe-inline'" : `'nonce-${nonce}'`}`,
+    `style-src 'self' ${dev ? "'unsafe-inline'" : `'nonce-${nonce}' ${TOAST_STYLE_HASH}`}`,
     "img-src 'self' data:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
   ].join("; ");
+}
+
+/**
+ * The hash of the CSS Sonner injects (sonner 2.0.8); toastStyle.test.ts fails when an
+ * upgrade changes it. Only for production: in a policy with a hash, browsers ignore
+ * the `'unsafe-inline'` that `next dev` needs.
+ */
+export const TOAST_STYLE_HASH = "'sha256-StEaX+se6YS7pqjzrzMIA0KaX9zF/8zAhvQXZAe5epY='";
+
+/** The nonce in a policy from `contentSecurityPolicy`, for the scripts a page renders. */
+export function nonceFromPolicy(policy: string | null): string | undefined {
+  return policy?.match(/'nonce-([^']+)'/)?.[1];
 }
 
 /** A fresh, unguessable nonce (128 random bits, base64). */

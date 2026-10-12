@@ -4,6 +4,9 @@ import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import { useResetPassword } from "../api/passwordReset";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { AuthCard, AuthError, AuthField, AuthHint, authLinkClasses } from "./AuthFrame";
 import { useFragmentToken } from "./fragmentToken";
 
 export function ResetPasswordPage() {
@@ -31,7 +34,11 @@ export function ResetPasswordPage() {
         <p role="status">
           Your password is changed, and every device that was signed in is signed out.
         </p>
-        <a href="/login">Sign in</a>
+        <AuthHint className="text-center">
+          <a href="/login" className={authLinkClasses}>
+            Sign in
+          </a>
+        </AuthHint>
       </>
     );
   } else if (
@@ -40,52 +47,44 @@ export function ResetPasswordPage() {
   ) {
     content = (
       <>
-        <p role="alert">
+        <p role="alert" className="text-red-11">
           This reset link is invalid, used or expired. Links work once, for 30 minutes.
         </p>
-        <a href="/forgot-password">Ask for a new link</a>
+        <AuthHint className="text-center">
+          <a href="/forgot-password" className={authLinkClasses}>
+            Ask for a new link
+          </a>
+        </AuthHint>
       </>
     );
   } else {
     content = (
       <>
-        <label>
-          New password
-          <input
+        <AuthField id="reset-password" label="New password">
+          <Input
+            id="reset-password"
             name="password"
             type="password"
             autoComplete="new-password"
             minLength={10}
             required
           />
-        </label>
-        <label>
-          Repeat the new password
-          <input name="confirm" type="password" autoComplete="new-password" required />
-        </label>
-        {mismatch && (
-          <p className="login-error" role="alert">
-            The two passwords are different.
-          </p>
-        )}
-        {reset.isError && (
-          <p className="login-error" role="alert">
-            {reset.error.message}
-          </p>
-        )}
-        <button type="submit" disabled={reset.isPending}>
+        </AuthField>
+        <AuthField id="reset-confirm" label="Repeat the new password">
+          <Input id="reset-confirm" name="confirm" type="password" autoComplete="new-password" required />
+        </AuthField>
+        {mismatch && <AuthError>The two passwords are different.</AuthError>}
+        {reset.isError && <AuthError>{reset.error.message}</AuthError>}
+        <Button type="submit" variant="primary" size="lg" disabled={reset.isPending}>
           Set new password
-        </button>
+        </Button>
       </>
     );
   }
 
   return (
-    <section className="page login">
-      <form className="login-form" onSubmit={onSubmit} aria-labelledby="reset-title">
-        <h2 id="reset-title">Choose a new password</h2>
-        {content}
-      </form>
-    </section>
+    <AuthCard title="Choose a new password" titleId="reset-title" onSubmit={onSubmit}>
+      {content}
+    </AuthCard>
   );
 }
