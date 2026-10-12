@@ -57,8 +57,8 @@ from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 from dawam.platform.storage import create_storage
+from dawam.wiring import after_change_set, staging_sync_after_snapshot
 from dawam.wiring import propagation as propagation_service
-from dawam.wiring import staging_sync_after_snapshot
 
 API_PREFIX = "/api/v1"
 
@@ -180,12 +180,14 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     # Change Sets proposed in a private conversation are hidden from everyone else.
     app.state.readable_conversations = readable_conversations(engine)
     # Each module that owns objects a Change Set may change registers its handlers here.
-    app.state.change_set_handlers = job_handlers.build_change_set_handlers()
+    app.state.change_set_handlers = job_handlers.build_change_set_handlers(settings)
     # A structural change (a direct edit, or an applied Change Set) is followed by its
     # propagation: warehouse and changesets cannot import propagation, which imports them.
     propagation = propagation_service(engine, services.clock)
     app.state.on_structural_change = propagation.after_edit
-    app.state.on_change_set_applied = propagation.after_change_set
+    app.state.on_change_set_applied = after_change_set(
+        propagation.after_change_set, app.state.document_search
+    )
     # A System Code change of a staged system is a Change Set: sources cannot import warehouse.
     app.state.system_has_staging = staged_system_check(engine)
     # A direct platform edit is refused while KPIs hold formula SQL: warehouse cannot read KPIs.
