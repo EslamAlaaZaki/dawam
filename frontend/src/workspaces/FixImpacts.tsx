@@ -4,6 +4,8 @@ import Link from "next/link";
 
 import { useFixImpacts } from "../api/propagation";
 import type { Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { ErrorText, OkText, linkClasses } from "./parts";
 
 /**
  * The "Fix impacts" action (story 113a): recomputes the propagation Change Set from the
@@ -14,25 +16,32 @@ export function FixImpacts({ workspace }: { workspace: Workspace }) {
   const changeSetId = fix.data?.change_set_id;
 
   return (
-    <div className="fix-impacts">
-      <button type="button" disabled={fix.isPending} onClick={() => fix.mutate()}>
+    <div className="flex flex-col items-start gap-2">
+      <Button
+        type="button"
+        disabled={fix.isPending}
+        onClick={() => fix.mutate()}
+      >
         Fix impacts
-      </button>
+      </Button>
       {fix.isSuccess &&
         (changeSetId ? (
-          <p role="status">
-            Proposed a propagation Change Set for {fix.data.impacts.length} impacted{" "}
-            {fix.data.impacts.length === 1 ? "Asset" : "Assets"}.{" "}
-            <Link href={`/workspaces/${workspace.id}/change-sets/${changeSetId}`}>Review it</Link>
-          </p>
+          <OkText role="status">
+            Proposed a propagation Change Set for {fix.data.impacts.length}{" "}
+            impacted {fix.data.impacts.length === 1 ? "Asset" : "Assets"}.{" "}
+            <Link
+              href={`/workspaces/${workspace.id}/change-sets/${changeSetId}`}
+              className={linkClasses}
+            >
+              Review it
+            </Link>
+          </OkText>
         ) : (
-          <p role="status">Nothing broken can be fixed by propagation.</p>
+          <OkText role="status">
+            Nothing broken can be fixed by propagation.
+          </OkText>
         ))}
-      {fix.isError && (
-        <p className="form-error" role="alert">
-          {fix.error.message}
-        </p>
-      )}
+      {fix.isError && <ErrorText>{fix.error.message}</ErrorText>}
     </div>
   );
 }

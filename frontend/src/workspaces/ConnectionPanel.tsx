@@ -11,7 +11,22 @@ import {
 } from "../api/connections";
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import { SchemaImportPanel } from "./SchemaImportPanel";
+import {
+  Actions,
+  ErrorText,
+  Hint,
+  NativeSelect,
+  OkText,
+  Panel,
+  formCardClasses,
+  h3Classes,
+  labelClasses,
+  monoClasses,
+} from "./parts";
 
 function parseSchemas(text: string): string[] {
   return text
@@ -34,10 +49,10 @@ export function ConnectionPanel({
   system: SourceSystem;
 }) {
   return (
-    <>
+    <div className="flex flex-col gap-6">
       <ConnectionSection workspace={workspace} system={system} />
       <SchemaImportPanel workspace={workspace} system={system} />
-    </>
+    </div>
   );
 }
 
@@ -54,23 +69,33 @@ function ConnectionSection({
 
   if (!canView) {
     return (
-      <section aria-labelledby="folder-title">
-        <h3 id="folder-title">Connection | Schema Import</h3>
-        <p>Only owners can see or change a Source System&apos;s Connection.</p>
-      </section>
+      <Panel aria-labelledby="folder-title">
+        <h3 id="folder-title" className={h3Classes}>
+          Connection | Schema Import
+        </h3>
+        <Hint>
+          Only owners can see or change a Source System&apos;s Connection.
+        </Hint>
+      </Panel>
     );
   }
   if (connection.isPending) {
-    return <p role="status">Loading the Connection…</p>;
+    return (
+      <p role="status" className="text-sand-11">
+        Loading the Connection…
+      </p>
+    );
   }
   if (connection.isError) {
     return (
-      <p role="alert">Could not load the Connection: {connection.error.message}</p>
+      <ErrorText>
+        Could not load the Connection: {connection.error.message}
+      </ErrorText>
     );
   }
   return (
     <ConnectionForm
-      // Stable across the first save, so its "Connection saved." message is not lost.
+      // Stable across the first save, so the form keeps its state.
       key={system.id}
       workspaceId={workspace.id}
       systemId={system.id}
@@ -82,14 +107,15 @@ function ConnectionSection({
 
 type Engine = Connection["engine"];
 
-const ENGINES: Record<Engine, { label: string; port: number; schema: string }> = {
-  postgresql: { label: "PostgreSQL", port: 5432, schema: "public" },
-  sqlserver: { label: "SQL Server", port: 1433, schema: "dbo" },
-  // A MySQL schema is a database: the owner names it.
-  mysql: { label: "MySQL / MariaDB", port: 3306, schema: "" },
-  // An Oracle schema is a user name, as Oracle stores it (usually upper case): the owner names it.
-  oracle: { label: "Oracle", port: 1521, schema: "" },
-};
+const ENGINES: Record<Engine, { label: string; port: number; schema: string }> =
+  {
+    postgresql: { label: "PostgreSQL", port: 5432, schema: "public" },
+    sqlserver: { label: "SQL Server", port: 1433, schema: "dbo" },
+    // A MySQL schema is a database: the owner names it.
+    mysql: { label: "MySQL / MariaDB", port: 3306, schema: "" },
+    // An Oracle schema is a user name, as Oracle stores it (usually upper case): the owner names it.
+    oracle: { label: "Oracle", port: 1521, schema: "" },
+  };
 
 function ConnectionForm({
   workspaceId,
@@ -141,6 +167,7 @@ function ConnectionForm({
     save.mutate(read(form), {
       // The saved password is never shown again: do not keep the typed one either.
       onSuccess: () => {
+        toast.success("Connection saved.");
         (form.elements.namedItem("password") as HTMLInputElement).value = "";
       },
     });
@@ -148,22 +175,31 @@ function ConnectionForm({
 
   const result = test.data;
   const writeWarning =
-    (result?.ok ? result.can_write : undefined) ?? (test.data ? undefined : saved?.can_write);
+    (result?.ok ? result.can_write : undefined) ??
+    (test.data ? undefined : saved?.can_write);
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label="Connection">
-      <h3 id="folder-title">Connection | Schema Import</h3>
-      <p className="form-hint">
-        A {ENGINES[engine].label} database DAWAM reads from. Give it a read-only user: DAWAM
-        never writes.
-      </p>
+    <form
+      className={formCardClasses}
+      onSubmit={onSubmit}
+      aria-label="Connection"
+    >
+      <h3 id="folder-title" className={h3Classes}>
+        Connection | Schema Import
+      </h3>
+      <Hint>
+        A {ENGINES[engine].label} database DAWAM reads from. Give it a read-only
+        user: DAWAM never writes.
+      </Hint>
       {readOnly && (
-        <p role="status">This Workspace is archived: its Connection is read-only.</p>
+        <p role="status">
+          This Workspace is archived: its Connection is read-only.
+        </p>
       )}
-      <fieldset disabled={readOnly} className="form">
-        <label>
+      <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-3.5">
+        <label className={labelClasses}>
           Engine
-          <select
+          <NativeSelect
             name="engine"
             value={engine}
             onChange={(event) => chooseEngine(event.target.value as Engine)}
@@ -173,16 +209,23 @@ function ConnectionForm({
                 {ENGINES[key].label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={labelClasses}>
           Host
-          <input name="host" required maxLength={253} defaultValue={saved?.host} />
+          <Input
+            name="host"
+            required
+            maxLength={253}
+            defaultValue={saved?.host}
+            className={monoClasses}
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           Port
-          <input
+          <Input
             name="port"
+            className={monoClasses}
             type="number"
             min={1}
             max={65535}
@@ -191,105 +234,110 @@ function ConnectionForm({
             onChange={(event) => setPort(event.target.value)}
           />
         </label>
-        <label>
+        <label className={labelClasses}>
           Database
-          <input name="database" required maxLength={128} defaultValue={saved?.database} />
+          <Input
+            name="database"
+            required
+            maxLength={128}
+            defaultValue={saved?.database}
+            className={monoClasses}
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           Username
-          <input
+          <Input
             name="username"
             required
             maxLength={128}
             autoComplete="off"
             defaultValue={saved?.username}
+            className={monoClasses}
           />
         </label>
-        <label>
+        <label className={labelClasses}>
           Password
-          <input
+          <Input
             name="password"
             type="password"
             autoComplete="new-password"
-            placeholder={saved?.has_password ? "Saved. Leave blank to keep it." : ""}
+            placeholder={
+              saved?.has_password ? "Saved. Leave blank to keep it." : ""
+            }
             aria-describedby="password-hint"
           />
         </label>
         {saved?.has_password && (
-          <p id="password-hint" className="form-hint">
-            The saved password is only used with the saved host, port, database and username.
-            Change any of them and enter the password again.
-          </p>
+          <Hint id="password-hint">
+            The saved password is only used with the saved host, port, database
+            and username. Change any of them and enter the password again.
+          </Hint>
         )}
-        <label>
+        <label className={labelClasses}>
           Allowed Database Schemas
-          <input
+          <Input
             name="allowed_schemas"
             value={schemas}
             onChange={(event) => setSchemas(event.target.value)}
             aria-describedby="allowed-schemas-hint"
+            className={monoClasses}
           />
         </label>
-        <p id="allowed-schemas-hint" className="form-hint">
+        <Hint id="allowed-schemas-hint">
           Comma separated. Nothing outside this list is ever read.
-        </p>
+        </Hint>
       </fieldset>
       {result?.ok && result.available_schemas.length > 0 && (
-        <p className="form-hint">
+        <Hint className="flex flex-wrap items-center gap-2">
           Found on the server:{" "}
           {result.available_schemas.map((name) =>
             parseSchemas(schemas).includes(name) ? (
-              <span key={name}>{name} </span>
+              <span key={name} className={monoClasses}>
+                {name}{" "}
+              </span>
             ) : (
-              <button
+              <Button
                 key={name}
                 type="button"
-                className="secondary"
-                onClick={() => setSchemas([...parseSchemas(schemas), name].join(", "))}
+                size="sm"
+                onClick={() =>
+                  setSchemas([...parseSchemas(schemas), name].join(", "))
+                }
               >
                 Allow {name}
-              </button>
+              </Button>
             ),
           )}
-        </p>
+        </Hint>
       )}
 
-      {test.isError && (
-        <p className="form-error" role="alert">
-          {test.error.message}
-        </p>
-      )}
+      {test.isError && <ErrorText>{test.error.message}</ErrorText>}
       {result && !result.ok && (
-        <p className="form-error" role="alert">
-          Connection failed: {result.error}
-        </p>
+        <ErrorText>Connection failed: {result.error}</ErrorText>
       )}
       {result?.ok && (
-        <p role="status">Connection works ({ENGINES[engine].label} {result.server_version}).</p>
+        <OkText role="status">
+          Connection works ({ENGINES[engine].label} {result.server_version}).
+        </OkText>
       )}
       {result?.ok && result.missing_schemas.length > 0 && (
-        <p className="form-error" role="alert">
-          These Database Schemas were not found: {result.missing_schemas.join(", ")}.
-        </p>
+        <ErrorText>
+          These Database Schemas were not found:{" "}
+          {result.missing_schemas.join(", ")}.
+        </ErrorText>
       )}
       {writeWarning === true && (
-        <p className="form-error" role="alert">
-          Warning: this database user can write to the source. DAWAM only reads from it, so
-          give it a read-only user.
-        </p>
+        <ErrorText>
+          Warning: this database user can write to the source. DAWAM only reads
+          from it, so give it a read-only user.
+        </ErrorText>
       )}
 
-      {save.isError && (
-        <p className="form-error" role="alert">
-          {save.error.message}
-        </p>
-      )}
-      {save.isSuccess && <p role="status">Connection saved.</p>}
+      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
       {!readOnly && (
-        <div className="form-actions">
-          <button
+        <Actions>
+          <Button
             type="button"
-            className="secondary"
             disabled={test.isPending}
             onClick={(event) => {
               const form = event.currentTarget.form;
@@ -299,11 +347,11 @@ function ConnectionForm({
             }}
           >
             Test connection
-          </button>
-          <button type="submit" disabled={save.isPending}>
+          </Button>
+          <Button type="submit" variant="primary" disabled={save.isPending}>
             Save Connection
-          </button>
-        </div>
+          </Button>
+        </Actions>
       )}
     </form>
   );

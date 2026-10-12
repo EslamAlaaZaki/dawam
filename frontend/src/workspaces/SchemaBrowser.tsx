@@ -9,12 +9,36 @@ import {
   type SourceSchema,
 } from "../api/snapshots";
 import type { Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
+import { Input } from "../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { ProfilePanel } from "./ProfilePanel";
+import {
+  DetailList,
+  EmptyState,
+  ErrorText,
+  TableCard,
+  h4Classes,
+  h5Classes,
+  labelClasses,
+  linkButtonClasses,
+  listCardClasses,
+  monoClasses,
+  preClasses,
+} from "./parts";
 
-type Table = SourceSchema["tables"][number];
+type SchemaTable = SourceSchema["tables"][number];
 type Routine = SourceSchema["routines"][number];
 type RemovedColumn = SourceSchema["removed_columns"][number];
-type Selection = { kind: "table"; id: string } | { kind: "routine"; id: string } | null;
+type Selection =
+  { kind: "table"; id: string } | { kind: "routine"; id: string } | null;
 
 const STATUS_LABELS: Record<string, string> = {
   source_removed: "removed from the source",
@@ -27,7 +51,11 @@ function StatusBadge({ status }: { status?: string | null }) {
   if (!status || status === "present") {
     return null;
   }
-  return <span className="status-badge"> ({STATUS_LABELS[status] ?? status})</span>;
+  return (
+    <Badge variant="warning" className="ml-2">
+      {STATUS_LABELS[status] ?? status}
+    </Badge>
+  );
 }
 
 function useDebounced(value: string, ms: number) {
@@ -38,6 +66,9 @@ function useDebounced(value: string, ms: number) {
   }, [value, ms]);
   return debounced;
 }
+
+/** A row of an object list: the object, then what kind it is. */
+const rowClasses = "px-3 py-1.5";
 
 /**
  * Browses a Source System's Source Schema (spec story 54): Database Schemas with their
@@ -59,10 +90,14 @@ export function SchemaBrowser({
   const results = useSchemaSearch(workspaceId, systemId, query);
 
   if (schema.isPending) {
-    return <p>Loading the Source Schema…</p>;
+    return <p className="text-sand-11">Loading the Source Schema…</p>;
   }
   if (schema.isError) {
-    return <p role="alert">Could not load the Source Schema: {schema.error.message}</p>;
+    return (
+      <ErrorText>
+        Could not load the Source Schema: {schema.error.message}
+      </ErrorText>
+    );
   }
   const content = schema.data;
 
@@ -73,7 +108,9 @@ export function SchemaBrowser({
     }
     const table =
       hit.kind === "column"
-        ? content.tables.find((t) => t.db_schema === hit.db_schema && t.name === hit.table)
+        ? content.tables.find(
+            (t) => t.db_schema === hit.db_schema && t.name === hit.table,
+          )
         : content.tables.find((t) => t.id === hit.id);
     if (table) {
       setSelection({ kind: "table", id: table.id });
@@ -81,15 +118,19 @@ export function SchemaBrowser({
   }
 
   const table =
-    selection?.kind === "table" ? content.tables.find((t) => t.id === selection.id) : undefined;
+    selection?.kind === "table"
+      ? content.tables.find((t) => t.id === selection.id)
+      : undefined;
   const routine =
-    selection?.kind === "routine" ? content.routines.find((r) => r.id === selection.id) : undefined;
+    selection?.kind === "routine"
+      ? content.routines.find((r) => r.id === selection.id)
+      : undefined;
 
   return (
-    <div className="schema-browser">
-      <div className="form">
+    <div className="flex flex-col gap-4">
+      <div className={`${labelClasses} max-w-xl`}>
         <label htmlFor="schema-search">Search by name</label>
-        <input
+        <Input
           id="schema-search"
           type="search"
           value={search}
@@ -97,20 +138,29 @@ export function SchemaBrowser({
           onChange={(event) => setSearch(event.target.value)}
         />
       </div>
-      {query !== "" && <SearchResults query={query} results={results} onOpen={open} />}
-      <ul aria-label="Database Schemas">
+      {query !== "" && (
+        <SearchResults query={query} results={results} onOpen={open} />
+      )}
+      <ul aria-label="Database Schemas" className="flex flex-col gap-3">
         {content.db_schemas.map((dbSchema) => (
-          <li key={dbSchema.id}>
-            <strong>{dbSchema.name}</strong>
-            <StatusBadge status={dbSchema.status} />
-            <ul aria-label={`Tables and views of ${dbSchema.name}`}>
+          <li key={dbSchema.id} className="flex flex-col gap-1.5">
+            <div>
+              <strong className={`${monoClasses} font-semibold`}>
+                {dbSchema.name}
+              </strong>
+              <StatusBadge status={dbSchema.status} />
+            </div>
+            <ul
+              aria-label={`Tables and views of ${dbSchema.name}`}
+              className={listCardClasses}
+            >
               {content.tables
                 .filter((t) => t.db_schema === dbSchema.name)
                 .map((t) => (
-                  <li key={t.id}>
+                  <li key={t.id} className={rowClasses}>
                     <button
                       type="button"
-                      className="link-button"
+                      className={linkButtonClasses}
                       onClick={() => setSelection({ kind: "table", id: t.id })}
                     >
                       {t.name}
@@ -122,22 +172,27 @@ export function SchemaBrowser({
               {content.removed_tables
                 .filter((t) => t.db_schema === dbSchema.name)
                 .map((t) => (
-                  <li key={t.id}>
-                    {t.name}
+                  <li key={t.id} className={`${rowClasses} text-sand-11`}>
+                    <span className={monoClasses}>{t.name}</span>
                     {t.kind === "view" && " (view)"}
                     <StatusBadge status={t.status} />
                   </li>
                 ))}
             </ul>
-            <ul aria-label={`Routines of ${dbSchema.name}`}>
+            <ul
+              aria-label={`Routines of ${dbSchema.name}`}
+              className={listCardClasses}
+            >
               {content.routines
                 .filter((r) => r.db_schema === dbSchema.name)
                 .map((r) => (
-                  <li key={r.id}>
+                  <li key={r.id} className={rowClasses}>
                     <button
                       type="button"
-                      className="link-button"
-                      onClick={() => setSelection({ kind: "routine", id: r.id })}
+                      className={linkButtonClasses}
+                      onClick={() =>
+                        setSelection({ kind: "routine", id: r.id })
+                      }
                     >
                       {r.name}({r.signature})
                     </button>
@@ -154,7 +209,9 @@ export function SchemaBrowser({
           table={table}
           workspace={workspace}
           systemId={systemId}
-          removedColumns={content.removed_columns.filter((c) => c.table_id === table.id)}
+          removedColumns={content.removed_columns.filter(
+            (c) => c.table_id === table.id,
+          )}
         />
       )}
       {routine && <RoutinePage routine={routine} />}
@@ -172,19 +229,23 @@ function SearchResults({
   onOpen: (hit: SchemaSearchHit) => void;
 }) {
   if (results.isPending) {
-    return <p>Searching…</p>;
+    return <p className="text-sand-11">Searching…</p>;
   }
   if (results.isError) {
-    return <p role="alert">Could not search: {results.error.message}</p>;
+    return <ErrorText>Could not search: {results.error.message}</ErrorText>;
   }
   if (results.data.length === 0) {
-    return <p className="empty-state">Nothing is named like “{query}”.</p>;
+    return <EmptyState>Nothing is named like “{query}”.</EmptyState>;
   }
   return (
-    <ul aria-label="Search results">
+    <ul aria-label="Search results" className={listCardClasses}>
       {results.data.map((hit) => (
-        <li key={`${hit.kind}-${hit.id}`}>
-          <button type="button" className="link-button" onClick={() => onOpen(hit)}>
+        <li key={`${hit.kind}-${hit.id}`} className={rowClasses}>
+          <button
+            type="button"
+            className={linkButtonClasses}
+            onClick={() => onOpen(hit)}
+          >
             {[hit.db_schema, hit.table, hit.name].filter(Boolean).join(".")}
           </button>
           {` (${hit.kind === "db_schema" ? "Database Schema" : hit.kind})`}
@@ -201,19 +262,24 @@ function TablePage({
   systemId,
   removedColumns,
 }: {
-  table: Table;
+  table: SchemaTable;
   workspace: Workspace;
   systemId: string;
   removedColumns: RemovedColumn[];
 }) {
   const title = `${table.db_schema}.${table.name}`;
   return (
-    <section aria-label={`Table ${title}`}>
-      <h4>
-        {title} <small>{table.kind}</small>
+    <section
+      aria-label={`Table ${title}`}
+      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-5"
+    >
+      <h4
+        className={`${h4Classes} ${monoClasses} flex flex-wrap items-center gap-2`}
+      >
+        {title} <Badge>{table.kind}</Badge>
         <StatusBadge status={table.status} />
       </h4>
-      <dl className="details">
+      <DetailList>
         <dt>Row estimate</dt>
         <dd>{table.row_estimate ?? "unknown"}</dd>
         {table.comment && (
@@ -222,65 +288,75 @@ function TablePage({
             <dd>{table.comment}</dd>
           </>
         )}
-      </dl>
+      </DetailList>
       {table.view_definition && (
         <>
-          <h5>View definition</h5>
-          <pre>{table.view_definition}</pre>
+          <h5 className={h5Classes}>View definition</h5>
+          <pre className={preClasses}>{table.view_definition}</pre>
         </>
       )}
-      <h5>Columns</h5>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Nullable</th>
-            <th>Key</th>
-            <th>Default</th>
-            <th>Comment</th>
-          </tr>
-        </thead>
-        <tbody>
-          {table.columns.map((column) => (
-            <tr key={column.id}>
-              <td>{column.ordinal}</td>
-              <td>
-                {column.name}
-                <StatusBadge status={column.status} />
-              </td>
-              <td>{column.data_type}</td>
-              <td>{column.is_nullable ? "yes" : "no"}</td>
-              <td>{column.is_pk ? "PK" : ""}</td>
-              <td>{column.default}</td>
-              <td>{column.comment}</td>
-            </tr>
-          ))}
-          {removedColumns.map((column) => (
-            <tr key={column.id}>
-              <td />
-              <td>
-                {column.name}
-                <StatusBadge status={column.status} />
-              </td>
-              <td>{column.data_type}</td>
-              <td />
-              <td />
-              <td />
-              <td />
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <ProfilePanel workspace={workspace} systemId={systemId} tableId={table.id} />
-      <h5>Keys</h5>
+      <h5 className={h5Classes}>Columns</h5>
+      <TableCard>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>#</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Nullable</TableHead>
+              <TableHead>Key</TableHead>
+              <TableHead>Default</TableHead>
+              <TableHead>Comment</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {table.columns.map((column) => (
+              <TableRow key={column.id}>
+                <TableCell className="text-sand-11">{column.ordinal}</TableCell>
+                <TableCell className={monoClasses}>
+                  {column.name}
+                  <StatusBadge status={column.status} />
+                </TableCell>
+                <TableCell className={`${monoClasses} text-sand-11`}>
+                  {column.data_type}
+                </TableCell>
+                <TableCell>{column.is_nullable ? "yes" : "no"}</TableCell>
+                <TableCell>{column.is_pk ? "PK" : ""}</TableCell>
+                <TableCell className={monoClasses}>{column.default}</TableCell>
+                <TableCell>{column.comment}</TableCell>
+              </TableRow>
+            ))}
+            {removedColumns.map((column) => (
+              <TableRow key={column.id}>
+                <TableCell />
+                <TableCell className={monoClasses}>
+                  {column.name}
+                  <StatusBadge status={column.status} />
+                </TableCell>
+                <TableCell className={`${monoClasses} text-sand-11`}>
+                  {column.data_type}
+                </TableCell>
+                <TableCell />
+                <TableCell />
+                <TableCell />
+                <TableCell />
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableCard>
+      <ProfilePanel
+        workspace={workspace}
+        systemId={systemId}
+        tableId={table.id}
+      />
+      <h5 className={h5Classes}>Keys</h5>
       {table.constraints.length === 0 ? (
-        <p className="empty-state">No keys.</p>
+        <EmptyState>No keys.</EmptyState>
       ) : (
-        <ul aria-label="Keys">
+        <ul aria-label="Keys" className={listCardClasses}>
           {table.constraints.map((key) => (
-            <li key={key.name}>
+            <li key={key.name} className={`${rowClasses} ${monoClasses}`}>
               {key.name}: {key.type.toUpperCase()} ({key.columns.join(", ")})
               {key.type === "fk" &&
                 ` references ${key.ref_db_schema}.${key.ref_table} (${key.ref_columns.join(", ")})`}
@@ -288,14 +364,15 @@ function TablePage({
           ))}
         </ul>
       )}
-      <h5>Indexes</h5>
+      <h5 className={h5Classes}>Indexes</h5>
       {table.indexes.length === 0 ? (
-        <p className="empty-state">No indexes.</p>
+        <EmptyState>No indexes.</EmptyState>
       ) : (
-        <ul aria-label="Indexes">
+        <ul aria-label="Indexes" className={listCardClasses}>
           {table.indexes.map((index) => (
-            <li key={index.name}>
-              {index.name} ({index.columns.join(", ")}){index.is_unique && " unique"}
+            <li key={index.name} className={`${rowClasses} ${monoClasses}`}>
+              {index.name} ({index.columns.join(", ")})
+              {index.is_unique && " unique"}
             </li>
           ))}
         </ul>
@@ -307,12 +384,21 @@ function TablePage({
 function RoutinePage({ routine }: { routine: Routine }) {
   const title = `${routine.db_schema}.${routine.name}(${routine.signature})`;
   return (
-    <section aria-label={`Routine ${title}`}>
-      <h4>
-        {title} <small>{routine.kind}</small>
+    <section
+      aria-label={`Routine ${title}`}
+      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-5"
+    >
+      <h4
+        className={`${h4Classes} ${monoClasses} flex flex-wrap items-center gap-2`}
+      >
+        {title} <Badge>{routine.kind}</Badge>
         <StatusBadge status={routine.status} />
       </h4>
-      {routine.definition ? <pre>{routine.definition}</pre> : <p>No code was captured.</p>}
+      {routine.definition ? (
+        <pre className={preClasses}>{routine.definition}</pre>
+      ) : (
+        <p>No code was captured.</p>
+      )}
     </section>
   );
 }

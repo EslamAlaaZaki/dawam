@@ -181,8 +181,10 @@ describe("the lineage layout", () => {
     render(
       <LineageGraph nodes={nodes} edges={edges} startId={id(1000)} selectedId={null} onSelect={() => {}} />,
     );
+    // Time the render only: getByRole over 500 nodes is slow in jsdom, not in a browser.
+    const elapsed = performance.now() - started;
     expect(screen.getByRole("group", { name: "Lineage graph" })).toBeInTheDocument();
 
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(elapsed).toBeLessThan(2000);
   });
 });

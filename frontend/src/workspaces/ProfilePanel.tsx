@@ -12,6 +12,24 @@ import {
   useTableProfile,
 } from "../api/profiling";
 import { allows, type Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import {
+  Actions,
+  EmptyState,
+  ErrorText,
+  OkText,
+  TableCard,
+  h5Classes,
+  monoClasses,
+} from "./parts";
 
 /**
  * A table's profile (spec stories 55-57): per column the sampled row count, null %,
@@ -53,38 +71,37 @@ export function ProfilePanel({
   const canSwitch = allows(workspace, "source_table.top_n");
 
   return (
-    <section aria-label="Profile">
-      <h5>Profile</h5>
+    <section aria-label="Profile" className="flex flex-col gap-3">
+      <h5 className={h5Classes}>Profile</h5>
       {unavailable && (
-        <p role="note">
+        <p role="note" className="text-sand-11">
           Profiling is unavailable: this Source System was built from a Schema
           Import and has no live Connection to read data from. An owner adds a
           Connection to enable it.
         </p>
       )}
       {canProfile && (
-        <div className="form-actions">
-          <button
+        <Actions>
+          <Button
             type="button"
             disabled={start.isPending}
             onClick={() => start.mutate(tableId)}
           >
             Profile this table
-          </button>
-        </div>
+          </Button>
+        </Actions>
       )}
-      {start.isError && (
-        <p className="form-error" role="alert">
-          {start.error.message}
-        </p>
-      )}
+      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
       {start.isSuccess && (
-        <p role="status">Profiling started. Follow it under Background jobs.</p>
+        <OkText role="status">
+          Profiling started. Follow it under Background jobs.
+        </OkText>
       )}
       {canSwitch && profile.isSuccess && (
-        <label>
+        <label className="flex items-center gap-2">
           <input
             type="checkbox"
+            className="size-4 accent-accent-solid"
             checked={profile.data.top_n_enabled}
             disabled={topN.isPending}
             onChange={(event) => topN.mutate(event.target.checked)}
@@ -93,17 +110,17 @@ export function ProfilePanel({
           columns)
         </label>
       )}
-      {topN.isError && (
-        <p className="form-error" role="alert">
-          {topN.error.message}
-        </p>
+      {topN.isError && <ErrorText>{topN.error.message}</ErrorText>}
+      {profile.isPending && (
+        <p className="text-sand-11">Loading the profile…</p>
       )}
-      {profile.isPending && <p>Loading the profile…</p>}
       {profile.isError && (
-        <p role="alert">Could not load the profile: {profile.error.message}</p>
+        <ErrorText>
+          Could not load the profile: {profile.error.message}
+        </ErrorText>
       )}
       {profile.isSuccess && profile.data.profiled_at == null && (
-        <p className="empty-state">This table has not been profiled yet.</p>
+        <EmptyState>This table has not been profiled yet.</EmptyState>
       )}
       {profile.isSuccess && profile.data.profiled_at != null && (
         <>
@@ -111,52 +128,65 @@ export function ProfilePanel({
             Sampled rows: {profile.data.row_count}. Profiled{" "}
             {new Date(profile.data.profiled_at).toLocaleString()}.
           </p>
-          <table aria-label="Column profiles">
-            <thead>
-              <tr>
-                <th>Column</th>
-                <th>Null %</th>
-                <th>Distinct</th>
-                <th>Min</th>
-                <th>Max</th>
-                <th>Length (avg / max)</th>
-                <th>Patterns</th>
-                {profile.data.top_n_enabled && <th>Top values</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {profile.data.columns.map((column) => {
-                const p = column.profile;
-                return (
-                  <tr key={column.column_id}>
-                    <td>
-                      {column.name}
-                      {column.is_protected && (
-                        <span className="status-badge"> (protected)</span>
+          <TableCard>
+            <Table aria-label="Column profiles">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Column</TableHead>
+                  <TableHead>Null %</TableHead>
+                  <TableHead>Distinct</TableHead>
+                  <TableHead>Min</TableHead>
+                  <TableHead>Max</TableHead>
+                  <TableHead>Length (avg / max)</TableHead>
+                  <TableHead>Patterns</TableHead>
+                  {profile.data.top_n_enabled && (
+                    <TableHead>Top values</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {profile.data.columns.map((column) => {
+                  const p = column.profile;
+                  return (
+                    <TableRow key={column.column_id}>
+                      <TableCell className={monoClasses}>
+                        {column.name}
+                        {column.is_protected && (
+                          <span className="font-sans text-sm text-sand-11">
+                            {" "}
+                            (protected)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>{p ? p.null_pct.toFixed(1) : ""}</TableCell>
+                      <TableCell>{p?.distinct_count ?? ""}</TableCell>
+                      <TableCell className={monoClasses}>
+                        {p?.min ?? ""}
+                      </TableCell>
+                      <TableCell className={monoClasses}>
+                        {p?.max ?? ""}
+                      </TableCell>
+                      <TableCell>
+                        {p?.max_len != null
+                          ? `${p.avg_len?.toFixed(1)} / ${p.max_len}`
+                          : ""}
+                      </TableCell>
+                      <TableCell className={monoClasses}>
+                        {p?.patterns.join(", ")}
+                      </TableCell>
+                      {profile.data.top_n_enabled && (
+                        <TableCell className={monoClasses}>
+                          {p?.top_values
+                            ?.map((v) => `${v.value} (${v.count})`)
+                            .join(", ")}
+                        </TableCell>
                       )}
-                    </td>
-                    <td>{p ? p.null_pct.toFixed(1) : ""}</td>
-                    <td>{p?.distinct_count ?? ""}</td>
-                    <td>{p?.min ?? ""}</td>
-                    <td>{p?.max ?? ""}</td>
-                    <td>
-                      {p?.max_len != null
-                        ? `${p.avg_len?.toFixed(1)} / ${p.max_len}`
-                        : ""}
-                    </td>
-                    <td>{p?.patterns.join(", ")}</td>
-                    {profile.data.top_n_enabled && (
-                      <td>
-                        {p?.top_values
-                          ?.map((v) => `${v.value} (${v.count})`)
-                          .join(", ")}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableCard>
         </>
       )}
     </section>

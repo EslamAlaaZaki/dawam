@@ -10,6 +10,32 @@ import {
   type SourceSystem,
 } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { Textarea } from "../components/ui/textarea";
+import {
+  Actions,
+  DetailList,
+  EmptyState,
+  ErrorText,
+  Hint,
+  Panel,
+  TableCard,
+  formCardClasses,
+  h3Classes,
+  h4Classes,
+  labelClasses,
+  monoClasses,
+} from "./parts";
 
 const CODE_HINT =
   "Lowercase letters, digits and underscores, starting with a letter (e.g. cbs). It is used in generated names.";
@@ -43,13 +69,18 @@ function DetailFields({
 }) {
   return (
     <>
-      <label>
+      <label className={labelClasses}>
         Name
-        <input name="name" required maxLength={200} defaultValue={initial?.name} />
+        <Input
+          name="name"
+          required
+          maxLength={200}
+          defaultValue={initial?.name}
+        />
       </label>
-      <label>
+      <label className={labelClasses}>
         System Code
-        <input
+        <Input
           name="code"
           required
           maxLength={24}
@@ -57,22 +88,36 @@ function DetailFields({
           defaultValue={initial?.code}
           readOnly={!codeEditable}
           aria-describedby="system-code-hint"
+          className={`${monoClasses} read-only:bg-sand-2 read-only:text-sand-11`}
         />
       </label>
-      <p id="system-code-hint" className="form-hint">
+      <Hint id="system-code-hint">
         {codeEditable ? CODE_HINT : "Only an owner can change the System Code."}
-      </p>
-      <label>
+      </Hint>
+      <label className={labelClasses}>
         Description
-        <textarea name="description" rows={3} maxLength={4000} defaultValue={initial?.description} />
+        <Textarea
+          name="description"
+          rows={3}
+          maxLength={4000}
+          defaultValue={initial?.description}
+        />
       </label>
-      <label>
+      <label className={labelClasses}>
         Business owner
-        <input name="business_owner" maxLength={200} defaultValue={initial?.business_owner} />
+        <Input
+          name="business_owner"
+          maxLength={200}
+          defaultValue={initial?.business_owner}
+        />
       </label>
-      <label>
+      <label className={labelClasses}>
         Technical owner
-        <input name="technical_owner" maxLength={200} defaultValue={initial?.technical_owner} />
+        <Input
+          name="technical_owner"
+          maxLength={200}
+          defaultValue={initial?.technical_owner}
+        />
       </label>
     </>
   );
@@ -92,42 +137,51 @@ export function SystemsPanel({
   onOpen: (system: SourceSystem) => void;
 }) {
   return (
-    <section aria-labelledby="folder-title">
-      <h3 id="folder-title">Systems</h3>
+    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
+      <h3 id="folder-title" className={h3Classes}>
+        Systems
+      </h3>
       {systems.length === 0 ? (
-        <p className="empty-state">
-          No Source Systems yet. Each Source System you add will get its own folder here.
-        </p>
+        <EmptyState>
+          No Source Systems yet. Each Source System you add will get its own
+          folder here.
+        </EmptyState>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">System Code</th>
-              <th scope="col">Business owner</th>
-              <th scope="col">Technical owner</th>
-            </tr>
-          </thead>
-          <tbody>
-            {systems.map((system) => (
-              <tr key={system.id}>
-                <td>
-                  <button type="button" className="secondary" onClick={() => onOpen(system)}>
-                    {system.name}
-                  </button>
-                </td>
-                <td>{system.code}</td>
-                <td>{system.business_owner || "—"}</td>
-                <td>{system.technical_owner || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Name</TableHead>
+                <TableHead scope="col">System Code</TableHead>
+                <TableHead scope="col">Business owner</TableHead>
+                <TableHead scope="col">Technical owner</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {systems.map((system) => (
+                <TableRow key={system.id}>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => onOpen(system)}
+                    >
+                      {system.name}
+                    </Button>
+                  </TableCell>
+                  <TableCell className={monoClasses}>{system.code}</TableCell>
+                  <TableCell>{system.business_owner || "—"}</TableCell>
+                  <TableCell>{system.technical_owner || "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
       {allows(workspace, "source_system.create") ? (
         <AddSystemForm workspaceId={workspace.id} onAdded={onOpen} />
       ) : (
-        <p>Only owners and editors can add Source Systems.</p>
+        <Hint>Only owners and editors can add Source Systems.</Hint>
       )}
     </section>
   );
@@ -154,19 +208,19 @@ function AddSystemForm({
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label="Add Source System">
-      <h4>Add a Source System</h4>
+    <form
+      className={formCardClasses}
+      onSubmit={onSubmit}
+      aria-label="Add Source System"
+    >
+      <h4 className={h4Classes}>Add a Source System</h4>
       <DetailFields codeEditable />
-      {create.isError && (
-        <p className="form-error" role="alert">
-          {create.error.message}
-        </p>
-      )}
-      <div className="form-actions">
-        <button type="submit" disabled={create.isPending}>
+      {create.isError && <ErrorText>{create.error.message}</ErrorText>}
+      <Actions>
+        <Button type="submit" variant="primary" disabled={create.isPending}>
           Add Source System
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }
@@ -188,42 +242,68 @@ export function SystemDetails({
 
   if (!allows(workspace, "source_system.edit")) {
     return (
-      <section aria-labelledby="folder-title">
-        <h3 id="folder-title">{system.name}</h3>
-        <dl className="details">
+      <Panel aria-labelledby="folder-title">
+        <h3 id="folder-title" className={h3Classes}>
+          {system.name}
+        </h3>
+        <DetailList>
           <dt>System Code</dt>
-          <dd>{system.code}</dd>
+          <dd className={monoClasses}>{system.code}</dd>
           <dt>Description</dt>
           <dd>{system.description || "—"}</dd>
           <dt>Business owner</dt>
           <dd>{system.business_owner || "—"}</dd>
           <dt>Technical owner</dt>
           <dd>{system.technical_owner || "—"}</dd>
-        </dl>
-        <p>Only owners and editors can edit a Source System.</p>
-      </section>
+        </DetailList>
+        <Hint>Only owners and editors can edit a Source System.</Hint>
+      </Panel>
     );
   }
 
-  const versionConflict = update.error instanceof ApiError && update.error.code === "version_conflict";
+  const versionConflict =
+    update.error instanceof ApiError &&
+    update.error.code === "version_conflict";
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    update.mutate({ version: system.version, ...readFields(event.currentTarget) });
+    // The form remounts on the new version, so a callback on mutate() would be dropped.
+    update
+      .mutateAsync({
+        version: system.version,
+        ...readFields(event.currentTarget),
+      })
+      .then(
+        () => toast.success("Saved."),
+        () => {},
+      );
   }
 
   return (
     // A new version (saved, or reloaded) refills the inputs.
-    <form key={system.version} className="form" onSubmit={onSubmit} aria-labelledby="folder-title">
-      <h3 id="folder-title">{system.name}</h3>
-      <DetailFields initial={system} codeEditable={allows(workspace, "source_system.change_code")} />
+    <form
+      key={system.version}
+      className={formCardClasses}
+      onSubmit={onSubmit}
+      aria-labelledby="folder-title"
+    >
+      <h3 id="folder-title" className={h3Classes}>
+        {system.name}
+      </h3>
+      <DetailFields
+        initial={system}
+        codeEditable={allows(workspace, "source_system.change_code")}
+      />
       {versionConflict ? (
-        <div className="form-error" role="alert">
+        <div
+          className="flex flex-col items-start gap-2 text-red-11"
+          role="alert"
+        >
           <p>
-            Someone else changed this Source System since you opened it. Reload it to see their
-            changes, then edit again.
+            Someone else changed this Source System since you opened it. Reload
+            it to see their changes, then edit again.
           </p>
-          <button
+          <Button
             type="button"
             onClick={() => {
               update.reset();
@@ -231,46 +311,43 @@ export function SystemDetails({
             }}
           >
             Reload
-          </button>
+          </Button>
         </div>
       ) : (
-        update.isError && (
-          <p className="form-error" role="alert">
-            {update.error.message}
-          </p>
-        )
+        update.isError && <ErrorText>{update.error.message}</ErrorText>
       )}
-      {update.isSuccess && <p role="status">Saved.</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={update.isPending}>
+      <Actions>
+        <Button type="submit" variant="primary" disabled={update.isPending}>
           Save
-        </button>
+        </Button>
         {allows(workspace, "objects.delete") && (
           <DeleteSystemButton workspaceId={workspace.id} system={system} />
         )}
-      </div>
+      </Actions>
     </form>
   );
 }
 
 /** Soft-delete (owners only): the system moves to the deleted list until purged there. */
-function DeleteSystemButton({ workspaceId, system }: { workspaceId: string; system: SourceSystem }) {
+function DeleteSystemButton({
+  workspaceId,
+  system,
+}: {
+  workspaceId: string;
+  system: SourceSystem;
+}) {
   const remove = useDeleteSourceSystem(workspaceId, system.id);
   return (
     <>
-      <button
+      <Button
         type="button"
-        className="secondary"
+        className="text-red-11"
         disabled={remove.isPending}
         onClick={() => remove.mutate()}
       >
         Delete Source System
-      </button>
-      {remove.isError && (
-        <p className="form-error" role="alert">
-          {remove.error.message}
-        </p>
-      )}
+      </Button>
+      {remove.isError && <ErrorText>{remove.error.message}</ErrorText>}
     </>
   );
 }

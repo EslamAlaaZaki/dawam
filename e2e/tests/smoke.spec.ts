@@ -74,7 +74,7 @@ test("the main path: sign in to lineage", async ({ page }) => {
     const form = page.getByRole("form", { name: "Add member" });
     await form.getByLabel("Email").fill(MEMBER.email);
     await form.getByRole("button", { name: "Add member" }).click();
-    await expect(form.getByText("Mona Member is now")).toBeVisible();
+    await expect(page.getByText("Mona Member is now")).toBeVisible();
     await expect(page.getByRole("row", { name: "Mona Member" })).toBeVisible();
   });
 

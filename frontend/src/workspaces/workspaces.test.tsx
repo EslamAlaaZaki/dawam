@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApiClient } from "../api/client";
+import { Toaster } from "../components/ui/sonner";
 import { ApiClientContext } from "../api/context";
 import type { Me } from "../api/queries";
 import type { Workspace, WorkspaceRole } from "../api/workspaces";
@@ -232,6 +233,7 @@ function renderApp(backend: ReturnType<typeof fakeBackend>, path = "/") {
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
         <TestApp />
+        <Toaster />
       </QueryClientProvider>
     </ApiClientContext.Provider>,
   );
@@ -383,7 +385,7 @@ describe("a Workspace's page", () => {
     fill("Business domain", "Banking");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Retail warehouse" }),
     ).toBeInTheDocument();
@@ -419,7 +421,7 @@ describe("a Workspace's page", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fill("Name", "My rename");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved.");
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(
       backend.requests.filter((r) => r.method === "PATCH").at(-1)?.body,
     ).toMatchObject({
