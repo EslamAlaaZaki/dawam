@@ -74,7 +74,8 @@ Public interface. Other modules import only what is re-exported here:
   Workspace's source columns ``SYSTEM.schema.table.column`` for the lineage graph.
 - ``SourceSystemService.delete`` soft-deletes a Source System (owners only); for the
   ``deletions`` module (in the caller's session, no permission check):
-  ``deleted_source_systems`` / ``deleted_source_system`` read the soft-deleted ones,
+  ``deleted_source_systems`` / ``deleted_source_system`` read the soft-deleted ones (and
+  ``hidden_source_system_ids`` their ids, for hiding what other modules keep for them),
   ``source_system_contents`` (``SourceSystemContents``) counts the Source Objects and
   Snapshots that go with one, and ``purge_source_system`` deletes it for good.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
@@ -111,6 +112,7 @@ from .deletion import (
     SourceSystemContents,
     deleted_source_system,
     deleted_source_systems,
+    hidden_source_system_ids,
     purge_source_system,
     source_system_contents,
 )
@@ -236,6 +238,7 @@ __all__ = [
     "confirmed_pii_columns",
     "deleted_source_system",
     "deleted_source_systems",
+    "hidden_source_system_ids",
     "is_protected",
     "load_guard_catalog",
     "purge_source_system",

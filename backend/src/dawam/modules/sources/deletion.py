@@ -50,6 +50,19 @@ def deleted_source_systems(db: Session, workspace_id: uuid.UUID) -> list[SourceS
     ]
 
 
+def hidden_source_system_ids(db: Session, workspace_id: uuid.UUID) -> list[uuid.UUID]:
+    """The ids of the Workspace's Source Systems that are not ``present`` (soft-deleted):
+    what other modules keep for them is hidden until the permanent delete."""
+    return list(
+        db.scalars(
+            sa.select(SourceSystemRecord.id).where(
+                SourceSystemRecord.workspace_id == workspace_id,
+                SourceSystemRecord.status != "present",
+            )
+        )
+    )
+
+
 def deleted_source_system(
     db: Session, workspace_id: uuid.UUID, system_id: uuid.UUID, *, lock: bool = False
 ) -> SourceSystem | None:

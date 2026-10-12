@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.auth import User
 from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
 from dawam.modules.llm import LlmError, MeteredGateway, ProviderService, RoleService
+from dawam.modules.sources import hidden_source_system_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -129,13 +130,6 @@ def _unless_other_api_error(exc: Exception) -> None:
 
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
-
-
-_LIVE_OWNER = (
-    " AND NOT EXISTS (SELECT 1 FROM source_systems s WHERE f.owner_kind = 'source_system'"
-    " AND s.id = f.owner_id AND s.status <> 'present')"
-)
-"""Leaves out the files of a Source System that is not ``present`` (soft-deleted, spec §7)."""
 
 
 class DocumentSearchService:
@@ -270,10 +264,14 @@ class DocumentSearchService:
         terms = words(query)
         if not terms:
             return []
-        # A soft-deleted Source System's documents are hidden until it is purged.
-        scope = _LIVE_OWNER + (" AND f.owner_id = :system_id" if system_id else "")
+        scope = " AND f.owner_id = :system_id" if system_id else ""
         params: dict[str, Any] = {"w": workspace_id, "system_id": system_id}
         with Session(self._engine) as db:
+            # A soft-deleted Source System's documents are hidden until it is purged.
+            hidden = hidden_source_system_ids(db, workspace_id)
+            if hidden:
+                scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
+                params["hidden"] = hidden
             ranked: list[list[uuid.UUID]] = [
                 list(
                     db.scalars(
