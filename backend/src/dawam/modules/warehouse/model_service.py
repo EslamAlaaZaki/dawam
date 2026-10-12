@@ -33,7 +33,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .calendar import date_columns, date_dimension_of, time_columns
-from .mapping_service import purge_edges_reading
+from .mapping_service import purge_edges_reading, purge_edges_touching
 from .naming import NamingViolation, check_column_name, check_table_name
 from .pii_propagation import propagate_pii
 from .platforms import SAFE_IDENTIFIER, is_reserved_word, max_identifier_length
@@ -42,6 +42,7 @@ from .service import NamingRules
 from .tables import (
     ADDITIVITIES,
     COLUMN_NAME_UNIQUE,
+    DELETED,
     DESCRIPTION_MAX_LENGTH,
     FACT_TYPES,
     GRAIN_MAX_LENGTH,
@@ -394,7 +395,10 @@ class ModelService:
             )
             query = (
                 sa.select(DwTableRecord, count)
-                .where(DwTableRecord.data_warehouse_id == warehouse.id)
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.status != DELETED,
+                )
                 .order_by(sa.func.lower(DwTableRecord.name), DwTableRecord.id)
             )
             if layer is not None:
@@ -599,9 +603,12 @@ class ModelService:
         return view
 
     def delete_table(self, user: User, workspace_id: uuid.UUID, table_id: uuid.UUID) -> None:
-        """Delete a table and its columns. 409 ``table_referenced`` while another table's
-        foreign key points at it."""
-        self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
+        """Soft-delete a table (owners only; spec §7 "Soft deletes"): only the table is
+        marked ``deleted``, hidden from the model and the score, and listed as deleted until
+        an owner confirms the permanent delete. Its columns stay with it; what read it shows
+        validation errors. A deleted Staging Table or generated table keeps a Tombstone.
+        409 ``table_referenced`` while another table's foreign key points at it."""
+        self._workspaces.authorize(user, Action.DELETE_OBJECTS, workspace_id)
         with Session(self._engine) as db, db.begin():
             warehouse = self._warehouse(db, workspace_id)
             assert warehouse is not None
@@ -609,9 +616,11 @@ class ModelService:
             referencing = db.scalar(
                 sa.select(sa.func.count())
                 .select_from(DwColumnRecord)
+                .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
                 .where(
                     DwColumnRecord.references_table_id == table.id,
                     DwColumnRecord.table_id != table.id,
+                    DwTableRecord.status != DELETED,
                 )
             )
             if referencing:
@@ -625,15 +634,16 @@ class ModelService:
             removed = StructuralChange(
                 "dw_table", table.id, "removed", layer=table.layer, table_name=table.name
             )
-            purge_edges_reading(db, [c.id for c in self._columns(db, table.id)])
+            # Lineage no longer shows it: edges into and out of its columns go.
+            purge_edges_touching(db, [table.id, *(c.id for c in self._columns(db, table.id))])
             record_audit(
                 db,
                 workspace_id=workspace_id,
                 actor_id=user.id,
                 entity_type="dw_table",
                 entity_id=table.id,
-                old=_table_snapshot(table),
-                new=None,
+                old={"status": table.status},
+                new={"status": DELETED},
                 at=now,
             )
             self._activity(db, user, workspace_id, "dw_table.deleted", table)
@@ -660,7 +670,9 @@ class ModelService:
                         deleted_at=now,
                     )
                 )
-            db.delete(table)
+            table.status = DELETED
+            table.version += 1
+            table.updated_at = now
         notify_structural_change(self._on_structural_change, user, workspace_id, [removed])
 
     # --- columns ---------------------------------------------------------------------
@@ -850,7 +862,9 @@ class ModelService:
         lock: bool = False,
     ) -> DwTableRecord:
         query = sa.select(DwTableRecord).where(
-            DwTableRecord.id == table_id, DwTableRecord.data_warehouse_id == warehouse.id
+            DwTableRecord.id == table_id,
+            DwTableRecord.data_warehouse_id == warehouse.id,
+            DwTableRecord.status != DELETED,
         )
         if lock:
             query = query.with_for_update()
@@ -1020,17 +1034,21 @@ class ModelService:
         name: str,
         own_id: uuid.UUID | None,
     ) -> None:
-        taken = db.scalar(
-            sa.select(sa.func.count())
-            .select_from(DwTableRecord)
-            .where(
+        taken = db.scalars(
+            sa.select(DwTableRecord.status).where(
                 DwTableRecord.data_warehouse_id == warehouse.id,
                 DwTableRecord.layer == layer,
                 sa.func.lower(DwTableRecord.name) == name.lower(),
                 DwTableRecord.id != (own_id or uuid.UUID(int=0)),
             )
-        )
-        if taken:
+        ).first()
+        if taken == DELETED:
+            raise ApiError(
+                409,
+                "name_taken",
+                "A deleted table in this Layer holds this name until it is deleted permanently.",
+            )
+        if taken is not None:
             raise _name_taken("table in this Layer")
 
     def _ensure_not_used_from_mart(self, db: Session, table: DwTableRecord) -> None:
@@ -1212,6 +1230,7 @@ class ModelService:
             sa.select(DwTableRecord).where(
                 DwTableRecord.id == final["references_table_id"],
                 DwTableRecord.data_warehouse_id == warehouse.id,
+                DwTableRecord.status != DELETED,
             )
         ).first()
         if target is None:

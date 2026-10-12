@@ -22,6 +22,7 @@ import { FailedChecksPanel, type AssistantRequest } from "./FailedChecksPanel";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { FolderTree } from "./FolderTree";
 import { JobsPanel } from "./JobsPanel";
+import { DeletedObjectsPanel } from "./DeletedObjectsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
 import { LineagePanel } from "./LineagePanel";
 import { KpiCatalog } from "./KpiPanels";
@@ -156,6 +157,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               />
               <MembersPanel workspace={workspace.data} />
               <LifecyclePanel workspace={workspace.data} />
+              <DeletedObjectsPanel workspace={workspace.data} />
             </>
           ) : folder.id === "dw" || folder.id === "dw/setup" ? (
             <DataWarehouseSetup workspace={workspace.data} />

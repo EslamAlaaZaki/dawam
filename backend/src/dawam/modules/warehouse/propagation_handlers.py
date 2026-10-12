@@ -32,6 +32,7 @@ from .lineage_sql import BRANCH_PARTS
 from .mapping_service import MappingService
 from .model_service import MODEL_LAYERS
 from .tables import (
+    DELETED,
     ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -319,6 +320,7 @@ class ColumnMappingHandler(_UpdateOnly):
             .where(
                 DataWarehouseRecord.workspace_id == workspace_id,
                 DwTableRecord.layer.in_(MODEL_LAYERS),
+                DwTableRecord.status != DELETED,
                 ColumnMappingRecord.id == object_id,
             )
         )
@@ -419,6 +421,7 @@ class MappingBranchHandler(_UpdateOnly):
             .join(DataWarehouseRecord, DataWarehouseRecord.id == DwTableRecord.data_warehouse_id)
             .where(
                 DataWarehouseRecord.workspace_id == workspace_id,
+                DwTableRecord.status != DELETED,
                 MappingBranchRecord.id == object_id,
             )
         )

@@ -62,6 +62,9 @@ COLUMN_ROLES = (
 )
 ADDITIVITIES = ("additive", "semi_additive", "non_additive")
 OBJECT_STATUSES = ("present", "source_removed", "deleted")
+DELETED = "deleted"
+"""A soft-deleted table's ``status`` (spec §7): hidden from the model and the score, listed
+as deleted, until an owner confirms the permanent delete."""
 DESCRIPTION_MAX_LENGTH = 4000
 PII_NOTE_MAX_LENGTH = 1000
 GRAIN_MAX_LENGTH = 1000

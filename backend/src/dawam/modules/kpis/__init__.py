@@ -33,6 +33,10 @@ Public interface. Other modules import only what is re-exported here:
   propagation (``KpiPlan``): formula SQL respelled after a rename, links and formula
   re-pointed from Core to the Mart column now mapped from it, and the KPIs a removal breaks.
   ``KpiPropagationHandler`` is the handler for its ``kpi_formula`` items.
+- For the ``deletions`` module (in the caller's session, no permission check):
+  ``system_kpis`` / ``release_system_kpis`` (``SystemKpis``, ``KpiRef``) read and apply what a
+  Source System's permanent delete does to its KPIs (linked ones re-homed to the Data
+  Warehouse, the rest deleted), and ``kpis_linked_to`` names the KPIs linked to DW columns.
 - ``plan_kpi_transpile`` (in the caller's session, no permission check): the ``kpi_formula``
   items (and "manual" flags) that move KPI formulas to a new target platform's dialect, for
   the warehouse's platform change; ``kpi_formulas_check`` fills the warehouse's port that
@@ -47,6 +51,7 @@ Owns the ``kpis``, ``kpi_links`` and ``kpi_suggestion_dismissals`` tables.
 """
 
 from .api import router
+from .deletion import KpiRef, SystemKpis, kpis_linked_to, release_system_kpis, system_kpis
 from .link_changes import KpiLinkHandler
 from .links import kpi_names
 from .platform_change import kpi_formulas_check, plan_kpi_transpile
@@ -75,16 +80,21 @@ __all__ = [
     "KpiPage",
     "KpiPlan",
     "KpiPropagationHandler",
+    "KpiRef",
     "KpiService",
     "KpiSuggestion",
     "KpiTarget",
     "LinkCandidates",
     "RuleSuggestion",
     "SuggestedKpis",
+    "SystemKpis",
     "kpi_formulas_check",
     "kpi_names",
     "kpis_for_score",
+    "kpis_linked_to",
     "plan_kpi_propagation",
     "plan_kpi_transpile",
+    "release_system_kpis",
     "router",
+    "system_kpis",
 ]

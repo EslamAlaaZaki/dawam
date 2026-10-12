@@ -226,6 +226,32 @@ def _suggestion_key(roles: RoleClients) -> str:
     return next(s["key"] for s in items if s["kind"] == "sum")
 
 
+def _deleted_system_id(roles: RoleClients) -> uuid.UUID:
+    """A soft-deleted Source System (a fresh one per request: the owner adds and deletes
+    it through the API)."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/systems"
+    response = owner.post(path, json={"name": "Retired", "code": f"r{uuid.uuid4().hex[:8]}"})
+    assert response.status_code == 201, response.text
+    system = response.json()["id"]
+    assert owner.delete(f"{path}/{system}").status_code == 204
+    return uuid.UUID(system)
+
+
+def _deleted_dw_table_id(roles: RoleClients) -> str:
+    """A soft-deleted Core table (a fresh one per request, through the API)."""
+    ensure_data_warehouse(roles)
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables"
+    response = owner.post(
+        path, json={"layer": "core", "name": f"dim_{uuid.uuid4().hex[:8]}", "kind": "dimension"}
+    )
+    assert response.status_code == 201, response.text
+    table = response.json()["id"]
+    assert owner.delete(f"{path}/{table}").status_code == 204
+    return table
+
+
 ROWS: list[Row] = [
     # Probes, API docs and version: no data, open to all.
     Row("GET", "/healthz", "liveness probe", public()),
@@ -701,8 +727,8 @@ ROWS: list[Row] = [
     Row(
         "DELETE",
         "/api/v1/workspaces/{workspace_id}/data-warehouse/tables/{dw_table_id}",
-        "Edit KPIs, DW Schema, mappings (delete a table)",
-        workspace(admin=False, owner=True, editor=True, viewer=False),
+        "Delete Source Systems or DW tables (soft, then confirm): soft-delete a table",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
     ),
     Row(
         "POST",
@@ -1683,6 +1709,47 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"enabled": False},
         path_params={"rule_id": lambda roles: "email"},
+    ),
+    # Soft deletes (spec §7): owners delete, see what goes with it and confirm.
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}",
+        "Delete Source Systems or DW tables (soft, then confirm): soft-delete a system",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/deleted",
+        "Open Workspace content (the deleted list)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/deleted/systems/{system_id}",
+        "Delete Source Systems or DW tables (soft, then confirm): what a purge takes",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        path_params={"system_id": _deleted_system_id},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/deleted/systems/{system_id}",
+        "Delete Source Systems or DW tables (soft, then confirm): purge a system",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        path_params={"system_id": _deleted_system_id},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/deleted/tables/{dw_table_id}",
+        "Delete Source Systems or DW tables (soft, then confirm): what a purge takes",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        path_params={"dw_table_id": _deleted_dw_table_id},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/deleted/tables/{dw_table_id}",
+        "Delete Source Systems or DW tables (soft, then confirm): purge a table",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        path_params={"dw_table_id": _deleted_dw_table_id},
     ),
 ]
 

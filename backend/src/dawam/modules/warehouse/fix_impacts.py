@@ -28,6 +28,7 @@ from .lineage_sql import ColumnRef, Unparsable, parse_branch, parse_expression
 from .mapping_service import SOURCE_LAYER
 from .propagation import StructuralChange, _lookup_inputs
 from .tables import (
+    DELETED,
     ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -67,7 +68,7 @@ def open_impacts(
     for table, column in db.execute(
         sa.select(DwTableRecord, DwColumnRecord)
         .outerjoin(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
-        .where(DwTableRecord.data_warehouse_id == warehouse.id)
+        .where(DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.status != DELETED)
     ):
         layer = layers.setdefault(table.layer, _Layer())
         layer.tables[table.name.lower()] = table
@@ -140,6 +141,7 @@ def open_impacts(
         .where(
             DwTableRecord.data_warehouse_id == warehouse.id,
             DwTableRecord.layer.in_(tuple(SOURCE_LAYER)),
+            DwTableRecord.status != DELETED,
             DwTableRecord.kind != "generated",
             ColumnMappingRecord.mapping_type != "unmapped",
         )
@@ -164,6 +166,7 @@ def open_impacts(
         .where(
             DwTableRecord.data_warehouse_id == warehouse.id,
             DwTableRecord.layer.in_(tuple(SOURCE_LAYER)),
+            DwTableRecord.status != DELETED,
         )
         .order_by(DwTableRecord.name, MappingBranchRecord.ordinal)
     ):

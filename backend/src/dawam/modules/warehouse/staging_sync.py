@@ -37,6 +37,7 @@ from .staging_naming import TYPE_FLAGS, NameInput, column_names, stable_hash
 from .staging_rows import _quote, _Rows, build_staging, write_rows
 from .staging_types import translate_type
 from .tables import (
+    DELETED,
     NAME_MAX_LENGTH,
     ColumnMappingRecord,
     DataWarehouseRecord,
@@ -115,6 +116,7 @@ def plan_sync(
             sa.select(DwTableRecord).where(
                 DwTableRecord.data_warehouse_id == warehouse.id,
                 DwTableRecord.layer == "staging",
+                DwTableRecord.status != DELETED,
                 DwTableRecord.source_table_id.in_(source_ids),
             )
         )
@@ -258,7 +260,9 @@ def plan_drop_removed(db: Session, warehouse: DataWarehouseRecord) -> list[Propo
         db.scalars(
             sa.select(DwTableRecord)
             .where(
-                DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer == "staging"
+                DwTableRecord.data_warehouse_id == warehouse.id,
+                DwTableRecord.layer == "staging",
+                DwTableRecord.status != DELETED,
             )
             .order_by(DwTableRecord.name)
         )
@@ -315,7 +319,11 @@ def _workspace_tables(workspace_id: uuid.UUID) -> sa.Select[tuple[DwTableRecord]
     return (
         sa.select(DwTableRecord)
         .join(DataWarehouseRecord, DataWarehouseRecord.id == DwTableRecord.data_warehouse_id)
-        .where(DataWarehouseRecord.workspace_id == workspace_id, DwTableRecord.layer == "staging")
+        .where(
+            DataWarehouseRecord.workspace_id == workspace_id,
+            DwTableRecord.layer == "staging",
+            DwTableRecord.status != DELETED,
+        )
     )
 
 
@@ -749,6 +757,7 @@ class StagingColumnHandler(_Handler):
             .where(
                 DataWarehouseRecord.workspace_id == workspace_id,
                 DwTableRecord.layer == "staging",
+                DwTableRecord.status != DELETED,
                 DwColumnRecord.id == object_id,
             )
         )

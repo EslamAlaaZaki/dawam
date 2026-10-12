@@ -144,7 +144,7 @@ def test_the_score_follows_every_design_change(warehouse: RoleClients):
     )
     assert patched.status_code == 200, patched.text
     assert len(history(warehouse)) >= 3
-    deleted = warehouse.client("editor").delete(f"{base(warehouse)}/tables/{sales['id']}")
+    deleted = warehouse.client("owner").delete(f"{base(warehouse)}/tables/{sales['id']}")
     assert deleted.status_code == 204, deleted.text
     assert [t["name"] for t in score(warehouse)["tables"]] == ["dim_customer"]
 

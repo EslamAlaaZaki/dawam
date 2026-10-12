@@ -779,8 +779,10 @@ export interface paths {
         post?: never;
         /**
          * Delete Table
-         * @description Delete a table and its columns (editors and owners). 409 `table_referenced` while
-         *     another table's foreign key points at it.
+         * @description Soft-delete a table (owners only): only the table is marked deleted, hidden from the
+         *     model and the score, and listed under `GET /workspaces/{workspace_id}/deleted` until an
+         *     owner confirms the permanent delete there. 409 `table_referenced` while another table's
+         *     foreign key points at it.
          */
         delete: operations["deleteDwTable"];
         options?: never;
@@ -1562,7 +1564,13 @@ export interface paths {
         get: operations["getSourceSystem"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Source System
+         * @description Soft-delete a Source System (owners only). Only the system is marked deleted; it is
+         *     listed under ``GET /workspaces/{workspace_id}/deleted`` until an owner confirms the
+         *     permanent delete there.
+         */
+        delete: operations["deleteSourceSystem"];
         options?: never;
         head?: never;
         /**
@@ -3955,6 +3963,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/deleted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Deleted
+         * @description The soft-deleted Source Systems and DW tables (any member).
+         */
+        get: operations["listDeletedObjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/deleted/systems/{system_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get System Deletion
+         * @description Everything purging a deleted Source System takes with it (owners only).
+         */
+        get: operations["getSourceSystemDeletion"];
+        put?: never;
+        post?: never;
+        /**
+         * Purge System
+         * @description Delete a deleted Source System for good (owners only).
+         */
+        delete: operations["purgeSourceSystem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/deleted/tables/{dw_table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table Deletion
+         * @description Everything purging a deleted DW table takes with it (owners only).
+         */
+        get: operations["getDwTableDeletion"];
+        put?: never;
+        post?: never;
+        /**
+         * Purge Table
+         * @description Delete a deleted DW table for good (owners only).
+         */
+        delete: operations["purgeDwTable"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3973,7 +4049,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -4400,6 +4476,28 @@ export interface components {
             group_by?: string | null;
             /** Having */
             having?: string | null;
+        };
+        /**
+         * BrokenBranch
+         * @description A mapping branch that reads what goes: it stays, and becomes broken.
+         */
+        BrokenBranch: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /** Layer */
+            layer: string;
+            /**
+             * Branch Id
+             * Format: uuid
+             */
+            branch_id: string;
+            /** Branch Name */
+            branch_name: string;
         };
         /** BuiltInPiiRule */
         BuiltInPiiRule: {
@@ -5401,6 +5499,54 @@ export interface components {
              */
             name: string;
         };
+        /** DeletedDwTable */
+        DeletedDwTable: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Layer */
+            layer: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Column Count */
+            column_count: number;
+            /**
+             * Deleted At
+             * Format: date-time
+             */
+            deleted_at: string;
+        };
+        /** DeletedObjects */
+        DeletedObjects: {
+            /** Systems */
+            systems: components["schemas"]["DeletedSourceSystem"][];
+            /** Tables */
+            tables: components["schemas"]["DeletedDwTable"][];
+        };
+        /** DeletedSourceSystem */
+        DeletedSourceSystem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Code
+             * @description Not reusable by another Source System until it is purged.
+             */
+            code: string;
+            /**
+             * Deleted At
+             * Format: date-time
+             */
+            deleted_at: string;
+        };
         /** DisableCheckRequest */
         DisableCheckRequest: {
             /**
@@ -5626,6 +5772,24 @@ export interface components {
              */
             status: "present" | "source_removed";
         };
+        /**
+         * DwTableDeletion
+         * @description What purging a deleted DW table does, for the owner to confirm.
+         */
+        DwTableDeletion: {
+            table: components["schemas"]["DeletedDwTable"];
+            /** Column Names */
+            column_names: string[];
+            /** Has Mapping */
+            has_mapping: boolean;
+            /** Broken Branches */
+            broken_branches: components["schemas"]["BrokenBranch"][];
+            /**
+             * Unlinked Kpis
+             * @description KPIs that lose their links to its columns.
+             */
+            unlinked_kpis: components["schemas"]["KpiRef"][];
+        };
         /** DwTableList */
         DwTableList: {
             /** Items */
@@ -5811,6 +5975,18 @@ export interface components {
         FileObjectLinkList: {
             /** Items */
             items: components["schemas"]["FileObjectLink"][];
+        };
+        /** FileRef */
+        FileRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Path */
+            path: string;
+            /** Is Document */
+            is_document: boolean;
         };
         /** Finding */
         Finding: {
@@ -6269,6 +6445,16 @@ export interface components {
              * @enum {string}
              */
             status: "not_started" | "in_progress" | "complete";
+        };
+        /** KpiRef */
+        KpiRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** KpiSuggestion */
         KpiSuggestion: {
@@ -8759,6 +8945,41 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * SourceSystemDeletion
+         * @description What purging a deleted Source System does, for the owner to confirm.
+         */
+        SourceSystemDeletion: {
+            system: components["schemas"]["DeletedSourceSystem"];
+            /** Db Schema Count */
+            db_schema_count: number;
+            /** Table Count */
+            table_count: number;
+            /** Column Count */
+            column_count: number;
+            /** Routine Count */
+            routine_count: number;
+            /** Snapshot Count */
+            snapshot_count: number;
+            /** Staging Tables */
+            staging_tables: components["schemas"]["StagingTableRef"][];
+            /** Broken Branches */
+            broken_branches: components["schemas"]["BrokenBranch"][];
+            /** Files */
+            files: components["schemas"]["FileRef"][];
+            /** Source Link Count */
+            source_link_count: number;
+            /**
+             * Rehomed Kpis
+             * @description Linked to DW columns: moved to the Data Warehouse.
+             */
+            rehomed_kpis: components["schemas"]["KpiRef"][];
+            /**
+             * Deleted Kpis
+             * @description With no DW links: deleted with it.
+             */
+            deleted_kpis: components["schemas"]["KpiRef"][];
+        };
         /** SourceSystemPage */
         SourceSystemPage: {
             /** Items */
@@ -8860,6 +9081,21 @@ export interface components {
              * @description What to review, for the tables just created.
              */
             flags: components["schemas"]["StagingFlag"][];
+        };
+        /** StagingTableRef */
+        StagingTableRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Has Mapping
+             * @description Its staging mapping goes with it.
+             */
+            has_mapping: boolean;
         };
         /** StarCard */
         StarCard: {
@@ -13435,6 +13671,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SourceSystem"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteSourceSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {
@@ -19133,6 +19408,206 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SavedPack"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDeletedObjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedObjects"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceSystemDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSystemDeletion"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    purgeSourceSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDwTableDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DwTableDeletion"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    purgeDwTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dw_table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {

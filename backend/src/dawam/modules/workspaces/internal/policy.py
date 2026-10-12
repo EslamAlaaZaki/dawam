@@ -84,6 +84,10 @@ class Action(StrEnum):
     RETIRE_STAGING = "dw_schema.retire_staging"
     """Delete staging tables and columns whose source is gone, through a "drop removed"
     Change Set (owners only; spec §6.7). An editor may propose it; its items need an owner."""
+    DELETE_OBJECTS = "objects.delete"
+    """Soft-delete a Source System or a DW table, see what goes with it and confirm the
+    permanent delete (owners only; spec §4.3 "Delete Source Systems or DW tables (soft, then
+    confirm)", §7 "Soft deletes"). Seeing the "deleted" list needs only ``VIEW_WORKSPACE``."""
     CREATE_SOURCE_SYSTEM = "source_system.create"
     """Add a Source System to the Workspace (owners and editors; spec story 39)."""
     EDIT_SOURCE_SYSTEM = "source_system.edit"
@@ -221,6 +225,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
     Action.EDIT_DW_SCHEMA: _WorkspaceRule(min_role="editor"),
     Action.RETIRE_STAGING: _WorkspaceRule(min_role="owner"),
+    Action.DELETE_OBJECTS: _WorkspaceRule(min_role="owner"),
     Action.CREATE_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.EDIT_SOURCE_SYSTEM: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_SYSTEM_CODE: _WorkspaceRule(min_role="owner"),

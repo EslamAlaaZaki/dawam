@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.auth import User
 from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
 from dawam.modules.llm import LlmError, MeteredGateway, ProviderService, RoleService
+from dawam.modules.sources import hidden_source_system_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -266,6 +267,11 @@ class DocumentSearchService:
         scope = " AND f.owner_id = :system_id" if system_id else ""
         params: dict[str, Any] = {"w": workspace_id, "system_id": system_id}
         with Session(self._engine) as db:
+            # A soft-deleted Source System's documents are hidden until it is purged.
+            hidden = hidden_source_system_ids(db, workspace_id)
+            if hidden:
+                scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
+                params["hidden"] = hidden
             ranked: list[list[uuid.UUID]] = [
                 list(
                     db.scalars(

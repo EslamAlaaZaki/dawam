@@ -15,6 +15,7 @@ from dawam.modules import (
     auth,
     changesets,
     collaboration,
+    deletions,
     docpack,
     files,
     jobs,
@@ -49,6 +50,7 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     llm,
     assistant,
     docpack,
+    deletions,
 )
 
 __all__ = ["ALL_MODULES"]

@@ -29,6 +29,7 @@ from dawam.platform.hooks import ModelingProgress
 from .lineage_sql import ColumnRef, Unparsable, parse_branch, parse_expression
 from .mapping_service import SOURCE_LAYER, SYSTEM_ROLES, MappingService, TableMappingView
 from .tables import (
+    DELETED,
     ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -135,6 +136,7 @@ class ValidationService:
         warehouse_id = (
             DataWarehouseRecord.workspace_id == workspace_id,
             DwTableRecord.data_warehouse_id == DataWarehouseRecord.id,
+            DwTableRecord.status != DELETED,
         )
         with Session(self._engine) as db:
             columns = db.execute(
@@ -300,7 +302,10 @@ class ValidationService:
             for table, column in db.execute(
                 sa.select(DwTableRecord, DwColumnRecord)
                 .outerjoin(DwColumnRecord, DwColumnRecord.table_id == DwTableRecord.id)
-                .where(DwTableRecord.data_warehouse_id == warehouse.id)
+                .where(
+                    DwTableRecord.data_warehouse_id == warehouse.id,
+                    DwTableRecord.status != DELETED,
+                )
             ):
                 tables[(table.layer, table.name.lower())] = (table.status, table.id)
                 if column is not None:
@@ -318,6 +323,7 @@ class ValidationService:
                 .where(
                     DwTableRecord.data_warehouse_id == warehouse.id,
                     DwTableRecord.layer.in_(("core", "mart")),
+                    DwTableRecord.status != DELETED,
                     DwTableRecord.kind != "generated",
                     ColumnMappingRecord.mapping_type != "unmapped",
                 )
@@ -333,6 +339,7 @@ class ValidationService:
                 .where(
                     DwTableRecord.data_warehouse_id == warehouse.id,
                     DwTableRecord.layer.in_(("core", "mart")),
+                    DwTableRecord.status != DELETED,
                 )
                 .order_by(DwTableRecord.name, MappingBranchRecord.ordinal)
             ).all()

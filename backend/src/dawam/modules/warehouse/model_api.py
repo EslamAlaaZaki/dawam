@@ -353,8 +353,10 @@ def update_table(
 def delete_table(
     workspace_id: uuid.UUID, dw_table_id: uuid.UUID, user: CurrentUser, model: ModelServiceDep
 ) -> Response:
-    """Delete a table and its columns (editors and owners). 409 `table_referenced` while
-    another table's foreign key points at it."""
+    """Soft-delete a table (owners only): only the table is marked deleted, hidden from the
+    model and the score, and listed under `GET /workspaces/{workspace_id}/deleted` until an
+    owner confirms the permanent delete there. 409 `table_referenced` while another table's
+    foreign key points at it."""
     model.delete_table(user, workspace_id, dw_table_id)
     return Response(status_code=204)
 

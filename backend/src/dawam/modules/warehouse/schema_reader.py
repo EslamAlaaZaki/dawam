@@ -17,6 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from .tables import (
+    DELETED,
     ColumnMappingRecord,
     DataWarehouseRecord,
     DwColumnRecord,
@@ -91,6 +92,7 @@ def read_schema(db: Session, workspace_id: uuid.UUID) -> DwSchema | None:
             .where(
                 DwTableRecord.data_warehouse_id == warehouse.id,
                 DwTableRecord.layer.in_(KPI_LAYERS),
+                DwTableRecord.status != DELETED,
             )
             .order_by(DwTableRecord.layer, DwTableRecord.name)
         )
@@ -128,6 +130,7 @@ def describe_columns(
             DwColumnRecord.id.in_(ids),
             DwTableRecord.data_warehouse_id == warehouse.id,
             DwTableRecord.layer.in_(KPI_LAYERS),
+            DwTableRecord.status != DELETED,
         )
         .order_by(DwTableRecord.layer, DwTableRecord.name, DwColumnRecord.ordinal)
     ).all()
@@ -150,6 +153,7 @@ def mart_columns_reading(db: Session, core_column_ids: Iterable[uuid.UUID]) -> d
             LineageEdgeRecord.to_type == "dw_column",
             LineageEdgeRecord.from_id.in_(ids),
             DwTableRecord.layer == "mart",
+            DwTableRecord.status != DELETED,
         )
         .order_by(DwTableRecord.name, DwColumnRecord.name)
     )
@@ -207,7 +211,9 @@ def read_mapping_state(db: Session, workspace_id: uuid.UUID) -> MappingState:
     if warehouse is None:
         return MappingState((), frozenset())
     in_scope = sa.and_(
-        DwTableRecord.data_warehouse_id == warehouse.id, DwTableRecord.layer.in_(KPI_LAYERS)
+        DwTableRecord.data_warehouse_id == warehouse.id,
+        DwTableRecord.layer.in_(KPI_LAYERS),
+        DwTableRecord.status != DELETED,
     )
     edges = db.execute(
         sa.select(LineageEdgeRecord.from_id, LineageEdgeRecord.to_id)
