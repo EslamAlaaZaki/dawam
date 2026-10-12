@@ -17,11 +17,26 @@ import {
   type ToolCall,
 } from "../api/assistant";
 import { ApiError } from "../api/client";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import { isActive, useCancelJob, useJob } from "../api/jobs";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConversationChangeSets } from "./ChangeSetReview";
 import type { AssistantRequest } from "./FailedChecksPanel";
+import {
+  Actions,
+  ErrorText,
+  Hint,
+  NativeSelect,
+  checkClasses,
+  checkLabelClasses,
+  h3Classes,
+  labelClasses,
+  monoClasses,
+} from "./parts";
+
+const noteClasses = "text-sm text-sand-11";
 
 /** What is being answered right now. */
 interface Draft {
@@ -44,27 +59,34 @@ function JobProgress({
   const cancel = useCancelJob(workspaceId);
   const current = job.data;
   return (
-    <div className="assistant-job" role="status" aria-label={`Job: ${title}`}>
-      <strong>{title}</strong>{" "}
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-sand-5 bg-sand-2 p-2.5 text-sm"
+      role="status"
+      aria-label={`Job: ${title}`}
+    >
+      <strong className="font-semibold">{title}</strong>{" "}
       {current ? (
         <>
-          <span>{current.status}</span>
+          <Badge>{current.status}</Badge>
           <progress
             max={100}
             value={current.progress}
             aria-label="Job progress"
+            className="h-1.5 w-24 accent-[var(--accent-solid)]"
           />
           {isActive(current) && (
-            <button type="button" onClick={() => cancel.mutate(jobId)}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => cancel.mutate(jobId)}
+            >
               Cancel job
-            </button>
+            </Button>
           )}
-          {current.error && (
-            <p className="assistant-failure">{current.error}</p>
-          )}
+          {current.error && <p className="w-full text-red-11">{current.error}</p>}
         </>
       ) : (
-        <span>starting</span>
+        <span className="text-sand-11">starting</span>
       )}
     </div>
   );
@@ -109,24 +131,30 @@ function ToolList({
         />
       ))}
       {canWrite && (
-        <p role="alert" className="assistant-failure">
+        <p
+          role="alert"
+          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2 text-sm text-sand-12"
+        >
           Warning: the database user of this Connection can change data. The
           assistant only runs read-only SELECT queries, but an owner should give
           DAWAM a read-only user.
         </p>
       )}
-      <details className="assistant-tools">
-        <summary>
+      <details className={noteClasses}>
+        <summary className="cursor-pointer rounded-sm">
           {tools.length === 1 ? "1 tool used" : `${tools.length} tools used`}
         </summary>
-        <ul>
+        <ul className="mt-1.5 flex flex-col gap-1.5">
           {tools.map((tool, index) => (
             <li key={index}>
               <strong>{tool.name}</strong> ({tool.status}, {tool.duration_ms} ms
               {typeof tool.result?.row_count === "number"
                 ? `, ${tool.result.row_count} rows`
                 : ""}
-              )<code>{JSON.stringify(tool.arguments)}</code>
+              )
+              <code className={`block break-words ${monoClasses}`}>
+                {JSON.stringify(tool.arguments)}
+              </code>
             </li>
           ))}
         </ul>
@@ -141,12 +169,16 @@ function FailureNote({ run }: { run: Run }) {
     return null;
   }
   return (
-    <p role="alert" className="assistant-failure">
+    <ErrorText>
       The assistant could not answer:{" "}
       {run.error_message ?? "an unknown problem"}
-    </p>
+    </ErrorText>
   );
 }
+
+const turnClasses = "flex flex-col gap-1.5 border-b border-sand-4 py-3";
+const questionClasses = "font-semibold whitespace-pre-wrap";
+const answerClasses = "whitespace-pre-wrap";
 
 function Turn({
   message,
@@ -159,17 +191,15 @@ function Turn({
 }) {
   const run = message.run;
   return (
-    <li className="assistant-turn">
-      <p className="assistant-question">{message.content}</p>
+    <li className={turnClasses}>
+      <p className={questionClasses}>{message.content}</p>
       {run && <ToolList tools={run.tool_calls} workspaceId={workspaceId} />}
-      {answer && <p className="assistant-answer">{answer.content}</p>}
+      {answer && <p className={answerClasses}>{answer.content}</p>}
       {run?.status === "cancelled" && (
-        <p className="assistant-note">Stopped.</p>
+        <Hint>Stopped.</Hint>
       )}
       {run?.status === "tool_limit" && (
-        <p className="assistant-note">
-          Stopped using tools: the limit for one request was reached.
-        </p>
+        <Hint>Stopped using tools: the limit for one request was reached.</Hint>
       )}
       {run && <FailureNote run={run} />}
     </li>
@@ -294,9 +324,14 @@ export function AssistantPanel({
     .filter(({ message }) => message.role === "user");
 
   return (
-    <section className="assistant" aria-labelledby="assistant-title">
-      <div className="assistant-header">
-        <h3 id="assistant-title">Assistant</h3>
+    <section
+      className="flex flex-col gap-3"
+      aria-labelledby="assistant-title"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 id="assistant-title" className={h3Classes}>
+          Assistant
+        </h3>
         {onClose && (
           <Button
             variant="ghost"
@@ -309,15 +344,13 @@ export function AssistantPanel({
         )}
       </div>
       {archived && (
-        <p className="assistant-note">
-          This Workspace is archived: conversations are read-only.
-        </p>
+        <Hint>This Workspace is archived: conversations are read-only.</Hint>
       )}
-      <div className="assistant-bar">
+      <div className="flex flex-wrap items-end gap-2.5">
         {conversations.isSuccess && conversations.data.length > 0 && (
-          <label>
-            Conversation{" "}
-            <select
+          <label className={labelClasses}>
+            Conversation
+            <NativeSelect
               value={selected ?? ""}
               onChange={(event) => {
                 setChosen(event.target.value);
@@ -332,11 +365,11 @@ export function AssistantPanel({
                   {c.mine ? "" : " (shared)"}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         )}
         {canAsk && !archived && (
-          <button
+          <Button
             type="button"
             disabled={running || create.isPending}
             onClick={async () => {
@@ -345,29 +378,28 @@ export function AssistantPanel({
             }}
           >
             New conversation
-          </button>
+          </Button>
         )}
         {current && mine && !archived && (
-          <label>
+          <label className={checkLabelClasses}>
             <input
               type="checkbox"
+              className={checkClasses}
               checked={current.shared_with_workspace}
               disabled={share.isPending}
               onChange={(event) => share.mutate(event.target.checked)}
-            />{" "}
+            />
             Share with the Workspace&apos;s members
           </label>
         )}
       </div>
       {conversations.isError && (
-        <p className="assistant-note">Could not load the conversations.</p>
+        <ErrorText>Could not load the conversations.</ErrorText>
       )}
       {current && !mine && (
-        <p className="assistant-note">
-          Shared by a colleague: you can read it, not reply.
-        </p>
+        <Hint>Shared by a colleague: you can read it, not reply.</Hint>
       )}
-      <ol className="assistant-turns" aria-label="Conversation">
+      <ol className="flex flex-col" aria-label="Conversation">
         {turns.map(({ message, answer }) => (
           <Turn
             key={message.id}
@@ -377,10 +409,10 @@ export function AssistantPanel({
           />
         ))}
         {draft && (
-          <li className="assistant-turn" aria-busy="true">
-            <p className="assistant-question">{draft.question}</p>
+          <li className={turnClasses} aria-busy="true">
+            <p className={questionClasses}>{draft.question}</p>
             <ToolList tools={draft.tools} workspaceId={workspace.id} />
-            <p className="assistant-answer">{draft.text || "Thinking…"}</p>
+            <p className={answerClasses}>{draft.text || "Thinking…"}</p>
           </li>
         )}
       </ol>
@@ -403,31 +435,33 @@ export function AssistantPanel({
           <FailureNote run={failed} />
         )}
       {refusal && (
-        <p role="alert" className="assistant-failure">
-          {refusal}
-        </p>
+        <ErrorText>{refusal}</ErrorText>
       )}
       {canAsk && !archived && (selected === null || mine) && (
-        <form onSubmit={onSubmit} className="assistant-form">
-          <label>
+        <form onSubmit={onSubmit} className="flex flex-col gap-2.5">
+          <label className={labelClasses}>
             Ask the assistant
-            <textarea
+            <Textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               rows={2}
               maxLength={8000}
             />
           </label>
-          <div className="form-actions">
-            <button type="submit" disabled={running || question.trim() === ""}>
+          <Actions>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={running || question.trim() === ""}
+            >
               Send
-            </button>
+            </Button>
             {running && selected && (
-              <button type="button" onClick={() => stop.mutate(selected)}>
+              <Button type="button" onClick={() => stop.mutate(selected)}>
                 Stop
-              </button>
+              </Button>
             )}
-          </div>
+          </Actions>
         </form>
       )}
     </section>

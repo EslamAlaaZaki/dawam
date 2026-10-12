@@ -1,12 +1,19 @@
 import Link from "next/link";
 
+import { PageHead } from "../admin/parts";
+import { linkClasses } from "./parts";
+
 /** Shown for a Workspace the API answers 404 for: missing, or not the user's to see. */
 export function WorkspaceNotFound() {
   return (
-    <section className="page">
-      <h2>Workspace not found</h2>
-      <p>It does not exist, or you are not a member of it.</p>
-      <Link href="/">Back to your Workspaces</Link>
+    <section className="flex flex-col gap-3">
+      <PageHead
+        title="Workspace not found"
+        description="It does not exist, or you are not a member of it."
+      />
+      <Link href="/" className={linkClasses}>
+        Back to your Workspaces
+      </Link>
     </section>
   );
 }

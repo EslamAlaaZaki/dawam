@@ -10,7 +10,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Loading } from "../shell/Loading";
-import { ErrorText, PageHead } from "./parts";
+import { ErrorText, PageHead, EmptyState } from "./parts";
 
 const PURPOSES: Record<string, string> = {
   password_reset: "Password reset",
@@ -43,7 +43,7 @@ export function UndeliveredLinksPage() {
         description="Links DAWAM could not email. Pass each one to its recipient only, through a channel you trust: whoever has a link can use it. A link leaves this list when it expires."
       />
       {links.data.length === 0 ? (
-        <p className="text-sand-11">There are no links to share.</p>
+        <EmptyState>There are no links to share.</EmptyState>
       ) : (
         <ul className="flex max-w-3xl flex-col gap-3">
           {links.data.map((link) => (

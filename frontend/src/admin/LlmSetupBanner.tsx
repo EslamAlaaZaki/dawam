@@ -13,7 +13,7 @@ export function LlmSetupBanner() {
   return (
     <div
       role="alert"
-      className="dawam-ui mx-6 mt-5 flex items-start gap-2.5 rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5 text-sand-12"
+      className="dawam-ui mx-6 mt-5 flex items-start gap-2.5 rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sand-12"
     >
       <TriangleAlert
         aria-hidden

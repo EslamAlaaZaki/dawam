@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceFile } from "../api/files";
 import type { Me } from "../api/queries";
@@ -156,6 +156,19 @@ describe("a Source System's Documents folder", () => {
   });
 
   it("lets an editor upload a document", async () => {
+    // Node's fetch cannot serialise jsdom's File (it goes as "[object File]"), so watch
+    // what the app puts into the form instead of what reaches the wire.
+    const appended: [string, FormDataEntryValue][] = [];
+    const append = FormData.prototype.append;
+    vi.spyOn(FormData.prototype, "append").mockImplementation(function (
+      this: FormData,
+      name: string,
+      value: string | Blob,
+      filename?: string,
+    ) {
+      appended.push([name, value as FormDataEntryValue]);
+      return append.call(this, name, value as Blob, filename);
+    } as typeof FormData.prototype.append);
     const files: WorkspaceFile[] = [];
     const requests = renderApp(
       backend("editor", files, (r) => {
@@ -181,10 +194,18 @@ describe("a Source System's Documents folder", () => {
     ).toBeInTheDocument();
     const post = requests.find((r) => r.method === "POST" && r.path === FILES);
     expect(post?.csrf).toBeTruthy();
-    // The file goes as multipart form data. (jsdom's File reaches Node's fetch as a plain
-    // Blob, so its name is not on the wire here; a browser sends it.)
+    // The file goes as multipart form data, under the name "file", with its bytes.
     expect(String(post?.body)).toMatch(/name="file"/);
-    expect(String(post?.body)).toContain("%PDF-1.4");
+    const [name, sent] = appended.find(([key]) => key === "file") ?? [];
+    expect(name).toBe("file");
+    expect((sent as File).name).toBe("sad.pdf");
+    const bytes = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(sent as File);
+    });
+    expect(bytes).toBe("%PDF-1.4");
+    vi.restoreAllMocks();
   });
 
   it("shows why an upload is refused", async () => {

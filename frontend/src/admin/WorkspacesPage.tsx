@@ -33,8 +33,7 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
-  labelClasses,
-} from "./parts";
+  labelClasses, EmptyState } from "./parts";
 
 function day(iso: string): string {
   return new Date(iso).toLocaleDateString();
@@ -85,7 +84,7 @@ export function WorkspacesPage() {
             </Table>
           </TableCard>
           {workspaces.data.pages[0]?.items.length === 0 && (
-            <p className="text-sand-11">There are no Workspaces.</p>
+            <EmptyState>There are no Workspaces.</EmptyState>
           )}
           {workspaces.hasNextPage && (
             <Button

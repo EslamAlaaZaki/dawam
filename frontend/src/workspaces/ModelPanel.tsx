@@ -54,6 +54,7 @@ import {
   labelClasses,
   linkButtonClasses,
   monoClasses,
+  Panel,
 } from "./parts";
 
 /** A form below the table detail: a hairline above, the controls stacked. */
@@ -383,9 +384,9 @@ function TableDetails({
   const names = new Map(references.map((r) => [r.id, r.name]));
 
   return (
-    <section
+    <Panel
       aria-label={`Table ${t.name}`}
-      className="min-w-0 overflow-hidden rounded-xl border border-sand-5 bg-sand-1"
+      className="min-w-0 gap-0 overflow-hidden p-0"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-sand-5 px-4 py-3">
         <h4 className="font-mono text-md/[1.3] font-semibold">{t.name}</h4>
@@ -559,7 +560,7 @@ function TableDetails({
           </>
         )}
       </div>
-    </section>
+    </Panel>
   );
 }
 

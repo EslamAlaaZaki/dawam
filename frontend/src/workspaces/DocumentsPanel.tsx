@@ -40,6 +40,7 @@ import {
   linkClasses,
   monoClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 const TEXT_STATUS: Record<string, string> = {
   extracted: "Text extracted",
@@ -85,7 +86,7 @@ function TextEditor({
     >
       <h4 className={h4Classes}>Edit {file.name}</h4>
       {text.isPending ? (
-        <p className="text-sand-11">Loading…</p>
+        <Loading className="p-0" />
       ) : text.isError ? (
         <ErrorText>Could not load the file: {text.error.message}</ErrorText>
       ) : (
@@ -193,7 +194,7 @@ export function DocumentsPanel({
         {title}
       </h3>
       {files.isPending ? (
-        <p className="text-sand-11">Loading…</p>
+        <Loading className="p-0" />
       ) : files.isError ? (
         <ErrorText>Could not load the files: {files.error.message}</ErrorText>
       ) : files.data.length === 0 ? (

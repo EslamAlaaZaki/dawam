@@ -20,27 +20,6 @@ import { UserMenu } from "./UserMenu";
 import { JobsButton } from "../workspaces/JobsButton";
 import { workspaceIdOf } from "../workspaces/WorkspaceSidebar";
 
-/**
- * Pages in the redesign's look; the others stay light-only until their ticket lands.
- * A Workspace's page is one too: its frame is redesigned, the folder panels inside it
- * are not yet (they sit on a light ground of their own).
- */
-const REDESIGNED_PATHS: ReadonlySet<string> = new Set([
-  "/",
-  "/workspaces/new",
-  "/profile",
-  "/admin/users",
-  "/admin/users/new",
-  "/admin/invitations",
-  "/admin/workspaces",
-  "/admin/security-events",
-  "/admin/email",
-  "/admin/email/links",
-  "/admin/llm",
-  "/admin/llm/settings",
-  "/admin/settings",
-]);
-
 const sidebarClasses = "flex flex-col gap-1 bg-sand-2 px-2 py-3 text-base";
 
 /**
@@ -57,6 +36,12 @@ export function Shell({ children }: { children: ReactNode }) {
   }
   return (
     <div className="min-h-screen bg-sand-1 scheme-light lg:grid lg:grid-cols-[248px_minmax(0,1fr)] dark:scheme-dark">
+      <a
+        href="#main"
+        className="dawam-ui sr-only rounded-md bg-sand-1 px-3 py-2 font-medium text-sand-12 focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:shadow-overlay"
+      >
+        Skip to the page
+      </a>
       <aside
         aria-label="Navigation"
         className={`dawam-ui ${sidebarClasses} sticky top-0 hidden h-screen overflow-y-auto border-r border-line lg:flex`}
@@ -101,11 +86,9 @@ export function Shell({ children }: { children: ReactNode }) {
         </header>
         <AdminNav />
         <main
-          className={
-            REDESIGNED_PATHS.has(pathname) || workspaceId
-              ? "dawam-ui flex flex-col gap-5 px-6 pt-5 pb-24"
-              : "legacy-page flex-1"
-          }
+          id="main"
+          tabIndex={-1}
+          className="dawam-ui flex flex-col gap-5 px-6 pt-5 pb-24 outline-none"
         >
           {children}
         </main>

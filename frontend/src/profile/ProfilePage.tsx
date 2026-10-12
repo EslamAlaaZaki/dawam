@@ -5,7 +5,9 @@ import { useState, type FormEvent } from "react";
 
 import { useChangePassword, useSignOutEverywhere, useUpdateDisplayName } from "../api/account";
 import { useMe, type Me } from "../api/queries";
+import { PageHead, ErrorText, formCardClasses, h3Classes } from "../admin/parts";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import { Input } from "../components/ui/input";
 
 /** The signed-in user's own account: display name, password and sessions. */
@@ -16,12 +18,14 @@ export function ProfilePage() {
   }
   return (
     <section className="flex max-w-xl flex-col gap-5">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-[-0.01em]">Your profile</h2>
-        <p className="mt-0.5 text-sand-11">
-          Signed in as <strong className="font-medium text-sand-12">{me.data.email}</strong>
-        </p>
-      </div>
+      <PageHead
+        title="Your profile"
+        description={
+          <>
+            Signed in as <strong className="font-medium text-sand-12">{me.data.email}</strong>
+          </>
+        }
+      />
       <DisplayNameForm me={me.data} />
       <ChangePasswordForm />
       <SignOutEverywhere />
@@ -34,15 +38,17 @@ function DisplayNameForm({ me }: { me: Me }) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    update.mutate(String(new FormData(event.currentTarget).get("display_name") ?? ""));
+    update.mutate(String(new FormData(event.currentTarget).get("display_name") ?? ""), {
+      onSuccess: () => toast.success("Display name saved."),
+    });
   }
 
   return (
     <section
-      className="flex flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      className={formCardClasses}
       aria-labelledby="display-name-title"
     >
-      <h3 className="text-lg font-semibold" id="display-name-title">
+      <h3 className={h3Classes} id="display-name-title">
         Name
       </h3>
       <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>
@@ -56,11 +62,10 @@ function DisplayNameForm({ me }: { me: Me }) {
           />
         </label>
         {update.isError && (
-          <p className="text-sm text-red-11" role="alert">
+          <ErrorText>
             {update.error.message}
-          </p>
+          </ErrorText>
         )}
-        {update.isSuccess && <p className="text-sm text-grass-11">Display name saved.</p>}
         <Button type="submit" variant="primary" className="self-start" disabled={update.isPending}>
           Save name
         </Button>
@@ -88,7 +93,12 @@ function ChangePasswordForm() {
         current_password: String(form.get("current_password") ?? ""),
         new_password: next,
       },
-      { onSuccess: () => formElement.reset() },
+      {
+        onSuccess: () => {
+          formElement.reset();
+          toast.success("Password changed. Your other sessions have been signed out.");
+        },
+      },
     );
   }
 
@@ -100,10 +110,10 @@ function ChangePasswordForm() {
 
   return (
     <section
-      className="flex flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      className={formCardClasses}
       aria-labelledby="password-title"
     >
-      <h3 className="text-lg font-semibold" id="password-title">
+      <h3 className={h3Classes} id="password-title">
         Change password
       </h3>
       <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>
@@ -124,14 +134,9 @@ function ChangePasswordForm() {
           other device.
         </p>
         {problem && (
-          <p className="text-sm text-red-11" role="alert">
+          <ErrorText>
             {problem}
-          </p>
-        )}
-        {change.isSuccess && !mismatch && (
-          <p className="text-sm text-grass-11">
-            Password changed. Your other sessions have been signed out.
-          </p>
+          </ErrorText>
         )}
         <Button type="submit" variant="primary" className="self-start" disabled={change.isPending}>
           Change password
@@ -148,10 +153,10 @@ function SignOutEverywhere() {
   });
   return (
     <section
-      className="flex flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      className={formCardClasses}
       aria-labelledby="sessions-title"
     >
-      <h3 className="text-lg font-semibold" id="sessions-title">
+      <h3 className={h3Classes} id="sessions-title">
         Sessions
       </h3>
       <p className="text-sm text-sand-11">
@@ -159,9 +164,9 @@ function SignOutEverywhere() {
         this one included.
       </p>
       {signOut.isError && (
-        <p className="text-sm text-red-11" role="alert">
+        <ErrorText>
           Could not sign out everywhere: {signOut.error.message}
-        </p>
+        </ErrorText>
       )}
       <Button
         className="self-start border-red-11 text-red-11"

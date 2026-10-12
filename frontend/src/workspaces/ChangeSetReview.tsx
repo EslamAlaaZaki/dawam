@@ -17,14 +17,17 @@ import { ApiError } from "../api/client";
 import { allows, useWorkspace, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
 import {
   Actions,
   ErrorText,
   Hint,
+  PageHead,
   checkClasses,
   h4Classes,
   linkClasses,
+  Panel,
 } from "./parts";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
@@ -82,11 +85,6 @@ function Report({ result }: { result: ApplyResult }) {
       role="status"
       className="flex flex-col gap-1.5 rounded-lg border border-sand-5 bg-sand-2 p-3 text-sm"
     >
-      <p>
-        {result.accepted.length === 1
-          ? "1 item applied."
-          : `${result.accepted.length} items applied.`}
-      </p>
       {result.skipped.length > 0 && (
         <>
           <p>Not applied, because something changed since the proposal:</p>
@@ -157,7 +155,15 @@ export function ChangeSetReview({
     setResult(null);
     try {
       if (verb === "accept") {
-        setResult(await accept.mutateAsync(ids));
+        const applied = await accept.mutateAsync(ids);
+        const count = applied.accepted.length;
+        toast.success(count === 1 ? "1 item applied." : `${count} items applied.`);
+        // Only what needs the reviewer's attention stays on the page.
+        setResult(
+          applied.skipped.length > 0 || applied.needs_owner.length > 0
+            ? applied
+            : null,
+        );
       } else {
         await reject.mutateAsync(ids);
       }
@@ -168,10 +174,7 @@ export function ChangeSetReview({
   }
 
   return (
-    <article
-      aria-label={changeSet.title}
-      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-4"
-    >
+    <Panel aria-label={changeSet.title} className="p-4">
       <h4 className={`${h4Classes} flex flex-wrap items-center gap-2`}>
         {link ? (
           <Link
@@ -264,7 +267,7 @@ export function ChangeSetReview({
       )}
       {problem && <ErrorText>{problem}</ErrorText>}
       {result && <Report result={result} />}
-    </article>
+    </Panel>
   );
 }
 
@@ -319,12 +322,14 @@ export function ChangeSetPage({
   }
   return (
     <div className="flex max-w-3xl flex-col gap-3">
-      <p>
-        <Link href={`/workspaces/${workspaceId}`} className={linkClasses}>
-          {workspace.data.name}
-        </Link>
-      </p>
-      <h2 className="text-2xl font-semibold tracking-[-0.01em]">Change Set</h2>
+      <PageHead
+        title="Change Set"
+        description={
+          <Link href={`/workspaces/${workspaceId}`} className={linkClasses}>
+            {workspace.data.name}
+          </Link>
+        }
+      />
       <ChangeSetReview workspace={workspace.data} changeSetId={changeSetId} />
     </div>
   );

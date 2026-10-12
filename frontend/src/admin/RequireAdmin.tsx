@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { useMe } from "../api/queries";
+import { ErrorText } from "./parts";
 
 /**
  * Renders `children` for an admin. Use inside the signed-in layout. The API checks
@@ -12,9 +13,7 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
   const me = useMe();
   if (me.data?.system_role !== "admin") {
     return (
-      <p className="page" role="alert">
-        Only an administrator can see this page.
-      </p>
+      <ErrorText>Only an administrator can see this page.</ErrorText>
     );
   }
   return children;

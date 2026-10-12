@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
 import { useMe } from "../api/queries";
+import { ErrorText } from "../admin/parts";
 import { Loading } from "../shell/Loading";
 import { loginPath } from "./returnPath";
 
@@ -36,9 +37,7 @@ export function RequireSignIn({ children }: { children: ReactNode }) {
   }
   if (me.isError) {
     return (
-      <p className="page" role="alert">
-        Could not check your session: {me.error.message}
-      </p>
+      <ErrorText>Could not check your session: {me.error.message}</ErrorText>
     );
   }
   if (anonymous || misplaced) {

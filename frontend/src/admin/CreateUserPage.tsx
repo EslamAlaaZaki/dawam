@@ -8,7 +8,7 @@ import { useCreateUser } from "../api/users";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import { ErrorText, NativeSelect, PageHead, labelClasses, formCardClasses } from "./parts";
 
 /**
  * Create a user with a temporary password (story 15a): they must change it at first
@@ -45,7 +45,7 @@ export function CreateUserPage() {
         description="Set up an account with a temporary password the user replaces at first sign-in."
       />
       <form
-        className="flex flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+        className={formCardClasses}
         onSubmit={onSubmit}
       >
         <label className={labelClasses}>

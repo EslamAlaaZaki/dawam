@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 // Components use Next.js's router; tests drive an in-memory one instead.
@@ -30,6 +30,11 @@ if (typeof window !== "undefined") {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// The full suite runs many jsdom workers at once; a screen that renders in 100ms alone can
+// take over Testing Library's 1s default to appear then. That made the star diagram and
+// profiling tests fail in the full run and pass alone, so wait as long as a slow run needs.
+configure({ asyncUtilTimeout: 8000 });
 
 afterEach(() => {
   cleanup();

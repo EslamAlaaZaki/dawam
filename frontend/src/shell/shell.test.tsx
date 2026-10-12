@@ -51,6 +51,31 @@ async function openUserMenu(name: string) {
   openMenu(await within(header).findByRole("button", { name }));
 }
 
+describe("keyboard use of the frame", () => {
+  it("starts with a link that skips the navigation, to the page", async () => {
+    renderApp(backend(ADA), "/");
+
+    const skip = await screen.findByRole("link", { name: "Skip to the page" });
+    expect(skip).toHaveAttribute("href", "#main");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main");
+    expect(screen.getByRole("main")).toHaveAttribute("tabindex", "-1");
+    // Nothing comes before it in the tab order.
+    expect(
+      document.body.querySelector("a[href], button, input, select, textarea"),
+    ).toBe(skip);
+  });
+
+  it("names every icon-only button in the header", async () => {
+    renderApp(backend(ADA), "/");
+
+    const header = await screen.findByRole("banner");
+    await within(header).findByRole("button", { name: "Ada Lovelace" });
+    for (const button of within(header).getAllByRole("button")) {
+      expect(button).toHaveAccessibleName();
+    }
+  });
+});
+
 describe("the theme choice in the user menu", () => {
   it("offers System, Light and Dark, starting on System", async () => {
     renderApp(backend(ADA), "/");

@@ -30,7 +30,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       className={cn(
         fieldClasses,
-        "flex h-[34px] items-center justify-between gap-2 text-left whitespace-nowrap data-[placeholder]:text-sand-9 [&>span]:truncate",
+        "flex h-[34px] items-center justify-between gap-2 text-left whitespace-nowrap data-[placeholder]:text-sand-10 [&>span]:truncate",
         className,
       )}
       {...props}

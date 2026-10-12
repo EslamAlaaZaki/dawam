@@ -5,6 +5,7 @@ import { splitFrames } from "../api/assistant";
 import type { ConversationDetail, Run } from "../api/assistant";
 import type { Me } from "../api/queries";
 import type { Workspace } from "../api/workspaces";
+import { currentLocation } from "../test/navigation";
 import {
   CSRF_TOKEN,
   json,
@@ -580,13 +581,12 @@ describe("explaining and fixing a failed check", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Fix impacts" }));
 
-    expect(
-      await screen.findByRole("link", { name: "Review it" }),
-    ).toHaveAttribute(
-      "href",
+    // The confirmation is a Toast, whose action opens the Change Set.
+    expect(await screen.findByText(/1 impacted Asset\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review it" }));
+    expect(currentLocation()).toBe(
       `/workspaces/${WORKSPACE_ID}/change-sets/77777777-7777-4777-8777-777777777777`,
     );
-    expect(screen.getByText(/1 impacted Asset\./)).toBeInTheDocument();
     expect(
       requests.find(
         (r) => r.method === "POST" && r.path === `${API}/fix-impacts`,

@@ -62,7 +62,7 @@ export function StarDiagram({
   }));
 
   return (
-    <div className="star-diagram dawam-flow" role="group" aria-label="Star diagram" style={{ height: 520 }}>
+    <div className="dawam-flow" role="group" aria-label="Star diagram" style={{ height: 520 }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -30,11 +30,9 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
-  labelClasses,
-} from "./parts";
+  labelClasses, formCardClasses, h3Classes } from "./parts";
 
-const cardClasses =
-  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+const cardClasses = formCardClasses;
 
 /** Model roles, monthly token budgets and AI usage (admins only). */
 export function LlmSettingsPage() {
@@ -118,11 +116,11 @@ function RolesSection() {
 
   return (
     <form className={cardClasses} onSubmit={onSubmit} aria-label="Model roles">
-      <h3 className="text-lg font-semibold">Model roles</h3>
+      <h3 className={h3Classes}>Model roles</h3>
       {roles.data.reindex_needed && (
         <p
           role="status"
-          className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5 text-sm"
+          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
         >
           Documents must be indexed again: the embedding model or its vector
           dimension changed.
@@ -197,7 +195,7 @@ function BudgetsSection() {
   const failure = setInstallation.error ?? setWorkspace.error ?? clear.error;
   return (
     <div className="flex flex-col gap-3.5">
-      <h3 className="text-lg font-semibold">Monthly token budgets</h3>
+      <h3 className={h3Classes}>Monthly token budgets</h3>
       <form
         className={cardClasses}
         onSubmit={onInstallation}
@@ -284,7 +282,7 @@ function UsageSection() {
   const usage = useLlmUsage(month || undefined);
   return (
     <div className="flex flex-col gap-3.5">
-      <h3 className="text-lg font-semibold">Usage</h3>
+      <h3 className={h3Classes}>Usage</h3>
       <label className={`${labelClasses} w-48`}>
         Month
         <Input

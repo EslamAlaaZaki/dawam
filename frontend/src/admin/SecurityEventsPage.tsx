@@ -23,8 +23,7 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
-  labelClasses,
-} from "./parts";
+  labelClasses, EmptyState } from "./parts";
 
 /** The event types DAWAM records, for the filter. */
 const EVENT_TYPES = [
@@ -146,7 +145,7 @@ export function SecurityEventsPage() {
             </Table>
           </TableCard>
           {events.data.pages[0]?.items.length === 0 && (
-            <p className="text-sand-11">No events match.</p>
+            <EmptyState>No events match.</EmptyState>
           )}
           {events.hasNextPage && (
             <Button

@@ -259,9 +259,7 @@ describe("a Source System's Source Schema", () => {
       await screen.findByRole("button", { name: "Extract metadata" }),
     );
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Extraction started",
-    );
+    expect(await screen.findByText(/Extraction started/)).toBeVisible();
     await waitFor(() =>
       expect(screen.getByRole("list", { name: "Snapshots" })).toHaveTextContent(
         "Latest",

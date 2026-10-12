@@ -20,6 +20,7 @@ import {
   h3Classes,
   h4Classes,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 type Selected = { kind: "system" | "table"; id: string } | null;
 
@@ -131,7 +132,7 @@ function SystemReview({
   const review = useSystemDeletion(workspaceId, systemId);
   const purge = usePurgeSourceSystem(workspaceId);
   if (review.isPending) {
-    return <p>Loading…</p>;
+    return <Loading className="p-0" />;
   }
   if (review.isError) {
     return (
@@ -204,7 +205,7 @@ function TableReview({
   const review = useTableDeletion(workspaceId, tableId);
   const purge = usePurgeDwTable(workspaceId);
   if (review.isPending) {
-    return <p>Loading…</p>;
+    return <Loading className="p-0" />;
   }
   if (review.isError) {
     return (

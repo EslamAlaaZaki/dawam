@@ -13,6 +13,7 @@ import {
 } from "../api/profiling";
 import { allows, type Workspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
 import {
   Table,
   TableBody,
@@ -25,11 +26,11 @@ import {
   Actions,
   EmptyState,
   ErrorText,
-  OkText,
   TableCard,
   h5Classes,
   monoClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 /**
  * A table's profile (spec stories 55-57): per column the sampled row count, null %,
@@ -85,18 +86,20 @@ export function ProfilePanel({
           <Button
             type="button"
             disabled={start.isPending}
-            onClick={() => start.mutate(tableId)}
+            onClick={() =>
+              start.mutate(tableId, {
+                onSuccess: () =>
+                  toast.success(
+                    "Profiling started. Follow it under Background jobs.",
+                  ),
+              })
+            }
           >
             Profile this table
           </Button>
         </Actions>
       )}
       {start.isError && <ErrorText>{start.error.message}</ErrorText>}
-      {start.isSuccess && (
-        <OkText role="status">
-          Profiling started. Follow it under Background jobs.
-        </OkText>
-      )}
       {canSwitch && profile.isSuccess && (
         <label className="flex items-center gap-2">
           <input
@@ -112,7 +115,7 @@ export function ProfilePanel({
       )}
       {topN.isError && <ErrorText>{topN.error.message}</ErrorText>}
       {profile.isPending && (
-        <p className="text-sand-11">Loading the profile…</p>
+        <Loading label="Loading the profile…" className="p-0" />
       )}
       {profile.isError && (
         <ErrorText>

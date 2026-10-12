@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { AuthCard, AuthError, AuthField, AuthHint, authLinkClasses } from "./AuthFrame";
 import { useFragmentToken } from "./fragmentToken";
+import { ErrorText } from "../admin/parts";
 
 export function ResetPasswordPage() {
   const token = useFragmentToken();
@@ -47,9 +48,9 @@ export function ResetPasswordPage() {
   ) {
     content = (
       <>
-        <p role="alert" className="text-red-11">
+        <ErrorText>
           This reset link is invalid, used or expired. Links work once, for 30 minutes.
-        </p>
+        </ErrorText>
         <AuthHint className="text-center">
           <a href="/forgot-password" className={authLinkClasses}>
             Ask for a new link

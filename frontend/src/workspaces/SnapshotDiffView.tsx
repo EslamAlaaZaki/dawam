@@ -17,6 +17,7 @@ import {
   listCardClasses,
   monoClasses,
 } from "./parts";
+import { Loading } from "../shell/Loading";
 
 type FieldChange = SnapshotDiff["tables"][number]["fields"][number];
 
@@ -86,7 +87,7 @@ export function SnapshotDiffView({
           </NativeSelect>
         </label>
       </div>
-      {diff.isPending && <p className="text-sand-11">Loading…</p>}
+      {diff.isPending && <Loading className="p-0" />}
       {diff.isError && (
         <ErrorText>Could not compare: {diff.error.message}</ErrorText>
       )}

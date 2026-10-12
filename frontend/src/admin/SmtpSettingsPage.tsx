@@ -14,10 +14,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import { ErrorText, NativeSelect, PageHead, labelClasses, formCardClasses } from "./parts";
 
-const cardClasses =
-  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+const cardClasses = formCardClasses;
 
 const SECURITY_OPTIONS: {
   value: SmtpSettingsInput["security"];
@@ -174,7 +173,9 @@ function TestEmail() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    send.mutate(to.trim() || null);
+    send.mutate(to.trim() || null, {
+      onSuccess: (sent) => toast.success(`Test email sent to ${sent.to}.`),
+    });
   }
 
   return (
@@ -192,11 +193,6 @@ function TestEmail() {
       <Button type="submit" className="self-start" disabled={send.isPending}>
         Send test email
       </Button>
-      {send.isSuccess && (
-        <p className="text-sm text-sand-11" role="status">
-          Test email sent to {send.data.to}.
-        </p>
-      )}
       {send.isError && <ErrorText>{send.error.message}</ErrorText>}
     </form>
   );

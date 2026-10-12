@@ -11,6 +11,7 @@ import {
 } from "../components/ui/popover";
 import { FolderTree } from "./FolderTree";
 import { useWorkspaceFolders } from "./useWorkspaceFolders";
+import { Loading } from "../shell/Loading";
 
 /** The Workspace's id when `pathname` is a Workspace's page (not "new", not a sub-page). */
 export function workspaceIdOf(pathname: string): string | null {
@@ -34,7 +35,7 @@ function SwitcherList({ currentId }: { currentId: string }) {
   return (
     <>
       {workspaces.isPending && (
-        <p className="px-2 py-1 text-sand-11">Loading…</p>
+        <Loading className="px-2 py-1" />
       )}
       {workspaces.isError && (
         <p role="alert" className="px-2 py-1">

@@ -60,7 +60,9 @@ describe("editing the display name", () => {
     fireEvent.change(input, { target: { value: "Countess of Lovelace" } });
     fireEvent.click(screen.getByRole("button", { name: "Save name" }));
 
-    expect(await screen.findByText("Display name saved.")).toBeInTheDocument();
+    const saved = await screen.findByText("Display name saved.");
+    // A Toast, not a line in the form.
+    expect(saved.closest("[data-sonner-toast]")).not.toBeNull();
     const header = screen.getByRole("banner");
     expect(within(header).getByText("Countess of Lovelace")).toBeInTheDocument();
     expect(api.requests.find((r) => r.method === "PATCH")).toEqual({
@@ -91,9 +93,7 @@ describe("changing the password", () => {
     await changePassword(PASSWORD, "a brand new passphrase");
 
     expect(
-      await within(passwordSection()).findByText(
-        "Password changed. Your other sessions have been signed out.",
-      ),
+      await screen.findByText("Password changed. Your other sessions have been signed out."),
     ).toBeInTheDocument();
     expect(within(passwordSection()).getByLabelText("Current password")).toHaveValue("");
     expect(api.requests.find((r) => r.path === "/api/v1/auth/password/change")).toEqual({

@@ -16,13 +16,14 @@ import { useSourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
 import { PiiMarker } from "../diagrams/PiiMarker";
-import { EmptyState, Hint, NativeSelect, Panel, h3Classes, labelClasses } from "./parts";
+import { EmptyState, Hint, NativeSelect, Panel, h3Classes, labelClasses, ErrorText } from "./parts";
 import {
   filterGraph,
   qualified,
   relationshipEdges,
   type ErEdge,
 } from "./erGraph";
+import { Loading } from "../shell/Loading";
 
 type SourceTable = NonNullable<ReturnType<typeof useSourceSchema>["data"]>["tables"][number];
 
@@ -65,11 +66,11 @@ export function SourceErDiagram({
   }, [schema.data, accepted.data, dbSchema, tableId]);
 
   if (schema.isPending || accepted.isPending) {
-    return <p>Loading the ER diagram…</p>;
+    return <Loading label="Loading the ER diagram…" className="p-0" />;
   }
   if (schema.isError || accepted.isError) {
     const message = (schema.error ?? accepted.error)?.message;
-    return <p role="alert">Could not load the ER diagram: {message}</p>;
+    return <ErrorText>Could not load the ER diagram: {message}</ErrorText>;
   }
   if (!graph) {
     return null;
@@ -155,7 +156,7 @@ export function SourceErDiagram({
         <EmptyState>No tables match these filters.</EmptyState>
       ) : (
         <div
-          className="er-diagram dawam-flow"
+          className="dawam-flow"
           style={{ height: 480 }}
           aria-label="ER diagram canvas"
         >

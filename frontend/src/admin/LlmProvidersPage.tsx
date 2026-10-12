@@ -16,10 +16,9 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import { ErrorText, NativeSelect, PageHead, labelClasses, EmptyState, formCardClasses, h3Classes } from "./parts";
 
-const cardClasses =
-  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+const cardClasses = formCardClasses;
 
 const ROLE_LABELS: Record<LlmModel["roles"][number], string> = {
   agent: "Agent",
@@ -53,14 +52,14 @@ export function LlmProvidersPage() {
       {setup.data?.complete && !setup.data.has_internal_agent_model && (
         <p
           role="status"
-          className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5"
+          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5"
         >
           No internal agent model is registered: new Workspaces will default to
           not internal-only.
         </p>
       )}
       {providers.data.length === 0 ? (
-        <p className="text-sand-11">No provider is registered yet.</p>
+        <EmptyState>No provider is registered yet.</EmptyState>
       ) : (
         providers.data.map((provider) => (
           <ProviderCard key={provider.id} provider={provider} />
@@ -98,7 +97,7 @@ function ProviderForm() {
       onSubmit={onSubmit}
       aria-label="Add a provider"
     >
-      <h3 className="text-lg font-semibold">Add a provider</h3>
+      <h3 className={h3Classes}>Add a provider</h3>
       <label className={labelClasses}>
         Name
         <Input name="name" required />
@@ -162,7 +161,7 @@ function ProviderCard({ provider }: { provider: LlmProvider }) {
       className="flex max-w-3xl flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-5"
       aria-label={`Provider ${provider.name}`}
     >
-      <h3 className="text-lg font-semibold">
+      <h3 className={h3Classes}>
         {provider.name}{" "}
         <span className="font-normal text-sand-11">
           ({provider.internal ? "internal" : "external"})
@@ -174,7 +173,7 @@ function ProviderCard({ provider }: { provider: LlmProvider }) {
         {provider.timeout_seconds} s
       </p>
       {provider.models.length === 0 ? (
-        <p className="text-sand-11">No models yet.</p>
+        <EmptyState>No models yet.</EmptyState>
       ) : (
         <ul className="flex flex-col divide-y divide-sand-4 rounded-lg border border-sand-4">
           {provider.models.map((model) => (
