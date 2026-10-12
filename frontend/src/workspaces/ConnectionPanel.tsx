@@ -95,7 +95,7 @@ function ConnectionSection({
   }
   return (
     <ConnectionForm
-      // Stable across the first save, so its "Connection saved." message is not lost.
+      // Stable across the first save, so the form keeps its state.
       key={system.id}
       workspaceId={workspace.id}
       systemId={system.id}
