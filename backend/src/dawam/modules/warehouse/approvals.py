@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 import weakref
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -414,10 +414,20 @@ def _view(layer: str, row: LayerApprovalRecord | None) -> LayerApproval:
 class ApprovalService:
     """Reading and moving the Layer Approval of Core and Mart. Every method authorizes."""
 
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        gate: Callable[[uuid.UUID, str], None] | None = None,
+    ) -> None:
+        """``gate(workspace_id, layer)`` raises when the Layer may not be approved (the score
+        gate, spec §6.11); the composition root hands it in. Without it nothing gates."""
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._gate = gate
 
     def list(self, user: User, workspace_id: uuid.UUID) -> list[LayerApproval]:
         """Core's and Mart's approval (any member). 404 ``not_set_up`` before setup."""
@@ -434,11 +444,24 @@ class ApprovalService:
             }
             return [_view(layer, rows.get(layer)) for layer in APPROVAL_LAYERS]
 
+    def _require_core_approved(self, workspace_id: uuid.UUID) -> None:
+        with Session(self._engine) as db:
+            warehouse = _warehouse(db, workspace_id)
+            core = db.scalars(
+                sa.select(LayerApprovalRecord.status).where(
+                    LayerApprovalRecord.data_warehouse_id == warehouse.id,
+                    LayerApprovalRecord.layer == "core",
+                )
+            ).first()
+        if core != "approved":
+            raise _core_not_approved()
+
     def move(self, user: User, workspace_id: uuid.UUID, layer: str, status: str) -> LayerApproval:
         """Move the Core or Mart Layer to ``status`` (owners and editors). 422
         ``no_layer_approval`` for staging; 409 ``core_not_approved`` when approving Mart while
         Core is not approved; 409 ``approver_is_last_editor`` when the Workspace requires a
-        different approver and ``user`` last edited the Layer. Moving Core away from
+        different approver and ``user`` last edited the Layer; 409 ``score_gate_failed`` when
+        the Layer's gate is set and it has errors or scores below the minimum. Moving Core away from
         ``approved`` returns an approved Mart to ``draft``."""
         self._workspaces.authorize(user, Action.APPROVE_LAYER, workspace_id)
         if layer not in APPROVAL_LAYERS:
@@ -447,6 +470,13 @@ class ApprovalService:
             )
         if status not in APPROVAL_STATUSES:
             raise ApiError(422, "validation_error", f"Unknown status {status!r}.")
+        if status == "approved" and self._gate is not None:
+            # Before the transaction: the gate rescores in sessions of its own, which would
+            # wait for the row locks taken below. Mart's Core check goes first, so an
+            # unapproved Core is named as the cause.
+            if layer == "mart":
+                self._require_core_approved(workspace_id)
+            self._gate(workspace_id, layer)
         distinct = status == "approved" and self._workspaces.requires_distinct_approver(
             workspace_id
         )
@@ -459,11 +489,7 @@ class ApprovalService:
                 return _view(layer, row)
             if status == "approved":
                 if layer == "mart" and core.status != "approved":
-                    raise ApiError(
-                        409,
-                        "core_not_approved",
-                        "The Mart Layer can be approved only while the Core Layer is approved.",
-                    )
+                    raise _core_not_approved()
                 if distinct and row.last_editor_id == user.id:
                     raise ApiError(
                         409,
@@ -477,6 +503,14 @@ class ApprovalService:
                 _revoke_mart(db, warehouse.id, workspace_id=workspace_id, actor_id=user.id, now=now)
             db.flush()
             return _view(layer, row)
+
+
+def _core_not_approved() -> ApiError:
+    return ApiError(
+        409,
+        "core_not_approved",
+        "The Mart Layer can be approved only while the Core Layer is approved.",
+    )
 
 
 def _warehouse(db: Session, workspace_id: uuid.UUID) -> DataWarehouseRecord:

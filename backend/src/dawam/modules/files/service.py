@@ -183,7 +183,11 @@ class FileService:
         self, user: User, workspace_id: uuid.UUID, *, name: str, data: bytes
     ) -> WorkspaceFile:
         """Like ``save_generated``, into the Data Warehouse's file area (404 before set up)."""
-        return self.upload_to_warehouse(user, workspace_id, filename=name, content=io.BytesIO(data))
+        self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
+        area = self._warehouse_area(user, workspace_id)
+        return self._put(
+            user, workspace_id, area, filename=name, content=io.BytesIO(data), kind="generated"
+        )
 
     def _system_area(self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID) -> _Area:
         system = self._systems.get(user, workspace_id, system_id)
@@ -443,6 +447,9 @@ class FileService:
         upload's name is), or ``None``; any member."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         area = self._system_area(user, workspace_id, system_id)
+        return self._find(workspace_id, area, name)
+
+    def _find(self, workspace_id: uuid.UUID, area: _Area, name: str) -> WorkspaceFile | None:
         with Session(self._engine) as db:
             record = db.scalars(
                 sa.select(WorkspaceFileRecord).where(
@@ -453,6 +460,14 @@ class FileService:
                 )
             ).first()
             return None if record is None else _view(record)
+
+    def find_in_warehouse(
+        self, user: User, workspace_id: uuid.UUID, name: str
+    ) -> WorkspaceFile | None:
+        """Like ``find_in_system``, in the Data Warehouse's file area."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        area = self._warehouse_area(user, workspace_id)
+        return self._find(workspace_id, area, name)
 
     def list_for_warehouse(
         self,

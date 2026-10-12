@@ -497,7 +497,7 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
 
     ask(client, roles, conversation(client, roles), "hello")
 
-    offered = tool_names(fake_llm) - {"generate_file", "start_job", "suggest_kpis"}
+    offered = tool_names(fake_llm) - {"generate_file", "update_file", "start_job", "suggest_kpis"}
     extra = (
         {
             "get_pii_findings",

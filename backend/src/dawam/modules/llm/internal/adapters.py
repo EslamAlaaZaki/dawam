@@ -18,6 +18,7 @@ from ..gateway import Adapter
 from .anthropic import AnthropicAdapter
 from .azure_openai import AzureOpenAIAdapter
 from .bedrock import BedrockAdapter
+from .e2e import E2eAdapter
 from .gemini import GeminiAdapter
 from .openai_compatible import OpenAICompatibleAdapter
 from .transport import Transport, UrllibTransport
@@ -64,6 +65,12 @@ def plugin_factories() -> dict[str, PluginAdapterFactory]:
                 "LLM provider plugin %r could not be loaded (%s)", entry.name, type(exc).__name__
             )
     return found
+
+
+def fake_adapter_factory(kind: str, config: AdapterConfig) -> Adapter:
+    """For ``DAWAM_FAKE_LLM``: every provider kind is the rule-based fake of the browser
+    end-to-end suite, so no model is ever called."""
+    return E2eAdapter()
 
 
 def adapter_kinds() -> tuple[str, ...]:

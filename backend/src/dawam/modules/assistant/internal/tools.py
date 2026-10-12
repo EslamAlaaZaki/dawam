@@ -32,6 +32,7 @@ from dawam.modules.lineage import LineageService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
+    DataDictionaryService,
     PiiService,
     ProfilingService,
     QueryBudget,
@@ -40,6 +41,7 @@ from dawam.modules.sources import (
     SourceQueryService,
 )
 from dawam.modules.warehouse import (
+    DdlService,
     EvaluationService,
     Finding,
     FindingItem,
@@ -47,6 +49,7 @@ from dawam.modules.warehouse import (
     GeneratedTable,
     GenerationPlan,
     GenerationService,
+    MappingExportService,
     ScoreService,
     ValidationService,
 )
@@ -83,6 +86,9 @@ class ToolServices:
     jobs: JobService
     generation: GenerationService
     relationships: RelationshipService
+    ddl: DdlService
+    mapping_exports: MappingExportService
+    dictionaries: DataDictionaryService
 
 
 @dataclass(frozen=True)
@@ -274,14 +280,49 @@ class _ReadFile(BaseModel):
     file_id: uuid.UUID
 
 
+FileKind = Literal["text", "ddl", "mapping_sheet", "data_dictionary"]
+
+
 class _GenerateFile(BaseModel):
-    system_id: uuid.UUID = Field(description="The Source System whose file area gets the file.")
-    name: str = Field(min_length=1, max_length=200, description="File name, e.g. `notes.md`.")
-    content: str = Field(max_length=200_000, description="The file's text.")
+    kind: FileKind = Field(
+        default="text",
+        description="`text` saves the `content` you write (Markdown, SQL, CSV...); `ddl` saves "
+        "the Data Warehouse's DDL package, `mapping_sheet` its Core and Mart mapping sheet "
+        "(XLSX) and `data_dictionary` a Source System's data dictionary (XLSX), all produced by "
+        "the exporters.",
+    )
+    system_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Source System whose file area gets the file; leave out for the Data "
+        "Warehouse's file area (always so for `ddl` and `mapping_sheet`, never for "
+        "`data_dictionary`).",
+    )
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="File name, e.g. `notes.md`; needed for `text`, an exporter has its own.",
+    )
+    content: str = Field(
+        default="", max_length=200_000, description="The file's text; only for `text`."
+    )
+    layer: Literal["staging", "core", "mart"] | None = Field(
+        default=None, description="Limit `ddl` or `mapping_sheet` to one Layer."
+    )
     replace: bool = Field(
         default=False,
         description="Set only after the user has seen the diff of an existing file and agreed "
         "to overwrite it.",
+    )
+
+
+class _UpdateFile(BaseModel):
+    file_id: uuid.UUID = Field(description="The text file's id, from list_files.")
+    content: str = Field(
+        max_length=200_000, description="The file's complete new text, not just the change."
+    )
+    title: str = Field(
+        default="Update file", min_length=1, max_length=200, description="A short title."
     )
 
 
@@ -1154,43 +1195,107 @@ def _run_validation(ctx: ToolContext, args: _RunValidation) -> Any:
     }
 
 
-def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
+def _unified_diff(name: str, before: str, after: str) -> str:
+    return "".join(
+        difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=f"{name} (saved)",
+            tofile=f"{name} (new)",
+        )
+    )[:MAX_FILE_TEXT_CHARS]
+
+
+def _export(ctx: ToolContext, args: _GenerateFile) -> tuple[str, bytes]:
+    """The name and bytes of the file: the exporters' for DDL and XLSX, the model's text else."""
+    services = ctx.services
+    if args.kind == "ddl":
+        package = services.ddl.export(ctx.user, ctx.workspace_id, layer=args.layer)
+        return package.name, package.data
+    if args.kind == "mapping_sheet":
+        if args.layer == "staging":
+            raise ApiError(422, "invalid_layer", "The mapping sheet covers Core and Mart.")
+        sheet = services.mapping_exports.export(
+            ctx.user, ctx.workspace_id, fmt="xlsx", layer=args.layer
+        )
+        return sheet.name, sheet.data
+    if args.kind == "data_dictionary":
+        if args.system_id is None:
+            raise ApiError(422, "invalid_request", "A data dictionary needs a system_id.")
+        dictionary = services.dictionaries.export(ctx.user, ctx.workspace_id, args.system_id)
+        return dictionary.name, dictionary.data
+    if not args.name:
+        raise ApiError(422, "invalid_request", "A text file needs a name.")
     # Model-written text may quote a value it saw: validator-detectable PII is redacted.
-    name = redact_text(args.name).strip()
-    content = redact_text(args.content)
+    return redact_text(args.name).strip(), redact_text(args.content).encode()
+
+
+def _generate_file(ctx: ToolContext, args: _GenerateFile) -> Any:
+    name, data = _export(ctx, args)
     files = ctx.services.files
-    existing = files.find_in_system(ctx.user, ctx.workspace_id, args.system_id, name)
+    # DDL and the mapping sheet describe the Data Warehouse, so they go to its file area.
+    system_id = None if args.kind in ("ddl", "mapping_sheet") else args.system_id
+    if system_id is None:
+        existing = files.find_in_warehouse(ctx.user, ctx.workspace_id, name)
+    else:
+        existing = files.find_in_system(ctx.user, ctx.workspace_id, system_id, name)
     if existing is not None:
         name = existing.name
     if existing is not None and not args.replace:
         # Files are overwritten in place with no history, so the user sees the change first.
         try:
-            before = files.read_text(ctx.user, ctx.workspace_id, existing.id).content
+            before: str | None = files.read_text(ctx.user, ctx.workspace_id, existing.id).content
         except ApiError:  # a binary file has no text to compare
             before = None
-        if before == content:
+        after = data.decode(errors="replace") if args.kind in ("text", "ddl") else None
+        if before is not None and before == after:
             return {"status": "unchanged", "name": name, "note": "The file already has this text."}
-        diff = None
-        if before is not None:
-            diff = "".join(
-                difflib.unified_diff(
-                    before.splitlines(keepends=True),
-                    content.splitlines(keepends=True),
-                    fromfile=f"{name} (saved)",
-                    tofile=f"{name} (new)",
-                )
-            )[:MAX_FILE_TEXT_CHARS]
+        diff = None if before is None or after is None else _unified_diff(name, before, after)
         return {
             "status": "needs_confirmation",
             "name": name,
             "diff": diff,
-            "note": "A file with this name exists and was NOT changed. Show the user this diff "
-            "and ask whether to overwrite it; only if they agree, call generate_file again "
-            "with the same content and replace=true.",
+            "note": "A file with this name exists and was NOT changed. Show the user "
+            + ("this diff and ask" if diff else "that and ask")
+            + " whether to overwrite it; only if they agree, call generate_file again "
+            "with the same arguments and replace=true.",
         }
-    return files.save_generated(
-        ctx.user, ctx.workspace_id, args.system_id, name=name, data=content.encode()
+    if system_id is None:
+        return files.save_generated_to_warehouse(ctx.user, ctx.workspace_id, name=name, data=data)
+    return files.save_generated(ctx.user, ctx.workspace_id, system_id, name=name, data=data)
+
+
+def _update_file(ctx: ToolContext, args: _UpdateFile) -> Any:
+    """The file is not changed: the new text becomes a Change Set the user accepts."""
+    content = redact_text(args.content)
+    current = ctx.services.files.read_text(ctx.user, ctx.workspace_id, args.file_id)
+    if current.content == content:
+        return {"status": "unchanged", "name": current.file.name}
+    detail = ctx.services.change_sets.propose(
+        ctx.user,
+        ctx.workspace_id,
+        origin="ai",
+        scope={"kind": "file", "file_id": str(args.file_id)},
+        title=args.title,
+        conversation_id=ctx.conversation_id,
+        items=[
+            ProposedItem(
+                key="file",
+                object_type="file",
+                operation="update",
+                object_id=args.file_id,
+                payload={"content": content},
+                label=current.file.name,
+            )
+        ],
     )
+    return {
+        "change_set_id": detail.change_set.id,
+        "status": "proposed",
+        "name": current.file.name,
+        "diff": _unified_diff(current.file.name, current.content, content),
+        "note": "The user reviews this diff; the file has not been changed yet.",
+    }
 
 
 def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
@@ -1664,15 +1769,26 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "generate_file",
-        "Save a text file (e.g. Markdown) in a Source System's file area, under its Outputs. For "
-        "a gaps & enhancements report, write Markdown covering missing keys, undocumented "
-        "tables, data-quality concerns and suggested improvements, never quoting sample "
-        "values. If a file of that name exists it is not changed: you get a diff to show the "
-        "user, and overwrite only after they agree (replace=true).",
+        "Save a file in a file area: text you write (Markdown such as a gaps & enhancements "
+        "report, KPI documentation or a documentation page; never quote sample values), or "
+        "an export (`ddl`, `mapping_sheet`, `data_dictionary`) produced by the exporters. "
+        "Without a system_id it goes to the Data Warehouse's file area. If a file of that name "
+        "exists it is not changed: you get a diff to show the user, and overwrite only after "
+        "they agree (replace=true).",
         _GenerateFile,
         "write",
         Action.UPLOAD_FILE,
         _generate_file,
+    ),
+    Tool(
+        "update_file",
+        "Propose a new text for an existing text file. The user sees it as a diff in a Change "
+        "Set and the file is saved only when they accept. Read the file first and send its "
+        "complete new text.",
+        _UpdateFile,
+        "write",
+        Action.UPLOAD_FILE,
+        _update_file,
     ),
     Tool(
         "suggest_kpis",
