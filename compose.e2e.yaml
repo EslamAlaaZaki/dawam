@@ -1,0 +1,29 @@
+# The browser end-to-end suite's stack (e2e/README.md):
+#   docker compose -f compose.yaml -f compose.e2e.yaml up --build --wait
+# It adds a seeded PostgreSQL source (`source-db`), a first admin, a fast worker, and the
+# rule-based fake LLM provider (DAWAM_FAKE_LLM): no model is ever called.
+
+services:
+  app:
+    environment: &e2e
+      DAWAM_FAKE_LLM: "true"
+      DAWAM_ADMIN_EMAIL: admin@example.com
+      DAWAM_ADMIN_PASSWORD: e2e-admin-Passw0rd-2026
+      DAWAM_WORKER_POLL_SECONDS: "1"
+      DAWAM_SCORE_DEBOUNCE_SECONDS: "0"
+  worker:
+    environment: *e2e
+
+  source-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: source
+      POSTGRES_PASSWORD: source
+      POSTGRES_DB: shop
+    volumes:
+      - ./e2e/source-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U source -d shop"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

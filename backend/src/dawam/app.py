@@ -29,7 +29,12 @@ from dawam.modules.changesets import reject_pending_change_sets
 from dawam.modules.files import DocumentAiPolicy
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.kpis import kpi_formulas_check, kpis_for_score
-from dawam.modules.llm import AdapterFactory, adapter_for, on_workspace_created
+from dawam.modules.llm import (
+    AdapterFactory,
+    adapter_for,
+    fake_adapter_factory,
+    on_workspace_created,
+)
 from dawam.modules.mail import MailService
 from dawam.modules.sources import SourceSummaryService
 from dawam.modules.warehouse import (
@@ -92,6 +97,9 @@ def default_services() -> Services:
 def create_app(settings: Settings | None = None, *, services: Services | None = None) -> FastAPI:
     settings = settings or load_settings()
     services = services or default_services()
+    if settings.fake_llm:
+        logger.warning("DAWAM_FAKE_LLM is on: every LLM provider is a fake. Tests only.")
+        services.llm_adapters = services.llm_adapters or fake_adapter_factory
     install_request_id_on_records()
     engine = create_engine(settings.database_url)
     # The worker registers the same handlers: a job is submitted here and run there.
