@@ -23,8 +23,42 @@ import {
   type DwTableSummary,
 } from "../api/dwModel";
 import { allows, type Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import { Textarea } from "../components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { StarPanel } from "../diagrams/StarPanel";
+import { Loading } from "../shell/Loading";
 import { MappingsGrid } from "./MappingsGrid";
+import {
+  Actions,
+  DetailList,
+  EmptyState,
+  ErrorText,
+  Hint,
+  NativeSelect,
+  TableCard,
+  checkClasses,
+  checkLabelClasses,
+  h3Classes,
+  h5Classes,
+  labelClasses,
+  linkButtonClasses,
+  monoClasses,
+} from "./parts";
+
+/** A form below the table detail: a hairline above, the controls stacked. */
+const subFormClasses =
+  "flex max-w-xl flex-col gap-3.5 border-t border-sand-4 pt-4";
 
 const LAYER_LABELS: Record<DwLayer, string> = {
   staging: "Staging",
@@ -100,10 +134,12 @@ export function ModelPanel({
   const editable = layer !== "staging" && allows(workspace, "dw_schema.edit");
 
   if (tables.isPending) {
-    return <p>Loading…</p>;
+    return <Loading />;
   }
   if (tables.isError) {
-    return <p role="alert">Could not load the model: {tables.error.message}</p>;
+    return (
+      <ErrorText>Could not load the model: {tables.error.message}</ErrorText>
+    );
   }
   const references: Reference[] = [
     ...tables.data,
@@ -113,51 +149,68 @@ export function ModelPanel({
   ].filter((t) => t.kind === "dimension" || t.kind === "generated");
 
   return (
-    <section aria-labelledby="folder-title">
-      <h3 id="folder-title">{label} model</h3>
+    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
+      <h3 id="folder-title" className={h3Classes}>
+        {label} model
+      </h3>
       {tables.data.length === 0 ? (
-        <p className="empty-state">
+        <EmptyState>
           No tables in the {label} Layer yet.
           {layer === "staging" &&
             " Staging Tables are created from the Source Schema."}
-        </p>
+        </EmptyState>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Kind</th>
-              <th scope="col">Grain / history</th>
-              <th scope="col">Columns</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tables.data.map((table) => (
-              <tr key={table.id}>
-                <td>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => setOpenId(table.id)}
-                  >
-                    {table.name}
-                  </button>
-                  {table.naming_violation_count > 0 && (
-                    <small role="status">
-                      {" "}
-                      Naming: {table.naming_violation_count} to fix
-                    </small>
-                  )}
-                </td>
-                <td>{KIND_LABELS[table.kind] ?? table.kind}</td>
-                <td>{tableDetail(table)}</td>
-                <td>{table.column_count}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableCard
+          footer={
+            <span>
+              {tables.data.length}{" "}
+              {tables.data.length === 1 ? "table" : "tables"}
+            </span>
+          }
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Name</TableHead>
+                <TableHead scope="col">Kind</TableHead>
+                <TableHead scope="col">Grain / history</TableHead>
+                <TableHead scope="col">Columns</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tables.data.map((table) => (
+                <TableRow key={table.id}>
+                  <TableCell>
+                    <button
+                      type="button"
+                      className={linkButtonClasses}
+                      aria-current={table.id === openId ? "true" : undefined}
+                      onClick={() => setOpenId(table.id)}
+                    >
+                      {table.name}
+                    </button>
+                    {table.naming_violation_count > 0 && (
+                      <Badge variant="warning" role="status" className="ml-2">
+                        Naming: {table.naming_violation_count} to fix
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge>{KIND_LABELS[table.kind] ?? table.kind}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sand-11">
+                    {tableDetail(table)}
+                  </TableCell>
+                  <TableCell>{table.column_count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
-      {layer !== "staging" && <StarPanel workspaceId={workspace.id} layer={layer} />}
+      {layer !== "staging" && (
+        <StarPanel workspaceId={workspace.id} layer={layer} />
+      )}
       {openId && (
         <TableDetails
           // Another table starts with fresh forms.
@@ -177,7 +230,7 @@ export function ModelPanel({
         />
       ) : (
         layer !== "staging" && (
-          <p>Only owners and editors can edit the model.</p>
+          <Hint>Only owners and editors can edit the model.</Hint>
         )
       )}
     </section>
@@ -222,15 +275,15 @@ function AddTableForm({
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label="Add table">
-      <h4>Add a table</h4>
-      <label>
+    <form className={subFormClasses} onSubmit={onSubmit} aria-label="Add table">
+      <h4 className={h5Classes}>Add a table</h4>
+      <label className={labelClasses}>
         Name
-        <input name="name" required maxLength={128} />
+        <Input name="name" required maxLength={128} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Kind
-        <select
+        <NativeSelect
           name="kind"
           value={kind}
           onChange={(e) =>
@@ -240,22 +293,22 @@ function AddTableForm({
           <option value="fact">Fact</option>
           <option value="dimension">Dimension</option>
           <option value="bridge">Bridge</option>
-        </select>
+        </NativeSelect>
       </label>
       {kind === "fact" && (
         <>
-          <label>
+          <label className={labelClasses}>
             Grain
-            <input
+            <Input
               name="grain"
               required
               maxLength={1000}
               placeholder="One row per…"
             />
           </label>
-          <label>
+          <label className={labelClasses}>
             Fact type
-            <select name="fact_type" required defaultValue="">
+            <NativeSelect name="fact_type" required defaultValue="">
               <option value="" disabled>
                 Choose…
               </option>
@@ -264,35 +317,36 @@ function AddTableForm({
                   {text}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         </>
       )}
       {kind === "dimension" && (
         <>
-          <label>
+          <label className={labelClasses}>
             SCD type
-            <select name="scd_type" defaultValue="1">
+            <NativeSelect name="scd_type" defaultValue="1">
               <option value="0">0 (fixed)</option>
               <option value="1">1 (overwrite)</option>
               <option value="2">2 (keep history)</option>
-            </select>
+            </NativeSelect>
           </label>
-          <label>
-            <input type="checkbox" name="is_conformed" /> Conformed dimension
+          <label className={checkLabelClasses}>
+            <input
+              type="checkbox"
+              className={checkClasses}
+              name="is_conformed"
+            />{" "}
+            Conformed dimension
           </label>
         </>
       )}
-      {create.isError && (
-        <p className="form-error" role="alert">
-          {create.error.message}
-        </p>
-      )}
-      <div className="form-actions">
-        <button type="submit" disabled={create.isPending}>
+      {create.isError && <ErrorText>{create.error.message}</ErrorText>}
+      <Actions>
+        <Button type="submit" variant="primary" disabled={create.isPending}>
           Add table
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }
@@ -318,166 +372,193 @@ function TableDetails({
   const [showMappings, setShowMappings] = useState(false);
 
   if (table.isPending) {
-    return <p>Loading…</p>;
+    return <Loading />;
   }
   if (table.isError) {
-    return <p role="alert">Could not load the table: {table.error.message}</p>;
+    return (
+      <ErrorText>Could not load the table: {table.error.message}</ErrorText>
+    );
   }
   const t = table.data;
   const names = new Map(references.map((r) => [r.id, r.name]));
 
   return (
-    <section aria-label={`Table ${t.name}`}>
-      <h4>{t.name}</h4>
-      {t.naming_violations.length > 0 && (
-        <ul aria-label="Naming violations">
-          {t.naming_violations.map((v) => (
-            <li key={v.code}>{v.message}</li>
-          ))}
-        </ul>
-      )}
-      <dl className="details">
-        <dt>Kind</dt>
-        <dd>{KIND_LABELS[t.kind] ?? t.kind}</dd>
-        {t.kind === "fact" && (
-          <>
-            <dt>Grain</dt>
-            <dd>{t.grain}</dd>
-            <dt>Fact type</dt>
-            <dd>{t.fact_type ? FACT_TYPE_LABELS[t.fact_type] : "—"}</dd>
-          </>
-        )}
-        {t.kind === "dimension" && (
-          <>
-            <dt>History</dt>
-            <dd>{tableDetail(t)}</dd>
-          </>
-        )}
-      </dl>
-      {t.unknown_member && (
-        <p>
-          Unknown member: surrogate key {t.unknown_member.surrogate_key}
-          {Object.keys(t.unknown_member.defaults).length > 0 &&
-            `, defaults ${Object.entries(t.unknown_member.defaults)
-              .map(([column, value]) => `${column} = ${String(value)}`)
-              .join(", ")}`}
-        </p>
-      )}
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th scope="col">Column</th>
-            <th scope="col">Type</th>
-            <th scope="col">Role</th>
-            <th scope="col">Details</th>
-            {editable && <th scope="col">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {t.columns.map((column) => (
-            <tr key={column.id}>
-              <td>
-                {column.name}
-                {column.naming_violations.map((v) => (
-                  <small key={v.code} role="status">
-                    {" "}
-                    {v.message}
-                  </small>
-                ))}
-              </td>
-              <td>
-                {typeText(column.data_type)}
-                {column.is_nullable ? "" : " not null"}
-              </td>
-              <td>{ROLE_LABELS[column.role]}</td>
-              <td>
-                {[
-                  column.additivity && ADDITIVITY_LABELS[column.additivity],
-                  column.references_table_id &&
-                    `→ ${names.get(column.references_table_id) ?? "another table"}${
-                      column.role_name ? ` (${column.role_name})` : ""
-                    }`,
-                  column.scd_type_override != null &&
-                    `SCD ${column.scd_type_override}`,
-                  column.is_system && "DAWAM",
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || "—"}
-              </td>
-              {editable && (
-                <td>
-                  {!column.is_system && (
-                    <button
-                      type="button"
-                      className="secondary"
-                      aria-label={`Delete ${column.name}`}
-                      disabled={removeColumn.isPending}
-                      onClick={() => removeColumn.mutate(column.id)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {t.layer !== "staging" && (
-        <>
+    <section
+      aria-label={`Table ${t.name}`}
+      className="min-w-0 overflow-hidden rounded-xl border border-sand-5 bg-sand-1"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-sand-5 px-4 py-3">
+        <h4 className="font-mono text-md/[1.3] font-semibold">{t.name}</h4>
+        <Badge variant="accent">{KIND_LABELS[t.kind] ?? t.kind}</Badge>
+        <span className="text-sm text-sand-11">
+          {LAYER_LABELS[t.layer]} Layer
+        </span>
+        <div className="ml-auto flex gap-1.5">
+          <Button type="button" size="sm" variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+      <div className="flex gap-4 border-b border-line px-4">
+        <span className="-mb-px border-b-2 border-sand-12 py-2.5 font-medium text-sand-12">
+          Columns
+        </span>
+        {t.layer !== "staging" && (
           <button
             type="button"
-            className="secondary"
             aria-expanded={showMappings}
+            className={`-mb-px cursor-pointer border-b-2 py-2.5 font-medium hover:text-sand-12 ${
+              showMappings
+                ? "border-sand-12 text-sand-12"
+                : "border-transparent text-sand-11"
+            }`}
             onClick={() => setShowMappings((open) => !open)}
           >
             {showMappings ? "Hide mappings" : "Mappings"}
           </button>
-          {showMappings && (
-            <MappingsGrid workspaceId={workspace.id} tableId={t.id} editable={editable} />
+        )}
+      </div>
+      <div className="flex flex-col gap-4 p-4">
+        {t.naming_violations.length > 0 && (
+          <ul aria-label="Naming violations" className="text-sm text-red-11">
+            {t.naming_violations.map((v) => (
+              <li key={v.code}>{v.message}</li>
+            ))}
+          </ul>
+        )}
+        <DetailList>
+          <dt>Kind</dt>
+          <dd>{KIND_LABELS[t.kind] ?? t.kind}</dd>
+          {t.kind === "fact" && (
+            <>
+              <dt>Grain</dt>
+              <dd>{t.grain}</dd>
+              <dt>Fact type</dt>
+              <dd>{t.fact_type ? FACT_TYPE_LABELS[t.fact_type] : "—"}</dd>
+            </>
           )}
-        </>
-      )}
-      {(removeColumn.isError || removeTable.isError) && (
-        <p className="form-error" role="alert">
-          {removeColumn.error?.message ?? removeTable.error?.message}
-        </p>
-      )}
-      {editable ? (
-        <>
-          <EditTableForm
+          {t.kind === "dimension" && (
+            <>
+              <dt>History</dt>
+              <dd>{tableDetail(t)}</dd>
+            </>
+          )}
+        </DetailList>
+        {t.unknown_member && (
+          <Hint>
+            Unknown member: surrogate key {t.unknown_member.surrogate_key}
+            {Object.keys(t.unknown_member.defaults).length > 0 &&
+              `, defaults ${Object.entries(t.unknown_member.defaults)
+                .map(([column, value]) => `${column} = ${String(value)}`)
+                .join(", ")}`}
+          </Hint>
+        )}
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Column</TableHead>
+                <TableHead scope="col">Type</TableHead>
+                <TableHead scope="col">Role</TableHead>
+                <TableHead scope="col">Details</TableHead>
+                {editable && <TableHead scope="col">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {t.columns.map((column) => (
+                <TableRow key={column.id}>
+                  <TableCell className={monoClasses}>
+                    {column.name}
+                    {column.naming_violations.map((v) => (
+                      <Badge
+                        key={v.code}
+                        variant="warning"
+                        role="status"
+                        className="ml-2 font-sans"
+                      >
+                        {v.message}
+                      </Badge>
+                    ))}
+                  </TableCell>
+                  <TableCell className={`${monoClasses} text-sand-11`}>
+                    {typeText(column.data_type)}
+                    {column.is_nullable ? "" : " not null"}
+                  </TableCell>
+                  <TableCell>{ROLE_LABELS[column.role]}</TableCell>
+                  <TableCell className="text-sand-11">
+                    {[
+                      column.additivity && ADDITIVITY_LABELS[column.additivity],
+                      column.references_table_id &&
+                        `→ ${names.get(column.references_table_id) ?? "another table"}${
+                          column.role_name ? ` (${column.role_name})` : ""
+                        }`,
+                      column.scd_type_override != null &&
+                        `SCD ${column.scd_type_override}`,
+                      column.is_system && "DAWAM",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
+                  </TableCell>
+                  {editable && (
+                    <TableCell>
+                      {!column.is_system && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          aria-label={`Delete ${column.name}`}
+                          disabled={removeColumn.isPending}
+                          onClick={() => removeColumn.mutate(column.id)}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+        {t.layer !== "staging" && showMappings && (
+          <MappingsGrid
             workspaceId={workspace.id}
-            table={t}
-            reload={() => table.refetch()}
+            tableId={t.id}
+            editable={editable}
           />
-          <AddColumnForm
-            workspaceId={workspace.id}
-            table={t}
-            references={references.filter((r) => r.id !== t.id)}
-          />
-          <div className="form-actions">
+        )}
+        {(removeColumn.isError || removeTable.isError) && (
+          <ErrorText>
+            {removeColumn.error?.message ?? removeTable.error?.message}
+          </ErrorText>
+        )}
+        {editable && (
+          <>
+            <EditTableForm
+              workspaceId={workspace.id}
+              table={t}
+              reload={() => table.refetch()}
+            />
+            <AddColumnForm
+              workspaceId={workspace.id}
+              table={t}
+              references={references.filter((r) => r.id !== t.id)}
+            />
             {canDelete && (
-              <button
-                type="button"
-                className="secondary"
-                disabled={removeTable.isPending}
-                onClick={() =>
-                  removeTable.mutate(undefined, { onSuccess: onClose })
-                }
-              >
-                Delete table
-              </button>
+              <Actions>
+                <Button
+                  type="button"
+                  disabled={removeTable.isPending}
+                  onClick={() =>
+                    removeTable.mutate(undefined, { onSuccess: onClose })
+                  }
+                >
+                  Delete table
+                </Button>
+              </Actions>
             )}
-            <button type="button" className="secondary" onClick={onClose}>
-              Close
-            </button>
-          </div>
-        </>
-      ) : (
-        <button type="button" className="secondary" onClick={onClose}>
-          Close
-        </button>
-      )}
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -500,41 +581,44 @@ function EditTableForm({
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const get = (name: string) => String(data.get(name) ?? "");
-    update.mutate({
-      version: table.version,
-      name: get("name"),
-      description: get("description"),
-      ...(table.kind === "fact"
-        ? {
-            grain: get("grain"),
-            fact_type: get("fact_type") as NonNullable<DwTable["fact_type"]>,
-          }
-        : {}),
-      ...(table.kind === "dimension"
-        ? {
-            scd_type: Number(get("scd_type")),
-            is_conformed: data.get("is_conformed") !== null,
-          }
-        : {}),
-    });
+    update.mutate(
+      {
+        version: table.version,
+        name: get("name"),
+        description: get("description"),
+        ...(table.kind === "fact"
+          ? {
+              grain: get("grain"),
+              fact_type: get("fact_type") as NonNullable<DwTable["fact_type"]>,
+            }
+          : {}),
+        ...(table.kind === "dimension"
+          ? {
+              scd_type: Number(get("scd_type")),
+              is_conformed: data.get("is_conformed") !== null,
+            }
+          : {}),
+      },
+      { onSuccess: () => toast.success("Saved.") },
+    );
   }
 
   return (
     <form
       // A new version (saved, or reloaded) refills the inputs.
       key={`${table.id}-${table.version}`}
-      className="form"
+      className={subFormClasses}
       onSubmit={onSubmit}
       aria-label={`Edit ${table.name}`}
     >
-      <h5>Edit table</h5>
-      <label>
+      <h5 className={h5Classes}>Edit table</h5>
+      <label className={labelClasses}>
         Name
-        <input name="name" required maxLength={128} defaultValue={table.name} />
+        <Input name="name" required maxLength={128} defaultValue={table.name} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Description
-        <textarea
+        <Textarea
           name="description"
           rows={2}
           maxLength={4000}
@@ -543,18 +627,18 @@ function EditTableForm({
       </label>
       {table.kind === "fact" && (
         <>
-          <label>
+          <label className={labelClasses}>
             Grain
-            <input
+            <Input
               name="grain"
               required
               maxLength={1000}
               defaultValue={table.grain ?? ""}
             />
           </label>
-          <label>
+          <label className={labelClasses}>
             Fact type
-            <select
+            <NativeSelect
               name="fact_type"
               defaultValue={table.fact_type ?? "transactional"}
             >
@@ -563,23 +647,27 @@ function EditTableForm({
                   {text}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         </>
       )}
       {table.kind === "dimension" && (
         <>
-          <label>
+          <label className={labelClasses}>
             SCD type
-            <select name="scd_type" defaultValue={String(table.scd_type ?? 1)}>
+            <NativeSelect
+              name="scd_type"
+              defaultValue={String(table.scd_type ?? 1)}
+            >
               <option value="0">0 (fixed)</option>
               <option value="1">1 (overwrite)</option>
               <option value="2">2 (keep history)</option>
-            </select>
+            </NativeSelect>
           </label>
-          <label>
-            <input
+          <label className={checkLabelClasses}>
+            <Input
               type="checkbox"
+              className={checkClasses}
               name="is_conformed"
               defaultChecked={table.is_conformed}
             />{" "}
@@ -588,34 +676,33 @@ function EditTableForm({
         </>
       )}
       {conflict ? (
-        <div className="form-error" role="alert">
+        <div
+          role="alert"
+          className="flex flex-col items-start gap-2 text-sm text-red-11"
+        >
           <p>
             Someone else changed this table since you opened it. Reload it to
             see their changes, then edit again.
           </p>
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={() => {
               update.reset();
               reload();
             }}
           >
             Reload
-          </button>
+          </Button>
         </div>
       ) : (
-        update.isError && (
-          <p className="form-error" role="alert">
-            {update.error.message}
-          </p>
-        )
+        update.isError && <ErrorText>{update.error.message}</ErrorText>
       )}
-      {update.isSuccess && <p role="status">Saved.</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={update.isPending}>
+      <Actions>
+        <Button type="submit" variant="primary" disabled={update.isPending}>
           Save
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }
@@ -681,15 +768,19 @@ function AddColumnForm({
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label="Add column">
-      <h5>Add a column</h5>
-      <label>
+    <form
+      className={subFormClasses}
+      onSubmit={onSubmit}
+      aria-label="Add column"
+    >
+      <h5 className={h5Classes}>Add a column</h5>
+      <label className={labelClasses}>
         Name
-        <input name="name" required maxLength={128} />
+        <Input name="name" required maxLength={128} />
       </label>
-      <label>
+      <label className={labelClasses}>
         Data type
-        <select
+        <NativeSelect
           name="data_type"
           value={dataType}
           onChange={(e) => setDataType(e.target.value)}
@@ -699,29 +790,29 @@ function AddColumnForm({
               {type}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       {LENGTH_TYPES.includes(dataType) && (
-        <label>
+        <label className={labelClasses}>
           Length
-          <input name="length" type="number" min={1} />
+          <Input name="length" type="number" min={1} />
         </label>
       )}
       {dataType === "decimal" && (
         <>
-          <label>
+          <label className={labelClasses}>
             Precision
-            <input name="precision" type="number" min={1} max={38} />
+            <Input name="precision" type="number" min={1} max={38} />
           </label>
-          <label>
+          <label className={labelClasses}>
             Scale
-            <input name="scale" type="number" min={0} max={38} />
+            <Input name="scale" type="number" min={0} max={38} />
           </label>
         </>
       )}
-      <label>
+      <label className={labelClasses}>
         Role
-        <select
+        <NativeSelect
           name="role"
           value={role}
           onChange={(e) =>
@@ -733,26 +824,26 @@ function AddColumnForm({
               {COLUMN_ROLE_LABELS[value]}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       {role === "measure" && (
-        <label>
+        <label className={labelClasses}>
           Additivity
-          <select name="additivity" defaultValue="">
+          <NativeSelect name="additivity" defaultValue="">
             <option value="">Not declared</option>
             {Object.entries(ADDITIVITY_LABELS).map(([value, text]) => (
               <option key={value} value={value}>
                 {text}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       )}
       {role === "fk" && (
         <>
-          <label>
+          <label className={labelClasses}>
             References
-            <select name="references_table_id" required defaultValue="">
+            <NativeSelect name="references_table_id" required defaultValue="">
               <option value="" disabled>
                 Choose a dimension…
               </option>
@@ -761,39 +852,41 @@ function AddColumnForm({
                   {r.name} ({LAYER_LABELS[r.layer]})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
-          <label>
+          <label className={labelClasses}>
             Role name
-            <input name="role_name" maxLength={128} placeholder="order_date" />
+            <Input name="role_name" maxLength={128} placeholder="order_date" />
           </label>
         </>
       )}
-      <label>
+      <label className={labelClasses}>
         Semantic type
-        <input
+        <Input
           name="semantic_type"
           maxLength={64}
           placeholder="amount, quantity…"
         />
       </label>
-      <label>
+      <label className={labelClasses}>
         Description
-        <input name="description" maxLength={4000} />
+        <Input name="description" maxLength={4000} />
       </label>
-      <label>
-        <input type="checkbox" name="is_nullable" defaultChecked /> Nullable
+      <label className={checkLabelClasses}>
+        <input
+          type="checkbox"
+          className={checkClasses}
+          name="is_nullable"
+          defaultChecked
+        />{" "}
+        Nullable
       </label>
-      {create.isError && (
-        <p className="form-error" role="alert">
-          {create.error.message}
-        </p>
-      )}
-      <div className="form-actions">
-        <button type="submit" disabled={create.isPending}>
+      {create.isError && <ErrorText>{create.error.message}</ErrorText>}
+      <Actions>
+        <Button type="submit" variant="primary" disabled={create.isPending}>
           Add column
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }

@@ -3,11 +3,30 @@
 import type { PageContext } from "../api/assistant";
 import { useFailedChecks, type FailedCheck } from "../api/score";
 import { allows, type Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Loading } from "../shell/Loading";
 import { FixImpacts } from "./FixImpacts";
+import {
+  EmptyState,
+  ErrorText,
+  Panel,
+  h3Classes,
+  listCardClasses,
+  monoClasses,
+} from "./parts";
+
+const SEVERITY_VARIANTS = {
+  error: "danger",
+  warning: "warning",
+  info: "neutral",
+} as const;
 
 /** Checks a propagation fixes: a mapping reading an input renamed, deleted or removed. */
-export const IMPACT_CHECKS = new Set(["inputs_exist", "no_source_removed_inputs"]);
+export const IMPACT_CHECKS = new Set([
+  "inputs_exist",
+  "no_source_removed_inputs",
+]);
 
 /** A question for the assistant, with the object it is about. */
 export interface AssistantRequest {
@@ -38,15 +57,17 @@ export function FailedChecksPanel({
   onAsk: (request: Omit<AssistantRequest, "nonce">) => void;
 }) {
   const checks = useFailedChecks(workspace.id);
-  const canAsk = allows(workspace, "assistant.ask") && workspace.status !== "archived";
-  const canReview = allows(workspace, "change_set.review") && workspace.status !== "archived";
+  const canAsk =
+    allows(workspace, "assistant.ask") && workspace.status !== "archived";
+  const canReview =
+    allows(workspace, "change_set.review") && workspace.status !== "archived";
   const canPropose = canAsk && canReview;
 
   if (checks.isPending) {
     return <Loading />;
   }
   if (checks.isError) {
-    return <p role="alert">Could not load the failed checks.</p>;
+    return <ErrorText>Could not load the failed checks.</ErrorText>;
   }
   const context = (check: FailedCheck): PageContext => ({
     type: "failed_check",
@@ -55,24 +76,38 @@ export function FailedChecksPanel({
   });
 
   return (
-    <section aria-labelledby="checks-title">
-      <h3 id="checks-title">Failed checks</h3>
-      {canReview && checks.data.some((check) => IMPACT_CHECKS.has(check.check_code)) && (
-        <FixImpacts workspace={workspace} />
-      )}
+    <Panel aria-labelledby="checks-title">
+      <h3 id="checks-title" className={h3Classes}>
+        Failed checks
+      </h3>
+      {canReview &&
+        checks.data.some((check) => IMPACT_CHECKS.has(check.check_code)) && (
+          <FixImpacts workspace={workspace} />
+        )}
       {checks.data.length === 0 ? (
-        <p className="empty-state">No check fails.</p>
+        <EmptyState>No check fails.</EmptyState>
       ) : (
-        <ul className="failed-checks">
+        <ul className={listCardClasses}>
           {checks.data.map((check) => (
-            <li key={`${check.check_code}:${check.object_id}`}>
-              <strong>{check.title}</strong> ({check.severity}) on {check.object_name}:{" "}
-              {check.message}
+            <li
+              key={`${check.check_code}:${check.object_id}`}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3.5 py-2.5"
+            >
+              <strong>{check.title}</strong>
+              {check.severity && (
+                <Badge variant={SEVERITY_VARIANTS[check.severity]}>
+                  {check.severity}
+                </Badge>
+              )}{" "}
+              on <span className={monoClasses}>{check.object_name}</span>:{" "}
+              <span className="min-w-0 flex-1 text-sand-11">
+                {check.message}
+              </span>
               {canAsk && (
                 <>
-                  {" "}
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={() =>
                       onAsk({
                         prompt: explainPrompt(check),
@@ -81,14 +116,14 @@ export function FailedChecksPanel({
                     }
                   >
                     Explain
-                  </button>
+                  </Button>
                 </>
               )}
               {canPropose && (
                 <>
-                  {" "}
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={() =>
                       onAsk({
                         prompt: fixPrompt(check),
@@ -97,13 +132,13 @@ export function FailedChecksPanel({
                     }
                   >
                     Propose fix
-                  </button>
+                  </Button>
                 </>
               )}
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }

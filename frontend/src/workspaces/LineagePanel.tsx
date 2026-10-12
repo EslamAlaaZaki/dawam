@@ -18,7 +18,20 @@ import {
 import type { Workspace } from "../api/workspaces";
 import { LineageGraph } from "../diagrams/LineageGraph";
 import { merge } from "../diagrams/lineageLayout";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Loading } from "../shell/Loading";
+import {
+  Actions,
+  EmptyState,
+  ErrorText,
+  NativeSelect,
+  Panel,
+  h3Classes,
+  h4Classes,
+  h5Classes,
+  labelClasses,
+} from "./parts";
 
 const LAYERS: DwLayer[] = ["staging", "core", "mart"];
 
@@ -48,18 +61,20 @@ export function LineagePanel({ workspace }: { workspace: Workspace }) {
   );
 
   return (
-    <section aria-labelledby="lineage-title" className="lineage-panel">
-      <h3 id="lineage-title">Lineage</h3>
+    <Panel aria-labelledby="lineage-title">
+      <h3 id="lineage-title" className={h3Classes}>
+        Lineage
+      </h3>
       <StartPicker workspaceId={workspace.id} onPick={startFrom} />
       {start ? (
         // Another start begins with nothing expanded or selected.
         <LineageView key={start} workspaceId={workspace.id} start={start} onStart={startFrom} />
       ) : (
-        <p className="empty-state">
+        <EmptyState>
           Pick a KPI or a DW column to see where it comes from and what depends on it.
-        </p>
+        </EmptyState>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -101,18 +116,18 @@ function LineageView({
     return <Loading />;
   }
   if (lineage.isError) {
-    return <p role="alert">Could not load the lineage: {lineage.error.message}</p>;
+    return <ErrorText>Could not load the lineage: {lineage.error.message}</ErrorText>;
   }
   return (
     <>
-      <p>
-        Lineage of <strong>{lineage.data.start.label}</strong> (
+      <p className="text-sand-11">
+        Lineage of <strong className="text-sand-12">{lineage.data.start.label}</strong> (
         {LAYER_LABELS[lineage.data.start.layer]}): {shown.nodes.length} nodes,{" "}
         {shown.edges.length} edges.
       </p>
       <Legend />
       {shown.edges.length === 0 ? (
-        <p className="empty-state">No lineage is recorded for this node yet.</p>
+        <EmptyState>No lineage is recorded for this node yet.</EmptyState>
       ) : (
         <LineageGraph
           nodes={shown.nodes}
@@ -126,35 +141,43 @@ function LineageView({
         />
       )}
       {selectedNode && (
-        <aside aria-label="Selected node" className="lineage-selection">
-          <h4>
-            {selectedNode.label} <small>({LAYER_LABELS[selectedNode.layer]})</small>
+        <aside
+          aria-label="Selected node"
+          className="flex flex-col gap-2.5 rounded-lg border border-sand-5 bg-sand-2 p-4"
+        >
+          <h4 className={h4Classes}>
+            {selectedNode.label}{" "}
+            <small className="font-normal text-sand-11">
+              ({LAYER_LABELS[selectedNode.layer]})
+            </small>
           </h4>
-          <div className="actions">
-            <button
+          <Actions>
+            <Button
               type="button"
+              size="sm"
               disabled={expanding !== null}
               onClick={() => expand(selectedNode.id, "upstream")}
             >
               Expand upstream
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
               disabled={expanding !== null}
               onClick={() => expand(selectedNode.id, "downstream")}
             >
               Expand downstream
-            </button>
+            </Button>
             {selectedNode.id !== start && (
-              <button type="button" onClick={() => onStart(selectedNode.id)}>
+              <Button type="button" size="sm" onClick={() => onStart(selectedNode.id)}>
                 Start from here
-              </button>
+              </Button>
             )}
-            <button type="button" onClick={() => setImpactFor(selectedNode.id)}>
+            <Button type="button" size="sm" onClick={() => setImpactFor(selectedNode.id)}>
               Impact report
-            </button>
-          </div>
-          {expandError && <p role="alert">Could not expand: {expandError}</p>}
+            </Button>
+          </Actions>
+          {expandError && <ErrorText>Could not expand: {expandError}</ErrorText>}
         </aside>
       )}
       {impactFor && <ImpactPanel workspaceId={workspaceId} node={impactFor} />}
@@ -165,10 +188,12 @@ function LineageView({
 
 function Legend() {
   return (
-    <ul className="lineage-legend" aria-label="Edge kinds">
+    <ul aria-label="Edge kinds" className="flex flex-wrap gap-2">
       {(Object.keys(EDGE_KIND_LABELS) as LineageEdge["kind"][]).map((kind) => (
-        <li key={kind} className={`lineage-legend-${kind}`}>
-          {kind}: {EDGE_KIND_LABELS[kind]}
+        <li key={kind}>
+          <Badge>
+            {kind}: {EDGE_KIND_LABELS[kind]}
+          </Badge>
         </li>
       ))}
     </ul>
@@ -181,9 +206,11 @@ function EdgeList({ edges, byId }: { edges: LineageEdge[]; byId: Map<string, Lin
     return null;
   }
   return (
-    <details>
-      <summary>Edges as a list</summary>
-      <ul aria-label="Lineage edges">
+    <details className="text-sm">
+      <summary className="cursor-pointer font-medium text-sand-11 hover:text-sand-12">
+        Edges as a list
+      </summary>
+      <ul aria-label="Lineage edges" className="mt-2 flex flex-col gap-1 font-mono text-mono">
         {edges.map((e) => (
           <li key={e.id}>
             {byId.get(e.from_id)?.label} → {byId.get(e.to_id)?.label} ({e.kind})
@@ -200,7 +227,7 @@ function ImpactPanel({ workspaceId, node }: { workspaceId: string; node: string 
     return <Loading />;
   }
   if (impact.isError) {
-    return <p role="alert">Could not load the impact report: {impact.error.message}</p>;
+    return <ErrorText>Could not load the impact report: {impact.error.message}</ErrorText>;
   }
   const { start, columns, tables, kpis } = impact.data;
   const groups: [string, LineageNode[]][] = [
@@ -209,22 +236,26 @@ function ImpactPanel({ workspaceId, node }: { workspaceId: string; node: string 
     ["KPIs", kpis],
   ];
   return (
-    <section aria-label="Impact report" className="lineage-impact">
-      <h4>Impact of {start.label}</h4>
+    <section
+      aria-label="Impact report"
+      className="flex flex-col gap-3 rounded-lg border border-sand-5 bg-sand-2 p-4"
+    >
+      <h4 className={h4Classes}>Impact of {start.label}</h4>
       {columns.length + tables.length + kpis.length === 0 ? (
-        <p className="empty-state">Nothing in the Data Warehouse depends on it.</p>
+        <EmptyState>Nothing in the Data Warehouse depends on it.</EmptyState>
       ) : (
         groups
           .filter(([, items]) => items.length > 0)
           .map(([title, items]) => (
-            <div key={title}>
-              <h5>
+            <div key={title} className="flex flex-col gap-1">
+              <h5 className={h5Classes}>
                 {title} ({items.length})
               </h5>
-              <ul aria-label={title}>
+              <ul aria-label={title} className="flex flex-col gap-0.5">
                 {items.map((n) => (
                   <li key={n.id}>
-                    {n.label} <small>({LAYER_LABELS[n.layer]})</small>
+                    {n.label}{" "}
+                    <small className="text-sand-11">({LAYER_LABELS[n.layer]})</small>
                   </li>
                 ))}
               </ul>
@@ -250,11 +281,11 @@ function StartPicker({
   const table = useDwTable(workspaceId, tableId);
 
   return (
-    <fieldset className="lineage-picker">
-      <legend>Start from</legend>
-      <label>
-        KPI{" "}
-        <select
+    <fieldset className="m-0 flex min-w-0 flex-wrap items-end gap-3 rounded-lg border border-sand-5 p-3">
+      <legend className="px-1 text-sm font-semibold text-sand-11">Start from</legend>
+      <label className={labelClasses}>
+        KPI
+        <NativeSelect
           value=""
           onChange={(e) => e.target.value && onPick(e.target.value)}
           disabled={!kpis.data?.length}
@@ -265,11 +296,11 @@ function StartPicker({
               {k.name}
             </option>
           ))}
-        </select>
-      </label>{" "}
-      <label>
-        Layer{" "}
-        <select
+        </NativeSelect>
+      </label>
+      <label className={labelClasses}>
+        Layer
+        <NativeSelect
           value={layer}
           onChange={(e) => {
             setLayer(e.target.value as DwLayer);
@@ -281,22 +312,22 @@ function StartPicker({
               {LAYER_LABELS[l]}
             </option>
           ))}
-        </select>
-      </label>{" "}
-      <label>
-        Table{" "}
-        <select value={tableId ?? ""} onChange={(e) => setTableId(e.target.value || null)}>
+        </NativeSelect>
+      </label>
+      <label className={labelClasses}>
+        Table
+        <NativeSelect value={tableId ?? ""} onChange={(e) => setTableId(e.target.value || null)}>
           <option value="">Choose a table…</option>
           {tables.data?.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
             </option>
           ))}
-        </select>
-      </label>{" "}
-      <label>
-        Column{" "}
-        <select
+        </NativeSelect>
+      </label>
+      <label className={labelClasses}>
+        Column
+        <NativeSelect
           value=""
           disabled={!table.data}
           onChange={(e) => e.target.value && onPick(e.target.value)}
@@ -307,7 +338,7 @@ function StartPicker({
               {c.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
     </fieldset>
   );

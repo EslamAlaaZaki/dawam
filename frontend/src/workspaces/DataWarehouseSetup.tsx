@@ -11,6 +11,21 @@ import {
   type TargetPlatform,
 } from "../api/dataWarehouse";
 import { allows, type Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
+import {
+  Actions,
+  ErrorText,
+  Hint,
+  NativeSelect,
+  checkClasses,
+  checkLabelClasses,
+  fieldsetClasses,
+  formCardClasses,
+  h3Classes,
+  labelClasses,
+} from "./parts";
 
 const WEEKDAYS = [
   "monday",
@@ -35,25 +50,42 @@ export function DataWarehouseSetup({ workspace }: { workspace: Workspace }) {
     return <p>Loading…</p>;
   }
   if (warehouse.isError) {
-    return <p role="alert">Could not load the Data Warehouse: {warehouse.error.message}</p>;
+    return (
+      <ErrorText>
+        Could not load the Data Warehouse: {warehouse.error.message}
+      </ErrorText>
+    );
   }
   return <SetupForm workspace={workspace} warehouse={warehouse.data} />;
 }
 
-function SetupForm({ workspace, warehouse }: { workspace: Workspace; warehouse: DataWarehouse }) {
+function SetupForm({
+  workspace,
+  warehouse,
+}: {
+  workspace: Workspace;
+  warehouse: DataWarehouse;
+}) {
   const setUp = useSetUpDataWarehouse(workspace.id);
   const update = useUpdateDataWarehouse(workspace.id);
   // Setting up flips `set_up`, which switches to the update call: report either.
-  const mutation = [update, setUp].find((m) => m.isError || m.isSuccess || m.isPending) ?? setUp;
+  const mutation =
+    [update, setUp].find((m) => m.isError || m.isSuccess || m.isPending) ??
+    setUp;
   const canEdit = allows(workspace, "data_warehouse.set_up");
-  const canChangePlatform = !warehouse.set_up || allows(workspace, "data_warehouse.change_platform");
+  const canChangePlatform =
+    !warehouse.set_up || allows(workspace, "data_warehouse.change_platform");
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const text = (name: string) => String(data.get(name) ?? "");
     const settings = {
-      layer_schemas: { staging: text("staging"), core: text("core"), mart: text("mart") },
+      layer_schemas: {
+        staging: text("staging"),
+        core: text("core"),
+        mart: text("mart"),
+      },
       naming_rules: {
         case_style: text("case_style") as "lower" | "upper",
         dimension_prefix: text("dimension_prefix"),
@@ -61,12 +93,15 @@ function SetupForm({ workspace, warehouse }: { workspace: Workspace; warehouse: 
         bridge_prefix: text("bridge_prefix"),
         // Not on this form: keep what is set (the audit columns of Staging Tables).
         load_ts_column: warehouse.naming_rules?.load_ts_column ?? "load_ts",
-        source_system_column: warehouse.naming_rules?.source_system_column ?? "source_system",
+        source_system_column:
+          warehouse.naming_rules?.source_system_column ?? "source_system",
       },
       date_dimension: {
         start_year: Number(text("start_year")),
         end_year: Number(text("end_year")),
-        weekend_days: data.getAll("weekend_days").map(String) as (typeof WEEKDAYS)[number][],
+        weekend_days: data
+          .getAll("weekend_days")
+          .map(String) as (typeof WEEKDAYS)[number][],
         include_hijri: data.get("include_hijri") === "on",
         fiscal_year_start_month: text("fiscal_year_start_month")
           ? Number(text("fiscal_year_start_month"))
@@ -75,33 +110,47 @@ function SetupForm({ workspace, warehouse }: { workspace: Workspace; warehouse: 
       },
     };
     // A disabled select is not submitted: the platform then stays as it is.
-    const platform = (text("target_platform") || warehouse.target_platform) as TargetPlatform;
-    if (warehouse.set_up) {
-      update.mutate({
-        version: warehouse.version!,
-        // Repeating the current platform is not a change, so editors may still save.
-        ...(platform !== warehouse.target_platform ? { target_platform: platform } : {}),
-        ...settings,
-      });
-    } else {
-      setUp.mutate({ target_platform: platform, ...settings });
-    }
+    const platform = (text("target_platform") ||
+      warehouse.target_platform) as TargetPlatform;
+    // The setup moves the page on, so the form may be gone when it succeeds: a promise
+    // outlives it where the call's own callbacks would not. Errors show inline.
+    const saved = warehouse.set_up
+      ? update.mutateAsync({
+          version: warehouse.version!,
+          // Repeating the current platform is not a change, so editors may still save.
+          ...(platform !== warehouse.target_platform ? { target_platform: platform } : {}),
+          ...settings,
+        })
+      : setUp.mutateAsync({ target_platform: platform, ...settings });
+    saved.then(
+      () => toast.success("Saved."),
+      () => undefined,
+    );
   }
 
   const layers = warehouse.layer_schemas;
   const rules = warehouse.naming_rules;
   const dates = warehouse.date_dimension;
   return (
-    <form className="form" onSubmit={onSubmit} aria-labelledby="dw-setup-title">
-      <h3 id="dw-setup-title">{warehouse.set_up ? "Data Warehouse setup" : "Set up Data Warehouse"}</h3>
+    <form
+      className={formCardClasses}
+      onSubmit={onSubmit}
+      aria-labelledby="dw-setup-title"
+    >
+      <h3 id="dw-setup-title" className={h3Classes}>
+        {warehouse.set_up ? "Data Warehouse setup" : "Set up Data Warehouse"}
+      </h3>
       {!warehouse.set_up && (
-        <p>Choose where the warehouse will live. Until then, only this step and KPIs are available.</p>
+        <Hint>
+          Choose where the warehouse will live. Until then, only this step and
+          KPIs are available.
+        </Hint>
       )}
-      {!canEdit && <p>Only editors and owners can change the setup.</p>}
-      <fieldset disabled={!canEdit}>
-        <label>
+      {!canEdit && <Hint>Only editors and owners can change the setup.</Hint>}
+      <fieldset disabled={!canEdit} className={fieldsetClasses}>
+        <label className={labelClasses}>
           Target platform
-          <select
+          <NativeSelect
             name="target_platform"
             defaultValue={warehouse.target_platform ?? "postgresql"}
             disabled={!canEdit || !canChangePlatform}
@@ -111,62 +160,102 @@ function SetupForm({ workspace, warehouse }: { workspace: Workspace; warehouse: 
                 {PLATFORM_LABELS[platform]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        {!canChangePlatform && <p>Only owners can change the platform after setup.</p>}
+        {!canChangePlatform && (
+          <Hint>Only owners can change the platform after setup.</Hint>
+        )}
         {LAYERS.map((layer) => (
-          <label key={layer}>
+          <label key={layer} className={labelClasses}>
             Schema or dataset name: {layer}
-            <input name={layer} required defaultValue={layers?.[layer] ?? layer} />
+            <Input
+              name={layer}
+              required
+              defaultValue={layers?.[layer] ?? layer}
+            />
           </label>
         ))}
-        <label>
+        <label className={labelClasses}>
           Identifier case
-          <select name="case_style" defaultValue={rules?.case_style ?? "lower"}>
+          <NativeSelect
+            name="case_style"
+            defaultValue={rules?.case_style ?? "lower"}
+          >
             <option value="lower">lower case</option>
             <option value="upper">UPPER CASE</option>
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={labelClasses}>
           Dimension prefix
-          <input name="dimension_prefix" defaultValue={rules?.dimension_prefix ?? "dim_"} />
+          <Input
+            name="dimension_prefix"
+            defaultValue={rules?.dimension_prefix ?? "dim_"}
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           Fact prefix
-          <input name="fact_prefix" defaultValue={rules?.fact_prefix ?? "fact_"} />
+          <Input
+            name="fact_prefix"
+            defaultValue={rules?.fact_prefix ?? "fact_"}
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           Bridge prefix
-          <input name="bridge_prefix" defaultValue={rules?.bridge_prefix ?? "bridge_"} />
+          <Input
+            name="bridge_prefix"
+            defaultValue={rules?.bridge_prefix ?? "bridge_"}
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           Date dimension: first year
-          <input name="start_year" type="number" required defaultValue={dates?.start_year ?? 2000} />
+          <Input
+            name="start_year"
+            type="number"
+            required
+            defaultValue={dates?.start_year ?? 2000}
+          />
         </label>
-        <label>
+        <label className={labelClasses}>
           Date dimension: last year
-          <input name="end_year" type="number" required defaultValue={dates?.end_year ?? 2040} />
+          <Input
+            name="end_year"
+            type="number"
+            required
+            defaultValue={dates?.end_year ?? 2040}
+          />
         </label>
-        <div role="group" aria-label="Weekend days">
+        <div
+          role="group"
+          aria-label="Weekend days"
+          className="flex flex-wrap gap-x-4 gap-y-2"
+        >
           {WEEKDAYS.map((day) => (
-            <label key={day}>
+            <label key={day} className={checkLabelClasses}>
               <input
                 type="checkbox"
+                className={checkClasses}
                 name="weekend_days"
                 value={day}
-                defaultChecked={(dates?.weekend_days ?? ["saturday", "sunday"]).includes(day)}
+                defaultChecked={(
+                  dates?.weekend_days ?? ["saturday", "sunday"]
+                ).includes(day)}
               />
               {day}
             </label>
           ))}
         </div>
-        <label>
-          <input type="checkbox" name="include_hijri" defaultChecked={dates?.include_hijri} />
+        <label className={checkLabelClasses}>
+          <input
+            type="checkbox"
+            className={checkClasses}
+            name="include_hijri"
+            defaultChecked={dates?.include_hijri}
+          />
           Include Hijri calendar attributes
         </label>
-        <label>
+        <label className={labelClasses}>
           Fiscal year starts in
-          <select
+          <NativeSelect
             name="fiscal_year_start_month"
             defaultValue={String(dates?.fiscal_year_start_month ?? "")}
           >
@@ -176,29 +265,25 @@ function SetupForm({ workspace, warehouse }: { workspace: Workspace; warehouse: 
                 Month {i + 1}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        <label>
+        <label className={checkLabelClasses}>
           <input
             type="checkbox"
+            className={checkClasses}
             name="include_time_dimension"
             defaultChecked={dates?.include_time_dimension}
           />
           Include a time dimension
         </label>
       </fieldset>
-      {mutation.isError && (
-        <p className="form-error" role="alert">
-          {mutation.error.message}
-        </p>
-      )}
-      {mutation.isSuccess && <p role="status">Saved.</p>}
+      {mutation.isError && <ErrorText>{mutation.error.message}</ErrorText>}
       {canEdit && (
-        <div className="form-actions">
-          <button type="submit" disabled={mutation.isPending}>
+        <Actions>
+          <Button type="submit" variant="primary" disabled={mutation.isPending}>
             {warehouse.set_up ? "Save" : "Set up Data Warehouse"}
-          </button>
-        </div>
+          </Button>
+        </Actions>
       )}
     </form>
   );

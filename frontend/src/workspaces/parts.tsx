@@ -100,3 +100,10 @@ export const preClasses =
 /** A bordered list of rows, for object lists. */
 export const listCardClasses =
   "divide-y divide-sand-4 overflow-hidden rounded-lg border border-sand-5 bg-sand-1";
+
+/** A native checkbox in the accent colour; its label wraps it in a row. */
+export const checkClasses = "size-4 accent-[var(--accent-solid)]";
+export const checkLabelClasses = "flex items-center gap-2 text-sm font-medium";
+
+/** The fieldset of a form: no border, controls stacked like the card around it. */
+export const fieldsetClasses = "m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0";
