@@ -10,7 +10,17 @@ import {
   useUnarchiveWorkspace,
   type Workspace,
 } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { FixImpacts } from "./FixImpacts";
+import {
+  Actions,
+  ErrorText,
+  Hint,
+  Panel,
+  h3Classes,
+  labelClasses,
+} from "./parts";
 
 /**
  * Archiving, unarchiving and deleting a Workspace (stories 35, 36), for those the API
@@ -23,49 +33,56 @@ export function LifecyclePanel({ workspace }: { workspace: Workspace }) {
   const canArchive = allows(workspace, "workspace.archive");
   const canUnarchive = allows(workspace, "workspace.unarchive");
   const canDelete = allows(workspace, "workspace.delete");
-  const canFixImpacts = allows(workspace, "change_set.review") && workspace.status !== "archived";
+  const canFixImpacts =
+    allows(workspace, "change_set.review") && workspace.status !== "archived";
   if (!canArchive && !canUnarchive && !canDelete) {
     return null;
   }
   const error = archive.error ?? unarchive.error;
 
   return (
-    <section aria-labelledby="lifecycle-title">
-      <h3 id="lifecycle-title">Archive and delete</h3>
-      <div className="form-actions">
+    <Panel aria-labelledby="lifecycle-title">
+      <h3 id="lifecycle-title" className={h3Classes}>
+        Archive and delete
+      </h3>
+      <Actions>
         {canArchive && (
-          <button
+          <Button
             type="button"
-            className="secondary"
             disabled={archive.isPending}
             onClick={() => archive.mutate()}
           >
             Archive Workspace
-          </button>
+          </Button>
         )}
         {canUnarchive && (
-          <button type="button" disabled={unarchive.isPending} onClick={() => unarchive.mutate()}>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={unarchive.isPending}
+            onClick={() => unarchive.mutate()}
+          >
             Unarchive Workspace
-          </button>
+          </Button>
         )}
-      </div>
-      {canArchive && <p>Archiving makes the Workspace read-only. You can unarchive it later.</p>}
+      </Actions>
+      {canArchive && (
+        <Hint>
+          Archiving makes the Workspace read-only. You can unarchive it later.
+        </Hint>
+      )}
       {unarchive.isSuccess && canFixImpacts && (
         <>
           <p>
-            Archiving rejected the pending Change Sets. Fix impacts to propose again what
-            propagation can fix.
+            Archiving rejected the pending Change Sets. Fix impacts to propose
+            again what propagation can fix.
           </p>
           <FixImpacts workspace={workspace} />
         </>
       )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error.message}
-        </p>
-      )}
+      {error && <ErrorText>{error.message}</ErrorText>}
       {canDelete && <DeleteWorkspace workspace={workspace} />}
-    </section>
+    </Panel>
   );
 }
 
@@ -80,25 +97,32 @@ function DeleteWorkspace({ workspace }: { workspace: Workspace }) {
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label="Delete Workspace">
+    <form
+      className="flex max-w-xl flex-col gap-3.5 border-t border-sand-4 pt-4"
+      onSubmit={onSubmit}
+      aria-label="Delete Workspace"
+    >
       <p>
-        Deleting is permanent and removes everything in the Workspace. Type its name,{" "}
-        <strong>{workspace.name}</strong>, to confirm.
+        Deleting is permanent and removes everything in the Workspace. Type its
+        name, <strong>{workspace.name}</strong>, to confirm.
       </p>
-      <label>
+      <label className={labelClasses}>
         Workspace name
-        <input value={typed} onChange={(event) => setTyped(event.target.value)} />
+        <Input
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+        />
       </label>
-      {remove.isError && (
-        <p className="form-error" role="alert">
-          {remove.error.message}
-        </p>
-      )}
-      <div className="form-actions">
-        <button type="submit" disabled={typed !== workspace.name || remove.isPending}>
+      {remove.isError && <ErrorText>{remove.error.message}</ErrorText>}
+      <Actions>
+        <Button
+          type="submit"
+          className="text-red-11"
+          disabled={typed !== workspace.name || remove.isPending}
+        >
           Delete Workspace
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }

@@ -11,6 +11,15 @@ import {
 } from "../api/schemaImport";
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import {
+  Actions,
+  Hint,
+  NativeSelect,
+  formCardClasses,
+  h4Classes,
+  labelClasses,
+} from "./parts";
 
 /**
  * The downloads of a Schema Import (spec §6.4, stories 47, 48): the Excel template and the
@@ -31,20 +40,24 @@ export function SchemaImportPanel({
     allows(workspace, "connection.view"),
   );
   const [chosen, setChosen] = useState<HelperEngine | null>(null);
-  const engine: HelperEngine = chosen ?? connection.data?.engine ?? "postgresql";
+  const engine: HelperEngine =
+    chosen ?? connection.data?.engine ?? "postgresql";
   if (!allows(workspace, "source_system.extract")) {
     return null;
   }
   return (
-    <section aria-labelledby="schema-import-title" className="form">
-      <h4 id="schema-import-title">Schema Import</h4>
-      <p className="form-hint">
-        No Connection? Run the helper queries for your engine on the database, paste or
-        export each result into the sheet of the same name in the template, and upload it.
-      </p>
-      <label>
+    <section aria-labelledby="schema-import-title" className={formCardClasses}>
+      <h4 id="schema-import-title" className={h4Classes}>
+        Schema Import
+      </h4>
+      <Hint>
+        No Connection? Run the helper queries for your engine on the database,
+        paste or export each result into the sheet of the same name in the
+        template, and upload it.
+      </Hint>
+      <label className={labelClasses}>
         Database engine
-        <select
+        <NativeSelect
           value={engine}
           onChange={(event) => setChosen(event.target.value as HelperEngine)}
         >
@@ -53,16 +66,20 @@ export function SchemaImportPanel({
               {option.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
-      <div className="form-actions">
-        <a href={helperQueriesUrl(workspace.id, system.id, engine)} download>
-          Download helper queries (SQL)
-        </a>
-        <a href={schemaImportTemplateUrl(workspace.id, system.id)} download>
-          Download template (XLSX)
-        </a>
-      </div>
+      <Actions>
+        <Button asChild>
+          <a href={helperQueriesUrl(workspace.id, system.id, engine)} download>
+            Download helper queries (SQL)
+          </a>
+        </Button>
+        <Button asChild>
+          <a href={schemaImportTemplateUrl(workspace.id, system.id)} download>
+            Download template (XLSX)
+          </a>
+        </Button>
+      </Actions>
     </section>
   );
 }

@@ -14,8 +14,35 @@ import {
   type Member,
 } from "../api/members";
 import { useMe } from "../api/queries";
-import { ROLE_LABELS, allows, type Workspace, type WorkspaceRole } from "../api/workspaces";
+import {
+  ROLE_LABELS,
+  allows,
+  type Workspace,
+  type WorkspaceRole,
+} from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import {
+  Actions,
+  ErrorText,
+  Hint,
+  NativeSelect,
+  OkText,
+  TableCard,
+  formCardClasses,
+  h3Classes,
+  labelClasses,
+  linkClasses,
+} from "./parts";
 
 const ROLES: WorkspaceRole[] = ["owner", "editor", "viewer"];
 
@@ -31,38 +58,46 @@ export function MembersPanel({ workspace }: { workspace: Workspace }) {
   const transfers = allows(workspace, "workspace.transfer_ownership");
 
   return (
-    <section aria-labelledby="members-title" className="members">
-      <h3 id="members-title">Members</h3>
+    <section aria-labelledby="members-title" className="flex flex-col gap-3">
+      <h3 id="members-title" className={h3Classes}>
+        Members
+      </h3>
       {manages && <AddMemberForm workspaceId={workspace.id} />}
       {members.isPending ? (
         <Loading />
       ) : members.isError ? (
-        <p role="alert">Could not load the members: {members.error.message}</p>
+        <ErrorText>
+          Could not load the members: {members.error.message}
+        </ErrorText>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Email</th>
-              <th scope="col">Role</th>
-              {manages && <th scope="col">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {members.data.map((member) => (
-              <MemberRow
-                key={member.user_id}
-                workspaceId={workspace.id}
-                member={member}
-                isMe={member.user_id === me.data?.id}
-                manages={manages}
-                transfers={transfers}
-              />
-            ))}
-          </tbody>
-        </table>
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Name</TableHead>
+                <TableHead scope="col">Email</TableHead>
+                <TableHead scope="col">Role</TableHead>
+                {manages && <TableHead scope="col">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.data.map((member) => (
+                <MemberRow
+                  key={member.user_id}
+                  workspaceId={workspace.id}
+                  member={member}
+                  isMe={member.user_id === me.data?.id}
+                  manages={manages}
+                  transfers={transfers}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
-      {allows(workspace, "workspace.leave") && <LeaveWorkspace workspaceId={workspace.id} />}
+      {allows(workspace, "workspace.leave") && (
+        <LeaveWorkspace workspaceId={workspace.id} />
+      )}
     </section>
   );
 }
@@ -85,42 +120,48 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
 
   const result = add.data;
   return (
-    <form className="admin-form" onSubmit={onSubmit} aria-label="Add member">
-      <label>
+    <form
+      className={formCardClasses}
+      onSubmit={onSubmit}
+      aria-label="Add member"
+    >
+      <label className={labelClasses}>
         Email
-        <input name="email" type="email" autoComplete="off" required />
+        <Input name="email" type="email" autoComplete="off" required />
       </label>
-      <label>
+      <label className={labelClasses}>
         Role
         <RoleSelect name="role" defaultValue="editor" />
       </label>
-      <p className="form-hint">
-        Someone without an account gets an invitation to join DAWAM and this Workspace.
-      </p>
-      <div className="admin-actions">
-        <button type="submit" disabled={add.isPending}>
+      <Hint>
+        Someone without an account gets an invitation to join DAWAM and this
+        Workspace.
+      </Hint>
+      <Actions>
+        <Button type="submit" variant="primary" disabled={add.isPending}>
           Add member
-        </button>
-      </div>
-      {add.isError && (
-        <p className="form-error" role="alert">
-          {add.error.message}
-        </p>
-      )}
+        </Button>
+      </Actions>
+      {add.isError && <ErrorText>{add.error.message}</ErrorText>}
       {result?.outcome === "added" && (
-        <p className="form-ok">
+        <OkText>
           {result.member.display_name} is now {withArticle(result.member.role)}.
-        </p>
+        </OkText>
       )}
       {result?.outcome === "invited" && result.delivery === "sent" && (
-        <p className="form-ok">Invitation emailed to {result.invitation.email}.</p>
+        <OkText>Invitation emailed to {result.invitation.email}.</OkText>
       )}
-      {result?.outcome === "invited" && result.delivery === "link_for_admin" && (
-        <p className="form-ok">
-          {result.invitation.email} is invited, but the email could not be sent: an admin can
-          copy the link from <Link href="/admin/email/links">Links to share</Link>.
-        </p>
-      )}
+      {result?.outcome === "invited" &&
+        result.delivery === "link_for_admin" && (
+          <OkText>
+            {result.invitation.email} is invited, but the email could not be
+            sent: an admin can copy the link from{" "}
+            <Link href="/admin/email/links" className={linkClasses}>
+              Links to share
+            </Link>
+            .
+          </OkText>
+        )}
     </form>
   );
 }
@@ -128,13 +169,13 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
 /** A select of the Workspace roles, by their labels. */
 function RoleSelect(props: ComponentProps<"select">) {
   return (
-    <select {...props}>
+    <NativeSelect {...props}>
       {ROLES.map((role) => (
         <option key={role} value={role}>
           {ROLE_LABELS[role]}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }
 
@@ -163,16 +204,17 @@ function MemberRow({
   const name = `${member.display_name}${isMe ? " (you)" : ""}`;
 
   return (
-    <tr aria-label={member.display_name}>
-      <td>
+    <TableRow aria-label={member.display_name}>
+      <TableCell className="font-medium">
         {name}
         {!member.is_active && " — deactivated"}
-      </td>
-      <td>{member.email}</td>
-      <td>
+      </TableCell>
+      <TableCell className="text-sand-11">{member.email}</TableCell>
+      <TableCell>
         {manages ? (
           <RoleSelect
             aria-label={`Role of ${member.display_name}`}
+            className="h-8 w-auto"
             value={member.role}
             disabled={changeRole.isPending}
             onChange={(event) =>
@@ -185,11 +227,11 @@ function MemberRow({
         ) : (
           ROLE_LABELS[member.role]
         )}
-      </td>
+      </TableCell>
       {manages && (
-        <td>
+        <TableCell>
           {!isMe && (
-            <div className="admin-actions">
+            <Actions>
               <ConfirmButton
                 label="Remove"
                 confirm={`Remove ${member.display_name}`}
@@ -204,16 +246,12 @@ function MemberRow({
                   onConfirm={() => transfer.mutate(member.user_id)}
                 />
               )}
-            </div>
+            </Actions>
           )}
-          {error && (
-            <p className="form-error" role="alert">
-              {error.message}
-            </p>
-          )}
-        </td>
+          {error && <ErrorText>{error.message}</ErrorText>}
+        </TableCell>
       )}
-    </tr>
+    </TableRow>
   );
 }
 
@@ -221,19 +259,17 @@ function LeaveWorkspace({ workspaceId }: { workspaceId: string }) {
   const leave = useLeaveWorkspace(workspaceId);
   const router = useRouter();
   return (
-    <div className="form-actions">
+    <Actions>
       <ConfirmButton
         label="Leave Workspace"
         confirm="Leave this Workspace"
         disabled={leave.isPending}
-        onConfirm={() => leave.mutate(undefined, { onSuccess: () => router.push("/") })}
+        onConfirm={() =>
+          leave.mutate(undefined, { onSuccess: () => router.push("/") })
+        }
       />
-      {leave.isError && (
-        <p className="form-error" role="alert">
-          {leave.error.message}
-        </p>
-      )}
-    </div>
+      {leave.isError && <ErrorText>{leave.error.message}</ErrorText>}
+    </Actions>
   );
 }
 
@@ -252,15 +288,22 @@ function ConfirmButton({
   const [asking, setAsking] = useState(false);
   if (!asking) {
     return (
-      <button type="button" className="secondary" disabled={disabled} onClick={() => setAsking(true)}>
+      <Button
+        type="button"
+        size="sm"
+        disabled={disabled}
+        onClick={() => setAsking(true)}
+      >
         {label}
-      </button>
+      </Button>
     );
   }
   return (
     <>
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant="primary"
         disabled={disabled}
         onClick={() => {
           setAsking(false);
@@ -268,10 +311,10 @@ function ConfirmButton({
         }}
       >
         {confirm}
-      </button>
-      <button type="button" className="secondary" onClick={() => setAsking(false)}>
+      </Button>
+      <Button type="button" size="sm" onClick={() => setAsking(false)}>
         Cancel
-      </button>
+      </Button>
     </>
   );
 }

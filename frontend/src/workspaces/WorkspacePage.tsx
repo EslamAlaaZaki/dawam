@@ -12,6 +12,16 @@ import {
   type Workspace,
 } from "../api/workspaces";
 import { Button } from "../components/ui/button";
+import {
+  Actions,
+  DetailList,
+  ErrorText,
+  Hint,
+  OkText,
+  Panel,
+  formCardClasses,
+  h3Classes,
+} from "./parts";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
@@ -114,6 +124,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     (layer) => folder.id === `dw/${layer}/model`,
   );
 
+  // The folders already in the new design drop out of the legacy wrapper.
+  const restyled =
+    folder.id === "" ||
+    folder.id === "systems" ||
+    folder.id === "dw/files" ||
+    !!(openSystem || connectionSystem || schemaSystem || documentsSystem);
+
   function ask(asked: Omit<AssistantRequest, "nonce">) {
     setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }));
     setAssistantUsed(true);
@@ -158,7 +175,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           </p>
         )}
         <StageProgressPanel workspaceId={workspaceId} />
-        <div className="legacy-page min-w-0 rounded-lg border border-line p-5">
+        <div
+          className={
+            restyled
+              ? "flex min-w-0 flex-col gap-6"
+              : "legacy-page min-w-0 rounded-lg border border-line p-5"
+          }
+        >
           {inDataWarehouse && warehouse.isPending ? (
             <Loading />
           ) : inDataWarehouse && warehouse.isError ? (
@@ -305,20 +328,22 @@ function WorkspaceDetails({
 
   if (!allows(workspace, "workspace.edit")) {
     return (
-      <section aria-labelledby="details-title">
-        <h3 id="details-title">Details</h3>
-        <dl className="details">
+      <Panel aria-labelledby="details-title">
+        <h3 id="details-title" className={h3Classes}>
+          Details
+        </h3>
+        <DetailList>
           <dt>Description</dt>
           <dd>{workspace.description || "—"}</dd>
           <dt>Business domain</dt>
           <dd>{workspace.domain || "—"}</dd>
-        </dl>
-        <p>
+        </DetailList>
+        <Hint>
           {workspace.status === "archived"
             ? "This Workspace is archived, so its details cannot be edited."
             : "Only owners can edit these details."}
-        </p>
-      </section>
+        </Hint>
+      </Panel>
     );
   }
 
@@ -337,19 +362,24 @@ function WorkspaceDetails({
     // A new version (saved, or reloaded) refills the inputs.
     <form
       key={workspace.version}
-      className="form"
+      className={formCardClasses}
       onSubmit={onSubmit}
       aria-labelledby="details-title"
     >
-      <h3 id="details-title">Details</h3>
+      <h3 id="details-title" className={h3Classes}>
+        Details
+      </h3>
       <DetailsFields initial={workspace} />
       {conflict ? (
-        <div className="form-error" role="alert">
+        <div
+          className="flex flex-col items-start gap-2 text-red-11"
+          role="alert"
+        >
           <p>
             Someone else changed this Workspace since you opened it. Reload it
             to see their changes, then edit again.
           </p>
-          <button
+          <Button
             type="button"
             onClick={() => {
               update.reset();
@@ -357,21 +387,17 @@ function WorkspaceDetails({
             }}
           >
             Reload
-          </button>
+          </Button>
         </div>
       ) : (
-        update.isError && (
-          <p className="form-error" role="alert">
-            {update.error.message}
-          </p>
-        )
+        update.isError && <ErrorText>{update.error.message}</ErrorText>
       )}
-      {update.isSuccess && <p role="status">Saved.</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={update.isPending}>
+      {update.isSuccess && <OkText role="status">Saved.</OkText>}
+      <Actions>
+        <Button type="submit" variant="primary" disabled={update.isPending}>
           Save
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }

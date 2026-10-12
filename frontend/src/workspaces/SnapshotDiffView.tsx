@@ -7,6 +7,16 @@ import {
   type SnapshotSummary,
   useSnapshotDiff,
 } from "../api/snapshots";
+import {
+  EmptyState,
+  ErrorText,
+  NativeSelect,
+  Panel,
+  h4Classes,
+  labelClasses,
+  listCardClasses,
+  monoClasses,
+} from "./parts";
 
 type FieldChange = SnapshotDiff["tables"][number]["fields"][number];
 
@@ -14,7 +24,7 @@ function Fields({ fields }: { fields: FieldChange[] }) {
   return (
     <>
       {fields.map((f) => (
-        <span key={f.field}>
+        <span key={f.field} className={monoClasses}>
           {" "}
           {f.field}: {f.before ?? "none"} to {f.after ?? "none"};
         </span>
@@ -58,27 +68,34 @@ export function SnapshotDiffView({
       diff.data.routines.length ===
       0;
   return (
-    <section aria-labelledby="diff-title">
-      <h4 id="diff-title">Compare Snapshots</h4>
-      <label>
-        From{" "}
-        <select value={from} onChange={(e) => setFrom(e.target.value)}>
-          {options}
-        </select>
-      </label>{" "}
-      <label>
-        To{" "}
-        <select value={to} onChange={(e) => setTo(e.target.value)}>
-          {options}
-        </select>
-      </label>
-      {diff.isPending && <p>Loading…</p>}
+    <Panel aria-labelledby="diff-title">
+      <h4 id="diff-title" className={h4Classes}>
+        Compare Snapshots
+      </h4>
+      <div className="flex flex-wrap gap-4">
+        <label className={`${labelClasses} min-w-56`}>
+          From{" "}
+          <NativeSelect value={from} onChange={(e) => setFrom(e.target.value)}>
+            {options}
+          </NativeSelect>
+        </label>{" "}
+        <label className={`${labelClasses} min-w-56`}>
+          To{" "}
+          <NativeSelect value={to} onChange={(e) => setTo(e.target.value)}>
+            {options}
+          </NativeSelect>
+        </label>
+      </div>
+      {diff.isPending && <p className="text-sand-11">Loading…</p>}
       {diff.isError && (
-        <p role="alert">Could not compare: {diff.error.message}</p>
+        <ErrorText>Could not compare: {diff.error.message}</ErrorText>
       )}
-      {empty && <p className="empty-state">No differences.</p>}
+      {empty && <EmptyState>No differences.</EmptyState>}
       {diff.data != null && !empty && (
-        <ul aria-label="Differences">
+        <ul
+          aria-label="Differences"
+          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-1.5`}
+        >
           {diff.data.db_schemas.map((s) => (
             <li key={s.id}>
               Database Schema {s.name}: {s.change}
@@ -91,7 +108,10 @@ export function SnapshotDiffView({
               {t.change}
               <Fields fields={t.fields} />
               {t.columns.length > 0 && (
-                <ul aria-label={`Columns of ${t.name}`}>
+                <ul
+                  aria-label={`Columns of ${t.name}`}
+                  className="mt-1.5 ml-4 flex flex-col gap-1 border-l border-sand-5 pl-3 [&_li]:px-0 [&_li]:py-0"
+                >
                   {t.columns.map((c) => (
                     <li key={c.id}>
                       Column {c.name}: {c.change}
@@ -111,6 +131,6 @@ export function SnapshotDiffView({
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }

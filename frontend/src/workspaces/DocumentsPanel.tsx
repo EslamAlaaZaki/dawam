@@ -16,6 +16,30 @@ import {
 } from "../api/files";
 import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import {
+  Actions,
+  EmptyState,
+  ErrorText,
+  Hint,
+  OkText,
+  TableCard,
+  formCardClasses,
+  h3Classes,
+  h4Classes,
+  labelClasses,
+  linkClasses,
+  monoClasses,
+} from "./parts";
 
 const TEXT_STATUS: Record<string, string> = {
   extracted: "Text extracted",
@@ -54,39 +78,42 @@ function TextEditor({
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} aria-label={`Edit ${file.name}`}>
-      <h4>Edit {file.name}</h4>
+    <form
+      className={formCardClasses.replace("max-w-xl", "max-w-3xl")}
+      onSubmit={onSubmit}
+      aria-label={`Edit ${file.name}`}
+    >
+      <h4 className={h4Classes}>Edit {file.name}</h4>
       {text.isPending ? (
-        <p>Loading…</p>
+        <p className="text-sand-11">Loading…</p>
       ) : text.isError ? (
-        <p role="alert">Could not load the file: {text.error.message}</p>
+        <ErrorText>Could not load the file: {text.error.message}</ErrorText>
       ) : (
-        <label>
+        <label className={labelClasses}>
           Content
-          <textarea
+          <Textarea
             rows={16}
             spellCheck={false}
+            className={monoClasses}
             value={draft ?? text.data}
             onChange={(event) => setDraft(event.target.value)}
           />
         </label>
       )}
-      <p className="form-hint">
-        Saving overwrites the file; there is no version history.
-      </p>
-      {save.isError && (
-        <p className="form-error" role="alert">
-          {save.error.message}
-        </p>
-      )}
-      <div className="form-actions">
-        <button type="submit" disabled={!text.isSuccess || save.isPending}>
+      <Hint>Saving overwrites the file; there is no version history.</Hint>
+      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+      <Actions>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={!text.isSuccess || save.isPending}
+        >
           Save
-        </button>
-        <button type="button" onClick={onClose}>
+        </Button>
+        <Button type="button" onClick={onClose}>
           Cancel
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }
@@ -102,9 +129,10 @@ function ReplaceControl({
 }) {
   const replace = useReplaceFile(workspaceId, area, file.id);
   return (
-    <span>
+    <span className="flex flex-col gap-1">
       <input
         type="file"
+        className="text-sm file:mr-2 file:h-[26px] file:rounded-md file:border file:border-sand-6 file:bg-sand-1 file:px-2 file:font-medium file:text-sand-12 hover:file:bg-sand-3"
         aria-label={`Replace ${file.name}`}
         onChange={(event) => {
           const chosen = event.target.files?.[0];
@@ -113,11 +141,7 @@ function ReplaceControl({
           }
         }}
       />
-      {replace.isError && (
-        <span className="form-error" role="alert">
-          {replace.error.message}
-        </span>
-      )}
+      {replace.isError && <ErrorText>{replace.error.message}</ErrorText>}
     </span>
   );
 }
@@ -159,70 +183,89 @@ export function DocumentsPanel({
   }
 
   return (
-    <section aria-labelledby="folder-title">
-      <h3 id="folder-title">{title}</h3>
+    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
+      <h3 id="folder-title" className={h3Classes}>
+        {title}
+      </h3>
       {files.isPending ? (
-        <p>Loading…</p>
+        <p className="text-sand-11">Loading…</p>
       ) : files.isError ? (
-        <p role="alert">Could not load the files: {files.error.message}</p>
+        <ErrorText>Could not load the files: {files.error.message}</ErrorText>
       ) : files.data.length === 0 ? (
-        <p className="empty-state">
+        <EmptyState>
           No files yet. Files of {ownerName} will be listed here.
-        </p>
+        </EmptyState>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Type</th>
-              <th scope="col">Size</th>
-              <th scope="col">Text</th>
-              <th scope="col">Author</th>
-              <th scope="col">Updated</th>
-              {canEdit && <th scope="col">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {files.data.map((file) => (
-              <tr key={file.id}>
-                <td>
-                  <a
-                    href={fileDownloadUrl(workspace.id, file.id)}
-                    download={file.name}
-                  >
-                    {file.name}
-                  </a>
-                </td>
-                <td>{file.mime}</td>
-                <td>{formatSize(file.size)}</td>
-                <td>{TEXT_STATUS[file.text_status] ?? file.text_status}</td>
-                <td>
-                  {(file.updated_by && authors.get(file.updated_by)) || "—"}
-                </td>
-                <td>{new Date(file.updated_at).toLocaleDateString()}</td>
-                {canEdit && (
-                  <td>
-                    {isEditable(file) ? (
-                      <button type="button" onClick={() => setEditing(file.id)}>
-                        Edit {file.name}
-                      </button>
-                    ) : (
-                      <ReplaceControl
-                        workspaceId={workspace.id}
-                        area={area}
-                        file={file}
-                      />
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Name</TableHead>
+                <TableHead scope="col">Type</TableHead>
+                <TableHead scope="col">Size</TableHead>
+                <TableHead scope="col">Text</TableHead>
+                <TableHead scope="col">Author</TableHead>
+                <TableHead scope="col">Updated</TableHead>
+                {canEdit && <TableHead scope="col">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {files.data.map((file) => (
+                <TableRow key={file.id}>
+                  <TableCell className={monoClasses}>
+                    <a
+                      href={fileDownloadUrl(workspace.id, file.id)}
+                      download={file.name}
+                      className={linkClasses}
+                    >
+                      {file.name}
+                    </a>
+                  </TableCell>
+                  <TableCell className={`${monoClasses} text-sand-11`}>
+                    {file.mime}
+                  </TableCell>
+                  <TableCell>{formatSize(file.size)}</TableCell>
+                  <TableCell>
+                    {TEXT_STATUS[file.text_status] ?? file.text_status}
+                  </TableCell>
+                  <TableCell>
+                    {(file.updated_by && authors.get(file.updated_by)) || "—"}
+                  </TableCell>
+                  <TableCell>
+                    {new Date(file.updated_at).toLocaleDateString()}
+                  </TableCell>
+                  {canEdit && (
+                    <TableCell>
+                      {isEditable(file) ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => setEditing(file.id)}
+                        >
+                          Edit {file.name}
+                        </Button>
+                      ) : (
+                        <ReplaceControl
+                          workspaceId={workspace.id}
+                          area={area}
+                          file={file}
+                        />
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
       {files.data && files.data.length > 0 && (
         <p>
-          <a href={areaZipUrl(workspace.id, area)} download>
+          <a
+            href={areaZipUrl(workspace.id, area)}
+            download
+            className={linkClasses}
+          >
             Download all as zip
           </a>
         </p>
@@ -240,34 +283,35 @@ export function DocumentsPanel({
           ),
       )}
       {canEdit ? (
-        <form className="form" onSubmit={onSubmit} aria-label="Upload document">
-          <h4>Upload a document</h4>
-          <label>
+        <form
+          className={formCardClasses}
+          onSubmit={onSubmit}
+          aria-label="Upload document"
+        >
+          <h4 className={h4Classes}>Upload a document</h4>
+          <label className={labelClasses}>
             File
             <input
               type="file"
               name="file"
+              className="text-sm font-normal file:mr-2 file:h-8 file:rounded-md file:border file:border-sand-6 file:bg-sand-1 file:px-3 file:font-medium file:text-sand-12 hover:file:bg-sand-3"
               accept=".pdf,.docx,.xlsx,.md,.markdown,.txt,.sql,.yaml,.yml,.csv,.json,.png,.jpg,.jpeg,.gif,.webp"
             />
           </label>
-          <p className="form-hint">
+          <Hint>
             PDF, DOCX, XLSX, Markdown, SQL, YAML, CSV, JSON, text or an image,
             up to 25 MB. A file with the same name is replaced.
-          </p>
-          {upload.isError && (
-            <p className="form-error" role="alert">
-              {upload.error.message}
-            </p>
-          )}
-          {upload.isSuccess && <p role="status">Uploaded.</p>}
-          <div className="form-actions">
-            <button type="submit" disabled={upload.isPending}>
+          </Hint>
+          {upload.isError && <ErrorText>{upload.error.message}</ErrorText>}
+          {upload.isSuccess && <OkText role="status">Uploaded.</OkText>}
+          <Actions>
+            <Button type="submit" variant="primary" disabled={upload.isPending}>
               Upload
-            </button>
-          </div>
+            </Button>
+          </Actions>
         </form>
       ) : (
-        <p>Only owners and editors can upload documents.</p>
+        <Hint>Only owners and editors can upload documents.</Hint>
       )}
     </section>
   );

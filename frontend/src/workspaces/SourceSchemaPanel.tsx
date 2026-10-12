@@ -13,8 +13,18 @@ import {
 } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { SchemaBrowser } from "./SchemaBrowser";
 import { SnapshotDiffView } from "./SnapshotDiffView";
+import {
+  Actions,
+  EmptyState,
+  ErrorText,
+  OkText,
+  h3Classes,
+  listCardClasses,
+} from "./parts";
 
 /**
  * A Source System's Source Schema (spec stories 45, 46, 54): the browser over its latest
@@ -51,74 +61,81 @@ export function SourceSchemaPanel({
   }, [finished, queryClient, workspace.id, system.id]);
 
   return (
-    <section aria-labelledby="folder-title">
-      <h3 id="folder-title">Source Schema</h3>
-      {canExtract && (
-        <div className="form-actions">
-          <button
-            type="button"
-            disabled={extract.isPending}
-            onClick={() => extract.mutate()}
-          >
-            Extract metadata
-          </button>
-        </div>
-      )}
-      {extract.isError && (
-        <p className="form-error" role="alert">
-          {extract.error.message}
-        </p>
-      )}
+    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 id="folder-title" className={h3Classes}>
+          Source Schema
+        </h3>
+        {canExtract && (
+          <Actions className="ml-auto">
+            <Button
+              type="button"
+              variant="primary"
+              disabled={extract.isPending}
+              onClick={() => extract.mutate()}
+            >
+              Extract metadata
+            </Button>
+          </Actions>
+        )}
+      </div>
+      {extract.isError && <ErrorText>{extract.error.message}</ErrorText>}
       {extract.isSuccess && (
-        <p role="status">
+        <OkText role="status">
           Extraction started. Follow it under Background jobs; a new Snapshot
           appears here only if something changed.
-        </p>
+        </OkText>
       )}
-      {snapshots.isPending && <p>Loading…</p>}
+      {snapshots.isPending && <p className="text-sand-11">Loading…</p>}
       {snapshots.isError && (
-        <p role="alert">
+        <ErrorText>
           Could not load the Snapshots: {snapshots.error.message}
-        </p>
+        </ErrorText>
       )}
       {snapshots.isSuccess && snapshots.data.length === 0 && (
-        <p className="empty-state">
+        <EmptyState>
           No Snapshot yet. Extract metadata from the Connection.
-        </p>
+        </EmptyState>
       )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
-        <div className="form-actions">
-          <a href={dataDictionaryUrl(workspace.id, system.id)} download>
-            Download data dictionary (XLSX)
-          </a>
+        <Actions>
+          <Button asChild>
+            <a href={dataDictionaryUrl(workspace.id, system.id)} download>
+              Download data dictionary (XLSX)
+            </a>
+          </Button>
           {canSave && (
-            <button
+            <Button
               type="button"
               disabled={save.isPending}
               onClick={() => save.mutate()}
             >
               Save data dictionary to files
-            </button>
+            </Button>
           )}
-        </div>
+        </Actions>
       )}
-      {save.isError && (
-        <p className="form-error" role="alert">
-          {save.error.message}
-        </p>
-      )}
+      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
       {save.isSuccess && (
-        <p role="status">Saved {save.data.name} to the file area.</p>
+        <OkText role="status">Saved {save.data.name} to the file area.</OkText>
       )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
         <SchemaBrowser workspace={workspace} systemId={system.id} />
       )}
       {snapshots.isSuccess && snapshots.data.length > 0 && (
-        <ul aria-label="Snapshots">
+        <ul
+          aria-label="Snapshots"
+          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-2`}
+        >
           {snapshots.data.map((snapshot) => (
             <li key={snapshot.id}>
               {new Date(snapshot.taken_at).toLocaleString()}
-              {snapshot.is_latest && <strong> Latest</strong>}
+              {snapshot.is_latest && (
+                <>
+                  {" "}
+                  <Badge variant="accent">Latest</Badge>
+                </>
+              )}
               {": "}
               {snapshot.schema_count} Database Schemas, {snapshot.table_count}{" "}
               tables and views, {snapshot.column_count} columns,{" "}
