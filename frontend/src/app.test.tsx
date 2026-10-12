@@ -215,6 +215,20 @@ describe("signing in", () => {
   });
 });
 
+describe("the sign-in pages", () => {
+  it.each(["/login", "/forgot-password"])(
+    "stand alone at %s: the wordmark above the card, no app header",
+    async (path) => {
+      renderApp(fakeBackend(), path);
+
+      expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+      expect(screen.getByText("DAWAM")).toBeInTheDocument();
+      expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+      expect(await screen.findByText("API version 1.2.3")).toBeInTheDocument();
+    },
+  );
+});
+
 describe("the signed-in shell", () => {
   it("shows the product name and the user's display name in the header", async () => {
     renderApp(fakeBackend({ signedIn: true }));

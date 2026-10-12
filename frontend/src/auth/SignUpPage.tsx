@@ -6,7 +6,10 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { useRegister, useRegistration } from "../api/account";
 import { useMe } from "../api/queries";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Loading } from "../shell/Loading";
+import { AuthCard, AuthError, AuthField, AuthHint, authLinkClasses } from "./AuthFrame";
 
 /** Sign up with email, display name and password, while self-registration is open. */
 export function SignUpPage() {
@@ -32,17 +35,18 @@ export function SignUpPage() {
   }
   if (registration.isError || !registration.data.open) {
     return (
-      <section className="page login">
-        <div className="login-form">
-          <h2>Create an account</h2>
-          <p>
-            {registration.isError
-              ? `Could not check whether sign-up is open: ${registration.error.message}`
-              : "Self-registration is turned off. Ask an admin for an account."}
-          </p>
-          <Link href="/login">Sign in</Link>
-        </div>
-      </section>
+      <AuthCard title="Create an account" titleId="signup-title">
+        <p>
+          {registration.isError
+            ? `Could not check whether sign-up is open: ${registration.error.message}`
+            : "Self-registration is turned off. Ask an admin for an account."}
+        </p>
+        <AuthHint className="text-center">
+          <Link href="/login" className={authLinkClasses}>
+            Sign in
+          </Link>
+        </AuthHint>
+      </AuthCard>
     );
   }
 
@@ -69,41 +73,40 @@ export function SignUpPage() {
       : null;
 
   return (
-    <section className="page login">
-      <form className="login-form" onSubmit={onSubmit} aria-labelledby="signup-title">
-        <h2 id="signup-title">Create an account</h2>
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="email" required />
-        </label>
-        <label>
-          Display name
-          <input name="display_name" autoComplete="name" required maxLength={200} />
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="new-password" required />
-        </label>
-        <label>
-          Confirm password
-          <input name="confirm" type="password" autoComplete="new-password" required />
-        </label>
-        <p className="form-hint">
-          At least 10 characters, and not a common password. A few unrelated words make a good
-          one.
-        </p>
-        {problem && (
-          <p className="login-error" role="alert">
-            {problem}
-          </p>
-        )}
-        <button type="submit" disabled={register.isPending}>
-          Create account
-        </button>
-        <p className="form-hint">
-          Already have an account? <Link href="/login">Sign in</Link>
-        </p>
-      </form>
-    </section>
+    <AuthCard title="Create an account" titleId="signup-title" onSubmit={onSubmit}>
+      <AuthField id="signup-email" label="Email">
+        <Input id="signup-email" name="email" type="email" autoComplete="email" required />
+      </AuthField>
+      <AuthField id="signup-name" label="Display name">
+        <Input id="signup-name" name="display_name" autoComplete="name" required maxLength={200} />
+      </AuthField>
+      <AuthField id="signup-password" label="Password">
+        <Input
+          id="signup-password"
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          aria-describedby="signup-password-hint"
+          required
+        />
+      </AuthField>
+      <AuthField id="signup-confirm" label="Confirm password">
+        <Input id="signup-confirm" name="confirm" type="password" autoComplete="new-password" required />
+      </AuthField>
+      <AuthHint id="signup-password-hint">
+        At least 10 characters, and not a common password. A few unrelated words make a good
+        one.
+      </AuthHint>
+      {problem && <AuthError>{problem}</AuthError>}
+      <Button type="submit" variant="primary" size="lg" disabled={register.isPending}>
+        Create account
+      </Button>
+      <AuthHint className="text-center">
+        Already have an account?{" "}
+        <Link href="/login" className={authLinkClasses}>
+          Sign in
+        </Link>
+      </AuthHint>
+    </AuthCard>
   );
 }

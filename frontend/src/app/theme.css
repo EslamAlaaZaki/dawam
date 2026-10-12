@@ -1,0 +1,200 @@
+/* The redesign's styles (spec #231, ADR 0004): Tailwind CSS v4 and the tokens of the
+   approved prototype, variant A "Crisp". Radix Colors: sand neutrals, jade accent, red
+   (danger), amber (warning) and grass (success), light and dark.
+
+   Tailwind's preflight is left out on purpose: pages not redesigned yet still rely on
+   the browser's defaults and globals.css. The redesigned parts get a small reset of
+   their own instead, scoped to `.dawam-ui` and to shadcn/ui parts (`[data-slot]`). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+/* next-themes puts `dark` on <html>, following the system unless the user chose. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --sand-1: #fdfdfc;
+  --sand-2: #f9f9f8;
+  --sand-3: #f1f0ef;
+  --sand-4: #e9e8e6;
+  --sand-5: #e2e1de;
+  --sand-6: #dad9d6;
+  --sand-7: #cfceca;
+  --sand-8: #bcbbb5;
+  --sand-9: #8d8d86;
+  --sand-11: #63635e;
+  --sand-12: #21201c;
+  --jade-2: #f4fbf7;
+  --jade-3: #e6f7ed;
+  --jade-4: #d6f1e3;
+  --jade-7: #8bceb6;
+  --jade-11: #208368;
+  --jade-12: #1d3b31;
+  --accent-solid: #1f7a61;
+  --accent-solid-hover: #1a6b55;
+  --on-accent: #ffffff;
+  --red-3: #feebec;
+  --red-11: #ce2c31;
+  --amber-3: #fff7c2;
+  --amber-11: #ab6400;
+  --amber-12: #4f3422;
+  --grass-3: #e9f6e9;
+  --grass-11: #2a7e3b;
+  /* WCAG AA where the prototype's pairs fall short in light: small text on the accent
+     and warning pills (jade-11 on jade-3 is 4.2:1, amber-11 on amber-3 4.3:1), and the
+     edge of a text field (sand-6 is 1.4:1; 1.4.11 asks 3:1). */
+  --pill-accent-fg: var(--jade-12);
+  --pill-warning-fg: var(--amber-12);
+  --control-edge: var(--sand-9);
+  --shadow-color: 0 1px 2px rgb(33 32 28 / 0.06), 0 4px 16px rgb(33 32 28 / 0.06);
+  --overlay: rgb(33 32 28 / 0.32);
+}
+
+.dark {
+  --sand-1: #111110;
+  --sand-2: #191918;
+  --sand-3: #222221;
+  --sand-4: #2a2a28;
+  --sand-5: #31312e;
+  --sand-6: #3b3a37;
+  --sand-7: #494844;
+  --sand-8: #62605b;
+  --sand-9: #6f6d66;
+  --sand-11: #b5b3ad;
+  --sand-12: #eeeeec;
+  --jade-2: #121c18;
+  --jade-3: #0f2e22;
+  --jade-4: #0b3b2c;
+  --jade-7: #246854;
+  --jade-11: #1fd8a4;
+  --jade-12: #adf0d4;
+  --accent-solid: #29a383;
+  --accent-solid-hover: #27b08b;
+  --on-accent: #0d1512;
+  --red-3: #3b1219;
+  --red-11: #ff9592;
+  --amber-3: #302008;
+  --amber-11: #ffca16;
+  --amber-12: #ffe7b3;
+  --grass-3: #1b2a1e;
+  --grass-11: #71d083;
+  --pill-accent-fg: var(--jade-11);
+  --pill-warning-fg: var(--amber-11);
+  --control-edge: var(--sand-8);
+  --shadow-color: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
+  --overlay: rgb(0 0 0 / 0.55);
+}
+
+@theme inline {
+  /* No stock palette: only the prototype's colours (and so no blue anywhere). */
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-sand-1: var(--sand-1);
+  --color-sand-2: var(--sand-2);
+  --color-sand-3: var(--sand-3);
+  --color-sand-4: var(--sand-4);
+  --color-sand-5: var(--sand-5);
+  --color-sand-6: var(--sand-6);
+  --color-sand-7: var(--sand-7);
+  --color-sand-8: var(--sand-8);
+  --color-sand-9: var(--sand-9);
+  --color-sand-11: var(--sand-11);
+  --color-sand-12: var(--sand-12);
+  --color-jade-2: var(--jade-2);
+  --color-jade-3: var(--jade-3);
+  --color-jade-4: var(--jade-4);
+  --color-jade-7: var(--jade-7);
+  --color-jade-11: var(--jade-11);
+  --color-jade-12: var(--jade-12);
+  --color-accent-solid: var(--accent-solid);
+  --color-accent-solid-hover: var(--accent-solid-hover);
+  --color-on-accent: var(--on-accent);
+  --color-red-3: var(--red-3);
+  --color-red-11: var(--red-11);
+  --color-amber-3: var(--amber-3);
+  --color-amber-11: var(--amber-11);
+  --color-grass-3: var(--grass-3);
+  --color-grass-11: var(--grass-11);
+  --color-pill-accent-fg: var(--pill-accent-fg);
+  --color-pill-warning-fg: var(--pill-warning-fg);
+  --color-control-edge: var(--control-edge);
+  --color-line: var(--sand-5);
+  --color-overlay: var(--overlay);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  /* The prototype's type sizes; body text is 14px. */
+  --text-*: initial;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-mono: 12.5px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+
+  /* Controls 6px, toasts 8px, cards and dialogs 12px (Tailwind's md, lg, xl). */
+  --radius-pill: 10px;
+
+  --shadow-overlay: var(--shadow-color);
+}
+
+@layer base {
+  /* The redesign's own reset, standing in for Tailwind's preflight (see the top). */
+  :where(.dawam-ui, .dawam-ui *, [data-slot], [data-slot] *),
+  :where(.dawam-ui, .dawam-ui *, [data-slot], [data-slot] *)::before,
+  :where(.dawam-ui, .dawam-ui *, [data-slot], [data-slot] *)::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid var(--color-line);
+  }
+
+  :where(.dawam-ui, [data-slot]) :where(h1, h2, h3, h4, h5, h6) {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  :where(.dawam-ui, [data-slot]) :where(a) {
+    color: inherit;
+    text-decoration: inherit;
+  }
+
+  :where(.dawam-ui, [data-slot]) :where(ol, ul, menu) {
+    list-style: none;
+  }
+
+  :where(.dawam-ui, .dawam-ui *, [data-slot], [data-slot] *) :where(svg, img) {
+    display: block;
+    vertical-align: middle;
+  }
+
+  :where(.dawam-ui *, [data-slot]):where(button, input, select, textarea) {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background-color: transparent;
+  }
+
+  :where(.dawam-ui *, [data-slot]):where(button:not(:disabled), [role="button"]:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  /* The prototype's body text and focus ring. */
+  .dawam-ui {
+    font: 400 var(--text-base) / 1.45 var(--font-sans);
+    color: var(--color-sand-12);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :where(.dawam-ui, [data-slot]) :focus-visible,
+  :where([data-slot]):focus-visible {
+    outline: 2px solid var(--color-jade-11);
+    outline-offset: 2px;
+  }
+}
