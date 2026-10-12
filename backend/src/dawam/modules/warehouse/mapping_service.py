@@ -46,6 +46,7 @@ from .lineage_sql import (
     parse_expression,
 )
 from .propagation import StructuralChange, StructuralChangeHook, notify_structural_change
+from .regeneration import note_new_inputs, table_inputs
 from .score_trigger import touch
 from .tables import (
     BRANCH_NAME_MAX_LENGTH,
@@ -380,7 +381,9 @@ class MappingService:
             record.updated_by = user.id
             record.updated_at = now
             db.flush()
+            read_before = table_inputs(db, table.id)
             self._replace_edges(db, record, table, parsed, inputs, dimension)
+            self._note_new_inputs(db, workspace_id, table, read_before)
             after = _snapshot(record)
             changed = [f for f in after if before is None or before[f] != after[f]]
             if before is None or changed:
@@ -514,7 +517,9 @@ class MappingService:
             )
             db.add(branch)
             db.flush()
+            read_before = table_inputs(db, table.id)
             self._replace_branch_edges(db, warehouse, table, branch, parts)
+            self._note_new_inputs(db, workspace_id, table, read_before)
             self._record_branch(db, user, workspace_id, table, branch, "created", None, values, now)
             return self._view(db, table)
 
@@ -544,7 +549,9 @@ class MappingService:
             if changed:
                 for f in changed:
                     setattr(branch, f, values[f])
+                read_before = table_inputs(db, table.id)
                 self._replace_branch_edges(db, warehouse, table, branch, parts)
+                self._note_new_inputs(db, workspace_id, table, read_before)
                 branch.version += 1
                 branch.updated_at = now
                 self._record_branch(
@@ -589,6 +596,16 @@ class MappingService:
                 .values(ordinal=MappingBranchRecord.ordinal - 1)
             )
             self._record_branch(db, user, workspace_id, table, branch, "deleted", old, None, now)
+
+    @staticmethod
+    def _note_new_inputs(
+        db: Session, workspace_id: uuid.UUID, table: DwTableRecord, read_before: set[uuid.UUID]
+    ) -> None:
+        """A manual edit that gave the table an input it did not read before offers a
+        regeneration of that table (spec §6.9, story 98a); it never runs one."""
+        db.flush()
+        if table_inputs(db, table.id) - read_before:
+            note_new_inputs(db, workspace_id, table.id)
 
     def _record_branch(
         self,
