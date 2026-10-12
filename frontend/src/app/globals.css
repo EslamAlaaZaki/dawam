@@ -8,63 +8,12 @@ body {
   margin: 0;
 }
 
-.shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.shell-header {
-  display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: #102a43;
-  color: #f0f4f8;
-}
-
-.shell-header h1 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.shell-header p {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #bcccdc;
-}
-
-.shell-main {
-  flex: 1;
-}
-
-.shell-footer {
-  padding: 0.5rem 1.5rem;
-  font-size: 0.8125rem;
-  color: #52606d;
-  border-top: 1px solid #d9e2ec;
-}
-
-.shell-user {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-left: auto;
-  font-size: 0.875rem;
-}
-
-.shell-user-name {
-  font-weight: 600;
-}
-
-.shell-user button {
-  padding: 0.25rem 0.75rem;
-  border: 1px solid #829ab1;
-  border-radius: 4px;
-  color: #f0f4f8;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
+/* Pages not redesigned yet are light-only: in the dark theme they sit on their own light
+   ground, so their colours (set for it below) stay readable. Remove with the last one. */
+.legacy-page {
+  color: #1f2933;
+  background: #f5f7fa;
+  color-scheme: light;
 }
 
 .page {
@@ -124,75 +73,6 @@ body {
 }
 
 .form label {
-.shell-nav {
-  display: flex;
-  gap: 1rem;
-  margin-left: auto;
-  font-size: 0.875rem;
-}
-
-.shell-nav a {
-  color: #f0f4f8;
-}
-
-.shell-nav + .shell-user {
-  margin-left: 1rem;
-}
-
-.shell-notifications {
-  position: relative;
-  margin-left: auto;
-  font-size: 0.875rem;
-}
-
-.shell-nav + .shell-notifications,
-.shell-notifications + .shell-user {
-  margin-left: 1rem;
-}
-
-.shell-notifications > button {
-  padding: 0.25rem 0.75rem;
-  border: 1px solid #829ab1;
-  border-radius: 4px;
-  color: #f0f4f8;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-}
-
-.notification-list {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 10;
-  width: 22rem;
-  max-width: 90vw;
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  border: 1px solid #d9e2ec;
-  border-radius: 4px;
-  color: #102a43;
-  background: #fff;
-}
-
-.notification-list p {
-  color: inherit;
-}
-
-.notification-list ul {
-  margin: 0 0 0.75rem;
-  padding: 0;
-  list-style: none;
-}
-
-.notification-list li {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #d9e2ec;
-}
-
 .archived-banner {
   padding: 0.5rem 0.75rem;
   border: 1px solid #f0b429;
@@ -288,10 +168,6 @@ body {
 
 .link-item p {
   margin: 0;
-}
-
-.shell-user a {
-  color: #f0f4f8;
 }
 
 .form-hint {

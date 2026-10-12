@@ -24,11 +24,11 @@ function signedInAs(me = ROOT, registration = CLOSED) {
 }
 
 describe("the admin settings page", () => {
-  it("is linked from the header for admins and shows the current settings", async () => {
+  it("is linked from the sidebar for admins and shows the current settings", async () => {
     renderApp(signedInAs(ROOT, { enabled: true, allowed_email_domains: ["example.com"] }));
 
-    const header = await screen.findByRole("banner");
-    fireEvent.click(await within(header).findByRole("link", { name: "Admin settings" }));
+    const nav = await screen.findByRole("navigation", { name: "Administration" });
+    fireEvent.click(within(nav).getByRole("link", { name: "Admin settings" }));
 
     expect(await screen.findByRole("heading", { name: "Admin settings" })).toBeInTheDocument();
     expect(currentLocation()).toBe("/admin/settings");
@@ -81,8 +81,7 @@ describe("the admin settings page", () => {
     renderApp(api, "/admin/settings");
 
     expect(await screen.findByText("Only admins can change these settings.")).toBeInTheDocument();
-    const header = screen.getByRole("banner");
-    expect(within(header).queryByRole("link", { name: "Admin settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Administration" })).not.toBeInTheDocument();
     expect(api.requests.some((r) => r.path === "/api/v1/admin/settings")).toBe(false);
   });
 });

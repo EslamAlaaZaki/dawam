@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { CSRF_TOKEN, fakeApi, renderApp, setCsrfCookie, user } from "../test/fakeApi";
+import { openMenu } from "../test/menus";
 import { currentLocation } from "../test/navigation";
 
 const PASSWORD = "analytical engine";
@@ -29,11 +30,12 @@ async function changePassword(current: string, next: string, confirm = next) {
 }
 
 describe("the profile page", () => {
-  it("is reached from the user's name in the header", async () => {
+  it("is reached from the user menu in the header", async () => {
     renderApp(signedInAsAda());
 
     const header = await screen.findByRole("banner");
-    fireEvent.click(await within(header).findByRole("link", { name: "Ada Lovelace" }));
+    openMenu(await within(header).findByRole("button", { name: "Ada Lovelace" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Profile" }));
 
     expect(await screen.findByRole("heading", { name: "Your profile" })).toBeInTheDocument();
     expect(currentLocation()).toBe("/profile");
