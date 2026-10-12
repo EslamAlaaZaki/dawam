@@ -212,7 +212,9 @@ describe("the folder tree", () => {
     open("owner", "?folder=dw/staging/model");
     await tree();
 
-    fireEvent.click(within(item("Data Warehouse")).getAllByText("▾")[0]!);
+    fireEvent.click(
+      item("Data Warehouse").querySelector(".lucide-chevron-down")!,
+    );
 
     expect(item("Data Warehouse")).toHaveAttribute("aria-expanded", "false");
     const tabStops = screen

@@ -17,8 +17,14 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { NotificationBell } from "./NotificationBell";
 import { SidebarNav } from "./SidebarNav";
 import { UserMenu } from "./UserMenu";
+import { JobsButton } from "../workspaces/JobsButton";
+import { workspaceIdOf } from "../workspaces/WorkspaceSidebar";
 
-/** Pages in the redesign's look; the others stay light-only until their ticket lands. */
+/**
+ * Pages in the redesign's look; the others stay light-only until their ticket lands.
+ * A Workspace's page is one too: its frame is redesigned, the folder panels inside it
+ * are not yet (they sit on a light ground of their own).
+ */
 const REDESIGNED_PATHS: ReadonlySet<string> = new Set([
   "/",
   "/workspaces/new",
@@ -45,6 +51,7 @@ const sidebarClasses = "flex flex-col gap-1 bg-sand-2 px-2 py-3 text-base";
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const workspaceId = workspaceIdOf(pathname);
   if (AUTH_PATHS.has(pathname)) {
     return <AuthFrame>{children}</AuthFrame>;
   }
@@ -74,7 +81,9 @@ export function Shell({ children }: { children: ReactNode }) {
               aria-describedby={undefined}
               // Following a link in the drawer closes it.
               onClick={(event) => {
-                if ((event.target as HTMLElement).closest("a")) {
+                if (
+                  (event.target as HTMLElement).closest("a, [role=treeitem]")
+                ) {
                   setDrawerOpen(false);
                 }
               }}
@@ -85,7 +94,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </Sheet>
           <Breadcrumbs />
           <div className="ml-auto flex items-center gap-1">
-            {/* The Jobs button comes here (a later ticket). */}
+            {workspaceId && <JobsButton workspaceId={workspaceId} />}
             <NotificationBell />
             <UserMenu />
           </div>
@@ -93,7 +102,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <AdminNav />
         <main
           className={
-            REDESIGNED_PATHS.has(pathname)
+            REDESIGNED_PATHS.has(pathname) || workspaceId
               ? "dawam-ui flex flex-col gap-5 px-6 pt-5 pb-24"
               : "legacy-page flex-1"
           }

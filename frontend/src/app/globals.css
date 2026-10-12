@@ -1,5 +1,10 @@
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   color: #1f2933;
   background: #f5f7fa;
 }
@@ -74,13 +79,6 @@ body {
   font-size: 0.875rem;
 }
 
-.archived-banner {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #f0b429;
-  border-radius: 4px;
-  background: #fffbea;
-}
-
 .admin-form {
   display: flex;
   flex-direction: column;
@@ -106,347 +104,239 @@ body {
 
 .form input,
 .form textarea {
-.admin-form input,
-.admin-form select {
-  padding: 0.5rem;
-  border: 1px solid #9fb3c8;
-  border-radius: 4px;
-  font: inherit;
-}
-
-.form-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.form-error {
-  margin: 0;
-  color: #ab091e;
-}
-
-.details dt {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.details dd {
-  margin: 0 0 0.75rem;
-.admin-actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.admin-form button {
-  align-self: flex-start;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  color: #ffffff;
-  background: #243b53;
-  font: inherit;
-  cursor: pointer;
-}
-
-.admin-form button.secondary {
-  color: #243b53;
-  background: #e4e7eb;
-}
-
-.form-hint {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: #52606d;
-}
-
-.form-ok {
-  margin: 0;
-  color: #0e7c48;
-}
-
-/* Folder tree and stage progress. Colours keep WCAG AA: 4.5:1 for text, 3:1 for the
-   focus ring, which is also never the only sign of selection (bold + marker). */
-.workspace-layout {
-  display: grid;
-  grid-template-columns: minmax(14rem, 18rem) 1fr;
-  gap: 1.5rem;
-  align-items: start;
-}
-
-@media (max-width: 40rem) {
-  .workspace-layout {
-    grid-template-columns: 1fr;
+  .admin-form input,
+  .admin-form select {
+    padding: 0.5rem;
+    border: 1px solid #9fb3c8;
+    border-radius: 4px;
+    font: inherit;
   }
-}
 
-.folder-tree,
-.folder-group {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
+  .form-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
 
-.folder-group {
-  margin-left: 1rem;
-}
+  .form-error {
+    margin: 0;
+    color: #ab091e;
+  }
 
-.folder-item {
-  outline: none;
-}
+  .details dt {
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
 
-.folder-label {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.5rem;
-  border-radius: 4px;
-  color: #1f2933;
-  cursor: pointer;
-}
+  .details dd {
+    margin: 0 0 0.75rem;
+    .admin-actions {
+      display: flex;
+      gap: 0.75rem;
+    }
 
-.folder-label:hover {
-  background: #e4ecf4;
-}
+    .admin-form button {
+      align-self: flex-start;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      color: #ffffff;
+      background: #243b53;
+      font: inherit;
+      cursor: pointer;
+    }
 
-.folder-item[aria-selected="true"] > .folder-label {
-  background: #d9e2ec;
-  color: #102a43;
-  font-weight: 600;
-}
+    .admin-form button.secondary {
+      color: #243b53;
+      background: #e4e7eb;
+    }
 
-.folder-item:focus-visible > .folder-label {
-  outline: 2px solid #1c4ed8;
-  outline-offset: 1px;
-}
+    .form-hint {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: #52606d;
+    }
 
-.folder-toggle {
-  display: inline-block;
-  width: 1rem;
-  text-align: center;
-  color: #323f4b;
-}
+    .form-ok {
+      margin: 0;
+      color: #0e7c48;
+    }
 
-.empty-state {
-  max-width: 40rem;
-  padding: 1rem;
-  border: 1px dashed #52606d;
-  border-radius: 4px;
-  color: #323f4b;
-}
+    /* Folder tree and stage progress. Colours keep WCAG AA: 4.5:1 for text, 3:1 for the
+   focus ring, which is also never the only sign of selection (bold + marker). */
+    .empty-state {
+      max-width: 40rem;
+      padding: 1rem;
+      border: 1px dashed #52606d;
+      border-radius: 4px;
+      color: #323f4b;
+    }
 
-.stage-progress {
-  margin-top: 1.5rem;
-}
+    .members {
+      margin-top: 1.5rem;
+    }
 
-.stage-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-width: 28rem;
-}
+    .members table select {
+      padding: 0.25rem;
+      font: inherit;
+    }
 
-.stage-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid #bcccdc;
-}
+    .members td button,
+    .members .form-actions button {
+      padding: 0.375rem 0.75rem;
+      border: none;
+      border-radius: 4px;
+      color: #ffffff;
+      background: #243b53;
+      font: inherit;
+      cursor: pointer;
+    }
 
-.stage-status {
-  color: #323f4b;
-  font-size: 0.875rem;
-}
+    .members td button.secondary,
+    .members .form-actions button.secondary {
+      color: #243b53;
+      background: #e4e7eb;
+    }
 
-.members {
-  margin-top: 1.5rem;
-}
+    .members .form-actions {
+      margin-top: 1rem;
+    }
 
-.members table select {
-  padding: 0.25rem;
-  font: inherit;
-}
+    .schema-browser pre {
+      max-height: 20rem;
+      overflow: auto;
+      font-size: 0.8125rem;
+    }
 
-.members td button,
-.members .form-actions button {
-  padding: 0.375rem 0.75rem;
-  border: none;
-  border-radius: 4px;
-  color: #ffffff;
-  background: #243b53;
-  font: inherit;
-  cursor: pointer;
-}
+    .schema-browser table {
+      border-collapse: collapse;
+    }
 
-.members td button.secondary,
-.members .form-actions button.secondary {
-  color: #243b53;
-  background: #e4e7eb;
-}
+    .assistant-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
 
-.members .form-actions {
-  margin-top: 1rem;
-}
+    .assistant-header h3 {
+      margin: 0;
+    }
 
-.jobs {
-  margin-top: 1.5rem;
-}
+    .page .assistant-close {
+      padding: 0 0.6rem;
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+      color: #243b53;
+      background: transparent;
+    }
 
-.job-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-width: 40rem;
-}
+    .assistant-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
 
-.job-list li {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #bcccdc;
-}
+    .assistant-turns {
+      list-style: none;
+      margin: 1rem 0;
+      padding: 0;
+    }
 
-.job-summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
+    .assistant-turn {
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #bcccdc;
+    }
 
-.job-status {
-  color: #323f4b;
-  font-size: 0.875rem;
-}
+    .assistant-question {
+      font-weight: 600;
+      white-space: pre-wrap;
+    }
 
-.job-list progress {
-  width: 100%;
-}
+    .assistant-answer {
+      white-space: pre-wrap;
+    }
 
-.job-log {
-  max-height: 16rem;
-  overflow: auto;
-  white-space: pre-wrap;
-  font-size: 0.8125rem;
-}
+    .assistant-note {
+      color: #323f4b;
+      font-size: 0.875rem;
+    }
 
-.schema-browser pre {
-  max-height: 20rem;
-  overflow: auto;
-  font-size: 0.8125rem;
-}
+    .assistant-failure {
+      color: #8a1c1c;
+    }
 
-.schema-browser table {
-  border-collapse: collapse;
-}
+    .change-set {
+      margin: 1rem 0;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #bcccdc;
+    }
 
-.assistant {
-  margin-top: 1.5rem;
-  max-width: 40rem;
-}
+    .change-items {
+      list-style: none;
+      padding: 0;
+    }
 
-.assistant-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
+    .change-item {
+      padding: 0.25rem 0;
+    }
 
-.assistant-turns {
-  list-style: none;
-  margin: 1rem 0;
-  padding: 0;
-}
+    .change-diff {
+      margin: 0.25rem 0 0 1.5rem;
+      padding: 0;
+      list-style: none;
+      overflow-wrap: anywhere;
+    }
 
-.assistant-turn {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #bcccdc;
-}
+    .change-diff del {
+      color: #8a1c1c;
+    }
 
-.assistant-question {
-  font-weight: 600;
-  white-space: pre-wrap;
-}
+    .change-diff ins {
+      color: #1f6f3d;
+      text-decoration: none;
+    }
 
-.assistant-answer {
-  white-space: pre-wrap;
-}
+    .assistant-tools {
+      font-size: 0.875rem;
+    }
 
-.assistant-note {
-  color: #323f4b;
-  font-size: 0.875rem;
-}
+    .assistant-tools code {
+      display: block;
+      overflow-wrap: anywhere;
+    }
 
-.assistant-failure {
-  color: #8a1c1c;
-}
+    .assistant-form textarea {
+      display: block;
+      width: 100%;
+    }
 
-.change-set {
-  margin: 1rem 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #bcccdc;
-}
+    .schema-browser th,
+    .schema-browser td {
+      padding: 0.25rem 0.5rem;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
 
-.change-items {
-  list-style: none;
-  padding: 0;
-}
+    .page button.link-button {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      text-decoration: underline;
+      cursor: pointer;
+    }
 
-.change-item {
-  padding: 0.25rem 0;
-}
+    .status-badge {
+      font-size: 0.8125rem;
+      font-style: italic;
+    }
 
-.change-diff {
-  margin: 0.25rem 0 0 1.5rem;
-  padding: 0;
-  list-style: none;
-  overflow-wrap: anywhere;
-}
-
-.change-diff del {
-  color: #8a1c1c;
-}
-
-.change-diff ins {
-  color: #1f6f3d;
-  text-decoration: none;
-}
-
-.assistant-tools {
-  font-size: 0.875rem;
-}
-
-.assistant-tools code {
-  display: block;
-  overflow-wrap: anywhere;
-}
-
-.assistant-form textarea {
-  display: block;
-  width: 100%;
-}
-
-.schema-browser th,
-.schema-browser td {
-  padding: 0.25rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid #ddd;
-}
-
-.page button.link-button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.status-badge {
-  font-size: 0.8125rem;
-  font-style: italic;
-}
-
-/* Two blocks above were never closed (`.form input, .form textarea`
+    /* Two blocks above were never closed (`.form input, .form textarea`
    and `.details dd`), so every rule after them is nested inside them and
    matches almost nothing. The old build closed them at the end of the file; PostCSS
    (Tailwind) refuses an unclosed block, so they are closed here to keep these pages
    exactly as they rendered. Remove this, and the dead rules, as pages move over. */
-}
+  }
 }

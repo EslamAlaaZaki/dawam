@@ -16,11 +16,15 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment } from "react";
+import { Fragment, Suspense } from "react";
 
 import { useMe } from "../api/queries";
 import { ApiStatus } from "./ApiStatus";
 import { Wordmark } from "../components/Wordmark";
+import {
+  WorkspaceSidebar,
+  workspaceIdOf,
+} from "../workspaces/WorkspaceSidebar";
 
 const linkClasses =
   "flex items-center gap-2 rounded-md px-2 py-[5px] whitespace-nowrap text-sand-11 hover:bg-sand-3 hover:text-sand-12 aria-[current=page]:bg-sand-4 aria-[current=page]:font-medium aria-[current=page]:text-sand-12 [&_svg]:size-4 [&_svg]:shrink-0";
@@ -102,9 +106,8 @@ const ADMIN_GROUPS: {
 /**
  * The sidebar's content (prototype "Workspace" and "Admin" screens), shared by the fixed
  * sidebar and the drawer. Under /admin, admins get the grouped Admin navigation and a way
- * back; elsewhere the Workspaces list, and for admins one Admin entry. The in-Workspace
- * navigation (switcher and folders) is a later ticket and replaces the middle section for
- * /workspaces/<id> pages.
+ * back; inside a Workspace the Workspace switcher and its folder tree; elsewhere the
+ * Workspaces list, and for admins one Admin entry.
  */
 export function SidebarNav() {
   const me = useMe();
@@ -112,10 +115,16 @@ export function SidebarNav() {
   const admin =
     me.data?.system_role === "admin" && !me.data.must_change_password;
   const inAdmin = admin && pathname.startsWith("/admin");
+  const workspaceId = workspaceIdOf(pathname);
   return (
     <>
       <Wordmark className="px-2 pt-1 pb-3" />
-      {inAdmin ? (
+      {workspaceId ? (
+        // The tree reads the `folder` search parameter, which wants a Suspense boundary.
+        <Suspense>
+          <WorkspaceSidebar workspaceId={workspaceId} />
+        </Suspense>
+      ) : inAdmin ? (
         <>
           <nav aria-label="Workspaces" className="flex flex-col gap-0.5">
             <NavLink href="/" icon={ArrowLeft} current={false}>

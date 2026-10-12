@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
-import { useDataWarehouse } from "../api/dataWarehouse";
 import {
   ROLE_LABELS,
   allows,
@@ -13,20 +11,18 @@ import {
   useWorkspace,
   type Workspace,
 } from "../api/workspaces";
-import { useSourceSystems } from "../api/systems";
+import { Button } from "../components/ui/button";
 import { Loading } from "../shell/Loading";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { AssistantPanel } from "./AssistantPanel";
 import { FailedChecksPanel, type AssistantRequest } from "./FailedChecksPanel";
 import { ConnectionPanel } from "./ConnectionPanel";
-import { FolderTree } from "./FolderTree";
-import { JobsPanel } from "./JobsPanel";
 import { DeletedObjectsPanel } from "./DeletedObjectsPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
 import { LineagePanel } from "./LineagePanel";
 import { KpiCatalog } from "./KpiPanels";
-import { findFolder, workspaceFolders } from "./folders";
+import { useWorkspaceFolders } from "./useWorkspaceFolders";
 import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
@@ -45,11 +41,12 @@ import { WorkspaceNotFound } from "./WorkspaceNotFound";
  */
 export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspace(workspaceId);
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const warehouse = useDataWarehouse(workspaceId);
-  const systems = useSourceSystems(workspaceId);
+  const { folder, wanted, select, warehouse, systems, systemList } =
+    useWorkspaceFolders(workspaceId, workspace.data?.name ?? "");
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // The panel mounts the first time it opens and then stays, so a conversation in
+  // progress survives closing it and moving between folders.
+  const [assistantUsed, setAssistantUsed] = useState(false);
   const [request, setRequest] = useState<AssistantRequest | null>(null);
 
   if (workspace.isPending) {
@@ -70,18 +67,6 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       </p>
     );
   }
-  const systemList = systems.data ?? [];
-  const root = workspaceFolders(
-    workspace.data.name,
-    warehouse.data?.set_up ?? false,
-    systemList,
-  );
-  const requested = searchParams.get("folder") ?? "";
-  // The setup step becomes the Data Warehouse folder itself once it is done, so a
-  // link (or the page right after saving) to it still lands in the Data Warehouse.
-  const wanted =
-    warehouse.data?.set_up && requested === "dw/setup" ? "dw" : requested;
-  const folder = findFolder(root, wanted) ?? root;
   // Whether the Data Warehouse is set up decides which of its folders exist, so do not
   // resolve one (and fall back to the root) before that is known.
   const inDataWarehouse = wanted === "dw" || wanted.startsWith("dw/");
@@ -117,32 +102,50 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     (layer) => folder.id === `dw/${layer}/model`,
   );
 
-  function select(id: string) {
-    router.push(
-      id === ""
-        ? pathname
-        : `${pathname}?${new URLSearchParams({ folder: id })}`,
-    );
+  function ask(asked: Omit<AssistantRequest, "nonce">) {
+    setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }));
+    setAssistantUsed(true);
+    setAssistantOpen(true);
   }
 
   return (
-    <section className="page">
-      <p>
-        <Link href="/">All Workspaces</Link>
-      </p>
-      <h2>{workspace.data.name}</h2>
-      <p>Your role: {ROLE_LABELS[workspace.data.role]}</p>
-      {workspace.data.status === "archived" && (
-        <p className="archived-banner" role="status">
-          This Workspace is archived and read-only. Exports and reading still
-          work.
-        </p>
-      )}
-      <div className="workspace-layout">
-        <nav aria-label="Folders">
-          <FolderTree root={root} selected={folder.id} onSelect={select} />
-        </nav>
-        <div className="workspace-main">
+    <>
+      <div
+        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[340px]" : ""}`}
+      >
+        <header className="flex flex-wrap items-start gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <h2 className="m-0 text-xl font-semibold tracking-[-0.01em] text-balance">
+              {workspace.data.name}
+            </h2>
+            <p className="mt-0.5 text-sand-11">
+              Your role: {ROLE_LABELS[workspace.data.role]}
+            </p>
+          </div>
+          <Button
+            className="ml-auto"
+            aria-expanded={assistantOpen}
+            aria-controls="assistant-panel"
+            onClick={() => {
+              setAssistantUsed(true);
+              setAssistantOpen((open) => !open);
+            }}
+          >
+            <Sparkles aria-hidden />
+            Assistant
+          </Button>
+        </header>
+        {workspace.data.status === "archived" && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-5 bg-amber-3 px-3 py-2.5 text-sm"
+          >
+            This Workspace is archived and read-only. Exports and reading still
+            work.
+          </p>
+        )}
+        <StageProgressPanel workspaceId={workspaceId} />
+        <div className="legacy-page min-w-0 rounded-lg border border-line p-5">
           {inDataWarehouse && warehouse.isPending ? (
             <Loading />
           ) : inDataWarehouse && warehouse.isError ? (
@@ -193,12 +196,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               layer={modelLayer}
             />
           ) : folder.id === "dw/score" ? (
-            <FailedChecksPanel
-              workspace={workspace.data}
-              onAsk={(asked) =>
-                setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }))
-              }
-            />
+            <FailedChecksPanel workspace={workspace.data} onAsk={ask} />
           ) : folder.id === "dw/lineage" ? (
             <LineagePanel workspace={workspace.data} />
           ) : folder.id === "dw/files" ? (
@@ -210,7 +208,10 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             />
           ) : openSystem ? (
             <>
-              <SourceSummaryPanel workspaceId={workspaceId} system={openSystem} />
+              <SourceSummaryPanel
+                workspaceId={workspaceId}
+                system={openSystem}
+              />
               <SystemDetails
                 workspace={workspace.data}
                 system={openSystem}
@@ -239,20 +240,38 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               <p className="empty-state">{folder.empty}</p>
             </section>
           )}
-          <StageProgressPanel workspaceId={workspaceId} />
-          <JobsPanel workspace={workspace.data} />
-          <AssistantPanel
-            workspace={workspace.data}
-            request={request}
-            context={
-              openSystem
-                ? { type: "source_system", id: openSystem.id, label: openSystem.name }
-                : { type: "folder", id: folder.id || "workspace", label: folder.label }
-            }
-          />
         </div>
       </div>
-    </section>
+      <aside
+        id="assistant-panel"
+        aria-label="Assistant panel"
+        hidden={!assistantOpen}
+        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(340px,100vw)] overflow-y-auto border-l border-line bg-sand-1 shadow-lg lg:shadow-none"
+      >
+        {assistantUsed && (
+          <div className="legacy-page min-h-full p-4">
+            <AssistantPanel
+              workspace={workspace.data}
+              request={request}
+              onClose={() => setAssistantOpen(false)}
+              context={
+                openSystem
+                  ? {
+                      type: "source_system",
+                      id: openSystem.id,
+                      label: openSystem.name,
+                    }
+                  : {
+                      type: "folder",
+                      id: folder.id || "workspace",
+                      label: folder.label,
+                    }
+              }
+            />
+          </div>
+        )}
+      </aside>
+    </>
   );
 }
 
