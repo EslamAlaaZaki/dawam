@@ -73,6 +73,12 @@ body {
 }
 
 .form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
 .archived-banner {
   padding: 0.5rem 0.75rem;
   border: 1px solid #f0b429;
@@ -534,6 +540,5 @@ body {
    matches almost nothing. The old build closed them at the end of the file; PostCSS
    (Tailwind) refuses an unclosed block, so they are closed here to keep these pages
    exactly as they rendered. Remove this, and the dead rules, as pages move over. */
-}
 }
 }

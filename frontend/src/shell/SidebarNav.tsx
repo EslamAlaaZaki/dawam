@@ -16,7 +16,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { useMe } from "../api/queries";
-import { cn } from "../lib/utils";
 import { ApiStatus } from "./ApiStatus";
 import { Wordmark } from "../components/Wordmark";
 
@@ -111,7 +110,7 @@ export function SidebarNav() {
           </NavLink>
         </nav>
       )}
-      <p className={cn("mt-auto flex items-center p-2 text-xs text-sand-11")}>
+      <p className="mt-auto flex items-center p-2 text-xs text-sand-11">
         <ApiStatus dot />
       </p>
     </>
