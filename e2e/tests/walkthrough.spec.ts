@@ -2,8 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 // The core flows with the keyboard only (spec #231: WCAG AA, keyboard navigation):
 // sign in, open a Workspace, browse its folders, review a Change Set, manage users.
-// Nothing here clicks. It runs after smoke.spec.ts (alphabetical order, one worker) and
-// uses the Workspace and the pending Change Set that journey leaves behind.
+// Nothing here clicks. It is a Playwright project that depends on smoke.spec.ts
+// (playwright.config.ts) and uses the Workspace and the pending Change Set that journey
+// leaves behind: the "Sync staging" one, since smoke accepts the generation Change Set.
 
 const ADMIN = { email: "admin@example.com", password: "e2e-admin-Passw0rd-2026" };
 // A fresh address each run, so a rerun on the same stack still creates a user.

@@ -32,6 +32,7 @@ import {
   listCardClasses,
   monoClasses,
   preClasses,
+  Panel,
 } from "./parts";
 import { Loading } from "../shell/Loading";
 
@@ -270,10 +271,7 @@ function TablePage({
 }) {
   const title = `${table.db_schema}.${table.name}`;
   return (
-    <section
-      aria-label={`Table ${title}`}
-      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-5"
-    >
+    <Panel aria-label={`Table ${title}`}>
       <h4
         className={`${h4Classes} ${monoClasses} flex flex-wrap items-center gap-2`}
       >
@@ -378,17 +376,14 @@ function TablePage({
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }
 
 function RoutinePage({ routine }: { routine: Routine }) {
   const title = `${routine.db_schema}.${routine.name}(${routine.signature})`;
   return (
-    <section
-      aria-label={`Routine ${title}`}
-      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-5"
-    >
+    <Panel aria-label={`Routine ${title}`}>
       <h4
         className={`${h4Classes} ${monoClasses} flex flex-wrap items-center gap-2`}
       >
@@ -400,6 +395,6 @@ function RoutinePage({ routine }: { routine: Routine }) {
       ) : (
         <p>No code was captured.</p>
       )}
-    </section>
+    </Panel>
   );
 }

@@ -27,6 +27,7 @@ import {
   checkClasses,
   h4Classes,
   linkClasses,
+  Panel,
 } from "./parts";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
@@ -173,10 +174,7 @@ export function ChangeSetReview({
   }
 
   return (
-    <article
-      aria-label={changeSet.title}
-      className="flex flex-col gap-3 rounded-xl border border-sand-5 bg-sand-1 p-4"
-    >
+    <Panel aria-label={changeSet.title} className="p-4">
       <h4 className={`${h4Classes} flex flex-wrap items-center gap-2`}>
         {link ? (
           <Link
@@ -269,7 +267,7 @@ export function ChangeSetReview({
       )}
       {problem && <ErrorText>{problem}</ErrorText>}
       {result && <Report result={result} />}
-    </article>
+    </Panel>
   );
 }
 

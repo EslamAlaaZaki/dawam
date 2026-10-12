@@ -14,7 +14,7 @@ function Toaster(props: ToasterProps) {
     <Sonner
       theme={resolvedTheme === "dark" ? "dark" : "light"}
       position="bottom-right"
-      icons={{ success: <CircleCheck className="size-4 text-jade-7 dark:text-[#1f7a61]" aria-hidden /> }}
+      icons={{ success: <CircleCheck className="size-4 text-toast-icon" aria-hidden /> }}
       toastOptions={{
         unstyled: true,
         classNames: {

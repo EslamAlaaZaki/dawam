@@ -60,6 +60,7 @@ const PAIRS: [string, string, number][] = [
   ["on-accent", "accent-solid-hover", 4.5],
   ["sand-1", "sand-12", 4.5],
   ["control-edge", "sand-1", 3],
+  ["toast-icon", "sand-12", 3],
   ["jade-11", "sand-4", 3],
   ["sand-10", "sand-1", 4.5],
 ];

@@ -16,4 +16,10 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  // The keyboard walkthrough reuses what the smoke journey builds (its Workspace and the
+  // pending "Sync staging" Change Set), so it runs after it, and only if it passed.
+  projects: [
+    { name: "smoke", testMatch: "smoke.spec.ts" },
+    { name: "walkthrough", testMatch: "walkthrough.spec.ts", dependencies: ["smoke"] },
+  ],
 });

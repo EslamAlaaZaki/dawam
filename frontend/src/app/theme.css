@@ -49,6 +49,8 @@
   --pill-accent-fg: var(--jade-12);
   --pill-warning-fg: var(--amber-12);
   --control-edge: var(--sand-9);
+  /* The success icon on the inverted toast (sand-12 ground): light on dark, dark on light. */
+  --toast-icon: var(--jade-7);
   --shadow-color: 0 1px 2px rgb(33 32 28 / 0.06), 0 4px 16px rgb(33 32 28 / 0.06);
   --overlay: rgb(33 32 28 / 0.32);
 }
@@ -85,6 +87,7 @@
   --pill-accent-fg: var(--jade-11);
   --pill-warning-fg: var(--amber-11);
   --control-edge: var(--sand-8);
+  --toast-icon: #1f7a61;
   --shadow-color: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
   --overlay: rgb(0 0 0 / 0.55);
 }
@@ -124,6 +127,7 @@
   --color-pill-accent-fg: var(--pill-accent-fg);
   --color-pill-warning-fg: var(--pill-warning-fg);
   --color-control-edge: var(--control-edge);
+  --color-toast-icon: var(--toast-icon);
   --color-line: var(--sand-5);
   --color-overlay: var(--overlay);
 
