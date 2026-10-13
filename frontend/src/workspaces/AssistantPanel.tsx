@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowUp, PanelRightClose, PanelRightOpen, Plus, Square, X } from "lucide-react";
+import {
+  ArrowUp,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  Square,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -34,13 +41,21 @@ import { cn } from "../lib/utils";
 import { ConversationChangeSets } from "./ChangeSetReview";
 import { Avatar, Markdown, MessageTime } from "./chatParts";
 import type { AssistantRequest } from "./FailedChecksPanel";
-import { ErrorText, Hint, checkClasses, checkLabelClasses, h3Classes } from "./parts";
+import {
+  ErrorText,
+  Hint,
+  checkClasses,
+  checkLabelClasses,
+  h3Classes,
+} from "./parts";
 
 /** Wide enough to show the Conversation list beside the chat rather than as a drawer. */
 const WIDE = "(min-width: 1024px)";
 
 function isWide(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.(WIDE).matches === true;
+  return (
+    typeof window !== "undefined" && window.matchMedia?.(WIDE).matches === true
+  );
 }
 
 /** What is being answered right now. */
@@ -81,11 +96,17 @@ function JobProgress({
             className="h-1.5 w-24 accent-[var(--accent-solid)]"
           />
           {isActive(current) && (
-            <Button type="button" size="sm" onClick={() => cancel.mutate(jobId)}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => cancel.mutate(jobId)}
+            >
               Cancel job
             </Button>
           )}
-          {current.error && <p className="w-full text-red-11">{current.error}</p>}
+          {current.error && (
+            <p className="w-full text-red-11">{current.error}</p>
+          )}
         </>
       ) : (
         <span className="text-sand-11">starting</span>
@@ -97,14 +118,20 @@ function JobProgress({
 function jobsOf(tools: readonly ToolCall[]) {
   return tools.flatMap((tool) =>
     tool.name === "start_job" && typeof tool.result?.job_id === "string"
-      ? [{ id: tool.result.job_id, title: String(tool.result.title ?? "Assistant job") }]
+      ? [
+          {
+            id: tool.result.job_id,
+            title: String(tool.result.title ?? "Assistant job"),
+          },
+        ]
       : [],
   );
 }
 
 function canWrite(tools: readonly ToolCall[]) {
   return tools.some(
-    (tool) => tool.name === "run_source_query" && tool.result?.can_write === true,
+    (tool) =>
+      tool.name === "run_source_query" && tool.result?.can_write === true,
   );
 }
 
@@ -112,19 +139,31 @@ function canWrite(tools: readonly ToolCall[]) {
  * What a reply's tools left for the member to see: the jobs it started and a warning when
  * a Connection's user can write. The tool calls themselves are not shown.
  */
-function ToolNotes({ tools, workspaceId }: { tools: readonly ToolCall[]; workspaceId: string }) {
+function ToolNotes({
+  tools,
+  workspaceId,
+}: {
+  tools: readonly ToolCall[];
+  workspaceId: string;
+}) {
   return (
     <>
       {jobsOf(tools).map((job) => (
-        <JobProgress key={job.id} workspaceId={workspaceId} jobId={job.id} title={job.title} />
+        <JobProgress
+          key={job.id}
+          workspaceId={workspaceId}
+          jobId={job.id}
+          title={job.title}
+        />
       ))}
       {canWrite(tools) && (
         <p
           role="alert"
           className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2 text-sm text-sand-12"
         >
-          Warning: the database user of this Connection can change data. The assistant only
-          runs read-only SELECT queries, but an owner should give DAWAM a read-only user.
+          Warning: the database user of this Connection can change data. The
+          assistant only runs read-only SELECT queries, but an owner should give
+          DAWAM a read-only user.
         </p>
       )}
     </>
@@ -138,7 +177,8 @@ function FailureNote({ run }: { run: Run }) {
   }
   return (
     <ErrorText>
-      The assistant could not answer: {run.error_message ?? "an unknown problem"}
+      The assistant could not answer:{" "}
+      {run.error_message ?? "an unknown problem"}
     </ErrorText>
   );
 }
@@ -197,7 +237,9 @@ function Bubble({
         <div
           className={cn(
             "flex flex-col gap-2 rounded-lg border px-3 py-2",
-            email === null ? "border-sand-4 bg-sand-2" : "border-jade-4 bg-jade-2 whitespace-pre-wrap",
+            email === null
+              ? "border-sand-4 bg-sand-2"
+              : "border-jade-4 bg-jade-2 whitespace-pre-wrap",
           )}
         >
           {children}
@@ -220,7 +262,10 @@ function Turn({
   const run = message.run;
   return (
     <>
-      <Bubble email={message.sender?.email ?? "former member"} at={message.created_at}>
+      <Bubble
+        email={message.sender?.email ?? "former member"}
+        at={message.created_at}
+      >
         {message.content}
       </Bubble>
       {(answer || hasNotes(run)) && (
@@ -274,14 +319,25 @@ export function AssistantPanel({
   const current = conversations.data?.find((c) => c.id === selected);
   // A conversation not in the list yet was just started by this member.
   const mine = current?.mine ?? true;
+  // The server decides: the starter, or an Owner or Editor in a shared conversation.
+  const canPost = current?.can_post ?? true;
   const running = draft !== null;
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
-  async function ask(conversationId: string, content: string, asking: PageContext | null = context) {
+  async function ask(
+    conversationId: string,
+    content: string,
+    asking: PageContext | null = context,
+  ) {
     setRefusal(null);
     setFailed(null);
-    setDraft({ question: content, askedAt: new Date().toISOString(), text: "", tools: [] });
+    setDraft({
+      question: content,
+      askedAt: new Date().toISOString(),
+      text: "",
+      tools: [],
+    });
     try {
       await send.mutateAsync({
         conversationId,
@@ -298,7 +354,11 @@ export function AssistantPanel({
         },
       });
     } catch (error) {
-      setRefusal(error instanceof ApiError ? error.message : "The assistant did not answer.");
+      setRefusal(
+        error instanceof ApiError
+          ? error.message
+          : "The assistant did not answer.",
+      );
     } finally {
       setDraft(null);
     }
@@ -312,7 +372,9 @@ export function AssistantPanel({
   useEffect(() => {
     if (listOpen && focusList.current) {
       focusList.current = false;
-      list.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+      list.current
+        ?.querySelector<HTMLElement>("button:not(:disabled)")
+        ?.focus();
     }
   }, [listOpen]);
 
@@ -360,7 +422,13 @@ export function AssistantPanel({
   // Ask a page action's question once, in the current conversation or a new one.
   const asked = useRef(0);
   useEffect(() => {
-    if (!request || request.nonce === asked.current || !canAsk || archived || running) {
+    if (
+      !request ||
+      request.nonce === asked.current ||
+      !canAsk ||
+      archived ||
+      running
+    ) {
       return;
     }
     asked.current = request.nonce;
@@ -406,7 +474,9 @@ export function AssistantPanel({
             Assistant
           </h3>
           {current && (
-            <span className="min-w-0 truncate text-sm text-sand-11">{current.title}</span>
+            <span className="min-w-0 truncate text-sm text-sand-11">
+              {current.title}
+            </span>
           )}
           <span className="ml-auto" />
           <Button
@@ -418,16 +488,32 @@ export function AssistantPanel({
             aria-controls="assistant-conversations"
             onClick={() => (listOpen ? closeList() : openList())}
           >
-            {listOpen ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
+            {listOpen ? (
+              <PanelRightClose aria-hidden />
+            ) : (
+              <PanelRightOpen aria-hidden />
+            )}
           </Button>
           {onClose && (
-            <Button variant="ghost" size="icon" aria-label="Close Assistant" onClick={onClose}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Close Assistant"
+              onClick={onClose}
+            >
               <X aria-hidden />
             </Button>
           )}
         </div>
-        <div ref={thread} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
-          {archived && <Hint>This Workspace is archived: conversations are read-only.</Hint>}
+        <div
+          ref={thread}
+          className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3"
+        >
+          {archived && (
+            <Hint>
+              This Workspace is archived: conversations are read-only.
+            </Hint>
+          )}
           {current && mine && !archived && (
             <label className={checkLabelClasses}>
               <input
@@ -440,7 +526,6 @@ export function AssistantPanel({
               Share with the Workspace&apos;s members
             </label>
           )}
-          {current && !mine && <Hint>Shared by a colleague: you can read it, not reply.</Hint>}
           <ol className="flex flex-col gap-4" aria-label="Conversation">
             {turns.map(({ message, answer }) => (
               <Turn
@@ -456,7 +541,11 @@ export function AssistantPanel({
                   {draft.question}
                 </Bubble>
                 <Bubble email={null} at={draft.askedAt} busy>
-                  {draft.text ? <Markdown>{draft.text}</Markdown> : <Hint>Thinking…</Hint>}
+                  {draft.text ? (
+                    <Markdown>{draft.text}</Markdown>
+                  ) : (
+                    <Hint>Thinking…</Hint>
+                  )}
                   <ToolNotes tools={draft.tools} workspaceId={workspace.id} />
                 </Bubble>
               </>
@@ -465,7 +554,9 @@ export function AssistantPanel({
           {selected &&
             messages.some((m) =>
               m.run?.tool_calls.some(
-                (t) => t.name === "propose_changes" || t.name === "propose_check_fix",
+                (t) =>
+                  t.name === "propose_changes" ||
+                  t.name === "propose_check_fix",
               ),
             ) && (
               <ConversationChangeSets
@@ -481,13 +572,14 @@ export function AssistantPanel({
             )}
           {refusal && <ErrorText>{refusal}</ErrorText>}
         </div>
-        {canAsk && !archived && (selected === null || mine) && (
+        {canAsk && !archived && (
           <form onSubmit={onSubmit} className="border-t border-line px-4 py-3">
             <div className="relative">
               <Textarea
                 ref={input}
                 aria-label="Ask the assistant"
                 placeholder="Ask the assistant…"
+                disabled={!canPost}
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 onKeyDown={(event) => {
@@ -523,13 +615,17 @@ export function AssistantPanel({
                   size="icon"
                   aria-label="Send"
                   className="absolute right-1.5 bottom-1.5"
-                  disabled={question.trim() === ""}
+                  disabled={!canPost || question.trim() === ""}
                 >
                   <ArrowUp aria-hidden />
                 </Button>
               )}
             </div>
-            <p className="mt-1 text-xs text-sand-11">Enter to send, Shift+Enter for a new line.</p>
+            <p className="mt-1 text-xs text-sand-11">
+              {canPost
+                ? "Enter to send, Shift+Enter for a new line."
+                : "Viewers can only read this shared conversation."}
+            </p>
           </form>
         )}
       </div>
@@ -590,7 +686,11 @@ export function AssistantPanel({
                     onClick={() => choose(c.id)}
                   >
                     <span className="min-w-0 truncate">{c.title}</span>
-                    {!c.mine && <span className="shrink-0 text-xs text-sand-11">(shared)</span>}
+                    {!c.mine && (
+                      <span className="shrink-0 text-xs text-sand-11">
+                        (shared)
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

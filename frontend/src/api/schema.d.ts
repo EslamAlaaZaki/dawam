@@ -3908,7 +3908,9 @@ export interface paths {
          * Send Message
          * @description Ask the assistant and stream its answer. Refusals before the stream starts are
          *     ordinary errors (409 `workspace_archived`, 409 `run_in_progress`, 403
-         *     `not_your_conversation`, 422 `invalid_message`); a model that cannot answer (provider
+         *     `read_only_conversation` for a Viewer in a shared conversation, 404 for somebody
+         *     else's private one, 422 `invalid_message`). The run uses the sender's permissions;
+         *     a model that cannot answer (provider
          *     down, budget spent, no model assigned) ends the stream with `done` carrying the reason.
          */
         post: operations["sendAssistantMessage"];
@@ -5109,14 +5111,19 @@ export interface components {
             title: string;
             /**
              * Shared With Workspace
-             * @description Every member of the Workspace may read it; only its owner may post.
+             * @description Every member of the Workspace may read it; its Owners and Editors may post to it.
              */
             shared_with_workspace: boolean;
             /**
              * Mine
-             * @description You started it.
+             * @description You started it: only you may share or unshare it.
              */
             mine: boolean;
+            /**
+             * Can Post
+             * @description You may post: you started it, or you are an Owner or Editor and it is shared. Viewers only read.
+             */
+            can_post: boolean;
             /**
              * Created At
              * Format: date-time

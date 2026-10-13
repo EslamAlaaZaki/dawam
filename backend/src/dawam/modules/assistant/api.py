@@ -59,9 +59,14 @@ class ConversationOut(BaseModel):
     id: uuid.UUID
     title: str
     shared_with_workspace: bool = Field(
-        description="Every member of the Workspace may read it; only its owner may post."
+        description="Every member of the Workspace may read it; its Owners and Editors may "
+        "post to it."
     )
-    mine: bool = Field(description="You started it.")
+    mine: bool = Field(description="You started it: only you may share or unshare it.")
+    can_post: bool = Field(
+        description="You may post: you started it, or you are an Owner or Editor and it is "
+        "shared. Viewers only read."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -158,6 +163,7 @@ def _conversation(view: Conversation) -> ConversationOut:
         title=view.title,
         shared_with_workspace=view.shared_with_workspace,
         mine=view.mine,
+        can_post=view.can_post,
         created_at=view.created_at,
         updated_at=view.updated_at,
     )
@@ -315,7 +321,9 @@ def send_message(
 ) -> StreamingResponse:
     """Ask the assistant and stream its answer. Refusals before the stream starts are
     ordinary errors (409 `workspace_archived`, 409 `run_in_progress`, 403
-    `not_your_conversation`, 422 `invalid_message`); a model that cannot answer (provider
+    `read_only_conversation` for a Viewer in a shared conversation, 404 for somebody
+    else's private one, 422 `invalid_message`). The run uses the sender's permissions;
+    a model that cannot answer (provider
     down, budget spent, no model assigned) ends the stream with `done` carrying the reason."""
     context = (
         PageContext(body.context.type, body.context.id, body.context.label)
