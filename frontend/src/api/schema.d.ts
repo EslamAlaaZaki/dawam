@@ -3859,8 +3859,9 @@ export interface paths {
         /**
          * Set Ai Settings
          * @description Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
-         *     that is not an approved agent model; 422 `no_internal_model` when internal-only has
-         *     no internal agent model to use.
+         *     that is not an approved agent model (or a light model that is not a tested chat model);
+         *     422 `model_not_allowed` for a model outside the Workspace's Allowed Models;
+         *     422 `no_internal_model` when internal-only has no internal agent model to use.
          */
         put: operations["setWorkspaceAiSettings"];
         post?: never;
@@ -10083,10 +10084,29 @@ export interface components {
              */
             agent_model_id: string | null;
             /**
+             * Light Model Id
+             * @description The Workspace's own light model; null: the installation's.
+             */
+            light_model_id: string | null;
+            /**
              * Effective Agent Model Id
              * @description The agent model in use: the Workspace's, else the installation's.
              */
             effective_agent_model_id: string | null;
+            /** Effective Agent Model Name */
+            effective_agent_model_name: string | null;
+            /**
+             * Effective Light Model Id
+             * @description The light model in use: the Workspace's, else the installation's; null: light tasks use the agent model.
+             */
+            effective_light_model_id: string | null;
+            /** Effective Light Model Name */
+            effective_light_model_name: string | null;
+            /**
+             * Light Models
+             * @description The chat models an owner may choose as the light model.
+             */
+            light_models: components["schemas"]["ApprovedAgentModel"][];
             /**
              * Approved Models
              * @description The admin-approved agent models an owner may choose from.
@@ -10113,6 +10133,11 @@ export interface components {
              * @description An approved agent model; null: use the installation's.
              */
             agent_model_id?: string | null;
+            /**
+             * Light Model Id
+             * @description A tested chat model; null: use the installation's.
+             */
+            light_model_id?: string | null;
         };
         /** WorkspaceFile */
         WorkspaceFile: {

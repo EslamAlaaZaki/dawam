@@ -330,19 +330,26 @@ class RoleService:
         light_allowed: bool = True,
     ) -> MeteredGateway:
         """The gateway a feature calls for ``role``. With a Workspace, its settings apply:
-        its own agent model (when it chose one), and for an internal-only Workspace the
+        its own agent and light models (when it chose them), and for an internal-only Workspace the
         ``light`` role falls back to the agent model unless the light model is internal.
         Whatever the role, an external model is refused when the call is made."""
         override: uuid.UUID | None = None
+        light_override: uuid.UUID | None = None
         if workspace_id is not None:
             with Session(self._engine) as db:
                 workspace = load_settings(db, workspace_id)
                 override = workspace.agent_model_id
-                if role == "light" and workspace.internal_only:
-                    light = self._settings(db).light_model_id
-                    light_allowed = (
-                        light_allowed and light is not None and model_is_internal(db, light)
-                    )
+                if role == "light":
+                    light_override = workspace.light_model_id
+                    light = light_override or self._settings(db).light_model_id
+                    if workspace.internal_only:
+                        light_allowed = (
+                            light_allowed and light is not None and model_is_internal(db, light)
+                        )
+        if light_override is not None and light_allowed:
+            return self.metered_gateway(
+                light_override, "light", workspace_id=workspace_id, user_id=user_id
+            )
         model_id, role = self.model_for_role(role, light_allowed=light_allowed)
         if role == "agent" and override is not None:
             model_id = override

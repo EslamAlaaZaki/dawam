@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from dawam.modules.auth import CurrentUser, SecurityEventRecorder
 from dawam.modules.workspaces import WorkspaceService
 
-from .workspace_ai import DataSharingLevel, WorkspaceAiService, WorkspaceAiView
+from .workspace_ai import ApprovedModel, DataSharingLevel, WorkspaceAiService, WorkspaceAiView
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/ai-settings", tags=["llm"])
 
@@ -51,8 +51,20 @@ class WorkspaceAiSettings(BaseModel):
     agent_model_id: uuid.UUID | None = Field(
         description="The Workspace's own agent model; null: the installation's."
     )
+    light_model_id: uuid.UUID | None = Field(
+        description="The Workspace's own light model; null: the installation's."
+    )
     effective_agent_model_id: uuid.UUID | None = Field(
         description="The agent model in use: the Workspace's, else the installation's."
+    )
+    effective_agent_model_name: str | None
+    effective_light_model_id: uuid.UUID | None = Field(
+        description="The light model in use: the Workspace's, else the installation's; "
+        "null: light tasks use the agent model."
+    )
+    effective_light_model_name: str | None
+    light_models: list[ApprovedAgentModel] = Field(
+        description="The chat models an owner may choose as the light model."
     )
     approved_models: list[ApprovedAgentModel] = Field(
         description="The admin-approved agent models an owner may choose from."
@@ -72,21 +84,32 @@ class WorkspaceAiSettingsRequest(BaseModel):
     agent_model_id: uuid.UUID | None = Field(
         default=None, description="An approved agent model; null: use the installation's."
     )
+    light_model_id: uuid.UUID | None = Field(
+        default=None, description="A tested chat model; null: use the installation's."
+    )
+
+
+def _model_out(m: ApprovedModel) -> ApprovedAgentModel:
+    return ApprovedAgentModel(
+        id=m.id, name=m.name, provider_name=m.provider_name, internal=m.internal
+    )
 
 
 def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     settings = view.settings
+    agent = settings.agent_model_id or view.installation_agent_model_id
+    light = settings.light_model_id or view.installation_light_model_id
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
         agent_model_id=settings.agent_model_id,
-        effective_agent_model_id=settings.agent_model_id or view.installation_agent_model_id,
-        approved_models=[
-            ApprovedAgentModel(
-                id=m.id, name=m.name, provider_name=m.provider_name, internal=m.internal
-            )
-            for m in view.approved_models
-        ],
+        light_model_id=settings.light_model_id,
+        effective_agent_model_id=agent,
+        effective_agent_model_name=view.model_names.get(agent) if agent else None,
+        effective_light_model_id=light,
+        effective_light_model_name=view.model_names.get(light) if light else None,
+        approved_models=[_model_out(m) for m in view.approved_models],
+        light_models=[_model_out(m) for m in view.light_models],
         internal_agent_available=view.internal_agent_available,
         banner=view.banner,
     )
@@ -108,8 +131,9 @@ def set_ai_settings(
     service: WorkspaceAiServiceDep,
 ) -> WorkspaceAiSettings:
     """Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
-    that is not an approved agent model; 422 `no_internal_model` when internal-only has
-    no internal agent model to use."""
+    that is not an approved agent model (or a light model that is not a tested chat model);
+    422 `model_not_allowed` for a model outside the Workspace's Allowed Models;
+    422 `no_internal_model` when internal-only has no internal agent model to use."""
     return _out(
         service.update(
             user,
@@ -117,5 +141,6 @@ def set_ai_settings(
             internal_only=body.internal_only,
             data_sharing_level=body.data_sharing_level,
             agent_model_id=body.agent_model_id,
+            light_model_id=body.light_model_id,
         )
     )
