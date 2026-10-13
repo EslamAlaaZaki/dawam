@@ -13,7 +13,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../components/ui/sheet";
-import { Breadcrumbs } from "./Breadcrumbs";
 import { NotificationBell } from "./NotificationBell";
 import { SidebarNav } from "./SidebarNav";
 import { UserMenu } from "./UserMenu";
@@ -24,7 +23,7 @@ const sidebarClasses = "flex flex-col gap-1 bg-sand-2 px-2 py-3 text-base";
 
 /**
  * The frame of every signed-in page: sidebar (a drawer below 1024px), top bar with
- * breadcrumbs, notifications and the user menu, and the page. The sign-in pages have a
+ * notifications and the user menu, and the page. The sign-in pages have a
  * frame of their own instead (AuthFrame).
  */
 export function Shell({ children }: { children: ReactNode }) {
@@ -77,7 +76,6 @@ export function Shell({ children }: { children: ReactNode }) {
               <SidebarNav />
             </SheetContent>
           </Sheet>
-          <Breadcrumbs />
           <div className="ml-auto flex items-center gap-1">
             {workspaceId && <JobsButton workspaceId={workspaceId} />}
             <NotificationBell />
