@@ -141,6 +141,11 @@ function OwnerForm({
               {m.name} ({m.provider_name})
             </option>
           ))}
+          <StaleOption
+            id={settings.agent_model_id}
+            listed={settings.approved_models}
+            name={settings.effective_agent_model_name}
+          />
         </NativeSelect>
       </label>
       <label className={labelClasses}>
@@ -155,6 +160,11 @@ function OwnerForm({
               {m.name} ({m.provider_name})
             </option>
           ))}
+          <StaleOption
+            id={settings.light_model_id}
+            listed={settings.light_models}
+            name={settings.effective_light_model_name}
+          />
         </NativeSelect>
       </label>
       <Hint>
@@ -174,4 +184,20 @@ function OwnerForm({
       </Actions>
     </form>
   );
+}
+
+/** The saved choice when it is no longer offered, so Save keeps it unless the owner picks. */
+function StaleOption({
+  id,
+  listed,
+  name,
+}: {
+  id: string | null;
+  listed: { id: string }[];
+  name: string | null | undefined;
+}) {
+  if (id === null || listed.some((m) => m.id === id)) {
+    return null;
+  }
+  return <option value={id}>{name ?? id} (no longer allowed)</option>;
 }

@@ -200,4 +200,21 @@ describe("the Workspace AI settings card", () => {
       await within(card).findByText(/not in the Workspace's Allowed Models/),
     ).toBeInTheDocument();
   });
+
+  it("keeps a saved model that is no longer allowed selectable", async () => {
+    const stale = { ...settings({ light: BIG }), light_models: [] };
+    renderApp(
+      backend("owner", (r) =>
+        r.method === "GET" && r.path === AI ? json(stale) : undefined,
+      ),
+      PATH,
+    );
+
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    const light = within(card).getByLabelText(
+      "Light model",
+    ) as HTMLSelectElement;
+    expect(light.value).toBe(BIG);
+    expect(light).toHaveTextContent("Big (no longer allowed)");
+  });
 });
