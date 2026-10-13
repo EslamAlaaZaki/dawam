@@ -14287,7 +14287,7 @@
           "llm"
         ],
         "summary": "Set Ai Settings",
-        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model; 422 `no_internal_model` when internal-only has\nno internal agent model to use.",
+        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model (or a light model that is not a tested chat model);\n422 `model_not_allowed` for a model outside the Workspace's Allowed Models;\n422 `no_internal_model` when internal-only has no internal agent model to use.",
         "operationId": "setWorkspaceAiSettings",
         "parameters": [
           {
@@ -28720,6 +28720,19 @@
             "title": "Agent Model Id",
             "description": "The Workspace's own agent model; null: the installation's."
           },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id",
+            "description": "The Workspace's own light model; null: the installation's."
+          },
           "effective_agent_model_id": {
             "anyOf": [
               {
@@ -28732,6 +28745,49 @@
             ],
             "title": "Effective Agent Model Id",
             "description": "The agent model in use: the Workspace's, else the installation's."
+          },
+          "effective_agent_model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Agent Model Name"
+          },
+          "effective_light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Light Model Id",
+            "description": "The light model in use: the Workspace's, else the installation's; null: light tasks use the agent model."
+          },
+          "effective_light_model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Light Model Name"
+          },
+          "light_models": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovedAgentModel"
+            },
+            "type": "array",
+            "title": "Light Models",
+            "description": "The chat models an owner may choose as the light model."
           },
           "approved_models": {
             "items": {
@@ -28757,7 +28813,12 @@
           "internal_only",
           "data_sharing_level",
           "agent_model_id",
+          "light_model_id",
           "effective_agent_model_id",
+          "effective_agent_model_name",
+          "effective_light_model_id",
+          "effective_light_model_name",
+          "light_models",
           "approved_models",
           "internal_agent_available",
           "banner"
@@ -28785,6 +28846,19 @@
             ],
             "title": "Agent Model Id",
             "description": "An approved agent model; null: use the installation's."
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id",
+            "description": "A tested chat model; null: use the installation's."
           }
         },
         "type": "object",

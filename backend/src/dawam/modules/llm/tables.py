@@ -121,6 +121,10 @@ class WorkspaceAiSettingsRecord(Base):
         sa.ForeignKey("llm_models.id", ondelete="SET NULL")
     )
     """The Workspace's own agent model; null: the installation's."""
+    light_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    """The Workspace's own light model; null: the installation's."""
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 

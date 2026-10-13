@@ -70,6 +70,8 @@ class WorkspaceAiSettings:
     data_sharing_level: DataSharingLevel
     agent_model_id: uuid.UUID | None
     """The Workspace's own agent model; ``None``: the installation's."""
+    light_model_id: uuid.UUID | None
+    """The Workspace's own light model; ``None``: the installation's."""
     updated_at: datetime | None
 
     @property
@@ -108,7 +110,12 @@ class AllowedModels:
 class WorkspaceAiView:
     settings: WorkspaceAiSettings
     approved_models: list[ApprovedModel]
+    light_models: list[ApprovedModel]
+    """The chat models an owner may choose as the light model."""
     installation_agent_model_id: uuid.UUID | None
+    installation_light_model_id: uuid.UUID | None
+    model_names: dict[uuid.UUID, str]
+    """Names of the installation's and the Workspace's chosen models, for display."""
     internal_agent_available: bool
     """The installation has an agent model on an internal provider."""
     banner: bool
@@ -121,12 +128,13 @@ def load_settings(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
     wired, e.g. in a bare test setup) is unrestricted at the lowest level."""
     record = db.get(WorkspaceAiSettingsRecord, workspace_id)
     if record is None:
-        return WorkspaceAiSettings(workspace_id, False, DataSharingLevel.METADATA, None, None)
+        return WorkspaceAiSettings(workspace_id, False, DataSharingLevel.METADATA, None, None, None)
     return WorkspaceAiSettings(
         workspace_id=record.workspace_id,
         internal_only=record.internal_only,
         data_sharing_level=DataSharingLevel(record.data_sharing_level),
         agent_model_id=record.agent_model_id,
+        light_model_id=record.light_model_id,
         updated_at=record.updated_at,
     )
 
@@ -176,6 +184,10 @@ def _installation_agent(db: Session) -> uuid.UUID | None:
     return db.scalar(sa.select(SettingsRecord.agent_model_id).where(SettingsRecord.id == 1))
 
 
+def _installation_light(db: Session) -> uuid.UUID | None:
+    return db.scalar(sa.select(SettingsRecord.light_model_id).where(SettingsRecord.id == 1))
+
+
 def _invalid(message: str, field: str, code: str) -> ApiError:
     return ApiError(422, code, message, {"field": field})
 
@@ -192,6 +204,7 @@ def new_workspace_settings(
         internal_only=agent is not None and model_is_internal(db, agent),
         data_sharing_level=DataSharingLevel.METADATA.value,
         agent_model_id=None,
+        light_model_id=None,
         updated_at=at,
     )
 
@@ -231,8 +244,10 @@ class WorkspaceAiService:
         internal_only: bool,
         data_sharing_level: DataSharingLevel,
         agent_model_id: uuid.UUID | None,
+        light_model_id: uuid.UUID | None = None,
     ) -> WorkspaceAiView:
-        """Owners only. The model must be an approved agent model; an internal-only
+        """Owners only. The agent model must be an approved agent model and the light model
+        a tested chat model, both within the Workspace's Allowed Models; an internal-only
         Workspace must end up with an internal agent model (422 ``no_internal_model``)."""
         self._workspaces.authorize(user, Action.CHANGE_AI_SETTINGS, workspace_id)
         with Session(self._engine) as db, db.begin():
@@ -261,6 +276,20 @@ class WorkspaceAiService:
                     "agent_model_id",
                     "invalid_model_role",
                 )
+            if light_model_id is not None:
+                light = db.get(ModelRecord, light_model_id)
+                if light is None or "embedding" in light.roles or light.test_ok is not True:
+                    raise _invalid(
+                        "That model is not an approved chat model.",
+                        "light_model_id",
+                        "invalid_model_role",
+                    )
+                if light_model_id not in allowed_model_ids(db, workspace_id):
+                    raise _invalid(
+                        "That model is not in the Workspace's Allowed Models.",
+                        "light_model_id",
+                        "model_not_allowed",
+                    )
             effective = agent_model_id or _installation_agent(db)
             if internal_only and effective is not None and not model_is_internal(db, effective):
                 raise _invalid(
@@ -272,6 +301,7 @@ class WorkspaceAiService:
             record.internal_only = internal_only
             record.data_sharing_level = data_sharing_level.value
             record.agent_model_id = agent_model_id
+            record.light_model_id = light_model_id
             record.updated_at = now
             new = _audited(record)
             changed = sorted(k for k in new if new[k] != old[k])
@@ -302,14 +332,26 @@ class WorkspaceAiService:
     def _view(self, db: Session, settings: WorkspaceAiSettings) -> WorkspaceAiView:
         agent = _installation_agent(db)
         internal_available = agent is not None and model_is_internal(db, agent)
+        allowed = allowed_model_ids(db, settings.workspace_id)
+        installation_light = _installation_light(db)
+        named = {
+            i
+            for i in (agent, installation_light, settings.agent_model_id, settings.light_model_id)
+            if i is not None
+        }
+        names = {
+            model_id: name
+            for model_id, name in db.execute(
+                sa.select(ModelRecord.id, ModelRecord.name).where(ModelRecord.id.in_(named))
+            )
+        }
         return WorkspaceAiView(
             settings=settings,
-            approved_models=[
-                m
-                for m in self._approved(db)
-                if m.id in allowed_model_ids(db, settings.workspace_id)
-            ],
+            approved_models=[m for m in self._approved(db) if m.id in allowed],
+            light_models=[m for m in self._chat_models(db) if m.id in allowed],
             installation_agent_model_id=agent,
+            installation_light_model_id=installation_light,
+            model_names=names,
             internal_agent_available=internal_available,
             banner=not settings.internal_only and not internal_available,
         )
@@ -370,6 +412,17 @@ class WorkspaceAiService:
         )
 
     @staticmethod
+    def _chat_models(db: Session) -> list[ApprovedModel]:
+        rows = db.execute(
+            sa.select(ModelRecord, ProviderRecord)
+            .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
+            .where(sa.literal("embedding") != sa.all_(ModelRecord.roles))
+            .where(ModelRecord.test_ok.is_(True))
+            .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
+        )
+        return [ApprovedModel(m.id, m.name, p.name, p.is_internal) for m, p in rows]
+
+    @staticmethod
     def _approved(db: Session) -> list[ApprovedModel]:
         rows = db.execute(
             sa.select(ModelRecord, ProviderRecord)
@@ -385,4 +438,5 @@ def _audited(record: WorkspaceAiSettingsRecord) -> dict[str, object]:
         "internal_only": record.internal_only,
         "data_sharing_level": record.data_sharing_level,
         "agent_model_id": str(record.agent_model_id) if record.agent_model_id else None,
+        "light_model_id": str(record.light_model_id) if record.light_model_id else None,
     }

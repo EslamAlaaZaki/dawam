@@ -37,6 +37,7 @@ import { useWorkspaceFolders } from "./useWorkspaceFolders";
 import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
+import { AiSettingsPanel } from "./AiSettingsPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
@@ -181,6 +182,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
                 reload={() => workspace.refetch()}
               />
               <MembersPanel workspace={workspace.data} />
+              <AiSettingsPanel workspace={workspace.data} />
               <LifecyclePanel workspace={workspace.data} />
               <DeletedObjectsPanel workspace={workspace.data} />
             </>
