@@ -94,6 +94,18 @@ test("the core flows by keyboard alone", async ({ page }) => {
     await page.keyboard.press("Enter");
     await expect(page.getByRole("region", { name: "Assistant" })).toBeVisible();
     await expect(page.locator("#assistant-panel")).toBeFocused();
+    // The Conversation list beside the chat collapses and comes back from its toggle.
+    await tabTo(page, "Hide conversations", "button");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("navigation", { name: "Conversations" })).toBeHidden();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("navigation", { name: "Conversations" })).toBeVisible();
+    // Shift+Enter adds a line; Enter alone would send.
+    await tabTo(page, "Ask the assistant", "textarea");
+    await page.keyboard.type("First line");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type("second line");
+    await expect(page.getByLabel("Ask the assistant")).toHaveValue("First line\nsecond line");
     await page.keyboard.press("Escape");
     await expect(page.locator("#assistant-panel")).toBeHidden();
     await expect(page.getByRole("button", { name: "Assistant", exact: true })).toBeFocused();

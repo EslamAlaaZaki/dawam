@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { splitFrames } from "../api/assistant";
 import type { ConversationDetail, Run } from "../api/assistant";
@@ -45,6 +45,8 @@ function workspace(status: Workspace["status"] = "active"): Workspace {
     updated_at: "2026-01-05T09:00:00Z",
   };
 }
+
+const ADA_SENDER = { id: ADA.id, email: ADA.email };
 
 const NEW_CONVERSATION = {
   id: CONVERSATION_ID,
@@ -152,14 +154,14 @@ async function ask(question: string) {
 }
 
 describe("the assistant's chat panel", () => {
-  it("streams the answer, shows the tools it used and sends the page as context", async () => {
+  it("streams the answer as markdown, hides the tools it used and sends the page as context", async () => {
     const requests = renderApp(
       backend({
         answer: () =>
           sse([
             frame("started", { run_id: "r", message_id: "m" }),
             frame("tool", TOOL),
-            frame("text", { text: "Net Revenue " }),
+            frame("text", { text: "**Net Revenue** " }),
             frame("text", { text: "is a KPI." }),
             frame("done", {
               run: run({ tool_calls: [TOOL] }),
@@ -175,13 +177,15 @@ describe("the assistant's chat panel", () => {
               content: "What is Net Revenue?",
               created_at: "2026-01-05T10:00:00Z",
               run: run({ tool_calls: [TOOL] }),
+              sender: ADA_SENDER,
             },
             {
               id: "m2",
               role: "assistant",
-              content: "Net Revenue is a KPI.",
+              content: "**Net Revenue** is a KPI.",
               created_at: "2026-01-05T10:00:01Z",
               run: null,
+              sender: null,
             },
           ],
         },
@@ -192,14 +196,11 @@ describe("the assistant's chat panel", () => {
 
     await ask("What is Net Revenue?");
 
-    expect(
-      await screen.findByText("Net Revenue is a KPI."),
-    ).toBeInTheDocument();
-    const tools = screen
-      .getByText("1 tool used")
-      .closest("details") as HTMLElement;
-    expect(within(tools).getByText("get_object")).toBeInTheDocument();
-    expect(within(tools).getByText(/42 ms/)).toBeInTheDocument();
+    const answer = await screen.findByRole("listitem", { name: /DAWAM/ });
+    expect(within(answer).getByText("Net Revenue").tagName).toBe("STRONG");
+    expect(answer).toHaveTextContent("Net Revenue is a KPI.");
+    expect(screen.queryByText(/tool used/)).not.toBeInTheDocument();
+    expect(screen.queryByText("get_object")).not.toBeInTheDocument();
     const sent = requests.find(
       (r) => r.method === "POST" && r.path.endsWith("/messages"),
     );
@@ -212,7 +213,7 @@ describe("the assistant's chat panel", () => {
     });
   });
 
-  it("shows a source query's row count and warns when the connection user can write", async () => {
+  it("warns when the connection user of a source query can write", async () => {
     const query = {
       name: "run_source_query",
       arguments: { sql: "SELECT COUNT(*) FROM s.t" },
@@ -246,6 +247,7 @@ describe("the assistant's chat panel", () => {
               content: "Count them",
               created_at: "2026-01-05T10:00:00Z",
               run: run({ tool_calls: [query] }),
+              sender: ADA_SENDER,
             },
             {
               id: "m2",
@@ -253,6 +255,7 @@ describe("the assistant's chat panel", () => {
               content: "Counted.",
               created_at: "2026-01-05T10:00:01Z",
               run: null,
+              sender: null,
             },
           ],
         },
@@ -264,7 +267,6 @@ describe("the assistant's chat panel", () => {
     await ask("Count them");
 
     expect(await screen.findByText(/can change data/)).toBeInTheDocument();
-    expect(screen.getAllByText(/1 rows/).length).toBeGreaterThan(0);
   });
 
   it("shows the progress of a job the assistant started", async () => {
@@ -293,6 +295,7 @@ describe("the assistant's chat panel", () => {
               content: "Explore everything",
               created_at: "2026-01-05T10:00:00Z",
               run: run({ tool_calls: [start] }),
+              sender: ADA_SENDER,
             },
           ],
         },
@@ -414,6 +417,7 @@ describe("the assistant's chat panel", () => {
               content: "An old question",
               created_at: "2026-01-05T10:00:00Z",
               run: run(),
+              sender: ADA_SENDER,
             },
           ],
         },
@@ -457,6 +461,120 @@ describe("the assistant's chat panel", () => {
         csrf: CSRF_TOKEN,
       }),
     );
+  });
+});
+
+describe("the chat's messages, input and Conversation list", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("shows each message's sender with an initials avatar and its time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-05T10:02:00Z"));
+    renderApp(
+      backend({
+        conversations: [{ ...NEW_CONVERSATION, mine: false }],
+        detail: {
+          conversation: { ...NEW_CONVERSATION, mine: false },
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Which tables hold loans?",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run(),
+              sender: { id: "g", email: "grace.hopper@example.com" },
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "The loan tables.",
+              created_at: "2026-01-05T10:01:30Z",
+              run: null,
+              sender: null,
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    const question = await screen.findByRole("listitem", {
+      name: /grace\.hopper@example\.com/,
+    });
+    expect(within(question).getByText("grace.hopper@example.com")).toBeInTheDocument();
+    expect(within(question).getByText("GH")).toBeInTheDocument();
+    const time = within(question).getByText("2 min ago");
+    expect(time).toHaveAttribute("dateTime", "2026-01-05T10:00:00Z");
+    expect(time).toHaveAttribute(
+      "title",
+      new Date("2026-01-05T10:00:00Z").toLocaleString(),
+    );
+    const reply = screen.getByRole("listitem", { name: /DAWAM/ });
+    expect(within(reply).getByText("just now")).toBeInTheDocument();
+  });
+
+  it("sends with Enter and adds a line with Shift+Enter", async () => {
+    const requests = renderApp(
+      backend({
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("done", { run: run(), message_id: "a" }),
+          ]),
+      }),
+      PATH,
+    );
+    await openAssistant();
+    const input = await screen.findByLabelText("Ask the assistant");
+    fireEvent.change(input, { target: { value: "Line one" } });
+
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(requests.some((r) => r.path.endsWith("/messages"))).toBe(false);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(
+        requests.find((r) => r.method === "POST" && r.path.endsWith("/messages")),
+      ).toMatchObject({ body: { content: "Line one" } }),
+    );
+  });
+
+  it("lists the conversations in a sidebar that opens, switches and collapses", async () => {
+    const OTHER = "88888888-8888-4888-8888-888888888888";
+    const requests = renderApp(
+      backend({
+        conversations: [
+          { ...NEW_CONVERSATION, title: "Revenue questions" },
+          { ...NEW_CONVERSATION, id: OTHER, title: "Loan tables", mine: false },
+        ],
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    const toggle = await screen.findByRole("button", { name: "Show conversations" });
+    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+    fireEvent.click(toggle);
+    const list = screen.getByRole("navigation", { name: "Conversations" });
+    expect(
+      within(list).getByRole("button", { name: "New conversation" }),
+    ).toBeInTheDocument();
+    expect(
+      await within(list).findByRole("button", { name: /Revenue questions/ }),
+    ).toHaveAttribute("aria-current", "true");
+
+    fireEvent.click(within(list).getByRole("button", { name: /Loan tables/ }));
+    await waitFor(() =>
+      expect(requests.some((r) => r.path === `${ASSISTANT}/${OTHER}`)).toBe(true),
+    );
+    // On a narrow screen (jsdom matches no media query) the list is a drawer: picking closes it.
+    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show conversations" }));
+    expect(screen.getByRole("navigation", { name: "Conversations" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide conversations" }));
+    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
   });
 });
 

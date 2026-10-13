@@ -132,7 +132,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <div
-        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[340px]" : ""}`}
+        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[min(680px,55vw)]" : ""}`}
       >
         <header className="flex flex-wrap items-start gap-x-4 gap-y-2">
           <div className="min-w-0">
@@ -276,10 +276,10 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             setAssistantOpen(false);
           }
         }}
-        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(340px,100vw)] overflow-y-auto border-l outline-none border-line bg-sand-1 shadow-lg lg:shadow-none"
+        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l outline-none border-line bg-sand-1 shadow-lg lg:w-[min(680px,55vw)] lg:shadow-none"
       >
         {assistantUsed && (
-          <div className="min-h-full p-4">
+          <div className="h-full">
             <AssistantPanel
               workspace={workspace.data}
               request={request}
