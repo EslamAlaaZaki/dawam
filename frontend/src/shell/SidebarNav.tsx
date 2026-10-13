@@ -60,8 +60,8 @@ function Label({ children }: { children: string }) {
   );
 }
 
-/** The Workspaces list is current on the home page and while creating one. */
-const WORKSPACE_LIST_PATHS = new Set(["/", "/workspaces/new"]);
+/** The Workspaces list is current on the home page. */
+const WORKSPACE_LIST_PATHS = new Set(["/"]);
 
 /** The Admin sidebar's groups (prototype "Admin" screen). */
 const ADMIN_GROUPS: {

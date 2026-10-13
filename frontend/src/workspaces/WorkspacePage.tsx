@@ -191,6 +191,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               workspace={workspace.data}
               systems={systemList}
               onOpen={(system) => select(`systems/${system.id}`)}
+              reload={() => systems.refetch()}
             />
           ) : kpiSystem || folder.id === "dw/kpis" ? (
             <KpiCatalog

@@ -141,6 +141,21 @@ function fakeBackend(
         "The request has no valid CSRF token.",
       );
     }
+    const lifecycle =
+      /^\/api\/v1\/workspaces\/([^/]+)\/(archive|unarchive)$/.exec(url.pathname);
+    if (lifecycle && request.method === "POST") {
+      const found = store.get(lifecycle[1]!);
+      if (!found) {
+        return apiError(404, "not_found", "Workspace not found.");
+      }
+      const archived = lifecycle[2] === "archive";
+      store.set(found.id, {
+        ...found,
+        status: archived ? "archived" : "active",
+        archived_at: archived ? "2026-02-01T09:00:00Z" : null,
+      });
+      return new Response(null, { status: 204 });
+    }
     if (/^\/api\/v1\/workspaces\/[^/]+\/members$/.test(url.pathname)) {
       return json({ items: [] });
     }
@@ -175,6 +190,13 @@ function fakeBackend(
         const edited = { ...found, ...changes, version: version + 1 };
         store.set(found.id, edited);
         return json(edited);
+      }
+      if (request.method === "DELETE") {
+        if (body.name !== found.name) {
+          return apiError(422, "name_mismatch", "The name does not match.");
+        }
+        store.delete(found.id);
+        return new Response(null, { status: 204 });
       }
     }
     switch (`${request.method} ${url.pathname}`) {
@@ -243,6 +265,12 @@ function fill(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
+function fillIn(container: HTMLElement, label: string, value: string) {
+  fireEvent.change(within(container).getByLabelText(label), {
+    target: { value },
+  });
+}
+
 beforeEach(() => {
   document.cookie = `dawam_csrf=${CSRF_TOKEN}; path=/`;
 });
@@ -262,7 +290,8 @@ describe("the Workspace list", () => {
       .map((row) =>
         within(row)
           .getAllByRole("cell")
-          .map((cell) => cell.textContent),
+          .map((cell) => cell.textContent)
+          .slice(0, 3),
       );
     expect(rows).toEqual([
       ["Claims", "Insurance", "Viewer"],
@@ -295,14 +324,14 @@ describe("the Workspace list", () => {
       screen.queryByRole("link", { name: "Retail DW" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
 
     expect(
       await screen.findByRole("link", { name: "Retail DW" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Claims" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Show more" }),
+      screen.queryByRole("button", { name: "Load more" }),
     ).not.toBeInTheDocument();
     expect(backend.requests.map((r) => r.search).filter(Boolean)).toContain(
       "?cursor=1",
@@ -326,14 +355,12 @@ describe("creating a Workspace", () => {
     const backend = fakeBackend();
     renderApp(backend);
 
-    fireEvent.click(await screen.findByRole("link", { name: "New Workspace" }));
-    expect(
-      await screen.findByRole("heading", { name: "New Workspace" }),
-    ).toBeInTheDocument();
-    fill("Name", "Retail DW");
-    fill("Description", "The retail bank's warehouse");
-    fill("Business domain", "Retail banking");
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New workspace" }));
+    const dialog = await screen.findByRole("dialog", { name: "New workspace" });
+    fillIn(dialog, "Name", "Retail DW");
+    fillIn(dialog, "Description", "The retail bank's warehouse");
+    fillIn(dialog, "Business domain", "Retail banking");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Workspace" }));
 
     expect(
       await screen.findByRole("heading", { name: "Retail DW" }),
@@ -362,16 +389,114 @@ describe("creating a Workspace", () => {
   });
 
   it("shows the API's message when the Workspace cannot be created", async () => {
-    renderApp(fakeBackend({ createFails: true }), "/workspaces/new");
+    renderApp(fakeBackend({ createFails: true }));
 
-    await screen.findByLabelText("Name");
-    fill("Name", "Retail DW");
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New workspace" }));
+    const dialog = await screen.findByRole("dialog", { name: "New workspace" });
+    fillIn(dialog, "Name", "Retail DW");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Workspace" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "The request is not valid.",
     );
-    expect(currentLocation()).toBe("/workspaces/new");
+    expect(currentLocation()).toBe("/");
+  });
+});
+
+describe("a Workspace's row in the list", () => {
+  const OWNED = workspace(RETAIL.id, "Retail DW", "owner", {
+    domain: "Retail banking",
+    permissions: [
+      ...PERMISSIONS.owner,
+      "workspace.archive",
+      "workspace.delete",
+    ],
+  });
+
+  it("lets an owner edit the details in a popup", async () => {
+    const backend = fakeBackend({ workspaces: [OWNED] });
+    renderApp(backend);
+
+    const row = await screen.findByRole("row", { name: "Retail DW" });
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit workspace" });
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Retail DW");
+    fillIn(dialog, "Name", "Retail warehouse");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "Retail warehouse" }),
+    ).toBeInTheDocument();
+    expect(backend.requests.find((r) => r.method === "PATCH")).toMatchObject({
+      path: `/api/v1/workspaces/${RETAIL.id}`,
+      body: { version: 1, name: "Retail warehouse" },
+    });
+  });
+
+  it("unarchives an archived Workspace", async () => {
+    const backend = fakeBackend({
+      workspaces: [
+        {
+          ...OWNED,
+          permissions: [...OWNED.permissions, "workspace.unarchive"].filter(
+            (action) => action !== "workspace.archive",
+          ) as Workspace["permissions"],
+          status: "archived",
+        },
+      ],
+    });
+    renderApp(backend);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Unarchive" }));
+
+    await waitFor(() =>
+      expect(backend.requests.some((r) => r.path.endsWith("/unarchive"))).toBe(
+        true,
+      ),
+    );
+  });
+
+  it("offers an editor or viewer no row actions", async () => {
+    renderApp(fakeBackend({ workspaces: [CLAIMS] }));
+
+    const row = await screen.findByRole("row", { name: "Claims" });
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("archives an owned Workspace", async () => {
+    const backend = fakeBackend({ workspaces: [OWNED] });
+    renderApp(backend);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Archive" }));
+
+    await waitFor(() =>
+      expect(backend.requests.some((r) => r.path.endsWith("/archive"))).toBe(
+        true,
+      ),
+    );
+  });
+
+  it("deletes only once the name is typed in the confirmation", async () => {
+    const backend = fakeBackend({ workspaces: [OWNED] });
+    renderApp(backend);
+
+    const row = await screen.findByRole("row", { name: "Retail DW" });
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Retail DW?" });
+    const confirm = within(dialog).getByRole("button", { name: "Delete Workspace" });
+    expect(confirm).toBeDisabled();
+    fillIn(dialog, "Workspace name", "Retail DW");
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Retail DW" })).not.toBeInTheDocument(),
+    );
+    expect(backend.requests.find((r) => r.method === "DELETE")).toMatchObject({
+      path: `/api/v1/workspaces/${RETAIL.id}`,
+      body: { name: "Retail DW" },
+    });
   });
 });
 
@@ -387,7 +512,7 @@ describe("a Workspace's page", () => {
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Retail warehouse" }),
+      await screen.findByRole("heading", { name: "Retail warehouse" }),
     ).toBeInTheDocument();
     expect(backend.requests.find((r) => r.method === "PATCH")).toMatchObject({
       path: `/api/v1/workspaces/${RETAIL.id}`,

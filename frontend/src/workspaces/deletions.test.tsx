@@ -160,7 +160,10 @@ describe("deleting a Source System", () => {
   it("lets an owner soft-delete it", async () => {
     const requests = renderApp(backend("owner", [CRM]), FOLDER);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete Source System" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: /^Delete .*\?$/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Source System" }));
 
     await waitFor(() =>
       expect(requests.find((r) => r.method === "DELETE")).toMatchObject({
@@ -172,7 +175,7 @@ describe("deleting a Source System", () => {
   it("is not offered to an editor", async () => {
     renderApp(backend("editor", [CRM]), FOLDER);
 
-    expect(await screen.findByRole("button", { name: "Save" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete Source System" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 });

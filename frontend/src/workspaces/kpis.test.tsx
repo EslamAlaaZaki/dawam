@@ -131,6 +131,18 @@ beforeEach(() => {
 });
 afterEach(() => clearCookie());
 
+/** Opens the Add KPI popup from the folder's header. */
+async function openAddKpi() {
+  fireEvent.click(await screen.findByRole("button", { name: "Add KPI" }));
+  return screen.findByRole("dialog", { name: "Add KPI" });
+}
+
+/** Opens the Edit popup from the one KPI's row. */
+async function openEditKpi() {
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  return screen.findByRole("dialog", { name: "Edit KPI" });
+}
+
 describe("the KPIs folders", () => {
   it("lists a Source System's KPIs", async () => {
     renderApp(backend("viewer", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
@@ -138,7 +150,8 @@ describe("the KPIs folders", () => {
     const row = await screen.findByRole("row", { name: /Net interest margin/ });
     expect(row).toHaveTextContent("Draft");
     expect(row).toHaveTextContent("CFO office");
-    expect(screen.queryByRole("form", { name: "Add KPI" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add KPI" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(screen.getByText("Only owners and editors can document KPIs.")).toBeInTheDocument();
   });
 
@@ -169,13 +182,13 @@ describe("the KPIs folders", () => {
     expect(screen.getByRole("row", { name: /Net interest margin/ })).not.toHaveTextContent(
       "AI-generated",
     );
+    expect(within(ai).getByRole("button", { name: "Delete" })).toBeInTheDocument();
     fireEvent.click(within(ai).getByRole("button", { name: "Cost to income" }));
 
-    const page = screen.getByRole("form", { name: "KPI Cost to income" });
+    const page = await screen.findByRole("dialog", { name: "Cost to income" });
     expect(within(page).getByLabelText("AI rationale")).toHaveTextContent(
       "The ledger holds cost and income columns.",
     );
-    expect(within(page).getByRole("button", { name: "Delete KPI" })).toBeInTheDocument();
   });
 
   it("shows a viewer a KPI read-only", async () => {
@@ -183,7 +196,7 @@ describe("the KPIs folders", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Net interest margin" }));
 
-    const details = screen.getByRole("region", { name: "KPI Net interest margin" });
+    const details = await screen.findByRole("dialog", { name: "Net interest margin" });
     expect(within(details).getByText("Interest earned minus interest paid")).toBeInTheDocument();
     expect(within(details).getByText("FY2027: 3.2%")).toBeInTheDocument();
     expect(within(details).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
@@ -204,7 +217,7 @@ describe("documenting a KPI", () => {
       SYSTEM_FOLDER,
     );
 
-    const form = await screen.findByRole("form", { name: "Add KPI" });
+    const form = await openAddKpi();
     fireEvent.change(within(form).getByLabelText("Name"), {
       target: { value: "Net interest margin" },
     });
@@ -214,7 +227,7 @@ describe("documenting a KPI", () => {
     });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
-    await screen.findByRole("form", { name: "KPI Net interest margin" });
+    expect(await screen.findByText("Net interest margin added.")).toBeInTheDocument();
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       name: "Net interest margin",
       source_system_id: CBS.id,
@@ -242,7 +255,7 @@ describe("documenting a KPI", () => {
       DW_FOLDER,
     );
 
-    const form = await screen.findByRole("form", { name: "Add KPI" });
+    const form = await openAddKpi();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Customer count" } });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
@@ -256,7 +269,7 @@ describe("documenting a KPI", () => {
   it("refuses a target that is not `label: value` without asking the server", async () => {
     const requests = renderApp(backend("editor", { system: [], dw: [] }), SYSTEM_FOLDER);
 
-    const form = await screen.findByRole("form", { name: "Add KPI" });
+    const form = await openAddKpi();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "X" } });
     fireEvent.change(within(form).getByLabelText("Targets"), { target: { value: "95%" } });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
@@ -275,8 +288,7 @@ describe("editing a KPI", () => {
       SYSTEM_FOLDER,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Net interest margin" }));
-    const form = screen.getByRole("form", { name: "KPI Net interest margin" });
+    const form = await openEditKpi();
     fireEvent.change(within(form).getByLabelText("Status"), { target: { value: "in_review" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
 
@@ -287,7 +299,7 @@ describe("editing a KPI", () => {
     });
   });
 
-  it("offers a reload when someone else changed the KPI", async () => {
+  it("tells the editor when someone else changed the KPI first", async () => {
     renderApp(
       backend("owner", { system: [NIM], dw: [] }, (r) =>
         r.method === "PATCH"
@@ -297,10 +309,12 @@ describe("editing a KPI", () => {
       SYSTEM_FOLDER,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Net interest margin" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const form = await openEditKpi();
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Someone else changed this KPI since you opened it.",
+    );
   });
 
   it("deletes a KPI", async () => {
@@ -315,11 +329,14 @@ describe("editing a KPI", () => {
       SYSTEM_FOLDER,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Net interest margin" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete KPI" }));
+    const row = await screen.findByRole("row", { name: /Net interest margin/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Net interest margin?" });
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete KPI" }));
 
     await waitFor(() =>
-      expect(screen.queryByRole("form", { name: "KPI Net interest margin" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument(),
     );
     expect(requests.some((r) => r.method === "DELETE" && r.path === `${KPIS}/${NIM.id}`)).toBe(
       true,
