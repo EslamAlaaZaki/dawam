@@ -192,7 +192,12 @@ proxy):
    ```sh
    OLLAMA_MODELS=qwen2.5:7b nomic-embed-text   # default: a chat model + an embedding model
    # OLLAMA_MODELS=qwen2.5:1.5b nomic-embed-text   # smaller machines (weaker answers)
+   OLLAMA_CONTEXT_LENGTH=32768                  # default; 16384 on machines with little RAM
    ```
+
+   Ollama's own default context is small, and it cuts longer prompts without an
+   error, so the model forgets the start of long conversations. `OLLAMA_CONTEXT_LENGTH`
+   raises it; full agent mode needs at least 32k tokens.
 
 2. Start everything from the repository root, adding `--profile demo` if you want the
    demo source database. Use the same `-f` and `--env-file` in every later command:
@@ -208,7 +213,10 @@ proxy):
 
    - **Admin > LLM:** add a provider of type *OpenAI-compatible*, base URL
      `http://ollama:11434/v1`, no API key. Assign `qwen2.5:7b` to the `agent` (and
-     `light`) role and `nomic-embed-text` to the `embedding` role.
+     `light`) role and `nomic-embed-text` to the `embedding` role. For `qwen2.5:7b`,
+     enter the same value as `OLLAMA_CONTEXT_LENGTH` (32768 by default) as its context
+     window: Ollama doesn't report it, and without it the agent never trims long
+     conversations. Then click **Test connection** on each model.
    - **Admin > Email:** host `mailpit`, port `1025`, no TLS, no login. Emails appear
      at `http://localhost:8025`. For real delivery, enter your own SMTP server instead.
    - **Demo source** (with `--profile demo`): in a Workspace, add a PostgreSQL
