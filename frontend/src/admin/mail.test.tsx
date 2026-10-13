@@ -212,6 +212,8 @@ describe("email settings", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Turn SMTP off" }),
     );
+    const dialog = await screen.findByRole("dialog", { name: "Turn SMTP off?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Turn SMTP off" }));
 
     expect(await screen.findByText(/SMTP is off/)).toBeInTheDocument();
   });

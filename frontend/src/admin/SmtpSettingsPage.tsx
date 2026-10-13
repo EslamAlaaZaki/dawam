@@ -10,13 +10,13 @@ import {
   type SmtpSettings,
   type SmtpSettingsInput,
 } from "../api/mail";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
+import { SettingsCard } from "../components/entity/SettingsCard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, labelClasses, formCardClasses } from "./parts";
-
-const cardClasses = formCardClasses;
+import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
 
 const SECURITY_OPTIONS: {
   value: SmtpSettingsInput["security"];
@@ -63,6 +63,7 @@ export function SmtpSettingsPage() {
 function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
   const save = useSaveSmtpSettings();
   const clear = useClearSmtpSettings();
+  const [turningOff, setTurningOff] = useState(false);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,11 +87,23 @@ function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
   }
 
   return (
-    <form
-      className={cardClasses}
-      onSubmit={onSubmit}
-      aria-label="SMTP settings"
-    >
+    <form onSubmit={onSubmit} aria-label="SMTP settings">
+      <SettingsCard
+        title="SMTP server"
+        description="DAWAM sends its email through this server."
+        footer={
+          <>
+            <Button type="submit" variant="primary" disabled={save.isPending}>
+              Save
+            </Button>
+            {saved && (
+              <Button type="button" onClick={() => setTurningOff(true)}>
+                Turn SMTP off
+              </Button>
+            )}
+          </>
+        }
+      >
       <label className={labelClasses}>
         SMTP host
         <Input name="host" defaultValue={saved?.host ?? ""} required />
@@ -148,21 +161,20 @@ function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
         />
       </label>
       {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="primary" disabled={save.isPending}>
-          Save
-        </Button>
-        {saved && (
-          <Button
-            type="button"
-            onClick={() => clear.mutate()}
-            disabled={clear.isPending}
-          >
-            Turn SMTP off
-          </Button>
-        )}
-      </div>
-      {clear.isError && <ErrorText>{clear.error.message}</ErrorText>}
+      </SettingsCard>
+      <ConfirmDialog
+        open={turningOff}
+        onOpenChange={(next) => {
+          if (!next) clear.reset();
+          setTurningOff(next);
+        }}
+        title="Turn SMTP off?"
+        description="The saved server settings are removed. Links DAWAM would email are listed under Links to share instead."
+        confirmLabel="Turn SMTP off"
+        pending={clear.isPending}
+        error={clear.error}
+        onConfirm={() => clear.mutate(undefined, { onSuccess: () => setTurningOff(false) })}
+      />
     </form>
   );
 }
@@ -179,8 +191,15 @@ function TestEmail() {
   }
 
   return (
-    <form className={cardClasses} onSubmit={onSubmit} aria-label="Test email">
-      <h3 className="text-lg font-semibold">Send a test email</h3>
+    <form onSubmit={onSubmit} aria-label="Test email">
+      <SettingsCard
+        title="Send a test email"
+        footer={
+          <Button type="submit" disabled={send.isPending}>
+            Send test email
+          </Button>
+        }
+      >
       <label className={labelClasses}>
         Recipient (empty: your own address)
         <Input
@@ -190,10 +209,8 @@ function TestEmail() {
           onChange={(e) => setTo(e.target.value)}
         />
       </label>
-      <Button type="submit" className="self-start" disabled={send.isPending}>
-        Send test email
-      </Button>
       {send.isError && <ErrorText>{send.error.message}</ErrorText>}
+      </SettingsCard>
     </form>
   );
 }

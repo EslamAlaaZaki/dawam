@@ -23,6 +23,8 @@ export function ConfirmDialog({
   onConfirm,
   pending,
   error,
+  confirmDisabled,
+  children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -32,6 +34,10 @@ export function ConfirmDialog({
   onConfirm: () => void;
   pending?: boolean;
   error?: Error | null;
+  /** Keeps Confirm off until e.g. a typed name matches. */
+  confirmDisabled?: boolean;
+  /** Extra content between the description and the buttons, e.g. a typed-name field. */
+  children?: ReactNode;
 }) {
   const returnFocus = useReturnFocus(open);
 
@@ -42,6 +48,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         {error && <ErrorText>{error.message}</ErrorText>}
         <DialogFooter>
           <DialogClose asChild>
@@ -49,7 +56,7 @@ export function ConfirmDialog({
               Cancel
             </Button>
           </DialogClose>
-          <Button type="button" variant="primary" disabled={pending} onClick={onConfirm}>
+          <Button type="button" variant="primary" disabled={pending || confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </DialogFooter>
