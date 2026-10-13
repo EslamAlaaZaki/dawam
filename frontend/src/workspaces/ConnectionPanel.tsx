@@ -14,6 +14,7 @@ import { allows, type Workspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { SchemaImportPanel } from "./SchemaImportPanel";
 import {
   Actions,
@@ -22,7 +23,6 @@ import {
   NativeSelect,
   Panel,
   formCardClasses,
-  h3Classes,
   labelClasses,
   monoClasses,
 } from "./parts";
@@ -35,11 +35,32 @@ function parseSchemas(text: string): string[] {
     .filter(Boolean);
 }
 
+type Tab = "connection" | "import";
+const TAB_KEY = "dawam.connection-tab";
+
+// Browser storage can be missing or blocked: the tab is then simply not remembered.
+function lastTab(): Tab {
+  try {
+    return localStorage.getItem(TAB_KEY) === "import" ? "import" : "connection";
+  } catch {
+    return "connection";
+  }
+}
+
+function rememberTab(tab: Tab) {
+  try {
+    localStorage.setItem(TAB_KEY, tab);
+  } catch {
+    // Not remembered.
+  }
+}
+
 /**
- * A Source System's live database Connection (spec stories 40-43): owners enter the
- * settings, test them before saving, choose the Database Schemas DAWAM may read, and are
- * warned when the database user can write. The saved password is never shown. In an
- * archived Workspace owners can still see the Connection, read-only.
+ * A Source System's live database Connection (spec stories 40-43) and its Schema Import,
+ * as two tabs. Owners enter the settings, test them before saving, choose the Database
+ * Schemas DAWAM may read, and are warned when the database user can write. The saved
+ * password is never shown. In an archived Workspace owners can still see the Connection,
+ * read-only. The tab used last is remembered.
  */
 export function ConnectionPanel({
   workspace,
@@ -48,11 +69,34 @@ export function ConnectionPanel({
   workspace: Workspace;
   system: SourceSystem;
 }) {
+  const canImport = allows(workspace, "source_system.extract");
+  const [stored, setStored] = useState<Tab>(lastTab);
+  const tab: Tab = stored === "import" && canImport ? "import" : "connection";
   return (
-    <div className="flex flex-col gap-6">
-      <ConnectionSection workspace={workspace} system={system} />
-      <SchemaImportPanel workspace={workspace} system={system} />
-    </div>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => {
+        setStored(value as Tab);
+        rememberTab(value as Tab);
+      }}
+      className="gap-4"
+    >
+      <TabsList className="px-0">
+        <TabsTrigger value="connection">Live connection</TabsTrigger>
+        {canImport && (
+          <TabsTrigger value="import">Import from template</TabsTrigger>
+        )}
+      </TabsList>
+      {/* Both stay mounted so a half-filled form survives a tab switch. */}
+      <TabsContent value="connection" forceMount hidden={tab !== "connection"}>
+        <ConnectionSection workspace={workspace} system={system} />
+      </TabsContent>
+      {canImport && (
+        <TabsContent value="import" forceMount hidden={tab !== "import"}>
+          <SchemaImportPanel workspace={workspace} system={system} />
+        </TabsContent>
+      )}
+    </Tabs>
   );
 }
 
@@ -69,10 +113,7 @@ function ConnectionSection({
 
   if (!canView) {
     return (
-      <Panel aria-labelledby="folder-title">
-        <h3 id="folder-title" className={h3Classes}>
-          Connection | Schema Import
-        </h3>
+      <Panel>
         <Hint>
           Only owners can see or change a Source System&apos;s Connection.
         </Hint>
@@ -182,12 +223,10 @@ function ConnectionForm({
       onSubmit={onSubmit}
       aria-label="Connection"
     >
-      <h3 id="folder-title" className={h3Classes}>
-        Connection | Schema Import
-      </h3>
       <Hint>
-        A {ENGINES[engine].label} database DAWAM reads from. Give it a read-only
-        user: DAWAM never writes.
+        Use this when DAWAM can reach the database: a live, read-only connection
+        to a {ENGINES[engine].label} database. Give it a read-only user: DAWAM
+        never writes.
       </Hint>
       {readOnly && (
         <p role="status">

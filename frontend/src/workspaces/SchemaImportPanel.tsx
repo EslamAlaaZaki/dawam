@@ -17,7 +17,6 @@ import {
   Hint,
   NativeSelect,
   formCardClasses,
-  h4Classes,
   labelClasses,
 } from "./parts";
 
@@ -46,12 +45,10 @@ export function SchemaImportPanel({
     return null;
   }
   return (
-    <section aria-labelledby="schema-import-title" className={formCardClasses}>
-      <h4 id="schema-import-title" className={h4Classes}>
-        Schema Import
-      </h4>
+    <section aria-label="Import from template" className={formCardClasses}>
       <Hint>
-        No Connection? Run the helper queries for your engine on the database,
+        Use this when DAWAM cannot reach the database, with filled-in template
+        files. Run the helper queries for your engine on the database,
         paste or export each result into the sheet of the same name in the
         template, and upload it.
       </Hint>

@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Me } from "../api/queries";
 import type { SourceSystem } from "../api/systems";
@@ -87,7 +87,9 @@ describe("Schema Import downloads", () => {
   it("offers an editor the template and the helper queries of each engine", async () => {
     renderApp(backend("editor"), FOLDER);
 
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Import from template" }));
     const queries = await screen.findByRole("link", { name: /Download helper queries/ });
+    expect(screen.getByText(/Use this when DAWAM cannot reach the database/)).toBeVisible();
     expect(queries).toHaveAttribute("href", `${IMPORT}/helper-queries?engine=postgresql`);
     expect(screen.getByRole("link", { name: /Download template/ })).toHaveAttribute(
       "href",
@@ -98,6 +100,40 @@ describe("Schema Import downloads", () => {
     fireEvent.change(screen.getByLabelText("Database engine"), { target: { value: "teradata" } });
     expect(queries).toHaveAttribute("href", `${IMPORT}/helper-queries?engine=teradata`);
     expect(screen.getByRole("option", { name: "IBM Db2 (LUW)" })).toBeInTheDocument();
+  });
+
+  it("remembers the tab used last", async () => {
+    renderApp(backend("editor"), FOLDER);
+    expect(await screen.findByRole("tab", { name: "Live connection" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Import from template" }));
+    expect(localStorage.getItem("dawam.connection-tab")).toBe("import");
+  });
+
+  it("opens on the remembered tab", async () => {
+    localStorage.setItem("dawam.connection-tab", "import");
+    renderApp(backend("editor"), FOLDER);
+
+    expect(await screen.findByRole("tab", { name: "Import from template" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("link", { name: /Download template/ })).toBeVisible();
+  });
+
+  it("still works when browser storage is unavailable", async () => {
+    const blocked = () => {
+      throw new Error("blocked");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
+    renderApp(backend("editor"), FOLDER);
+
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Import from template" }));
+    expect(await screen.findByRole("link", { name: /Download template/ })).toBeVisible();
+    vi.restoreAllMocks();
   });
 
   it("is not shown to a viewer", async () => {
