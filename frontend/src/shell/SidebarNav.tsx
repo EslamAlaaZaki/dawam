@@ -118,7 +118,13 @@ export function SidebarNav() {
   const workspaceId = workspaceIdOf(pathname);
   return (
     <>
-      <Wordmark className="px-2 pt-1 pb-3" />
+      <Link
+        href="/"
+        aria-label="DAWAM home"
+        className="rounded-md outline-offset-2 focus-visible:outline-2"
+      >
+        <Wordmark className="px-2 pt-1 pb-3" />
+      </Link>
       {workspaceId ? (
         // The tree reads the `folder` search parameter, which wants a Suspense boundary.
         <Suspense>

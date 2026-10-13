@@ -240,9 +240,14 @@ describe("the signed-in shell", () => {
     expect(within(sidebar).getByText("DAWAM")).toBeInTheDocument();
     expect(within(sidebar).getByRole("link", { name: "Workspaces" })).toHaveAttribute("href", "/");
     expect(within(sidebar).getByText("API version 1.2.3")).toBeInTheDocument();
-    expect(within(header).getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent(
-      "Workspaces",
-    );
+    expect(within(header).queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
+  });
+
+  it("links the sidebar logo to the home page", async () => {
+    renderApp(fakeBackend({ signedIn: true }), "/admin/users");
+
+    const sidebar = await screen.findByRole("complementary", { name: "Navigation" });
+    expect(within(sidebar).getByRole("link", { name: "DAWAM home" })).toHaveAttribute("href", "/");
   });
 
   it("signs out on the server and returns to the login page", async () => {
