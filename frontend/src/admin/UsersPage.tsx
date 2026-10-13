@@ -6,31 +6,21 @@ import { useState, type FormEvent } from "react";
 
 import { useMe } from "../api/queries";
 import {
+  useCreateUser,
   useForcePasswordReset,
   useUpdateUser,
   useUsers,
   type AdminUser,
   type UserFilters,
 } from "../api/users";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
+import { EntityFormDialog } from "../components/entity/EntityFormDialog";
+import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import { Loading } from "../shell/Loading";
-import {
-  ErrorText,
-  NativeSelect,
-  PageHead,
-  TableCard,
-  labelClasses, EmptyState } from "./parts";
+import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
 
 const ROLES = { admin: "Admin", user: "User" } as const;
 
@@ -38,10 +28,61 @@ function when(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "Never";
 }
 
+function statusText(user: AdminUser): string {
+  let status = user.is_active ? "Active" : "Deactivated";
+  if (user.is_active && user.must_change_password) {
+    status += " (temporary password)";
+  }
+  return status;
+}
+
+const USER_COLUMNS: EntityColumn<AdminUser>[] = [
+  { header: "Email", cell: (user) => user.email },
+  { header: "Name", cell: (user) => user.display_name },
+  {
+    header: "Role",
+    cell: (user) =>
+      user.system_role === "admin" ? (
+        <Badge variant="accent">{ROLES.admin}</Badge>
+      ) : (
+        <span className="text-sand-11">{ROLES.user}</span>
+      ),
+  },
+  {
+    header: "Status",
+    cell: (user) => (
+      <Badge
+        variant={
+          !user.is_active
+            ? "danger"
+            : user.must_change_password
+              ? "warning"
+              : "success"
+        }
+        dot
+      >
+        {statusText(user)}
+      </Badge>
+    ),
+  },
+  {
+    header: "Last sign-in",
+    className: "text-sand-11",
+    cell: (user) => when(user.last_login_at),
+  },
+];
+
 /** Every user, searched and filtered, with what an admin can do to each (stories 14-19). */
 export function UsersPage() {
   const [filters, setFilters] = useState<UserFilters>({});
   const users = useUsers(filters);
+  const [creating, setCreating] = useState(false);
+  const createButton = (
+    <Button onClick={() => setCreating(true)}>
+      <UserPlus aria-hidden />
+      Create user
+    </Button>
+  );
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,12 +104,7 @@ export function UsersPage() {
         description="Everyone who can sign in to this DAWAM server."
         actions={
           <>
-            <Button asChild>
-              <Link href="/admin/users/new">
-                <UserPlus aria-hidden />
-                Create user
-              </Link>
-            </Button>
+            {createButton}
             <Button asChild variant="primary">
               <Link href="/admin/invitations">
                 <MailPlus aria-hidden />
@@ -108,63 +144,34 @@ export function UsersPage() {
           Search
         </Button>
       </form>
-      {users.isPending ? (
-        <Loading />
-      ) : users.isError ? (
-        <ErrorText>Could not load the users: {users.error.message}</ErrorText>
-      ) : (
-        <>
-          <TableCard
-            footer={
-              <span>
-                {users.data.pages.reduce((n, page) => n + page.items.length, 0)}{" "}
-                users
-                {users.hasNextPage && " so far"}
-              </span>
-            }
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">Email</TableHead>
-                  <TableHead scope="col">Name</TableHead>
-                  <TableHead scope="col">Role</TableHead>
-                  <TableHead scope="col">Status</TableHead>
-                  <TableHead scope="col">Last sign-in</TableHead>
-                  <TableHead scope="col">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.data.pages.flatMap((page) =>
-                  page.items.map((user) => (
-                    <UserRow key={user.id} user={user} />
-                  )),
-                )}
-              </TableBody>
-            </Table>
-          </TableCard>
-          {users.data.pages[0]?.items.length === 0 && (
-            <EmptyState>No users match.</EmptyState>
-          )}
-          {users.hasNextPage && (
-            <Button
-              className="self-start"
-              onClick={() => void users.fetchNextPage()}
-              disabled={users.isFetchingNextPage}
-            >
-              Load more
-            </Button>
-          )}
-        </>
-      )}
+      <EntityTable
+        rows={users.data?.pages.flatMap((page) => page.items)}
+        rowKey={(user) => user.id}
+        rowLabel={(user) => user.email}
+        columns={USER_COLUMNS}
+        actions={(user) => <UserActions user={user} />}
+        isPending={users.isPending}
+        error={users.error}
+        loadErrorPrefix="Could not load the users:"
+        emptyMessage="No users match."
+        emptyAction={createButton}
+        count="users"
+        hasMore={users.hasNextPage}
+        isLoadingMore={users.isFetchingNextPage}
+        onLoadMore={() => void users.fetchNextPage()}
+      />
+      <CreateUserDialog open={creating} onOpenChange={setCreating} />
     </section>
   );
 }
 
-function UserRow({ user }: { user: AdminUser }) {
+/** What an admin can do to one user; users are never deleted. */
+function UserActions({ user }: { user: AdminUser }) {
   const me = useMe();
   const update = useUpdateUser();
   const reset = useForcePasswordReset();
+  const [editing, setEditing] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
   const isMe = me.data?.id === user.id;
   const problem = update.isError
     ? update.error
@@ -172,94 +179,221 @@ function UserRow({ user }: { user: AdminUser }) {
       ? reset.error
       : null;
 
-  let status = user.is_active ? "Active" : "Deactivated";
-  if (user.is_active && user.must_change_password) {
-    status += " (temporary password)";
-  }
-
   return (
-    <TableRow aria-label={user.email}>
-      <TableCell>{user.email}</TableCell>
-      <TableCell>{user.display_name}</TableCell>
-      <TableCell>
-        {user.system_role === "admin" ? (
-          <Badge variant="accent">{ROLES.admin}</Badge>
-        ) : (
-          <span className="text-sand-11">{ROLES.user}</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={
-            !user.is_active
-              ? "danger"
-              : user.must_change_password
-                ? "warning"
-                : "success"
+    <>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
+        <Button
+          size="sm"
+          disabled={update.isPending}
+          onClick={() =>
+            update.mutate({
+              id: user.id,
+              system_role: user.system_role === "admin" ? "user" : "admin",
+            })
           }
-          dot
         >
-          {status}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-sand-11">{when(user.last_login_at)}</TableCell>
-      <TableCell className="whitespace-normal">
-        <div className="flex flex-wrap gap-2">
+          {user.system_role === "admin" ? "Make user" : "Make admin"}
+        </Button>
+        <Button
+          size="sm"
+          disabled={update.isPending}
+          onClick={() =>
+            user.is_active
+              ? setDeactivating(true)
+              : update.mutate({ id: user.id, is_active: true })
+          }
+        >
+          {user.is_active ? "Deactivate" : "Reactivate"}
+        </Button>
+        {!isMe && user.is_active && (
           <Button
             size="sm"
-            disabled={update.isPending}
+            disabled={reset.isPending}
             onClick={() =>
-              update.mutate({
-                id: user.id,
-                system_role: user.system_role === "admin" ? "user" : "admin",
+              reset.mutate(user.id, {
+                onSuccess: (result) => {
+                  if (result.delivery === "sent") {
+                    toast.success(
+                      `Sessions ended; a reset link was emailed to ${user.email}.`,
+                    );
+                  }
+                },
               })
             }
           >
-            {user.system_role === "admin" ? "Make user" : "Make admin"}
+            Force password reset
           </Button>
-          <Button
-            size="sm"
-            disabled={update.isPending}
-            onClick={() =>
-              update.mutate({ id: user.id, is_active: !user.is_active })
-            }
-          >
-            {user.is_active ? "Deactivate" : "Reactivate"}
-          </Button>
-          {!isMe && user.is_active && (
-            <Button
-              size="sm"
-              disabled={reset.isPending}
-              onClick={() =>
-                reset.mutate(user.id, {
-                  onSuccess: (result) => {
-                    if (result.delivery === "sent") {
-                      toast.success(
-                        `Sessions ended; a reset link was emailed to ${user.email}.`,
-                      );
-                    }
-                  },
-                })
-              }
-            >
-              Force password reset
-            </Button>
-          )}
-        </div>
-        {problem && <ErrorText>{problem.message}</ErrorText>}
-        {reset.data?.delivery === "link_for_admin" && (
-          <p className="mt-1.5 text-sm text-sand-11">
-            Sessions ended. The reset link could not be emailed: share it from{" "}
-            <Link
-              href="/admin/email/links"
-              className="font-medium text-sand-12 underline"
-            >
-              Links to share
-            </Link>
-            .
-          </p>
         )}
-      </TableCell>
-    </TableRow>
+      </div>
+      {problem && !deactivating && <ErrorText>{problem.message}</ErrorText>}
+      {reset.data?.delivery === "link_for_admin" && (
+        <p className="mt-1.5 text-sm text-sand-11">
+          Sessions ended. The reset link could not be emailed: share it from{" "}
+          <Link
+            href="/admin/email/links"
+            className="font-medium text-sand-12 underline"
+          >
+            Links to share
+          </Link>
+          .
+        </p>
+      )}
+      <EditUserDialog user={user} open={editing} onOpenChange={setEditing} />
+      <ConfirmDialog
+        open={deactivating}
+        onOpenChange={(next) => {
+          if (!next) update.reset();
+          setDeactivating(next);
+        }}
+        title={`Deactivate ${user.email}?`}
+        description="They are signed out at once and cannot sign in until you reactivate them."
+        confirmLabel="Deactivate"
+        pending={update.isPending}
+        error={update.error}
+        onConfirm={() =>
+          update.mutate(
+            { id: user.id, is_active: false },
+            { onSuccess: () => setDeactivating(false) },
+          )
+        }
+      />
+    </>
+  );
+}
+
+/** Edit one user; the API changes the role only, so the identity fields are read-only. */
+function EditUserDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: AdminUser;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const update = useUpdateUser();
+
+  function onSubmit(form: FormData) {
+    const system_role = form.get("system_role") === "admin" ? "admin" : "user";
+    if (system_role === user.system_role) {
+      onOpenChange(false);
+      return;
+    }
+    update.mutate(
+      { id: user.id, system_role },
+      {
+        onSuccess: () => {
+          toast.success(`${user.email} updated.`);
+          onOpenChange(false);
+        },
+      },
+    );
+  }
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) update.reset();
+        onOpenChange(next);
+      }}
+      title="Edit user"
+      description={user.email}
+      submitLabel="Save"
+      onSubmit={onSubmit}
+      pending={update.isPending}
+      error={update.error}
+    >
+      <label className={labelClasses}>
+        Email
+        <Input value={user.email} readOnly />
+      </label>
+      <label className={labelClasses}>
+        Display name
+        <Input value={user.display_name} readOnly />
+      </label>
+      <label className={labelClasses}>
+        System role
+        <NativeSelect name="system_role" defaultValue={user.system_role}>
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </NativeSelect>
+      </label>
+    </EntityFormDialog>
+  );
+}
+
+/**
+ * Create a user with a temporary password (story 15a): they must change it at first
+ * sign-in, so the admin never knows their real password.
+ */
+function CreateUserDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const create = useCreateUser();
+
+  function onSubmit(form: FormData) {
+    const email = String(form.get("email") ?? "");
+    create.mutate(
+      {
+        email,
+        display_name: String(form.get("display_name") ?? ""),
+        system_role: form.get("system_role") === "admin" ? "admin" : "user",
+        temporary_password: String(form.get("temporary_password") ?? ""),
+      },
+      {
+        onSuccess: () => {
+          toast.success(`${email} created.`);
+          onOpenChange(false);
+        },
+      },
+    );
+  }
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) create.reset();
+        onOpenChange(next);
+      }}
+      title="Create user"
+      description="Set up an account with a temporary password the user replaces at first sign-in."
+      submitLabel="Create user"
+      onSubmit={onSubmit}
+      pending={create.isPending}
+      error={create.error}
+    >
+      <label className={labelClasses}>
+        Email
+        <Input name="email" type="email" autoComplete="off" required />
+      </label>
+      <label className={labelClasses}>
+        Display name
+        <Input name="display_name" autoComplete="off" maxLength={200} required />
+      </label>
+      <label className={labelClasses}>
+        System role
+        <NativeSelect name="system_role" defaultValue="user">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </NativeSelect>
+      </label>
+      <label className={labelClasses}>
+        Temporary password
+        <Input name="temporary_password" type="text" autoComplete="off" required />
+      </label>
+      <p className="text-sm text-sand-11">
+        At least 10 characters, and not a common password. Give it to the user through a
+        channel you trust; they must replace it when they first sign in.
+      </p>
+    </EntityFormDialog>
   );
 }

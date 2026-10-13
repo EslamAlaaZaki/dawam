@@ -143,6 +143,9 @@ describe("changing a user", () => {
     const row = await screen.findByRole("row", { name: /grace@example\.com/ });
 
     fireEvent.click(within(row).getByRole("button", { name: "Deactivate" }));
+    const dialog = await screen.findByRole("dialog", { name: /Deactivate grace@example\.com/ });
+    expect(requests.find((r) => r.method === "PATCH")).toBeUndefined();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Deactivate" }));
 
     await waitFor(() =>
       expect(screen.getByRole("row", { name: /grace@example\.com/ })).toHaveTextContent(
@@ -154,6 +157,49 @@ describe("changing a user", () => {
       csrf: CSRF_TOKEN,
       body: { is_active: false },
     });
+  });
+
+  it("sends nothing when the deactivation is cancelled, and returns focus to the button", async () => {
+    const requests = renderApp(withGrace(() => json(GRACE)), "/admin/users");
+    const row = await screen.findByRole("row", { name: /grace@example\.com/ });
+    const opener = within(row).getByRole("button", { name: "Deactivate" });
+    opener.focus();
+
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: /Deactivate grace@example\.com/ });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(opener).toHaveFocus());
+    expect(requests.find((r) => r.method === "PATCH")).toBeUndefined();
+  });
+
+  it("edits a user in a popup prefilled with their details, then shows the change", async () => {
+    const requests = renderApp(
+      withGrace((r) => json({ ...GRACE, ...(r.body as object) })),
+      "/admin/users",
+    );
+    const row = await screen.findByRole("row", { name: /grace@example\.com/ });
+    const opener = within(row).getByRole("button", { name: "Edit" });
+    opener.focus();
+
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Edit user" });
+    expect(within(dialog).getByLabelText("Email")).toHaveValue("grace@example.com");
+    expect(within(dialog).getByLabelText("Display name")).toHaveValue("Grace Hopper");
+    expect(within(dialog).getByLabelText("System role")).toHaveValue("user");
+    fireEvent.change(within(dialog).getByLabelText("System role"), { target: { value: "admin" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(requests.find((r) => r.method === "PATCH")).toMatchObject({
+      path: `/api/v1/admin/users/${GRACE.id}`,
+      body: { system_role: "admin" },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("row", { name: /grace@example\.com/ })).toHaveTextContent("Admin"),
+    );
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 
   it("promotes a user to admin", async () => {
@@ -206,7 +252,7 @@ describe("changing a user", () => {
 });
 
 describe("creating a user", () => {
-  it("creates a user with a temporary password and goes back to the list", async () => {
+  it("creates a user with a temporary password in a popup, and returns focus to the button", async () => {
     const requests = renderApp(
       as(ROOT, (r) => {
         if (r.method === "POST" && r.path === "/api/v1/admin/users") {
@@ -217,18 +263,26 @@ describe("creating a user", () => {
       }),
       "/admin/users",
     );
-    fireEvent.click(await screen.findByRole("link", { name: "Create user" }));
-    expect(await screen.findByRole("heading", { name: "Create user" })).toBeInTheDocument();
+    const opener = await screen.findByRole("button", { name: "Create user" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Create user" });
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "grace@example.com" } });
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Grace Hopper" } });
-    fireEvent.change(screen.getByLabelText("System role"), { target: { value: "admin" } });
-    fireEvent.change(screen.getByLabelText("Temporary password"), {
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
+      target: { value: "grace@example.com" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Display name"), {
+      target: { value: "Grace Hopper" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("System role"), { target: { value: "admin" } });
+    fireEvent.change(within(dialog).getByLabelText("Temporary password"), {
       target: { value: "temporary password 1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create user" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create user" }));
 
-    await waitFor(() => expect(currentLocation()).toBe("/admin/users"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(currentLocation()).toBe("/admin/users");
+    await waitFor(() => expect(opener).toHaveFocus());
     expect(requests.find((r) => r.method === "POST")).toMatchObject({
       path: "/api/v1/admin/users",
       csrf: CSRF_TOKEN,
@@ -248,20 +302,38 @@ describe("creating a user", () => {
           ? apiError(422, "invalid_password", "The password must be at least 10 characters long.")
           : undefined,
       ),
-      "/admin/users/new",
+      "/admin/users",
     );
 
-    fireEvent.change(await screen.findByLabelText("Email"), {
+    fireEvent.click(await screen.findByRole("button", { name: "Create user" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create user" });
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
       target: { value: "grace@example.com" },
     });
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Grace" } });
-    fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "short" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create user" }));
+    fireEvent.change(within(dialog).getByLabelText("Display name"), { target: { value: "Grace" } });
+    fireEvent.change(within(dialog).getByLabelText("Temporary password"), {
+      target: { value: "short" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create user" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "The password must be at least 10 characters long.",
     );
-    expect(currentLocation()).toBe("/admin/users/new");
+    expect(screen.getByRole("dialog", { name: "Create user" })).toBeInTheDocument();
+  });
+
+  it("offers the create action in the empty state", async () => {
+    renderApp(
+      as(ROOT, (r) => (r.path === "/api/v1/admin/users" ? page([]) : undefined)),
+      "/admin/users",
+    );
+
+    expect(await screen.findByText("No users match.")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const buttons = screen.getAllByRole("button", { name: "Create user" });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]!);
+    expect(await screen.findByRole("dialog", { name: "Create user" })).toBeInTheDocument();
   });
 });
 
