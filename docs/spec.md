@@ -147,11 +147,13 @@ Roles apply to the whole Workspace (all Source Systems and the Data Warehouse). 
 | Move to in review; approve a Layer (core, mart) or KPI | ❌ | ✅ | ✅ | ❌ |
 | Ask the assistant questions, run an AI evaluation | ❌ | ✅ | ✅ | ✅ |
 | See conversations other members shared with the Workspace | ❌ | ✅ | ✅ | ✅ |
+| Post in a conversation another member shared with the Workspace | ❌ | ✅ | ✅ | ❌ |
 | Let the assistant run source queries, generate files and propose changes | ❌ | ✅ | ✅ | ❌ |
 | Accept / reject Change Set items (owner-only items need an Owner) | ❌ | ✅ | ✅ | ❌ |
-| Choose the Workspace's model, data-sharing level and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
+| Choose the Workspace's agent and light models, data-sharing level and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
 | Upload, edit, delete Workspace files | ❌ | ✅ | ✅ | ❌ |
 | Configure LLM providers, models, roles and budgets (system-wide) | ✅ | ❌ | ❌ | ❌ |
+| Set a Workspace's Allowed Models; remove a model in use (choosing its replacement) | ✅ | ❌ | ❌ | ❌ |
 
 Authorization is enforced **on the server for every request**, including every assistant tool call. The UI only hides controls for convenience.
 
@@ -375,7 +377,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 148. As an editor, I want to accept all, accept some, or reject the items in a Change Set, so that I stay in control.
 149. As a viewer, I want to ask questions but not run source queries, generate files or propose changes, so that read-only access stays read-only.
 150. As a member, I want the assistant to act with my permissions only and never see connection credentials, so that it can't do anything I couldn't do myself.
-151. As a member, I want my conversations saved in the Workspace, private to me unless I share one with the Workspace's members, so that I can come back to them.
+151. As a member, I want my conversations saved in the Workspace, private to me unless I share one with the Workspace's members (owners and editors can then post in it; viewers only read), so that I can come back to them and work on them together.
 152. As a member, I want to stop a response while it is running, so that I can redirect it quickly.
 153. As an editor, I want large requests (e.g. "generate the core layer", "draft mappings for all 40 columns of fact_sales") to run as a background job with progress and end in one Change Set, so that big tasks don't time out. A job that is aborted (budget spent, model unavailable, cancelled) produces no Change Set and keeps its log.
 154. As a member, I want the assistant to reply in the language I write in (e.g. Arabic or English), so that the conversation feels natural.
@@ -384,9 +386,9 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 157. As an admin, I want to assign models to roles (an agent model, an optional lighter model for small tasks, and an embedding model for document search), each from any registered provider, so that cost and quality are balanced.
 158. As an admin, I want to mark each provider as internal (self-hosted in our network) or external, so that data exposure is always visible.
 159. As an admin, I want to set a monthly token budget for the installation and optionally per Workspace, so that usage and cost are controlled.
-160. As an owner, I want to choose which approved model my Workspace uses and restrict it to internal providers only, so that sensitive Workspaces never send data outside our network. New Workspaces are internal-only by default when the installation has an internal agent model; otherwise they default to not internal-only and show a banner saying so.
+160. As an owner, I want to choose, from my Workspace's Allowed Models, its agent and light models (and its embedding model when creating it, fixed afterwards), and to restrict it to internal providers only, so that sensitive Workspaces never send data outside our network. New Workspaces are internal-only by default when the installation has an internal agent model; otherwise they default to not internal-only and show a banner saying so.
 161. As an owner, I want to choose what the AI may see (metadata only; + profile statistics; + documents; + sample rows), applied to every model role (agent, light, embedding), so that data exposure matches our policy.
-162. As an admin, I want to see AI usage per Workspace and per user, so that I can manage the budget.
+162. As an admin, I want to see AI usage per Workspace and per user, so that I can manage the budget. I also want to choose which models each Workspace may use, and to remove a model that is in use by choosing its replacement.
 
 ### Epic R: Workspace Files
 
@@ -693,6 +695,8 @@ Disabled checks are excluded from the formula and listed separately with their r
 - **Long tasks** (DW generation, bulk mappings, exploration of many tables) run as a `Job` and end in a single Change Set. A job aborted by budget exhaustion, provider failure or cancellation produces no Change Set and keeps its log.
 - **Limits.** Tool calls are capped per request (default 25; higher for background jobs). Both the installation's and the Workspace's monthly token budgets are checked before each model call. Every run is logged with tokens, tools used, source queries and duration.
 - **Without a working model** (provider down, budget spent), the assistant shows the reason and every non-AI feature keeps working.
+- **Model per message.** The member may pick any chat model in the Workspace's Allowed Models for each message; it starts on the Workspace's agent model and the conversation remembers the last pick. Each reply records the model that answered. If that model is later removed, the conversation falls back to the Workspace's agent model.
+- **Shared conversations.** Only the member who started a conversation can share or unshare it. In a shared conversation every Owner and Editor of the Workspace may post; Viewers only read. Each message records its sender, and the assistant acts with the sender's permissions.
 
 ### 6.17 Files
 
@@ -719,13 +723,15 @@ Every AI feature goes through one internal gateway. Nothing else in the codebase
 - **Self-hosting notes:** vLLM and SGLang must be started with tool calling enabled and a tool-call parser that matches the model (vLLM: `--enable-auto-tool-choice --tool-call-parser <parser>`; SGLang: `--tool-call-parser <parser>`). Ollama is reached through its OpenAI-compatible `/v1` endpoint. The setup docs include a tested recipe for each server.
 - **Capability detection:** "Test connection" sends a short prompt and a dummy tool call, then records tool support, streaming support, JSON-schema output support, context window (from server metadata or admin input) and, for embedding models, the vector dimension.
 - **Fallback for models without native tool calling:** tools are described in the system prompt, and the model answers with a JSON tool call that is validated against the tool's JSON Schema and retried up to 2 times if invalid. These models are shown as "limited" in the UI. Write tools still go through Change Sets.
-- **Model roles:** `agent` (required), `light` (optional; conversation titles, short summaries, KPI rationales) and `embedding` (optional; document search). Each role points to any provider and model. Owners can override the agent model per Workspace from an admin-approved list.
+- **Model roles:** `agent` (required), `light` (optional; conversation titles, short summaries, KPI rationales) and `embedding` (optional; document search). Each role points to any provider and model; the installation's assignments are the defaults. Owners choose the Workspace's agent and light models from its **Allowed Models**, the list the admin sets per Workspace (all registered models by default; internal-only Workspaces never get external ones). Jobs use the Workspace's agent model.
+- **Workspace embedding model:** chosen when the Workspace is created (pre-selected with the installation's embedding model) and fixed afterwards in this release. The installation's embedding model is only the default for new Workspaces.
+- **Removing a model in use:** only an admin can, by choosing one replacement for each role it fills, applied to every affected Workspace; Workspaces the replacement isn't allowed for are listed so the admin picks another. Removing an embedding model is refused while any Workspace has documents indexed with it.
 - **Internal vs external:** every provider is flagged internal or external. For Workspaces set to internal-only, the gateway refuses requests to external providers for every model role (agent, light, embedding).
 - **Context management:** the gateway knows each model's context window. The agent trims or summarises older turns and large tool results to fit, which matters for smaller self-hosted models.
 - **Reliability:** provider errors map to common codes (auth, rate limit, context overflow, unavailable). Rate limits and 5xx errors are retried with backoff. Timeouts are configurable per provider.
 - **Usage:** token counts come from the provider when it reports them and are estimated otherwise. They feed installation and Workspace budgets.
 - **Secrets:** API keys are encrypted like connection credentials and never returned by the API.
-- **Embedding changes:** switching the embedding model, or a model whose vector dimension differs, triggers a re-indexing job.
+- **Embedding changes:** a Workspace's embedding model cannot change in this release (see ADR 0005), so no re-indexing runs; changing it with a re-index is deferred.
 - **Local quick start:** Docker Compose includes an optional `ollama` profile (`docker compose --profile ollama up`) for a fully local setup with no external calls.
 
 ---
@@ -866,11 +872,14 @@ LlmModel(id, provider_id, model_name, display_name, kind[chat|embedding], suppor
 ModelRoleAssignment(role[agent|light|embedding], model_id)               -- installation defaults
 AiBudget(scope[installation|workspace], workspace_id?, monthly_token_limit)
 WorkspaceAiSettings(workspace_id, data_level[metadata|profiles|documents|samples],
-                    agent_model_id?, internal_providers_only)
+                    agent_model_id?, light_model_id?, embedding_model_id?, internal_providers_only)
+                                                  -- embedding_model_id set at creation, fixed
+WorkspaceAllowedModel(workspace_id, model_id)     -- none listed = all models allowed
                                                   -- default set in code at creation (§6.18)
 DocumentChunk(id, file_id, ordinal, text, tsv, embedding vector?)
-Conversation(id, workspace_id, user_id, title, shared_with_workspace, created_at)
-Message(id, conversation_id, role[user|assistant|tool], content JSON, created_at)
+Conversation(id, workspace_id, user_id, title, shared_with_workspace, last_model_id?, created_at)
+Message(id, conversation_id, role[user|assistant|tool], sender_user_id?, model_id?, content JSON,
+        created_at)                               -- sender on user messages, model on replies
                                                   -- tool results never contain raw query values
 AssistantRun(id, message_id, tool_calls JSON, source_queries JSON, input_tokens, output_tokens,
              duration_ms, status)
