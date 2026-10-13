@@ -98,6 +98,16 @@ _Avoid_: Join (a join belongs to a Mapping Branch), FK mapping
 A business metric with an agreed definition and formula, entered by a user or suggested by the AI (and labelled as AI-generated). Belongs to a Source System, or to the Data Warehouse when it spans systems.
 _Avoid_: Metric, measure (a measure is a DW Schema column)
 
+### Working with the AI
+
+**Conversation**:
+A thread of messages between members and the AI assistant inside a Workspace. Private to the member who started it until they share it with the Workspace; in a shared one, Owners and Editors may post and Viewers only read.
+_Avoid_: Chat, thread, session
+
+**Allowed Models**:
+The models a Workspace may use, set by an admin per Workspace (all registered models unless narrowed). The Workspace's own model choices and every per-message pick in a Conversation come from this list.
+_Avoid_: Approved list, model whitelist
+
 ### Changing things
 
 **Asset**:
