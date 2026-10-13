@@ -578,6 +578,29 @@ describe("the chat's messages, input and Conversation list", () => {
   });
 });
 
+describe("the Conversation drawer on a narrow screen", () => {
+  it("takes focus on open, and Escape closes only the drawer", async () => {
+    renderApp(
+      backend({ conversations: [{ ...NEW_CONVERSATION, title: "Revenue questions" }] }),
+      PATH,
+    );
+    await openAssistant();
+
+    const toggle = await screen.findByRole("button", { name: "Show conversations" });
+    fireEvent.click(toggle);
+    const list = screen.getByRole("navigation", { name: "Conversations" });
+    await waitFor(() =>
+      expect(within(list).getByRole("button", { name: "New conversation" })).toHaveFocus(),
+    );
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+
+    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+    expect(screen.getByLabelText("Ask the assistant")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Show conversations" })).toHaveFocus();
+  });
+});
+
 describe("splitFrames", () => {
   it("keeps an unfinished frame for the next chunk", () => {
     const first = splitFrames('event: text\ndata: {"text":"a"}\n\nevent: te');

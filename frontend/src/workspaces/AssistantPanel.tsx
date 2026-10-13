@@ -304,6 +304,30 @@ export function AssistantPanel({
     }
   }
 
+  // As a drawer (narrow screens), the list takes focus when it opens and gives it back to
+  // its toggle when it closes.
+  const list = useRef<HTMLElement>(null);
+  const listToggle = useRef<HTMLButtonElement>(null);
+  const focusList = useRef(false);
+  useEffect(() => {
+    if (listOpen && focusList.current) {
+      focusList.current = false;
+      list.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+    }
+  }, [listOpen]);
+
+  function openList() {
+    focusList.current = !isWide();
+    setListOpen(true);
+  }
+
+  function closeList() {
+    setListOpen(false);
+    if (!isWide()) {
+      listToggle.current?.focus();
+    }
+  }
+
   async function submit() {
     const content = question.trim();
     if (!content || running) {
@@ -329,7 +353,7 @@ export function AssistantPanel({
     setFailed(null);
     setRefusal(null);
     if (!isWide()) {
-      setListOpen(false);
+      closeList();
     }
   }
 
@@ -386,12 +410,13 @@ export function AssistantPanel({
           )}
           <span className="ml-auto" />
           <Button
+            ref={listToggle}
             variant="ghost"
             size="icon"
             aria-label={listOpen ? "Hide conversations" : "Show conversations"}
             aria-expanded={listOpen}
             aria-controls="assistant-conversations"
-            onClick={() => setListOpen((open) => !open)}
+            onClick={() => (listOpen ? closeList() : openList())}
           >
             {listOpen ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
           </Button>
@@ -466,7 +491,13 @@ export function AssistantPanel({
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  // keyCode 229: Safari's IME composition, which isComposing misses.
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing &&
+                    event.keyCode !== 229
+                  ) {
                     event.preventDefault();
                     void submit();
                   }
@@ -508,11 +539,19 @@ export function AssistantPanel({
           <div
             aria-hidden
             className="absolute inset-0 z-10 bg-overlay lg:hidden"
-            onClick={() => setListOpen(false)}
+            onClick={closeList}
           />
           <nav
+            ref={list}
             id="assistant-conversations"
             aria-label="Conversations"
+            onKeyDown={(event) => {
+              // As a drawer, Escape closes only the drawer, not the whole Assistant.
+              if (event.key === "Escape" && !isWide()) {
+                event.stopPropagation();
+                closeList();
+              }
+            }}
             className="absolute inset-y-0 right-0 z-20 flex w-60 max-w-[85%] flex-col border-l border-line bg-sand-1 shadow-lg lg:static lg:z-auto lg:w-56 lg:shadow-none"
           >
             {canAsk && !archived && (
