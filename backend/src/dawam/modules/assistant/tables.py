@@ -53,6 +53,10 @@ class MessageRecord(Base):
     position: Mapped[int]
     """1, 2, 3, ... within the conversation: the order of the turns."""
     role: Mapped[str] = mapped_column(sa.String(16))
+    sender_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    """The member who sent a ``user`` message; none on the assistant's replies."""
     content: Mapped[str] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 

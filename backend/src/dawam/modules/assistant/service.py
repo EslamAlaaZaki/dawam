@@ -100,6 +100,14 @@ class RunView:
 
 
 @dataclass(frozen=True)
+class Sender:
+    """The member who sent a message."""
+
+    id: uuid.UUID
+    email: str
+
+
+@dataclass(frozen=True)
 class ChatMessage:
     id: uuid.UUID
     role: str
@@ -107,6 +115,8 @@ class ChatMessage:
     created_at: datetime
     run: RunView | None
     """On the member's message: the run that answered it."""
+    sender: Sender | None = None
+    """On a member's message: who sent it. None on the assistant's replies."""
 
 
 @dataclass(frozen=True)
@@ -252,10 +262,18 @@ class AssistantService:
                     sa.select(RunRecord).where(RunRecord.conversation_id == conversation_id)
                 )
             }
+            senders = self._senders({m.sender_user_id for m in messages} - {None})
             return ConversationDetail(
                 self._view(user, record),
                 [
-                    ChatMessage(m.id, m.role, m.content, m.created_at, runs.get(m.id))
+                    ChatMessage(
+                        m.id,
+                        m.role,
+                        m.content,
+                        m.created_at,
+                        runs.get(m.id),
+                        senders.get(m.sender_user_id) if m.sender_user_id else None,
+                    )
                     for m in messages
                 ],
             )
@@ -326,6 +344,7 @@ class AssistantService:
                 conversation_id=conversation_id,
                 position=position,
                 role="user",
+                sender_user_id=user.id,
                 content=content,
                 created_at=now,
             )
@@ -626,6 +645,11 @@ class AssistantService:
             )
 
     # -- internals -------------------------------------------------------------------
+
+    def _senders(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, Sender]:
+        """The senders that still exist, by id."""
+        found = {i: self._users(i) for i in ids}
+        return {i: Sender(u.id, u.email) for i, u in found.items() if u is not None}
 
     @staticmethod
     def _view(user: User, record: ConversationRecord) -> Conversation:

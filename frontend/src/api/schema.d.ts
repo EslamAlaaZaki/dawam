@@ -7304,6 +7304,8 @@ export interface components {
             created_at: string;
             /** @description On a member's message: the run that answered it. */
             run: components["schemas"]["RunOut"] | null;
+            /** @description On a member's message: who sent it. None on the assistant's replies. */
+            sender: components["schemas"]["SenderOut"] | null;
         };
         /** MoveLayerRequest */
         MoveLayerRequest: {
@@ -8318,6 +8320,16 @@ export interface components {
             content: string;
             /** @description The object on the current page; everything else is fetched. */
             context?: components["schemas"]["PageContextIn"] | null;
+        };
+        /** SenderOut */
+        SenderOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
         };
         /** SentInvitationOut */
         SentInvitationOut: {

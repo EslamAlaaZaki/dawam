@@ -97,12 +97,20 @@ class RunOut(BaseModel):
     error_message: str | None = Field(description="The reason to show the member.")
 
 
+class SenderOut(BaseModel):
+    id: uuid.UUID
+    email: str
+
+
 class MessageOut(BaseModel):
     id: uuid.UUID
     role: str
     content: str
     created_at: datetime
     run: RunOut | None = Field(description="On a member's message: the run that answered it.")
+    sender: SenderOut | None = Field(
+        description="On a member's message: who sent it. None on the assistant's replies."
+    )
 
 
 class ConversationDetailOut(BaseModel):
@@ -184,6 +192,7 @@ def _message(view: ChatMessage) -> MessageOut:
         content=view.content,
         created_at=view.created_at,
         run=_run(view.run) if view.run else None,
+        sender=SenderOut(id=view.sender.id, email=view.sender.email) if view.sender else None,
     )
 
 
