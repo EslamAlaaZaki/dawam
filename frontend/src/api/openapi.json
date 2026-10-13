@@ -22220,6 +22220,17 @@
               }
             ],
             "description": "On a member's message: the run that answered it."
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SenderOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a member's message: who sent it. None on the assistant's replies."
           }
         },
         "type": "object",
@@ -22228,7 +22239,8 @@
           "role",
           "content",
           "created_at",
-          "run"
+          "run",
+          "sender"
         ],
         "title": "MessageOut"
       },
@@ -24462,6 +24474,25 @@
           "content"
         ],
         "title": "SendMessageRequest"
+      },
+      "SenderOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "SenderOut"
       },
       "SentInvitationOut": {
         "properties": {

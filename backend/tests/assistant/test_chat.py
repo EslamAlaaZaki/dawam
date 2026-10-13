@@ -469,6 +469,23 @@ def test_conversations_are_private_until_shared(roles, model, fake_llm):
     assert editor.get(url).status_code == 404
 
 
+def test_each_message_names_its_sender_and_replies_have_none(roles, model, fake_llm):
+    fake_llm.script(Reply(text="An answer"))
+    owner, editor = roles.client("owner"), roles.client("editor")
+    cid = conversation(owner, roles)
+    ask(owner, roles, cid, "A question")
+    url = f"{base(roles)}/conversations/{cid}"
+    owner.patch(url, json={"shared_with_workspace": True})
+
+    messages = editor.get(url).json()["messages"]
+
+    starter = roles.user("owner")
+    assert [m["sender"] for m in messages] == [
+        {"id": str(starter.id), "email": "owner@example.com"},
+        None,
+    ]
+
+
 def test_a_conversation_is_not_reachable_through_another_workspace(roles, model, signed_in_client):
     owner = roles.client("owner")
     cid = conversation(owner, roles)
