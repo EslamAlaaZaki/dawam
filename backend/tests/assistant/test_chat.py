@@ -434,13 +434,14 @@ def test_stop_cancels_the_running_response_and_keeps_what_was_written(roles, mod
     assert saved["messages"][0]["run"]["status"] == "cancelled"
 
 
-def test_stopping_when_nothing_runs_is_harmless_and_only_the_owner_may_stop(roles, model):
-    owner, editor = roles.client("owner"), roles.client("editor")
+def test_stopping_when_nothing_runs_is_harmless_and_only_posters_may_stop(roles, model):
+    owner, editor, viewer = roles.client("owner"), roles.client("editor"), roles.client("viewer")
     cid = conversation(owner, roles, title="Shared")
     owner.patch(f"{base(roles)}/conversations/{cid}", json={"shared_with_workspace": True})
 
     assert owner.post(f"{base(roles)}/conversations/{cid}/stop").status_code == 204
-    assert editor.post(f"{base(roles)}/conversations/{cid}/stop").status_code == 403
+    assert editor.post(f"{base(roles)}/conversations/{cid}/stop").status_code == 204
+    assert viewer.post(f"{base(roles)}/conversations/{cid}/stop").status_code == 403
 
 
 # -- conversations ---------------------------------------------------------------------
@@ -462,11 +463,70 @@ def test_conversations_are_private_until_shared(roles, model, fake_llm):
     read = editor.get(url)
     assert read.status_code == 200 and read.json()["conversation"]["mine"] is False
     assert [c["id"] for c in editor.get(f"{base(roles)}/conversations").json()["items"]] == [cid]
-    assert refused(editor, roles, cid).json()["error"]["code"] == "not_your_conversation"
-    assert editor.patch(url, json={"title": "Mine now"}).status_code == 403
 
     owner.patch(url, json={"shared_with_workspace": False})
     assert editor.get(url).status_code == 404
+
+
+def test_posting_and_sharing_rules_by_role(roles, model, fake_llm):
+    fake_llm.script(Reply(text="one"), Reply(text="two"))
+    owner, editor, viewer = roles.client("owner"), roles.client("editor"), roles.client("viewer")
+    cid = conversation(owner, roles)
+    url = f"{base(roles)}/conversations/{cid}"
+
+    # private: nobody but the starter reaches it at all
+    assert refused(editor, roles, cid).status_code == 404
+    assert refused(viewer, roles, cid).status_code == 404
+
+    owner.patch(url, json={"shared_with_workspace": True})
+    assert viewer.get(url).json()["conversation"]["can_post"] is False
+    assert editor.get(url).json()["conversation"]["can_post"] is True
+    assert owner.get(url).json()["conversation"]["can_post"] is True
+    viewer_refusal = refused(viewer, roles, cid)
+    assert viewer_refusal.status_code == 403
+    assert viewer_refusal.json()["error"]["code"] == "read_only_conversation"
+    assert viewer.get(url).json()["messages"] == []  # nothing was stored
+
+    done(ask(editor, roles, cid, "From the editor"))
+
+    messages = owner.get(url).json()["messages"]
+    assert messages[0]["sender"]["email"] == "editor@example.com"
+    # only the starter shares, unshares or renames
+    for client in (editor, viewer):
+        assert client.patch(url, json={"shared_with_workspace": False}).status_code == 403
+        assert client.patch(url, json={"title": "Mine now"}).status_code == 403
+    assert owner.get(url).json()["conversation"]["shared_with_workspace"] is True
+
+    owner.patch(url, json={"shared_with_workspace": False})
+    assert refused(editor, roles, cid).status_code == 404
+    assert editor.get(f"{base(roles)}/conversations").json()["items"] == []
+
+
+def test_a_viewer_posts_in_their_own_conversation(roles, model, fake_llm):
+    fake_llm.script(Reply(text="ok"))
+    viewer = roles.client("viewer")
+    cid = conversation(viewer, roles)
+
+    assert viewer.get(f"{base(roles)}/conversations/{cid}").json()["conversation"]["can_post"]
+    done(ask(viewer, roles, cid, "Mine"))
+
+
+def test_a_run_uses_the_senders_permissions_not_the_starters(roles, model, fake_llm):
+    system = add_system(roles)
+    owner, editor = roles.client("owner"), roles.client("editor")
+    viewer = roles.client("viewer")
+    generate = tool("generate_file", system_id=system, name="notes.md", content="# Notes")
+    cid = conversation(viewer, roles)  # started by a Viewer, who cannot write
+    viewer.patch(f"{base(roles)}/conversations/{cid}", json={"shared_with_workspace": True})
+    fake_llm.script(Reply(tool_calls=(generate,)), Reply(text="done"))
+
+    events = ask(editor, roles, cid, "Write notes")  # an Editor's message may write
+
+    [(_, shown)] = [e for e in events if e[0] == "tool"]
+    assert shown["status"] == "ok"
+    assert "generate_file" in tool_names(fake_llm)
+    listing = owner.get(f"/api/v1/workspaces/{roles.workspace_id}/systems/{system}/files")
+    assert [f["name"] for f in listing.json()["items"]] == ["notes.md"]
 
 
 def test_each_message_names_its_sender_and_replies_have_none(roles, model, fake_llm):

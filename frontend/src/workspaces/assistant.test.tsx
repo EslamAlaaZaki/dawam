@@ -53,6 +53,7 @@ const NEW_CONVERSATION = {
   title: "New conversation",
   shared_with_workspace: false,
   mine: true,
+  can_post: true,
   created_at: "2026-01-05T10:00:00Z",
   updated_at: "2026-01-05T10:00:00Z",
 };
@@ -436,18 +437,59 @@ describe("the assistant's chat panel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("lets the owner share a conversation, and only read a colleague's", async () => {
-    const requests = renderApp(
+  it("shows a Viewer a colleague's shared conversation with the input disabled and no toggle", async () => {
+    const shared = {
+      ...NEW_CONVERSATION,
+      mine: false,
+      can_post: false,
+      shared_with_workspace: true,
+    };
+    renderApp(
       backend({
-        conversations: [
-          NEW_CONVERSATION,
-          {
-            ...NEW_CONVERSATION,
-            id: "88888888-8888-4888-8888-888888888888",
-            mine: false,
-          },
-        ],
+        conversations: [shared],
+        detail: { conversation: shared, messages: [] },
       }),
+      PATH,
+    );
+    await openAssistant();
+
+    expect(
+      await screen.findByText(/Viewers can only read/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Ask the assistant")).toBeDisabled();
+    expect(
+      screen.queryByLabelText(/Share with the Workspace/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets an Editor post in a colleague's shared conversation but not share it", async () => {
+    const shared = {
+      ...NEW_CONVERSATION,
+      mine: false,
+      can_post: true,
+      shared_with_workspace: true,
+    };
+    renderApp(
+      backend({
+        conversations: [shared],
+        detail: { conversation: shared, messages: [] },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    expect(
+      (await screen.findAllByText("New conversation")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Ask the assistant")).toBeEnabled();
+    expect(
+      screen.queryByLabelText(/Share with the Workspace/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets the starter share a conversation", async () => {
+    const requests = renderApp(
+      backend({ conversations: [NEW_CONVERSATION] }),
       PATH,
     );
     await openAssistant();
@@ -502,7 +544,9 @@ describe("the chat's messages, input and Conversation list", () => {
     const question = await screen.findByRole("listitem", {
       name: /grace\.hopper@example\.com/,
     });
-    expect(within(question).getByText("grace.hopper@example.com")).toBeInTheDocument();
+    expect(
+      within(question).getByText("grace.hopper@example.com"),
+    ).toBeInTheDocument();
     expect(within(question).getByText("GH")).toBeInTheDocument();
     const time = within(question).getByText("2 min ago");
     expect(time).toHaveAttribute("dateTime", "2026-01-05T10:00:00Z");
@@ -535,7 +579,9 @@ describe("the chat's messages, input and Conversation list", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
       expect(
-        requests.find((r) => r.method === "POST" && r.path.endsWith("/messages")),
+        requests.find(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        ),
       ).toMatchObject({ body: { content: "Line one" } }),
     );
   });
@@ -553,8 +599,12 @@ describe("the chat's messages, input and Conversation list", () => {
     );
     await openAssistant();
 
-    const toggle = await screen.findByRole("button", { name: "Show conversations" });
-    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+    const toggle = await screen.findByRole("button", {
+      name: "Show conversations",
+    });
+    expect(
+      screen.queryByRole("navigation", { name: "Conversations" }),
+    ).toBeNull();
     fireEvent.click(toggle);
     const list = screen.getByRole("navigation", { name: "Conversations" });
     expect(
@@ -566,38 +616,56 @@ describe("the chat's messages, input and Conversation list", () => {
 
     fireEvent.click(within(list).getByRole("button", { name: /Loan tables/ }));
     await waitFor(() =>
-      expect(requests.some((r) => r.path === `${ASSISTANT}/${OTHER}`)).toBe(true),
+      expect(requests.some((r) => r.path === `${ASSISTANT}/${OTHER}`)).toBe(
+        true,
+      ),
     );
     // On a narrow screen (jsdom matches no media query) the list is a drawer: picking closes it.
-    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Conversations" }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show conversations" }));
-    expect(screen.getByRole("navigation", { name: "Conversations" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Conversations" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Hide conversations" }));
-    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Conversations" }),
+    ).toBeNull();
   });
 });
 
 describe("the Conversation drawer on a narrow screen", () => {
   it("takes focus on open, and Escape closes only the drawer", async () => {
     renderApp(
-      backend({ conversations: [{ ...NEW_CONVERSATION, title: "Revenue questions" }] }),
+      backend({
+        conversations: [{ ...NEW_CONVERSATION, title: "Revenue questions" }],
+      }),
       PATH,
     );
     await openAssistant();
 
-    const toggle = await screen.findByRole("button", { name: "Show conversations" });
+    const toggle = await screen.findByRole("button", {
+      name: "Show conversations",
+    });
     fireEvent.click(toggle);
     const list = screen.getByRole("navigation", { name: "Conversations" });
     await waitFor(() =>
-      expect(within(list).getByRole("button", { name: "New conversation" })).toHaveFocus(),
+      expect(
+        within(list).getByRole("button", { name: "New conversation" }),
+      ).toHaveFocus(),
     );
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
 
-    expect(screen.queryByRole("navigation", { name: "Conversations" })).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Conversations" }),
+    ).toBeNull();
     expect(screen.getByLabelText("Ask the assistant")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Show conversations" })).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Show conversations" }),
+    ).toHaveFocus();
   });
 });
 

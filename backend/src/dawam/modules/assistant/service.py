@@ -16,7 +16,7 @@ import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.auth import User
 from dawam.modules.jobs import JobCancelledError, JobContext
 from dawam.modules.llm import Message, RoleService, WorkspaceAiService
-from dawam.modules.workspaces import Action, WorkspaceService
+from dawam.modules.workspaces import Action, WorkspaceScope, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_json, redact_text
@@ -71,7 +71,10 @@ class Conversation:
     title: str
     shared_with_workspace: bool
     mine: bool
-    """The caller started it; only they may post to it or share it."""
+    """The caller started it; only they may share or unshare it."""
+    can_post: bool
+    """The caller may post: the starter always, any Owner or Editor once it is shared with
+    the Workspace; never in an archived Workspace."""
     owner_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
@@ -206,7 +209,7 @@ class AssistantService:
     def list_conversations(self, user: User, workspace_id: uuid.UUID) -> list[Conversation]:
         """The member's own conversations and those shared with the Workspace, newest
         first (any member; archived Workspaces too)."""
-        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        scope = self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         query = (
             sa.select(ConversationRecord)
             .where(
@@ -220,13 +223,13 @@ class AssistantService:
             .limit(LIST_LIMIT)
         )
         with Session(self._engine) as db:
-            return [self._view(user, r) for r in db.scalars(query)]
+            return [self._view(user, scope, r) for r in db.scalars(query)]
 
     def create_conversation(
         self, user: User, workspace_id: uuid.UUID, *, title: str | None = None
     ) -> Conversation:
         """Start a conversation, private to the member. 409 ``workspace_archived``."""
-        self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         now = self._clock()
         record = ConversationRecord(
             id=uuid.uuid4(),
@@ -239,14 +242,14 @@ class AssistantService:
         )
         with Session(self._engine) as db, db.begin():
             db.add(record)
-            return self._view(user, record)
+            return self._view(user, scope, record)
 
     def get_conversation(
         self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> ConversationDetail:
         """A conversation with its messages and the runs that answered them: the member's
         own, or one shared with the Workspace. 404 for somebody else's private one."""
-        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        scope = self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
             record = self._load(db, user, workspace_id, conversation_id)
             messages = list(
@@ -264,7 +267,7 @@ class AssistantService:
             }
             senders = self._senders({m.sender_user_id for m in messages} - {None})
             return ConversationDetail(
-                self._view(user, record),
+                self._view(user, scope, record),
                 [
                     ChatMessage(
                         m.id,
@@ -289,15 +292,15 @@ class AssistantService:
     ) -> Conversation:
         """Rename a conversation or share it with the Workspace's members (or stop
         sharing), by the member who started it."""
-        self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         with Session(self._engine) as db, db.begin():
-            record = self._load(db, user, workspace_id, conversation_id, owner_only=True)
+            record = self._load(db, user, workspace_id, conversation_id, access="starter")
             if title is not None:
                 record.title = _clean_title(title) or record.title
             if shared_with_workspace is not None:
                 record.shared_with_workspace = shared_with_workspace
             record.updated_at = self._clock()
-            return self._view(user, record)
+            return self._view(user, scope, record)
 
     # -- asking ----------------------------------------------------------------------
 
@@ -311,7 +314,7 @@ class AssistantService:
     ) -> Iterator[StreamEvent]:
         """Store the member's message and return the events of the run answering it.
         409 ``workspace_archived``, 409 ``run_in_progress``, 422 ``invalid_message``."""
-        self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         content = content.strip()
         if not content or len(content) > MESSAGE_MAX_LENGTH:
             raise ApiError(
@@ -322,7 +325,9 @@ class AssistantService:
             )
         now = self._clock()
         with Session(self._engine) as db, db.begin():
-            record = self._load(db, user, workspace_id, conversation_id, owner_only=True, lock=True)
+            record = self._load(
+                db, user, workspace_id, conversation_id, access="post", scope=scope, lock=True
+            )
             busy = db.scalar(
                 sa.select(sa.func.count())
                 .select_from(RunRecord)
@@ -371,11 +376,11 @@ class AssistantService:
         return self._stream(user, workspace_id, conversation_id, started, history, context)
 
     def stop(self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
-        """Ask the conversation's running response to stop (by the member who started it).
+        """Ask the conversation's running response to stop (by a member who may post to it).
         Nothing running is not an error."""
-        self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         with Session(self._engine) as db, db.begin():
-            self._load(db, user, workspace_id, conversation_id, owner_only=True)
+            self._load(db, user, workspace_id, conversation_id, access="post", scope=scope)
             db.execute(
                 sa.update(RunRecord)
                 .where(RunRecord.conversation_id == conversation_id, RunRecord.status == "running")
@@ -652,13 +657,24 @@ class AssistantService:
         return {i: Sender(u.id, u.email) for i, u in found.items() if u is not None}
 
     @staticmethod
-    def _view(user: User, record: ConversationRecord) -> Conversation:
+    def _may_post(user: User, scope: WorkspaceScope, record: ConversationRecord) -> bool:
+        """The posting rule, in one place: the starter always, an Owner or Editor in a
+        shared conversation, nobody else (a Viewer only reads)."""
+        if scope.archived:
+            return False
+        if record.user_id == user.id:
+            return True
+        return record.shared_with_workspace and scope.role in ("owner", "editor")
+
+    @classmethod
+    def _view(cls, user: User, scope: WorkspaceScope, record: ConversationRecord) -> Conversation:
         return Conversation(
             id=record.id,
             workspace_id=record.workspace_id,
             title=record.title,
             shared_with_workspace=record.shared_with_workspace,
             mine=record.user_id == user.id,
+            can_post=cls._may_post(user, scope, record),
             owner_id=record.user_id,
             created_at=record.created_at,
             updated_at=record.updated_at,
@@ -671,9 +687,13 @@ class AssistantService:
         workspace_id: uuid.UUID,
         conversation_id: uuid.UUID,
         *,
-        owner_only: bool = False,
+        access: Literal["read", "post", "starter"] = "read",
+        scope: WorkspaceScope | None = None,
         lock: bool = False,
     ) -> ConversationRecord:
+        """The conversation as ``user`` may reach it: 404 for somebody else's private one,
+        403 when ``access`` is more than they have (``starter``: only who started it;
+        ``post``: also any Owner or Editor, as the conversation is shared)."""
         query = sa.select(ConversationRecord).where(ConversationRecord.id == conversation_id)
         record = db.scalars(query.with_for_update() if lock else query).first()
         if record is None or record.workspace_id != workspace_id:
@@ -681,12 +701,20 @@ class AssistantService:
         if record.user_id != user.id:
             if not record.shared_with_workspace:
                 raise _not_found()  # somebody else's private conversation does not exist
-            if owner_only:
+            if access == "starter":
                 raise ApiError(
                     403,
                     "not_your_conversation",
                     "Only the member who started this conversation may do that.",
                 )
+            if access == "post":
+                assert scope is not None
+                if scope.role not in ("owner", "editor"):
+                    raise ApiError(
+                        403,
+                        "read_only_conversation",
+                        "Viewers can read this conversation but not post to it.",
+                    )
         return record
 
     @staticmethod
