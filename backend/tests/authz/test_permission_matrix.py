@@ -628,7 +628,8 @@ ROWS: list[Row] = [
     ),
     # The assistant's chat (stories 141, 149, 151, 152). Asking is open to every member; the
     # conversation of the path is the owner's, shared with the Workspace: everyone reads it,
-    # only the member who started it posts, renames, shares or stops it.
+    # only the starter renames or shares it; the starter, or an Owner or Editor in a shared
+    # conversation, posts and stops (Viewers only read).
     Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/assistant/conversations",
@@ -658,15 +659,17 @@ ROWS: list[Row] = [
     Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/messages",
-        "Ask the assistant questions (post to your own conversation)",
-        workspace(admin=False, owner=True, editor=False, viewer=False),
+        "Ask the assistant questions (post as the starter, or as an Owner or Editor in a "
+        "shared conversation)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"content": "Which tables hold customer data?"},
     ),
     Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/stop",
-        "Ask the assistant questions (stop your own response)",
-        workspace(admin=False, owner=True, editor=False, viewer=False),
+        "Ask the assistant questions (stop a response you may post to: the starter, or an "
+        "Owner or Editor in a shared conversation)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
     # Data Warehouse.
     Row(
