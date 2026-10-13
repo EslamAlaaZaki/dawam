@@ -124,6 +124,20 @@ class WorkspaceAiSettingsRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
+class WorkspaceAllowedModelRecord(Base):
+    """One model an admin allows a Workspace to use. A Workspace with no rows allows every
+    registered model."""
+
+    __tablename__ = "llm_workspace_allowed_models"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class UsageRecord(Base):
     """Tokens one model call used, with who and what it was for."""
 

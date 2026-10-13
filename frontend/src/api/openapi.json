@@ -14113,6 +14113,122 @@
         }
       }
     },
+    "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Allowed Models",
+        "description": "A Workspace's Allowed Models and every registered model with whether it may use it\n(admins only).",
+        "operationId": "getAllowedModels",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedModels"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Allowed Models",
+        "description": "Replace a Workspace's Allowed Models (admins only; audited). An empty list allows\nevery registered model. 422 `invalid_model` for an id that is not registered.",
+        "operationId": "setAllowedModels",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowedModelsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedModels"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
       "get": {
         "tags": [
@@ -15602,6 +15718,86 @@
           "items"
         ],
         "title": "AiEvaluationList"
+      },
+      "AllowedModelChoice": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal"
+          },
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed",
+            "description": "The Workspace may use it: listed (or nothing is listed) and, when the Workspace is internal-only, internal."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "provider_name",
+          "internal",
+          "allowed"
+        ],
+        "title": "AllowedModelChoice"
+      },
+      "AllowedModels": {
+        "properties": {
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids",
+            "description": "The admin's list of allowed model ids; empty: every registered model."
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/AllowedModelChoice"
+            },
+            "type": "array",
+            "title": "Models",
+            "description": "Every registered model."
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_ids",
+          "models"
+        ],
+        "title": "AllowedModels"
+      },
+      "AllowedModelsRequest": {
+        "properties": {
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids",
+            "description": "Registered model ids; empty: every registered model is allowed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_ids"
+        ],
+        "title": "AllowedModelsRequest"
       },
       "ApplyResult": {
         "properties": {

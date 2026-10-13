@@ -341,6 +341,19 @@ ROWS: list[Row] = [
         setup=use_fake_llm,
     ),
     Row("GET", "/api/v1/admin/llm/setup", "AI setup status (story 158)", admin_only()),
+    Row(
+        "GET",
+        "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models",
+        "see a Workspace's Allowed Models",
+        admin_only(),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models",
+        "replace a Workspace's Allowed Models",
+        admin_only(),
+        json=lambda roles: {"model_ids": []},
+    ),
     # Model roles, token budgets and AI usage (stories 157, 159, 162).
     Row("GET", "/api/v1/admin/llm/roles", "see the model roles (story 157)", admin_only()),
     Row(

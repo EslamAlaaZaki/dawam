@@ -29,6 +29,8 @@ from .service import Model as ModelView
 from .service import Provider as ProviderView
 from .service import SetupStatus as SetupStatusView
 from .tables import MODEL_NAME_MAX_LENGTH, NAME_MAX_LENGTH, URL_MAX_LENGTH
+from .workspace_ai import AllowedModels as AllowedModelsView
+from .workspace_ai_api import WorkspaceAiServiceDep
 
 router = APIRouter(prefix="/admin/llm", tags=["llm"])
 
@@ -549,3 +551,78 @@ def get_usage(
             for u in report.users
         ],
     )
+
+
+# -- Allowed Models per Workspace --------------------------------------------------------
+
+
+class AllowedModelChoice(BaseModel):
+    id: uuid.UUID
+    name: str
+    provider_name: str
+    internal: bool
+    allowed: bool = Field(
+        description="The Workspace may use it: listed (or nothing is listed) and, when the "
+        "Workspace is internal-only, internal."
+    )
+
+
+class AllowedModels(BaseModel):
+    model_ids: list[uuid.UUID] = Field(
+        description="The admin's list of allowed model ids; empty: every registered model."
+    )
+    models: list[AllowedModelChoice] = Field(description="Every registered model.")
+
+
+class AllowedModelsRequest(BaseModel):
+    model_ids: list[uuid.UUID] = Field(
+        description="Registered model ids; empty: every registered model is allowed."
+    )
+
+
+def _allowed_out(view: AllowedModelsView) -> AllowedModels:
+    return AllowedModels(
+        model_ids=view.model_ids,
+        models=[
+            AllowedModelChoice(
+                id=m.id,
+                name=m.name,
+                provider_name=m.provider_name,
+                internal=m.internal,
+                allowed=m.allowed,
+            )
+            for m in view.models
+        ],
+    )
+
+
+def _require_workspace(workspaces: WorkspaceService, workspace_id: uuid.UUID) -> None:
+    if workspace_id not in workspaces.names_by_id([workspace_id]):
+        raise ApiError(404, "not_found", "No such Workspace.")
+
+
+@router.get("/workspaces/{workspace_id}/allowed-models", operation_id="getAllowedModels")
+def get_allowed_models(
+    workspace_id: uuid.UUID,
+    _admin: LlmAdmin,
+    service: WorkspaceAiServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> AllowedModels:
+    """A Workspace's Allowed Models and every registered model with whether it may use it
+    (admins only)."""
+    _require_workspace(workspaces, workspace_id)
+    return _allowed_out(service.allowed_models(workspace_id))
+
+
+@router.put("/workspaces/{workspace_id}/allowed-models", operation_id="setAllowedModels")
+def set_allowed_models(
+    workspace_id: uuid.UUID,
+    body: AllowedModelsRequest,
+    admin: LlmAdmin,
+    service: WorkspaceAiServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> AllowedModels:
+    """Replace a Workspace's Allowed Models (admins only; audited). An empty list allows
+    every registered model. 422 `invalid_model` for an id that is not registered."""
+    _require_workspace(workspaces, workspace_id)
+    return _allowed_out(service.set_allowed_models(admin, workspace_id, body.model_ids))

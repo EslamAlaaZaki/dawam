@@ -43,7 +43,7 @@ from .tables import (
     UsageRecord,
     WorkspaceBudgetRecord,
 )
-from .workspace_ai import load_settings, model_is_internal
+from .workspace_ai import load_settings, model_is_internal, model_is_listed
 
 MAX_BUDGET = 10**15
 
@@ -360,6 +360,18 @@ class RoleService:
         internal-only Workspace its calls are refused when the model's provider is external."""
         with Session(self._engine) as db:
             name = db.scalar(sa.select(ModelRecord.name).where(ModelRecord.id == model_id))
+            if (
+                workspace_id is not None
+                and role != "embedding"
+                and not model_is_listed(db, workspace_id, model_id)
+            ):
+                raise ApiError(
+                    409,
+                    "model_not_allowed",
+                    "This model is not in the Workspace's Allowed Models. An admin can "
+                    "change them.",
+                    {"role": role, "model": name or ""},
+                )
             refuse = (
                 workspace_id is not None
                 and load_settings(db, workspace_id).internal_only

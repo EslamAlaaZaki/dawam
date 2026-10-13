@@ -3818,6 +3818,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Allowed Models
+         * @description A Workspace's Allowed Models and every registered model with whether it may use it
+         *     (admins only).
+         */
+        get: operations["getAllowedModels"];
+        /**
+         * Set Allowed Models
+         * @description Replace a Workspace's Allowed Models (admins only; audited). An empty list allows
+         *     every registered model. 422 `invalid_model` for an id that is not registered.
+         */
+        put: operations["setAllowedModels"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
         parameters: {
             query?: never;
@@ -4307,6 +4333,46 @@ export interface components {
              * @description Newest first.
              */
             items: components["schemas"]["AiEvaluation"][];
+        };
+        /** AllowedModelChoice */
+        AllowedModelChoice: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider Name */
+            provider_name: string;
+            /** Internal */
+            internal: boolean;
+            /**
+             * Allowed
+             * @description The Workspace may use it: listed (or nothing is listed) and, when the Workspace is internal-only, internal.
+             */
+            allowed: boolean;
+        };
+        /** AllowedModels */
+        AllowedModels: {
+            /**
+             * Model Ids
+             * @description The admin's list of allowed model ids; empty: every registered model.
+             */
+            model_ids: string[];
+            /**
+             * Models
+             * @description Every registered model.
+             */
+            models: components["schemas"]["AllowedModelChoice"][];
+        };
+        /** AllowedModelsRequest */
+        AllowedModelsRequest: {
+            /**
+             * Model Ids
+             * @description Registered model ids; empty: every registered model is allowed.
+             */
+            model_ids: string[];
         };
         /** ApplyResult */
         ApplyResult: {
@@ -19101,6 +19167,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmUsage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAllowedModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllowedModels"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setAllowedModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllowedModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllowedModels"];
                 };
             };
             /** @description Validation error */

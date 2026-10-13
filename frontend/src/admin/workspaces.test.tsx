@@ -32,7 +32,10 @@ const GRACE = {
   last_login_at: null,
 };
 
-function workspace(name: string, more: Partial<AdminWorkspace> = {}): AdminWorkspace {
+function workspace(
+  name: string,
+  more: Partial<AdminWorkspace> = {},
+): AdminWorkspace {
   return {
     id: `${name.length}`.padStart(8, "0") + "-1111-4111-8111-111111111111",
     name,
@@ -66,15 +69,45 @@ const ORPHAN = workspace("Orphaned DW", {
   ],
 });
 
-const ARCHIVED = workspace("Old DW", { status: "archived", archived_at: "2026-02-01T09:00:00Z" });
+const ARCHIVED = workspace("Old DW", {
+  status: "archived",
+  archived_at: "2026-02-01T09:00:00Z",
+});
 
-function backend(handle: (r: ApiRequest) => Response | undefined = () => undefined) {
+const ALLOWED = {
+  model_ids: [],
+  models: [
+    {
+      id: "m1",
+      name: "big",
+      provider_name: "Cloud",
+      internal: false,
+      allowed: true,
+    },
+    {
+      id: "m2",
+      name: "local",
+      provider_name: "Onsite",
+      internal: true,
+      allowed: true,
+    },
+  ],
+};
+
+function backend(
+  handle: (r: ApiRequest) => Response | undefined = () => undefined,
+) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
       case "GET /api/v1/me":
         return json(ADMIN);
       case "GET /api/v1/admin/workspaces":
-        return json({ items: [workspace("Retail DW"), ORPHAN, ARCHIVED], next_cursor: null });
+        return json({
+          items: [workspace("Retail DW"), ORPHAN, ARCHIVED],
+          next_cursor: null,
+        });
+      case `GET /api/v1/admin/llm/workspaces/${workspace("Retail DW").id}/allowed-models`:
+        return json(ALLOWED);
       case "GET /api/v1/admin/users":
         return json({ items: [GRACE], next_cursor: null });
       default:
@@ -98,9 +131,15 @@ describe("the admin Workspace list", () => {
     expect(retail).toHaveTextContent("Ada Lovelace (ada@example.com)");
     expect(retail).toHaveTextContent("Active");
     expect(retail).toHaveTextContent("3");
-    expect(within(retail).queryByRole("button", { name: "Reassign ownership" })).not.toBeInTheDocument();
-    expect(within(retail).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-    expect(screen.getByRole("row", { name: "Orphaned DW" })).toHaveTextContent("deactivated");
+    expect(
+      within(retail).queryByRole("button", { name: "Reassign ownership" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(retail).queryByRole("button", { name: "Delete" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "Orphaned DW" })).toHaveTextContent(
+      "deactivated",
+    );
   });
 
   it("offers reassignment only for a Workspace without an active owner", async () => {
@@ -114,8 +153,12 @@ describe("the admin Workspace list", () => {
     );
 
     const orphan = await screen.findByRole("row", { name: "Orphaned DW" });
-    fireEvent.click(within(orphan).getByRole("button", { name: "Reassign ownership" }));
-    const form = await screen.findByRole("dialog", { name: "Reassign Orphaned DW" });
+    fireEvent.click(
+      within(orphan).getByRole("button", { name: "Reassign ownership" }),
+    );
+    const form = await screen.findByRole("dialog", {
+      name: "Reassign Orphaned DW",
+    });
     fireEvent.change(await within(form).findByLabelText("New owner"), {
       target: { value: GRACE.id },
     });
@@ -133,34 +176,52 @@ describe("the admin Workspace list", () => {
     renderApp(
       backend((r) =>
         r.method === "POST"
-          ? apiError(409, "has_active_owner", "This Workspace still has an active owner.")
+          ? apiError(
+              409,
+              "has_active_owner",
+              "This Workspace still has an active owner.",
+            )
           : undefined,
       ),
       "/admin/workspaces",
     );
 
     const orphan = await screen.findByRole("row", { name: "Orphaned DW" });
-    fireEvent.click(within(orphan).getByRole("button", { name: "Reassign ownership" }));
-    const form = await screen.findByRole("dialog", { name: "Reassign Orphaned DW" });
+    fireEvent.click(
+      within(orphan).getByRole("button", { name: "Reassign ownership" }),
+    );
+    const form = await screen.findByRole("dialog", {
+      name: "Reassign Orphaned DW",
+    });
     fireEvent.change(await within(form).findByLabelText("New owner"), {
       target: { value: GRACE.id },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Make owner" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent("still has an active owner");
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "still has an active owner",
+    );
   });
 
   it("archives an active Workspace only after confirmation", async () => {
     const requests = renderApp(
-      backend((r) => (r.method === "POST" && r.path.endsWith("/archive") ? noContent() : undefined)),
+      backend((r) =>
+        r.method === "POST" && r.path.endsWith("/archive")
+          ? noContent()
+          : undefined,
+      ),
       "/admin/workspaces",
     );
 
     const retail = await screen.findByRole("row", { name: "Retail DW" });
-    expect(within(retail).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(
+      within(retail).queryByRole("button", { name: "Delete" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(within(retail).getByRole("button", { name: "Archive" }));
     expect(requests.some((r) => r.method === "POST")).toBe(false);
-    const dialog = await screen.findByRole("dialog", { name: "Archive Retail DW?" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Archive Retail DW?",
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
 
     await waitFor(() =>
@@ -181,12 +242,20 @@ describe("the admin Workspace list", () => {
     );
 
     const old = await screen.findByRole("row", { name: "Old DW" });
-    expect(within(old).queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    expect(
+      within(old).queryByRole("button", { name: "Archive" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(within(old).getByRole("button", { name: "Delete" }));
-    const dialog = await screen.findByRole("dialog", { name: "Delete Old DW?" });
-    const confirm = within(dialog).getByRole("button", { name: "Delete Workspace" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete Old DW?",
+    });
+    const confirm = within(dialog).getByRole("button", {
+      name: "Delete Workspace",
+    });
     expect(confirm).toBeDisabled();
-    fireEvent.change(within(dialog).getByLabelText("Workspace name"), { target: { value: "Old DW" } });
+    fireEvent.change(within(dialog).getByLabelText("Workspace name"), {
+      target: { value: "Old DW" },
+    });
     fireEvent.click(confirm);
 
     await waitFor(() =>
@@ -195,6 +264,39 @@ describe("the admin Workspace list", () => {
           method: "DELETE",
           path: `/api/v1/workspaces/${ARCHIVED.id}`,
           body: { name: "Old DW" },
+        }),
+      ),
+    );
+  });
+
+  it("edits a Workspace's Allowed Models in a popup", async () => {
+    const requests = renderApp(
+      backend((r) =>
+        r.method === "PUT"
+          ? json({ ...ALLOWED, model_ids: ["m2"] })
+          : undefined,
+      ),
+      "/admin/workspaces",
+    );
+
+    const retail = await screen.findByRole("row", { name: "Retail DW" });
+    fireEvent.click(
+      within(retail).getByRole("button", { name: "Allowed models" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Allowed models for Retail DW",
+    });
+    expect(await within(dialog).findByLabelText(/big/)).not.toBeChecked();
+    fireEvent.click(within(dialog).getByLabelText(/local/));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({
+          method: "PUT",
+          path: `/api/v1/admin/llm/workspaces/${workspace("Retail DW").id}/allowed-models`,
+          csrf: CSRF_TOKEN,
+          body: { model_ids: ["m2"] },
         }),
       ),
     );
