@@ -8,11 +8,12 @@ import {
   type AdminSettings,
 } from "../api/admin";
 import { useMe } from "../api/queries";
+import { SettingsCard } from "../components/entity/SettingsCard";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
 import { Loading } from "../shell/Loading";
-import { ErrorText, PageHead, labelClasses, formCardClasses, h3Classes } from "./parts";
+import { ErrorText, PageHead, labelClasses } from "./parts";
 
 /** Installation-wide settings; only admins can read or change them (the API enforces it). */
 export function AdminSettingsPage() {
@@ -82,14 +83,16 @@ function RegistrationForm({
   }
 
   return (
-    <section
-      className={formCardClasses}
-      aria-labelledby="registration-title"
-    >
-      <h3 id="registration-title" className={h3Classes}>
-        Self-registration
-      </h3>
-      <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} aria-label="Self-registration">
+      <SettingsCard
+        title="Self-registration"
+        description="Who can create an account without an invitation."
+        footer={
+          <Button type="submit" variant="primary" disabled={update.isPending}>
+            Save settings
+          </Button>
+        }
+      >
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
             name="enabled"
@@ -114,15 +117,7 @@ function RegistrationForm({
           their own lines.
         </p>
         {update.isError && <ErrorText>{update.error.message}</ErrorText>}
-        <Button
-          type="submit"
-          variant="primary"
-          className="self-start"
-          disabled={update.isPending}
-        >
-          Save settings
-        </Button>
-      </form>
-    </section>
+      </SettingsCard>
+    </form>
   );
 }

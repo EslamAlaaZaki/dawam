@@ -64,6 +64,19 @@ function as(me: Me, handle: (r: ApiRequest) => Response | undefined = () => unde
   return (request: ApiRequest) => (request.path === "/api/v1/me" ? json(me) : handle(request));
 }
 
+function providersApi(
+  items: LlmProvider[],
+  handle: (r: ApiRequest) => Response | undefined = () => undefined,
+) {
+  return as(ROOT, (r) => {
+    const handled = handle(r);
+    if (handled) return handled;
+    if (r.method === "GET" && r.path === "/api/v1/admin/llm/providers") return json({ items });
+    if (r.path === "/api/v1/admin/llm/setup") return json(INCOMPLETE);
+    return undefined;
+  });
+}
+
 let clearCookie: () => void;
 beforeEach(() => {
   clearCookie = setCsrfCookie();
@@ -102,29 +115,28 @@ describe("language models page", () => {
     );
   });
 
-  it("lists providers flagged internal or external, never showing a key", async () => {
+  it("lists every model in one table with its provider, never showing a key", async () => {
     const external: LlmProvider = {
       ...PROVIDER,
       id: "5d3a8b1e-0000-4000-8000-000000000009",
       name: "OpenAI",
       internal: false,
-      models: [],
+      models: [{ ...MODEL, id: "5d3a8b1e-0000-4000-8000-000000000008", name: "gpt" }],
     };
-    renderApp(
-      as(ROOT, (r) => {
-        if (r.path === "/api/v1/admin/llm/providers") return json({ items: [PROVIDER, external] });
-        if (r.path === "/api/v1/admin/llm/setup") return json(INCOMPLETE);
-        return undefined;
-      }),
-      "/admin/llm",
-    );
+    renderApp(providersApi([PROVIDER, external]), "/admin/llm");
 
-    const local = await screen.findByRole("article", { name: "Provider Local vLLM" });
-    expect(within(local).getByText("(internal)")).toBeInTheDocument();
-    expect(within(local).getByText(/API key saved/)).toBeInTheDocument();
-    const remote = screen.getByRole("article", { name: "Provider OpenAI" });
-    expect(within(remote).getByText("(external)")).toBeInTheDocument();
+    const qwen = await screen.findByRole("row", { name: "Model qwen3" });
+    expect(qwen).toHaveTextContent("Local vLLM");
+    expect(qwen).toHaveTextContent("Internal");
+    expect(screen.getByRole("row", { name: "Model gpt" })).toHaveTextContent("External");
+    const local = screen.getByRole("row", { name: "Provider Local vLLM" });
+    expect(local).toHaveTextContent("API key saved");
   });
+
+  async function openAddProvider() {
+    fireEvent.click(await screen.findByRole("button", { name: "Add provider" }));
+    return screen.findByRole("dialog", { name: "Add a provider" });
+  }
 
   it("adds a provider with its key", async () => {
     const requests = renderApp(
@@ -138,12 +150,13 @@ describe("language models page", () => {
       "/admin/llm",
     );
 
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Local vLLM" } });
-    fireEvent.change(screen.getByLabelText(/^Base URL/), {
+    const dialog = await openAddProvider();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Local vLLM" } });
+    fireEvent.change(within(dialog).getByLabelText(/^Base URL/), {
       target: { value: "http://vllm:8000/v1" },
     });
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "sk-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.change(within(dialog).getByLabelText(/^API key/), { target: { value: "sk-secret" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add provider" }));
 
     await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
     expect(requests.find((r) => r.method === "POST")).toEqual({
@@ -174,16 +187,94 @@ describe("language models page", () => {
       "/admin/llm",
     );
 
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Claude" } });
-    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "anthropic" } });
-    fireEvent.change(screen.getByLabelText(/^Base URL/), {
+    const dialog = await openAddProvider();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Claude" } });
+    fireEvent.change(within(dialog).getByLabelText("Type"), { target: { value: "anthropic" } });
+    fireEvent.change(within(dialog).getByLabelText(/^Base URL/), {
       target: { value: "https://api.anthropic.com/v1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add provider" }));
 
     await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
     const body = requests.find((r) => r.method === "POST")?.body as { adapter: string };
     expect(body.adapter).toBe("anthropic");
+  });
+
+  it("edits a provider, keeping its saved key when the field is left empty", async () => {
+    const requests = renderApp(
+      providersApi([PROVIDER], (r) =>
+        r.method === "PUT" && r.path === `/api/v1/admin/llm/providers/${PROVIDER.id}`
+          ? json(PROVIDER)
+          : undefined,
+      ),
+      "/admin/llm",
+    );
+
+    const row = await screen.findByRole("row", { name: "Provider Local vLLM" });
+    fireEvent.click(within(row).getByRole("button", { name: "Edit provider" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit provider" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Primary vLLM" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
+      name: "Primary vLLM",
+      adapter: "openai_compatible",
+      base_url: "http://vllm:8000/v1",
+      internal: true,
+      timeout_seconds: 60,
+    });
+  });
+
+  it("adds a model to a chosen provider", async () => {
+    const requests = renderApp(
+      providersApi([PROVIDER], (r) =>
+        r.method === "POST" && r.path === `/api/v1/admin/llm/providers/${PROVIDER.id}/models`
+          ? json(MODEL, 201)
+          : undefined,
+      ),
+      "/admin/llm",
+    );
+
+    await screen.findByRole("row", { name: "Model qwen3" });
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a model" });
+    fireEvent.change(within(dialog).getByLabelText("Model name"), { target: { value: "llama" } });
+    fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "light" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add model" }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    expect(requests.find((r) => r.method === "POST")?.body).toEqual({
+      name: "llama",
+      roles: ["light"],
+    });
+  });
+
+  it("edits a model", async () => {
+    const requests = renderApp(
+      providersApi([PROVIDER], (r) =>
+        r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${MODEL.id}`
+          ? json(MODEL)
+          : undefined,
+      ),
+      "/admin/llm",
+    );
+
+    const row = await screen.findByRole("row", { name: "Model qwen3" });
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit model" });
+    fireEvent.change(
+      within(dialog).getByLabelText("Context window in tokens (empty: ask the server)"),
+      { target: { value: "32768" } },
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
+      name: "qwen3",
+      roles: ["agent"],
+      context_window: 32768,
+    });
   });
 
   it("tests a model and shows what it found", async () => {
@@ -226,34 +317,43 @@ describe("language models page", () => {
       test_error_code: "auth",
       test_error: "The provider rejected the API key.",
     };
-    renderApp(
-      as(ROOT, (r) => {
-        if (r.path === "/api/v1/admin/llm/providers") {
-          return json({ items: [{ ...PROVIDER, models: [failed] }] });
-        }
-        if (r.path === "/api/v1/admin/llm/setup") return json(INCOMPLETE);
-        return undefined;
-      }),
-      "/admin/llm",
-    );
+    renderApp(providersApi([{ ...PROVIDER, models: [failed] }]), "/admin/llm");
 
     expect(await screen.findByText(/Test failed \(auth\)/)).toHaveTextContent(
       "The provider rejected the API key.",
     );
   });
 
-  it("removes a model", async () => {
+  it("removes a model only after confirmation", async () => {
     const requests = renderApp(
-      as(ROOT, (r) => {
-        if (r.path === "/api/v1/admin/llm/providers") return json({ items: [PROVIDER] });
-        if (r.path === `/api/v1/admin/llm/models/${MODEL.id}`) return noContent();
-        if (r.path === "/api/v1/admin/llm/setup") return json(INCOMPLETE);
-        return undefined;
-      }),
+      providersApi([PROVIDER], (r) =>
+        r.path === `/api/v1/admin/llm/models/${MODEL.id}` ? noContent() : undefined,
+      ),
       "/admin/llm",
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Remove model" }));
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: "Remove qwen3?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove model" }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "DELETE")).toBe(true));
+  });
+
+  it("removes a provider only after confirmation", async () => {
+    const requests = renderApp(
+      providersApi([PROVIDER], (r) =>
+        r.path === `/api/v1/admin/llm/providers/${PROVIDER.id}` && r.method === "DELETE"
+          ? noContent()
+          : undefined,
+      ),
+      "/admin/llm",
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Remove provider" }));
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: "Remove Local vLLM?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove provider" }));
 
     await waitFor(() => expect(requests.some((r) => r.method === "DELETE")).toBe(true));
   });

@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AdminWorkspace } from "../api/adminWorkspaces";
@@ -7,6 +7,7 @@ import {
   CSRF_TOKEN,
   apiError,
   json,
+  noContent,
   renderApp,
   setCsrfCookie,
   type ApiRequest,
@@ -65,13 +66,15 @@ const ORPHAN = workspace("Orphaned DW", {
   ],
 });
 
+const ARCHIVED = workspace("Old DW", { status: "archived", archived_at: "2026-02-01T09:00:00Z" });
+
 function backend(handle: (r: ApiRequest) => Response | undefined = () => undefined) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
       case "GET /api/v1/me":
         return json(ADMIN);
       case "GET /api/v1/admin/workspaces":
-        return json({ items: [workspace("Retail DW"), ORPHAN], next_cursor: null });
+        return json({ items: [workspace("Retail DW"), ORPHAN, ARCHIVED], next_cursor: null });
       case "GET /api/v1/admin/users":
         return json({ items: [GRACE], next_cursor: null });
       default:
@@ -95,7 +98,8 @@ describe("the admin Workspace list", () => {
     expect(retail).toHaveTextContent("Ada Lovelace (ada@example.com)");
     expect(retail).toHaveTextContent("Active");
     expect(retail).toHaveTextContent("3");
-    expect(within(retail).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(retail).queryByRole("button", { name: "Reassign ownership" })).not.toBeInTheDocument();
+    expect(within(retail).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     expect(screen.getByRole("row", { name: "Orphaned DW" })).toHaveTextContent("deactivated");
   });
 
@@ -111,7 +115,7 @@ describe("the admin Workspace list", () => {
 
     const orphan = await screen.findByRole("row", { name: "Orphaned DW" });
     fireEvent.click(within(orphan).getByRole("button", { name: "Reassign ownership" }));
-    const form = await screen.findByRole("form", { name: "Reassign Orphaned DW" });
+    const form = await screen.findByRole("dialog", { name: "Reassign Orphaned DW" });
     fireEvent.change(await within(form).findByLabelText("New owner"), {
       target: { value: GRACE.id },
     });
@@ -137,12 +141,62 @@ describe("the admin Workspace list", () => {
 
     const orphan = await screen.findByRole("row", { name: "Orphaned DW" });
     fireEvent.click(within(orphan).getByRole("button", { name: "Reassign ownership" }));
-    const form = await screen.findByRole("form", { name: "Reassign Orphaned DW" });
+    const form = await screen.findByRole("dialog", { name: "Reassign Orphaned DW" });
     fireEvent.change(await within(form).findByLabelText("New owner"), {
       target: { value: GRACE.id },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Make owner" }));
 
     expect(await within(form).findByRole("alert")).toHaveTextContent("still has an active owner");
+  });
+
+  it("archives an active Workspace only after confirmation", async () => {
+    const requests = renderApp(
+      backend((r) => (r.method === "POST" && r.path.endsWith("/archive") ? noContent() : undefined)),
+      "/admin/workspaces",
+    );
+
+    const retail = await screen.findByRole("row", { name: "Retail DW" });
+    expect(within(retail).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    fireEvent.click(within(retail).getByRole("button", { name: "Archive" }));
+    expect(requests.some((r) => r.method === "POST")).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: "Archive Retail DW?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({
+          method: "POST",
+          path: `/api/v1/workspaces/${workspace("Retail DW").id}/archive`,
+          csrf: CSRF_TOKEN,
+        }),
+      ),
+    );
+  });
+
+  it("deletes only an archived Workspace, and only once its name is typed", async () => {
+    const requests = renderApp(
+      backend((r) => (r.method === "DELETE" ? noContent() : undefined)),
+      "/admin/workspaces",
+    );
+
+    const old = await screen.findByRole("row", { name: "Old DW" });
+    expect(within(old).queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    fireEvent.click(within(old).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Old DW?" });
+    const confirm = within(dialog).getByRole("button", { name: "Delete Workspace" });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Workspace name"), { target: { value: "Old DW" } });
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({
+          method: "DELETE",
+          path: `/api/v1/workspaces/${ARCHIVED.id}`,
+          body: { name: "Old DW" },
+        }),
+      ),
+    );
   });
 });

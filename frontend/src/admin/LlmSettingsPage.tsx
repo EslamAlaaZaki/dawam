@@ -12,7 +12,10 @@ import {
   useSetInstallationBudget,
   useSetLlmRoles,
   useSetWorkspaceBudget,
+  type LlmBudgets,
 } from "../api/llmSettings";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
+import { SettingsCard } from "../components/entity/SettingsCard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
@@ -30,9 +33,9 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
-  labelClasses, formCardClasses, h3Classes } from "./parts";
-
-const cardClasses = formCardClasses;
+  labelClasses,
+  h3Classes,
+} from "./parts";
 
 /** Model roles, monthly token budgets and AI usage (admins only). */
 export function LlmSettingsPage() {
@@ -115,48 +118,46 @@ function RolesSection() {
   }
 
   return (
-    <form className={cardClasses} onSubmit={onSubmit} aria-label="Model roles">
-      <h3 className={h3Classes}>Model roles</h3>
-      {roles.data.reindex_needed && (
-        <p
-          role="status"
-          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
-        >
-          Documents must be indexed again: the embedding model or its vector
-          dimension changed.
-        </p>
-      )}
-      <p className="text-sm text-sand-11">
-        Only models that passed &quot;Test connection&quot; are offered.
-      </p>
-      <ModelSelect
-        label="Agent model (required)"
-        name="agent"
-        models={chat}
-        value={roles.data.agent_model_id}
-        required
-      />
-      <ModelSelect
-        label="Light model (empty: use the agent model)"
-        name="light"
-        models={chat}
-        value={roles.data.light_model_id}
-      />
-      <ModelSelect
-        label="Embedding model"
-        name="embedding"
-        models={embedding}
-        value={roles.data.embedding_model_id}
-      />
-      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      <Button
-        type="submit"
-        variant="primary"
-        className="self-start"
-        disabled={save.isPending}
+    <form onSubmit={onSubmit} aria-label="Model roles">
+      <SettingsCard
+        title="Model roles"
+        description='Only models that passed "Test connection" are offered.'
+        footer={
+          <Button type="submit" variant="primary" disabled={save.isPending}>
+            Save roles
+          </Button>
+        }
       >
-        Save roles
-      </Button>
+        {roles.data.reindex_needed && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
+          >
+            Documents must be indexed again: the embedding model or its vector
+            dimension changed.
+          </p>
+        )}
+        <ModelSelect
+          label="Agent model (required)"
+          name="agent"
+          models={chat}
+          value={roles.data.agent_model_id}
+          required
+        />
+        <ModelSelect
+          label="Light model (empty: use the agent model)"
+          name="light"
+          models={chat}
+          value={roles.data.light_model_id}
+        />
+        <ModelSelect
+          label="Embedding model"
+          name="embedding"
+          models={embedding}
+          value={roles.data.embedding_model_id}
+        />
+        {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+      </SettingsCard>
     </form>
   );
 }
@@ -167,6 +168,7 @@ function BudgetsSection() {
   const setInstallation = useSetInstallationBudget();
   const setWorkspace = useSetWorkspaceBudget();
   const clear = useClearWorkspaceBudget();
+  const [removing, setRemoving] = useState<LlmBudgets["workspaces"][number] | null>(null);
   if (budgets.isPending) {
     return <Loading />;
   }
@@ -192,32 +194,30 @@ function BudgetsSection() {
   }
 
   const choices = workspaces.data?.pages.flatMap((page) => page.items) ?? [];
-  const failure = setInstallation.error ?? setWorkspace.error ?? clear.error;
+  const failure = setInstallation.error ?? setWorkspace.error;
   return (
     <div className="flex flex-col gap-3.5">
       <h3 className={h3Classes}>Monthly token budgets</h3>
-      <form
-        className={cardClasses}
-        onSubmit={onInstallation}
-        aria-label="Installation budget"
-      >
-        <label className={labelClasses}>
-          Installation (tokens per month; empty: unlimited)
-          <Input
-            name="tokens"
-            type="number"
-            min={0}
-            key={budgets.data.installation_monthly_token_budget ?? "none"}
-            defaultValue={budgets.data.installation_monthly_token_budget ?? ""}
-          />
-        </label>
-        <Button
-          type="submit"
-          className="self-start"
-          disabled={setInstallation.isPending}
+      <form onSubmit={onInstallation} aria-label="Installation budget">
+        <SettingsCard
+          title="Installation budget"
+          footer={
+            <Button type="submit" disabled={setInstallation.isPending}>
+              Save installation budget
+            </Button>
+          }
         >
-          Save installation budget
-        </Button>
+          <label className={labelClasses}>
+            Installation (tokens per month; empty: unlimited)
+            <Input
+              name="tokens"
+              type="number"
+              min={0}
+              key={budgets.data.installation_monthly_token_budget ?? "none"}
+              defaultValue={budgets.data.installation_monthly_token_budget ?? ""}
+            />
+          </label>
+        </SettingsCard>
       </form>
       {budgets.data.workspaces.length > 0 && (
         <ul
@@ -236,7 +236,7 @@ function BudgetsSection() {
               <Button
                 type="button"
                 size="sm"
-                onClick={() => clear.mutate(budget.workspace_id)}
+                onClick={() => setRemoving(budget)}
               >
                 Remove budget for {budget.workspace_name ?? budget.workspace_id}
               </Button>
@@ -244,34 +244,50 @@ function BudgetsSection() {
           ))}
         </ul>
       )}
-      <form
-        className={cardClasses}
-        onSubmit={onWorkspace}
-        aria-label="Workspace budget"
-      >
-        <label className={labelClasses}>
-          Workspace
-          <NativeSelect name="workspace" required defaultValue="">
-            <option value="">Choose a Workspace</option>
-            {choices.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className={labelClasses}>
-          Tokens per month
-          <Input name="tokens" type="number" min={0} required />
-        </label>
-        <Button
-          type="submit"
-          className="self-start"
-          disabled={setWorkspace.isPending}
+      <form onSubmit={onWorkspace} aria-label="Workspace budget">
+        <SettingsCard
+          title="Workspace budget"
+          footer={
+            <Button type="submit" disabled={setWorkspace.isPending}>
+              Set Workspace budget
+            </Button>
+          }
         >
-          Set Workspace budget
-        </Button>
+          <label className={labelClasses}>
+            Workspace
+            <NativeSelect name="workspace" required defaultValue="">
+              <option value="">Choose a Workspace</option>
+              {choices.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className={labelClasses}>
+            Tokens per month
+            <Input name="tokens" type="number" min={0} required />
+          </label>
+        </SettingsCard>
       </form>
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            clear.reset();
+            setRemoving(null);
+          }
+        }}
+        title={`Remove the budget for ${removing?.workspace_name ?? removing?.workspace_id}?`}
+        description="The Workspace goes back to the installation budget."
+        confirmLabel="Remove budget"
+        pending={clear.isPending}
+        error={clear.error}
+        onConfirm={() =>
+          removing &&
+          clear.mutate(removing.workspace_id, { onSuccess: () => setRemoving(null) })
+        }
+      />
       {failure && <ErrorText>{failure.message}</ErrorText>}
     </div>
   );

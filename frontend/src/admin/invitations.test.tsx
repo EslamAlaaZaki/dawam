@@ -98,9 +98,11 @@ describe("inviting someone", () => {
     });
   }
 
-  function invite(email: string) {
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
-    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+  async function invite(email: string) {
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    const dialog = await screen.findByRole("dialog", { name: "Invite user" });
+    fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: email } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send invitation" }));
   }
 
   it("sends the invitation and lists it as pending", async () => {
@@ -110,7 +112,7 @@ describe("inviting someone", () => {
     );
     await screen.findByText("No pending invitations.");
 
-    invite("amy@example.com");
+    await invite("amy@example.com");
 
     expect(await screen.findByText("Invitation emailed to amy@example.com.")).toBeInTheDocument();
     expect(await screen.findByRole("row", { name: /amy@example\.com/ })).toBeInTheDocument();
@@ -130,7 +132,7 @@ describe("inviting someone", () => {
     );
     await screen.findByText("No pending invitations.");
 
-    invite("amy@example.com");
+    await invite("amy@example.com");
 
     const note = await screen.findByText(/could not be emailed/);
     expect(within(note).getByRole("link", { name: "Links to share" })).toHaveAttribute(
@@ -148,11 +150,11 @@ describe("inviting someone", () => {
     );
     await screen.findByText("No pending invitations.");
 
-    invite("grace@example.com");
+    await invite("grace@example.com");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "grace@example.com already has an account",
-    );
+    expect(
+      await within(await screen.findByRole("dialog")).findByRole("alert"),
+    ).toHaveTextContent("grace@example.com already has an account");
   });
 });
 
@@ -173,6 +175,9 @@ describe("revoking an invitation", () => {
     const amy = await screen.findByRole("row", { name: /amy@example\.com/ });
 
     fireEvent.click(within(amy).getByRole("button", { name: "Revoke" }));
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: /Revoke the invitation/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
     expect(await screen.findByText("No pending invitations.")).toBeInTheDocument();
     await waitFor(() =>
