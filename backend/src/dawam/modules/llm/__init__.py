@@ -29,14 +29,19 @@ Public interface. Other modules import only what is re-exported here:
   ``external_provider_refused``). ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the
   composition root sets (``app.state.on_workspace_created``): internal-only by default when the
   installation's agent model is internal, decided in code.
+- Allowed Models: an admin narrows the models a Workspace may use (``GET|PUT
+  /admin/llm/workspaces/{workspace_id}/allowed-models``; none chosen: every registered model).
+  One check, ``allowed_model_ids``, combines them with the internal-only flag; the Workspace's
+  agent-model override must be in it (422 ``model_not_allowed``), and a call on a model outside
+  a narrowed list is refused (409 ``model_not_allowed``).
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` (members read, owners
   change), then, admins only, ``/admin/llm/roles``, ``/admin/llm/budgets[...]``,
   ``/admin/llm/usage``, ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
 Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
-``llm_usage`` and ``llm_workspace_settings`` tables. Imports ``auth``, ``activity``,
-``audit`` and ``workspaces`` (for the admin policy).
+``llm_usage``, ``llm_workspace_settings`` and ``llm_workspace_allowed_models`` tables. Imports
+``auth``, ``activity``, ``audit`` and ``workspaces`` (for the admin policy).
 """
 
 from fastapi import APIRouter

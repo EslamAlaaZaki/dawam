@@ -4,14 +4,19 @@ import { useState } from "react";
 
 import {
   useAdminWorkspaces,
+  useAllowedModels,
   useReassignOwner,
+  useSetAllowedModels,
   type AdminWorkspace,
 } from "../api/adminWorkspaces";
 import { useUsers } from "../api/users";
 import { useArchiveWorkspace, useDeleteWorkspace } from "../api/workspaces";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
-import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
+import {
+  EntityTable,
+  type EntityColumn,
+} from "../components/entity/EntityTable";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -23,11 +28,18 @@ function day(iso: string): string {
 }
 
 const WORKSPACE_COLUMNS: EntityColumn<AdminWorkspace>[] = [
-  { header: "Name", className: "font-medium", cell: (workspace) => workspace.name },
+  {
+    header: "Name",
+    className: "font-medium",
+    cell: (workspace) => workspace.name,
+  },
   {
     header: "Status",
     cell: (workspace) => (
-      <Badge variant={workspace.status === "archived" ? "neutral" : "success"} dot>
+      <Badge
+        variant={workspace.status === "archived" ? "neutral" : "success"}
+        dot
+      >
         {workspace.status === "archived" ? "Archived" : "Active"}
       </Badge>
     ),
@@ -43,8 +55,16 @@ const WORKSPACE_COLUMNS: EntityColumn<AdminWorkspace>[] = [
       )),
   },
   { header: "Members", cell: (workspace) => workspace.member_count },
-  { header: "Created", className: "text-sand-11", cell: (workspace) => day(workspace.created_at) },
-  { header: "Updated", className: "text-sand-11", cell: (workspace) => day(workspace.updated_at) },
+  {
+    header: "Created",
+    className: "text-sand-11",
+    cell: (workspace) => day(workspace.created_at),
+  },
+  {
+    header: "Updated",
+    className: "text-sand-11",
+    cell: (workspace) => day(workspace.updated_at),
+  },
 ];
 
 /**
@@ -84,12 +104,16 @@ export function WorkspacesPage() {
 function WorkspaceActions({ workspace }: { workspace: AdminWorkspace }) {
   const [reassigning, setReassigning] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [choosingModels, setChoosingModels] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const archived = workspace.status === "archived";
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => setChoosingModels(true)}>
+          Allowed models
+        </Button>
         {!workspace.has_active_owner && (
           <Button size="sm" onClick={() => setReassigning(true)}>
             Reassign ownership
@@ -101,21 +125,97 @@ function WorkspaceActions({ workspace }: { workspace: AdminWorkspace }) {
           </Button>
         )}
         {archived && (
-          <Button size="sm" className="text-red-11" onClick={() => setDeleting(true)}>
+          <Button
+            size="sm"
+            className="text-red-11"
+            onClick={() => setDeleting(true)}
+          >
             Delete
           </Button>
         )}
       </div>
+      <AllowedModelsDialog
+        workspace={workspace}
+        open={choosingModels}
+        onOpenChange={setChoosingModels}
+      />
       {!workspace.has_active_owner && (
-        <ReassignDialog workspace={workspace} open={reassigning} onOpenChange={setReassigning} />
+        <ReassignDialog
+          workspace={workspace}
+          open={reassigning}
+          onOpenChange={setReassigning}
+        />
       )}
       {!archived && (
-        <ArchiveDialog workspace={workspace} open={archiving} onOpenChange={setArchiving} />
+        <ArchiveDialog
+          workspace={workspace}
+          open={archiving}
+          onOpenChange={setArchiving}
+        />
       )}
       {archived && (
-        <DeleteDialog workspace={workspace} open={deleting} onOpenChange={setDeleting} />
+        <DeleteDialog
+          workspace={workspace}
+          open={deleting}
+          onOpenChange={setDeleting}
+        />
       )}
     </>
+  );
+}
+
+/**
+ * Which models the Workspace may use. None ticked: every registered model. An
+ * internal-only Workspace is never offered an external one, whatever is ticked.
+ */
+function AllowedModelsDialog({
+  workspace,
+  open,
+  onOpenChange,
+}: {
+  workspace: AdminWorkspace;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const allowed = useAllowedModels(workspace.id, open);
+  const save = useSetAllowedModels(workspace.id);
+  const models = allowed.data?.models ?? [];
+  const listed = new Set(allowed.data?.model_ids ?? []);
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) save.reset();
+        onOpenChange(next);
+      }}
+      title={`Allowed models for ${workspace.name}`}
+      description="Tick the models this Workspace may use. With none ticked, every registered model is allowed. An internal-only Workspace is never offered an external model."
+      submitLabel="Save"
+      onSubmit={(form) =>
+        save.mutate(form.getAll("model").map(String), {
+          onSuccess: () => {
+            onOpenChange(false);
+            toast.success(`Allowed models saved for ${workspace.name}.`);
+          },
+        })
+      }
+      pending={save.isPending || allowed.isPending}
+      error={save.error ?? allowed.error}
+    >
+      {models.map((model) => (
+        <label key={model.id} className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="model"
+            value={model.id}
+            defaultChecked={listed.has(model.id)}
+          />
+          {model.name} ({model.provider_name},{" "}
+          {model.internal ? "internal" : "external"})
+        </label>
+      ))}
+    </EntityFormDialog>
   );
 }
 
@@ -178,8 +278,8 @@ function DeleteDialog({
       title={`Delete ${workspace.name}?`}
       description={
         <>
-          Deleting is permanent and removes everything in the Workspace. Type its name,{" "}
-          <strong>{workspace.name}</strong>, to confirm.
+          Deleting is permanent and removes everything in the Workspace. Type
+          its name, <strong>{workspace.name}</strong>, to confirm.
         </>
       }
       confirmLabel="Delete Workspace"
@@ -197,7 +297,10 @@ function DeleteDialog({
     >
       <label className={labelClasses}>
         Workspace name
-        <Input value={typed} onChange={(event) => setTyped(event.target.value)} />
+        <Input
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+        />
       </label>
     </ConfirmDialog>
   );

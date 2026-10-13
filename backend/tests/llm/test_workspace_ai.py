@@ -313,3 +313,101 @@ def test_the_workspace_agent_model_is_the_one_called(roles: RoleClients, gateway
     list(gateways[0].gateway_for_role("agent", workspace_id=roles.workspace_id).chat(ASK))
 
     assert fake_llm.calls[-1].model == "own"
+
+
+# -- Allowed Models -----------------------------------------------------------------------
+
+
+def allowed_path(roles: RoleClients) -> str:
+    return f"{BASE}/workspaces/{roles.workspace_id}/allowed-models"
+
+
+def test_a_new_workspace_allows_every_registered_model(roles: RoleClients, fake_llm):
+    admin = roles.client("admin")
+    register(admin, "one", internal=False)
+    register(admin, "two", internal=True)
+
+    listed = admin.get(allowed_path(roles)).json()
+
+    assert listed["model_ids"] == []
+    assert sorted(m["name"] for m in listed["models"] if m["allowed"]) == ["one", "two"]
+
+
+def test_an_admin_narrows_and_widens_the_allowed_models(roles: RoleClients, fake_llm):
+    admin = roles.client("admin")
+    one = register(admin, "one", internal=False)
+    register(admin, "two", internal=False)
+
+    narrowed = admin.put(allowed_path(roles), json={"model_ids": [one["id"]]})
+    assert narrowed.status_code == 200, narrowed.text
+    assert narrowed.json()["model_ids"] == [one["id"]]
+    assert [m["name"] for m in narrowed.json()["models"] if m["allowed"]] == ["one"]
+    approved = roles.client("owner").get(settings_path(roles)).json()["approved_models"]
+    assert [m["name"] for m in approved] == ["one"]
+
+    widened = admin.put(allowed_path(roles), json={"model_ids": []})
+    assert widened.json()["model_ids"] == []
+    assert len(widened.json()["models"]) == 2 and all(
+        m["allowed"] for m in widened.json()["models"]
+    )
+
+
+def test_an_unknown_model_is_refused(roles: RoleClients, fake_llm):
+    response = roles.client("admin").put(
+        allowed_path(roles), json={"model_ids": [str(uuid.uuid4())]}
+    )
+
+    assert response.status_code == 422 and code(response) == "invalid_model"
+
+
+def test_an_internal_only_workspace_is_never_offered_an_external_model(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    register(admin, "cloud", internal=False)
+    local = register(admin, "local", internal=True)
+    owner = roles.client("owner")
+    assert owner.put(settings_path(roles), json=body(internal_only=True)).status_code == 200
+
+    listed = admin.get(allowed_path(roles)).json()
+    approved = owner.get(settings_path(roles)).json()["approved_models"]
+
+    assert [m["name"] for m in listed["models"] if m["allowed"]] == ["local"]
+    assert [m["id"] for m in approved] == [local["id"]]
+
+
+def test_the_agent_model_override_must_be_an_allowed_model(roles: RoleClients, fake_llm):
+    admin = roles.client("admin")
+    one = register(admin, "one", internal=False)
+    two = register(admin, "two", internal=False)
+    admin.put(allowed_path(roles), json={"model_ids": [one["id"]]})
+    owner = roles.client("owner")
+
+    refused = owner.put(settings_path(roles), json=body(agent_model_id=two["id"]))
+    accepted = owner.put(settings_path(roles), json=body(agent_model_id=one["id"]))
+
+    assert refused.status_code == 422 and code(refused) == "model_not_allowed"
+    assert accepted.status_code == 200
+
+
+def test_a_model_outside_the_allowed_models_is_refused_at_call_time(
+    roles: RoleClients, gateways, fake_llm
+):
+    admin = roles.client("admin")
+    default = register(admin, "default", internal=False)
+    other = register(admin, "other", internal=False)
+    assert assign(admin, default).status_code == 200
+    admin.put(allowed_path(roles), json={"model_ids": [other["id"]]})
+    fake_llm.calls.clear()
+
+    with pytest.raises(ApiError) as refused:
+        list(gateways[0].gateway_for_role("agent", workspace_id=roles.workspace_id).chat(ASK))
+
+    assert refused.value.code == "model_not_allowed" and fake_llm.calls == []
+
+
+def test_only_admins_read_or_change_the_allowed_models(roles: RoleClients, fake_llm):
+    for role in ("owner", "editor", "viewer", "non_member"):
+        client = roles.client(role)
+        assert client.get(allowed_path(roles)).status_code == 403
+        assert client.put(allowed_path(roles), json={"model_ids": []}).status_code == 403

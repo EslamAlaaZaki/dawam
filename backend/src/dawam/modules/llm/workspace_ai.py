@@ -24,7 +24,13 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
-from .tables import ModelRecord, ProviderRecord, SettingsRecord, WorkspaceAiSettingsRecord
+from .tables import (
+    ModelRecord,
+    ProviderRecord,
+    SettingsRecord,
+    WorkspaceAiSettingsRecord,
+    WorkspaceAllowedModelRecord,
+)
 
 AUDIT_ENTITY = "workspace_ai_settings"
 
@@ -82,6 +88,23 @@ class ApprovedModel:
 
 
 @dataclass(frozen=True)
+class AllowedModelChoice:
+    id: uuid.UUID
+    name: str
+    provider_name: str
+    internal: bool
+    allowed: bool
+    """In effect: listed (or nothing is listed) and, if internal-only, internal."""
+
+
+@dataclass(frozen=True)
+class AllowedModels:
+    model_ids: list[uuid.UUID]
+    """The admin's explicit list; empty: every registered model."""
+    models: list[AllowedModelChoice]
+
+
+@dataclass(frozen=True)
 class WorkspaceAiView:
     settings: WorkspaceAiSettings
     approved_models: list[ApprovedModel]
@@ -115,6 +138,38 @@ def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
         .where(ModelRecord.id == model_id)
     )
     return bool(internal)
+
+
+def _listed_model_ids(db: Session, workspace_id: uuid.UUID) -> set[uuid.UUID]:
+    return set(
+        db.scalars(
+            sa.select(WorkspaceAllowedModelRecord.model_id).where(
+                WorkspaceAllowedModelRecord.workspace_id == workspace_id
+            )
+        )
+    )
+
+
+def allowed_model_ids(db: Session, workspace_id: uuid.UUID) -> set[uuid.UUID]:
+    """The one check for which models a Workspace may use: Allowed Models (every registered
+    model unless narrowed) combined with the internal-only flag, which drops every
+    external model whatever the list says."""
+    listed = _listed_model_ids(db, workspace_id)
+    query = sa.select(ModelRecord.id).join(
+        ProviderRecord, ProviderRecord.id == ModelRecord.provider_id
+    )
+    if load_settings(db, workspace_id).internal_only:
+        query = query.where(ProviderRecord.is_internal.is_(True))
+    if listed:
+        query = query.where(ModelRecord.id.in_(listed))
+    return set(db.scalars(query))
+
+
+def model_is_listed(db: Session, workspace_id: uuid.UUID, model_id: uuid.UUID) -> bool:
+    """False only when an admin narrowed the Workspace's Allowed Models and ``model_id`` is
+    not among them. The internal-only flag is enforced separately, when a call is made."""
+    listed = _listed_model_ids(db, workspace_id)
+    return not listed or model_id in listed
 
 
 def _installation_agent(db: Session) -> uuid.UUID | None:
@@ -191,9 +246,16 @@ class WorkspaceAiService:
                 record = new_workspace_settings(db, workspace_id, now)
                 db.add(record)
                 db.flush()
-            if agent_model_id is not None and agent_model_id not in {
-                m.id for m in self._approved(db)
-            }:
+            approved = {m.id for m in self._approved(db)}
+            if agent_model_id is not None and agent_model_id in approved - allowed_model_ids(
+                db, workspace_id
+            ):
+                raise _invalid(
+                    "That model is not in the Workspace's Allowed Models.",
+                    "agent_model_id",
+                    "model_not_allowed",
+                )
+            if agent_model_id is not None and agent_model_id not in approved:
                 raise _invalid(
                     "That model is not an approved agent model.",
                     "agent_model_id",
@@ -242,10 +304,69 @@ class WorkspaceAiService:
         internal_available = agent is not None and model_is_internal(db, agent)
         return WorkspaceAiView(
             settings=settings,
-            approved_models=self._approved(db),
+            approved_models=[
+                m
+                for m in self._approved(db)
+                if m.id in allowed_model_ids(db, settings.workspace_id)
+            ],
             installation_agent_model_id=agent,
             internal_agent_available=internal_available,
             banner=not settings.internal_only and not internal_available,
+        )
+
+    def allowed_models(self, workspace_id: uuid.UUID) -> AllowedModels:
+        """The explicit list and every registered model with whether the Workspace may use
+        it. Authorizes nothing: the admin API has."""
+        with Session(self._engine) as db:
+            return self._allowed_view(db, workspace_id)
+
+    def set_allowed_models(
+        self, user: User, workspace_id: uuid.UUID, model_ids: list[uuid.UUID]
+    ) -> AllowedModels:
+        """Replace the list (empty: every registered model), audited. The admin API
+        authorizes. 422 ``invalid_model`` for an id that is not registered."""
+        wanted = set(model_ids)
+        with Session(self._engine) as db, db.begin():
+            known = set(db.scalars(sa.select(ModelRecord.id).where(ModelRecord.id.in_(wanted))))
+            if known != wanted:
+                raise _invalid("Choose registered models.", "model_ids", "invalid_model")
+            old = _listed_model_ids(db, workspace_id)
+            db.execute(
+                sa.delete(WorkspaceAllowedModelRecord).where(
+                    WorkspaceAllowedModelRecord.workspace_id == workspace_id
+                )
+            )
+            db.add_all(
+                WorkspaceAllowedModelRecord(workspace_id=workspace_id, model_id=m) for m in wanted
+            )
+            db.flush()
+            if old != wanted:
+                record_audit(
+                    db,
+                    workspace_id=workspace_id,
+                    actor_id=user.id,
+                    entity_type="workspace_allowed_models",
+                    entity_id=workspace_id,
+                    old={"model_ids": sorted(map(str, old))},
+                    new={"model_ids": sorted(map(str, wanted))},
+                    at=self._clock(),
+                )
+            return self._allowed_view(db, workspace_id)
+
+    @staticmethod
+    def _allowed_view(db: Session, workspace_id: uuid.UUID) -> AllowedModels:
+        allowed = allowed_model_ids(db, workspace_id)
+        rows = db.execute(
+            sa.select(ModelRecord, ProviderRecord)
+            .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
+            .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
+        )
+        return AllowedModels(
+            model_ids=sorted(_listed_model_ids(db, workspace_id), key=str),
+            models=[
+                AllowedModelChoice(m.id, m.name, p.name, p.is_internal, m.id in allowed)
+                for m, p in rows
+            ],
         )
 
     @staticmethod
