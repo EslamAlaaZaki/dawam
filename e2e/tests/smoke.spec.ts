@@ -60,10 +60,12 @@ test("the main path: sign in to lineage", async ({ page }) => {
   });
 
   await test.step("create a Workspace", async () => {
-    await page.goto("/workspaces/new");
-    await page.getByLabel("Name").fill("Smoke Shop");
-    await page.getByLabel("Business domain").fill("Retail");
-    await page.getByRole("button", { name: "Create Workspace" }).click();
+    await page.goto("/");
+    await page.getByRole("button", { name: "New workspace" }).first().click();
+    const dialog = page.getByRole("dialog", { name: "New workspace" });
+    await dialog.getByLabel("Name").fill("Smoke Shop");
+    await dialog.getByLabel("Business domain").fill("Retail");
+    await dialog.getByRole("button", { name: "Create Workspace" }).click();
     await page.waitForURL(/\/workspaces\/[0-9a-f-]{36}$/);
     workspaceId = page.url().split("/").pop() ?? "";
     await expect(page.getByRole("heading", { name: "Smoke Shop" })).toBeVisible();
@@ -71,9 +73,10 @@ test("the main path: sign in to lineage", async ({ page }) => {
   });
 
   await test.step("add a member", async () => {
-    const form = page.getByRole("form", { name: "Add member" });
-    await form.getByLabel("Email").fill(MEMBER.email);
-    await form.getByRole("button", { name: "Add member" }).click();
+    await page.getByRole("button", { name: "Add member" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add member" });
+    await dialog.getByLabel("Email").fill(MEMBER.email);
+    await dialog.getByRole("button", { name: "Add member" }).click();
     await expect(page.getByText("Mona Member is now")).toBeVisible();
     await expect(page.getByRole("row", { name: "Mona Member" })).toBeVisible();
   });
@@ -86,10 +89,11 @@ test("the main path: sign in to lineage", async ({ page }) => {
 
   await test.step("add the Source System and its Connection to the seeded database", async () => {
     await page.goto(`/workspaces/${workspaceId}?folder=systems`);
-    const form = page.getByRole("form", { name: "Add Source System" });
-    await form.getByLabel("Name").fill("Shop");
-    await form.getByLabel("System Code").fill("shop");
-    await form.getByRole("button", { name: "Add Source System" }).click();
+    await page.getByRole("button", { name: "Add system" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add Source System" });
+    await dialog.getByLabel("Name").fill("Shop");
+    await dialog.getByLabel("System Code").fill("shop");
+    await dialog.getByRole("button", { name: "Add Source System" }).click();
     await page.waitForURL(/folder=systems%2F/);
     const systemFolder = new URL(page.url()).searchParams.get("folder");
 

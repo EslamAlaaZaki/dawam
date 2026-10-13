@@ -29,6 +29,7 @@ const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
   owner: [
     "connection.manage",
     "connection.view",
+    "objects.delete",
     "source_system.change_code",
     "source_system.create",
     "source_system.edit",
@@ -136,6 +137,18 @@ describe("Source Systems in the folder tree", () => {
   });
 });
 
+/** Opens the Add system popup from the Systems folder. */
+async function openAddSystem() {
+  fireEvent.click(await screen.findByRole("button", { name: "Add system" }));
+  return screen.findByRole("dialog", { name: "Add Source System" });
+}
+
+/** Opens the Edit popup from the one system's row (or details). */
+async function openEditSystem() {
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  return screen.findByRole("dialog", { name: "Edit Source System" });
+}
+
 describe("the Systems folder", () => {
   it("lists the systems for a viewer, who cannot add one", async () => {
     renderApp(backend("viewer", [CBS]), `${PATH}?folder=systems`);
@@ -143,7 +156,8 @@ describe("the Systems folder", () => {
     const row = await screen.findByRole("row", { name: /Core Banking/ });
     expect(row).toHaveTextContent("cbs");
     expect(row).toHaveTextContent("Head of Retail");
-    expect(screen.queryByRole("form", { name: "Add Source System" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add system" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(screen.getByText("Only owners and editors can add Source Systems.")).toBeInTheDocument();
   });
 
@@ -159,7 +173,7 @@ describe("the Systems folder", () => {
       `${PATH}?folder=systems`,
     );
 
-    const form = await screen.findByRole("form", { name: "Add Source System" });
+    const form = await openAddSystem();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Core Banking" } });
     fireEvent.change(within(form).getByLabelText("System Code"), { target: { value: "cbs" } });
     fireEvent.change(within(form).getByLabelText("Business owner"), {
@@ -190,7 +204,7 @@ describe("the Systems folder", () => {
       `${PATH}?folder=systems`,
     );
 
-    const form = await screen.findByRole("form", { name: "Add Source System" });
+    const form = await openAddSystem();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Core" } });
     fireEvent.change(within(form).getByLabelText("System Code"), { target: { value: "cbs" } });
     fireEvent.click(within(form).getByRole("button", { name: "Add Source System" }));
@@ -220,12 +234,16 @@ describe("a Source System's details", () => {
       FOLDER,
     );
 
-    const code = await screen.findByLabelText("System Code");
-    expect(code).toHaveAttribute("readonly");
-    fireEvent.change(screen.getByLabelText("Technical owner"), { target: { value: "Platform" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Source System" });
+    expect(within(dialog).getByLabelText("System Code")).toHaveAttribute("readonly");
+    fireEvent.change(within(dialog).getByLabelText("Technical owner"), {
+      target: { value: "Platform" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(requests.find((r) => r.method === "PATCH")).toMatchObject({
       path: `${SYSTEMS}/${CBS.id}`,
       body: { version: 1, technical_owner: "Platform", code: "cbs" },
@@ -240,16 +258,50 @@ describe("a Source System's details", () => {
       FOLDER,
     );
 
-    const code = await screen.findByLabelText("System Code");
+    const dialog = await openEditSystem();
+    const code = within(dialog).getByLabelText("System Code");
     expect(code).not.toHaveAttribute("readonly");
     fireEvent.change(code, { target: { value: "core" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await screen.findByText("Saved.");
     expect(requests.find((r) => r.method === "PATCH")?.body).toMatchObject({ code: "core" });
   });
 
-  it("offers a reload when someone else changed the system", async () => {
+  it("edits a system from its row in the Systems folder", async () => {
+    const requests = renderApp(
+      backend("editor", [CBS], (r) =>
+        r.method === "PATCH" ? json({ ...CBS, name: "Core Banking 2", version: 2 }) : undefined,
+      ),
+      `${PATH}?folder=systems`,
+    );
+
+    const dialog = await openEditSystem();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Core Banking 2" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(requests.find((r) => r.method === "PATCH")?.body).toMatchObject({
+      version: 1,
+      name: "Core Banking 2",
+    });
+  });
+
+  it("deletes a system from its row only after confirming", async () => {
+    const requests = renderApp(backend("owner", [CBS]), `${PATH}?folder=systems`);
+
+    const row = await screen.findByRole("row", { name: /Core Banking/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Core Banking?" });
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Source System" }));
+
+    await waitFor(() =>
+      expect(requests.find((r) => r.method === "DELETE")?.path).toBe(`${SYSTEMS}/${CBS.id}`),
+    );
+  });
+
+  it("tells the editor when someone else changed the system first", async () => {
     renderApp(
       backend("owner", [CBS], (r) =>
         r.method === "PATCH"
@@ -259,8 +311,11 @@ describe("a Source System's details", () => {
       FOLDER,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    const dialog = await openEditSystem();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Someone else changed this Source System since you opened it.",
+    );
   });
 });

@@ -2,93 +2,263 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-import { ROLE_LABELS, useWorkspaces } from "../api/workspaces";
+import {
+  ROLE_LABELS,
+  allows,
+  useArchiveWorkspace,
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useUnarchiveWorkspace,
+  useUpdateWorkspace,
+  useWorkspaces,
+  type Workspace,
+} from "../api/workspaces";
+import { EntityFormDialog } from "../components/entity/EntityFormDialog";
+import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
+import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import { PageHead } from "../admin/parts";
-import { Loading } from "../shell/Loading";
-import { EmptyState, ErrorText } from "./parts";
+import { DetailsFields, detailsFrom } from "./DetailsFields";
+import { ErrorText, labelClasses } from "./parts";
+
+const COLUMNS: EntityColumn<Workspace>[] = [
+  {
+    header: "Name",
+    cell: (workspace) => (
+      <Link
+        href={`/workspaces/${workspace.id}`}
+        className="font-medium text-jade-11 underline decoration-jade-7 underline-offset-2 hover:decoration-current"
+      >
+        {workspace.name}
+      </Link>
+    ),
+  },
+  { header: "Business domain", cell: (workspace) => workspace.domain },
+  {
+    header: "Your role",
+    cell: (workspace) => <Badge>{ROLE_LABELS[workspace.role]}</Badge>,
+  },
+];
 
 /** The Workspaces the signed-in user is a member of, with their role in each. */
 export function WorkspaceListPage() {
   const workspaces = useWorkspaces();
-  const items = workspaces.data?.pages.flatMap((page) => page.items) ?? [];
+  const [creating, setCreating] = useState(false);
+  const createButton = (
+    <Button variant="primary" onClick={() => setCreating(true)}>
+      <Plus aria-hidden />
+      New workspace
+    </Button>
+  );
 
   return (
     <section className="flex flex-col gap-5">
       <PageHead
         title="Workspaces"
         description="The Workspaces you are a member of."
-        actions={
-          <Button asChild variant="primary">
-            <Link href="/workspaces/new">
-              <Plus aria-hidden />
-              New Workspace
-            </Link>
-          </Button>
-        }
+        actions={createButton}
       />
-      {workspaces.isPending ? (
-        <Loading />
-      ) : workspaces.isError ? (
-        <ErrorText>
-          Could not load your Workspaces: {workspaces.error.message}
-        </ErrorText>
-      ) : items.length === 0 ? (
-        <EmptyState>
-          You are not a member of any Workspace yet. Create one to get started.
-        </EmptyState>
-      ) : (
-        <>
-          <div className="overflow-hidden rounded-lg border border-line bg-sand-1">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">Name</TableHead>
-                  <TableHead scope="col">Business domain</TableHead>
-                  <TableHead scope="col">Your role</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((workspace) => (
-                  <TableRow key={workspace.id}>
-                    <TableCell>
-                      <Link
-                        href={`/workspaces/${workspace.id}`}
-                        className="font-medium text-jade-11 underline decoration-jade-7 underline-offset-2 hover:decoration-current"
-                      >
-                        {workspace.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{workspace.domain}</TableCell>
-                    <TableCell>
-                      <Badge>{ROLE_LABELS[workspace.role]}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          {workspaces.hasNextPage && (
-            <Button
-              className="self-start"
-              onClick={() => workspaces.fetchNextPage()}
-              disabled={workspaces.isFetchingNextPage}
-            >
-              Show more
-            </Button>
-          )}
-        </>
-      )}
+      <EntityTable
+        rows={workspaces.data?.pages.flatMap((page) => page.items)}
+        rowKey={(workspace) => workspace.id}
+        rowLabel={(workspace) => workspace.name}
+        columns={COLUMNS}
+        actions={(workspace) => <WorkspaceActions workspace={workspace} />}
+        isPending={workspaces.isPending}
+        error={workspaces.error}
+        loadErrorPrefix="Could not load your Workspaces:"
+        emptyMessage="You are not a member of any Workspace yet. Create one to get started."
+        emptyAction={createButton}
+        hasMore={workspaces.hasNextPage}
+        isLoadingMore={workspaces.isFetchingNextPage}
+        onLoadMore={() => void workspaces.fetchNextPage()}
+      />
+      <CreateWorkspaceDialog open={creating} onOpenChange={setCreating} />
     </section>
+  );
+}
+
+/** Create a Workspace; the creator becomes its owner and lands on it. */
+function CreateWorkspaceDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const create = useCreateWorkspace();
+  const router = useRouter();
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) create.reset();
+        onOpenChange(next);
+      }}
+      title="New workspace"
+      description="You become its owner and can add members once it exists."
+      submitLabel="Create Workspace"
+      onSubmit={(form) =>
+        create.mutate(detailsFrom(form), {
+          onSuccess: (workspace) => router.push(`/workspaces/${workspace.id}`),
+        })
+      }
+      pending={create.isPending}
+      error={create.error}
+    >
+      <DetailsFields />
+    </EntityFormDialog>
+  );
+}
+
+/** What the member's role lets them do to one Workspace. */
+function WorkspaceActions({ workspace }: { workspace: Workspace }) {
+  const archive = useArchiveWorkspace(workspace.id);
+  const unarchive = useUnarchiveWorkspace(workspace.id);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const problem = archive.error ?? unarchive.error;
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {allows(workspace, "workspace.edit") && (
+          <Button size="sm" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        )}
+        {allows(workspace, "workspace.archive") && (
+          <Button
+            size="sm"
+            disabled={archive.isPending}
+            onClick={() => archive.mutate()}
+          >
+            Archive
+          </Button>
+        )}
+        {allows(workspace, "workspace.unarchive") && (
+          <Button
+            size="sm"
+            disabled={unarchive.isPending}
+            onClick={() => unarchive.mutate()}
+          >
+            Unarchive
+          </Button>
+        )}
+        {allows(workspace, "workspace.delete") && (
+          <Button
+            size="sm"
+            className="text-red-11"
+            onClick={() => setDeleting(true)}
+          >
+            Delete
+          </Button>
+        )}
+      </div>
+      {problem && <ErrorText>{problem.message}</ErrorText>}
+      <EditWorkspaceDialog
+        workspace={workspace}
+        open={editing}
+        onOpenChange={setEditing}
+      />
+      <DeleteWorkspaceDialog
+        workspace={workspace}
+        open={deleting}
+        onOpenChange={setDeleting}
+      />
+    </>
+  );
+}
+
+function EditWorkspaceDialog({
+  workspace,
+  open,
+  onOpenChange,
+}: {
+  workspace: Workspace;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const update = useUpdateWorkspace(workspace.id);
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) update.reset();
+        onOpenChange(next);
+      }}
+      title="Edit workspace"
+      description={workspace.name}
+      submitLabel="Save"
+      onSubmit={(form) =>
+        update.mutate(
+          { version: workspace.version, ...detailsFrom(form) },
+          {
+            onSuccess: () => {
+              toast.success("Saved.");
+              onOpenChange(false);
+            },
+          },
+        )
+      }
+      pending={update.isPending}
+      error={update.error}
+    >
+      <DetailsFields initial={workspace} />
+    </EntityFormDialog>
+  );
+}
+
+/** Deleting is permanent, so the Workspace's name is typed to confirm. */
+function DeleteWorkspaceDialog({
+  workspace,
+  open,
+  onOpenChange,
+}: {
+  workspace: Workspace;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const remove = useDeleteWorkspace(workspace.id);
+  const [typed, setTyped] = useState("");
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          remove.reset();
+          setTyped("");
+        }
+        onOpenChange(next);
+      }}
+      title={`Delete ${workspace.name}?`}
+      description={
+        <>
+          Deleting is permanent and removes everything in the Workspace. Type its
+          name, <strong>{workspace.name}</strong>, to confirm.
+        </>
+      }
+      submitLabel="Delete Workspace"
+      onSubmit={() => remove.mutate(workspace.name)}
+      pending={remove.isPending || typed !== workspace.name}
+      error={remove.error}
+    >
+      <label className={labelClasses}>
+        Workspace name
+        <Input
+          value={typed}
+          autoComplete="off"
+          onChange={(event) => setTyped(event.target.value)}
+        />
+      </label>
+    </EntityFormDialog>
   );
 }

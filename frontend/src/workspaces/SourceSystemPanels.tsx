@@ -1,6 +1,7 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 
 import { ApiError } from "../api/client";
 import { useDeleteSourceSystem } from "../api/deletions";
@@ -10,35 +11,27 @@ import {
   type SourceSystem,
 } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
+import { EntityFormDialog } from "../components/entity/EntityFormDialog";
+import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
 import { Textarea } from "../components/ui/textarea";
 import {
-  Actions,
   DetailList,
-  EmptyState,
-  ErrorText,
   Hint,
   Panel,
-  TableCard,
-  formCardClasses,
   h3Classes,
-  h4Classes,
   labelClasses,
   monoClasses,
 } from "./parts";
 
 const CODE_HINT =
   "Lowercase letters, digits and underscores, starting with a letter (e.g. cbs). It is used in generated names.";
+
+const CONFLICT_MESSAGE =
+  "Someone else changed this Source System since you opened it. The latest version is loaded: check your edits, then save again.";
 
 interface Fields {
   name: string;
@@ -48,8 +41,7 @@ interface Fields {
   technical_owner: string;
 }
 
-function readFields(form: HTMLFormElement): Fields {
-  const data = new FormData(form);
+function readFields(data: FormData): Fields {
   const get = (name: string) => String(data.get(name) ?? "");
   return {
     name: get("name"),
@@ -124,111 +116,239 @@ function DetailFields({
 }
 
 /**
- * The Systems folder: every Source System, and for owners and editors a form to add one.
- * `onOpen` selects a system's folder.
+ * The Systems folder: every Source System, and for owners and editors a popup to add
+ * one. `onOpen` selects a system's folder; `reload` refetches the systems.
  */
 export function SystemsPanel({
   workspace,
   systems,
   onOpen,
+  reload,
 }: {
   workspace: Workspace;
   systems: readonly SourceSystem[];
   onOpen: (system: SourceSystem) => void;
+  reload: () => void;
 }) {
+  const [adding, setAdding] = useState(false);
+  const canCreate = allows(workspace, "source_system.create");
+  const canAct =
+    allows(workspace, "source_system.edit") || allows(workspace, "objects.delete");
+  const addButton = canCreate ? (
+    <Button variant="primary" onClick={() => setAdding(true)}>
+      <Plus aria-hidden />
+      Add system
+    </Button>
+  ) : null;
+  const columns: EntityColumn<SourceSystem>[] = [
+    {
+      header: "Name",
+      cell: (system) => (
+        <Button type="button" size="sm" onClick={() => onOpen(system)}>
+          {system.name}
+        </Button>
+      ),
+    },
+    {
+      header: "System Code",
+      className: monoClasses,
+      cell: (system) => system.code,
+    },
+    { header: "Business owner", cell: (system) => system.business_owner || "—" },
+    { header: "Technical owner", cell: (system) => system.technical_owner || "—" },
+  ];
+
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-4">
-      <h3 id="folder-title" className={h3Classes}>
-        Systems
-      </h3>
-      {systems.length === 0 ? (
-        <EmptyState>
-          No Source Systems yet. Each Source System you add will get its own
-          folder here.
-        </EmptyState>
-      ) : (
-        <TableCard>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Name</TableHead>
-                <TableHead scope="col">System Code</TableHead>
-                <TableHead scope="col">Business owner</TableHead>
-                <TableHead scope="col">Technical owner</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {systems.map((system) => (
-                <TableRow key={system.id}>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => onOpen(system)}
-                    >
-                      {system.name}
-                    </Button>
-                  </TableCell>
-                  <TableCell className={monoClasses}>{system.code}</TableCell>
-                  <TableCell>{system.business_owner || "—"}</TableCell>
-                  <TableCell>{system.technical_owner || "—"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableCard>
-      )}
-      {allows(workspace, "source_system.create") ? (
-        <AddSystemForm workspaceId={workspace.id} onAdded={onOpen} />
-      ) : (
-        <Hint>Only owners and editors can add Source Systems.</Hint>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id="folder-title" className={h3Classes}>
+          Systems
+        </h3>
+        {addButton && <span className="ml-auto">{addButton}</span>}
+      </div>
+      <EntityTable
+        rows={[...systems]}
+        rowKey={(system) => system.id}
+        rowLabel={(system) => system.name}
+        columns={columns}
+        actions={
+          canAct
+            ? (system) => (
+                <SystemActions workspace={workspace} system={system} reload={reload} />
+              )
+            : undefined
+        }
+        emptyMessage="No Source Systems yet. Each Source System you add will get its own folder here."
+      />
+      {!canCreate && <Hint>Only owners and editors can add Source Systems.</Hint>}
+      {canCreate && (
+        <AddSystemDialog
+          workspaceId={workspace.id}
+          open={adding}
+          onOpenChange={setAdding}
+          onAdded={onOpen}
+        />
       )}
     </section>
   );
 }
 
-function AddSystemForm({
+function AddSystemDialog({
   workspaceId,
+  open,
+  onOpenChange,
   onAdded,
 }: {
   workspaceId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onAdded: (system: SourceSystem) => void;
 }) {
   const create = useCreateSourceSystem(workspaceId);
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    create.mutate(readFields(form), {
-      onSuccess: (system) => {
-        form.reset();
-        onAdded(system);
-      },
-    });
-  }
-
   return (
-    <form
-      className={formCardClasses}
-      onSubmit={onSubmit}
-      aria-label="Add Source System"
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) create.reset();
+        onOpenChange(next);
+      }}
+      title="Add Source System"
+      description="Each Source System gets its own folder in the Workspace."
+      submitLabel="Add Source System"
+      onSubmit={(form) =>
+        create.mutate(readFields(form), {
+          onSuccess: (system) => {
+            onOpenChange(false);
+            onAdded(system);
+          },
+        })
+      }
+      pending={create.isPending}
+      error={create.error}
     >
-      <h4 className={h4Classes}>Add a Source System</h4>
       <DetailFields codeEditable />
-      {create.isError && <ErrorText>{create.error.message}</ErrorText>}
-      <Actions>
-        <Button type="submit" variant="primary" disabled={create.isPending}>
-          Add Source System
-        </Button>
-      </Actions>
-    </form>
+    </EntityFormDialog>
   );
 }
 
 /**
- * One Source System's details: editable by owners and editors, read-only for viewers;
- * only owners can change the System Code.
+ * What the member's role lets them do to one Source System: edit it (owners and editors,
+ * but only owners change the System Code) and delete it (owners; a soft delete).
  */
+function SystemActions({
+  workspace,
+  system,
+  reload,
+}: {
+  workspace: Workspace;
+  system: SourceSystem;
+  reload: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const remove = useDeleteSourceSystem(workspace.id, system.id);
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {allows(workspace, "source_system.edit") && (
+          <Button size="sm" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        )}
+        {allows(workspace, "objects.delete") && (
+          <Button
+            size="sm"
+            className="text-red-11"
+            onClick={() => setDeleting(true)}
+          >
+            Delete
+          </Button>
+        )}
+      </div>
+      <EditSystemDialog
+        workspace={workspace}
+        system={system}
+        reload={reload}
+        open={editing}
+        onOpenChange={setEditing}
+      />
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={(next) => {
+          if (!next) remove.reset();
+          setDeleting(next);
+        }}
+        title={`Delete ${system.name}?`}
+        description="It moves to the deleted list, where an owner can purge it for good."
+        confirmLabel="Delete Source System"
+        pending={remove.isPending}
+        error={remove.error}
+        onConfirm={() =>
+          remove.mutate(undefined, { onSuccess: () => setDeleting(false) })
+        }
+      />
+    </>
+  );
+}
+
+function EditSystemDialog({
+  workspace,
+  system,
+  reload,
+  open,
+  onOpenChange,
+}: {
+  workspace: Workspace;
+  system: SourceSystem;
+  reload: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const update = useUpdateSourceSystem(workspace.id, system.id);
+  const conflict =
+    update.error instanceof ApiError && update.error.code === "version_conflict";
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) update.reset();
+        onOpenChange(next);
+      }}
+      title="Edit Source System"
+      description={system.name}
+      submitLabel="Save"
+      onSubmit={(form) =>
+        update.mutate(
+          { version: system.version, ...readFields(form) },
+          {
+            onSuccess: () => {
+              toast.success("Saved.");
+              onOpenChange(false);
+            },
+            // The newer version loads, so saving again works.
+            onError: (error) => {
+              if (error instanceof ApiError && error.code === "version_conflict") {
+                reload();
+              }
+            },
+          },
+        )
+      }
+      pending={update.isPending}
+      error={conflict ? new Error(CONFLICT_MESSAGE) : update.error}
+    >
+      <DetailFields
+        initial={system}
+        codeEditable={allows(workspace, "source_system.change_code")}
+      />
+    </EntityFormDialog>
+  );
+}
+
+/** One Source System's details, with what the member's role lets them do to it. */
 export function SystemDetails({
   workspace,
   system,
@@ -238,116 +358,29 @@ export function SystemDetails({
   system: SourceSystem;
   reload: () => void;
 }) {
-  const update = useUpdateSourceSystem(workspace.id, system.id);
-
-  if (!allows(workspace, "source_system.edit")) {
-    return (
-      <Panel aria-labelledby="folder-title">
-        <h3 id="folder-title" className={h3Classes}>
-          {system.name}
-        </h3>
-        <DetailList>
-          <dt>System Code</dt>
-          <dd className={monoClasses}>{system.code}</dd>
-          <dt>Description</dt>
-          <dd>{system.description || "—"}</dd>
-          <dt>Business owner</dt>
-          <dd>{system.business_owner || "—"}</dd>
-          <dt>Technical owner</dt>
-          <dd>{system.technical_owner || "—"}</dd>
-        </DetailList>
-        <Hint>Only owners and editors can edit a Source System.</Hint>
-      </Panel>
-    );
-  }
-
-  const versionConflict =
-    update.error instanceof ApiError &&
-    update.error.code === "version_conflict";
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    // The form remounts on the new version, so a callback on mutate() would be dropped.
-    update
-      .mutateAsync({
-        version: system.version,
-        ...readFields(event.currentTarget),
-      })
-      .then(
-        () => toast.success("Saved."),
-        () => {},
-      );
-  }
+  const canAct =
+    allows(workspace, "source_system.edit") || allows(workspace, "objects.delete");
 
   return (
-    // A new version (saved, or reloaded) refills the inputs.
-    <form
-      key={system.version}
-      className={formCardClasses}
-      onSubmit={onSubmit}
-      aria-labelledby="folder-title"
-    >
+    <Panel aria-labelledby="folder-title">
       <h3 id="folder-title" className={h3Classes}>
         {system.name}
       </h3>
-      <DetailFields
-        initial={system}
-        codeEditable={allows(workspace, "source_system.change_code")}
-      />
-      {versionConflict ? (
-        <div
-          className="flex flex-col items-start gap-2 text-red-11"
-          role="alert"
-        >
-          <p>
-            Someone else changed this Source System since you opened it. Reload
-            it to see their changes, then edit again.
-          </p>
-          <Button
-            type="button"
-            onClick={() => {
-              update.reset();
-              reload();
-            }}
-          >
-            Reload
-          </Button>
-        </div>
+      <DetailList>
+        <dt>System Code</dt>
+        <dd className={monoClasses}>{system.code}</dd>
+        <dt>Description</dt>
+        <dd>{system.description || "—"}</dd>
+        <dt>Business owner</dt>
+        <dd>{system.business_owner || "—"}</dd>
+        <dt>Technical owner</dt>
+        <dd>{system.technical_owner || "—"}</dd>
+      </DetailList>
+      {canAct ? (
+        <SystemActions workspace={workspace} system={system} reload={reload} />
       ) : (
-        update.isError && <ErrorText>{update.error.message}</ErrorText>
+        <Hint>Only owners and editors can edit a Source System.</Hint>
       )}
-      <Actions>
-        <Button type="submit" variant="primary" disabled={update.isPending}>
-          Save
-        </Button>
-        {allows(workspace, "objects.delete") && (
-          <DeleteSystemButton workspaceId={workspace.id} system={system} />
-        )}
-      </Actions>
-    </form>
-  );
-}
-
-/** Soft-delete (owners only): the system moves to the deleted list until purged there. */
-function DeleteSystemButton({
-  workspaceId,
-  system,
-}: {
-  workspaceId: string;
-  system: SourceSystem;
-}) {
-  const remove = useDeleteSourceSystem(workspaceId, system.id);
-  return (
-    <>
-      <Button
-        type="button"
-        className="text-red-11"
-        disabled={remove.isPending}
-        onClick={() => remove.mutate()}
-      >
-        Delete Source System
-      </Button>
-      {remove.isError && <ErrorText>{remove.error.message}</ErrorText>}
-    </>
+    </Panel>
   );
 }

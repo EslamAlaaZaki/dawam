@@ -1,8 +1,9 @@
 "use client";
 
+import { UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ComponentProps, type FormEvent } from "react";
+import { useState, type ComponentProps } from "react";
 
 import {
   useAddMember,
@@ -20,26 +21,16 @@ import {
   type Workspace,
   type WorkspaceRole,
 } from "../api/workspaces";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
+import { EntityFormDialog } from "../components/entity/EntityFormDialog";
+import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import { Loading } from "../shell/Loading";
-import {
   Actions,
-  ErrorText,
-  Hint,
   NativeSelect,
   OkText,
-  TableCard,
-  formCardClasses,
   h3Classes,
   labelClasses,
   linkClasses,
@@ -57,85 +48,140 @@ export function MembersPanel({ workspace }: { workspace: Workspace }) {
   const me = useMe();
   const manages = allows(workspace, "workspace.manage_members");
   const transfers = allows(workspace, "workspace.transfer_ownership");
+  const [adding, setAdding] = useState(false);
+  // An invitation whose email could not be sent: the note stays until the page changes.
+  const [unsentTo, setUnsentTo] = useState<string | null>(null);
+
+  const columns: EntityColumn<Member>[] = [
+    {
+      header: "Name",
+      className: "font-medium",
+      cell: (member) => (
+        <>
+          {member.display_name}
+          {member.user_id === me.data?.id ? " (you)" : ""}
+          {!member.is_active && " — deactivated"}
+        </>
+      ),
+    },
+    {
+      header: "Email",
+      className: "text-sand-11",
+      cell: (member) => member.email,
+    },
+    { header: "Role", cell: (member) => ROLE_LABELS[member.role] },
+  ];
 
   return (
     <section aria-labelledby="members-title" className="flex flex-col gap-3">
-      <h3 id="members-title" className={h3Classes}>
-        Members
-      </h3>
-      {manages && <AddMemberForm workspaceId={workspace.id} />}
-      {members.isPending ? (
-        <Loading />
-      ) : members.isError ? (
-        <ErrorText>
-          Could not load the members: {members.error.message}
-        </ErrorText>
-      ) : (
-        <TableCard>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Name</TableHead>
-                <TableHead scope="col">Email</TableHead>
-                <TableHead scope="col">Role</TableHead>
-                {manages && <TableHead scope="col">Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.data.map((member) => (
-                <MemberRow
-                  key={member.user_id}
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id="members-title" className={h3Classes}>
+          Members
+        </h3>
+        {manages && (
+          <Button className="ml-auto" onClick={() => setAdding(true)}>
+            <UserPlus aria-hidden />
+            Add member
+          </Button>
+        )}
+      </div>
+      {unsentTo && (
+        <OkText>
+          {unsentTo} is invited, but the email could not be sent: an admin can
+          copy the link from{" "}
+          <Link href="/admin/email/links" className={linkClasses}>
+            Links to share
+          </Link>
+          .
+        </OkText>
+      )}
+      <EntityTable
+        rows={members.data}
+        rowKey={(member) => member.user_id}
+        rowLabel={(member) => member.display_name}
+        columns={columns}
+        actions={
+          manages
+            ? (member) => (
+                <MemberActions
                   workspaceId={workspace.id}
                   member={member}
                   isMe={member.user_id === me.data?.id}
-                  manages={manages}
                   transfers={transfers}
                 />
-              ))}
-            </TableBody>
-          </Table>
-        </TableCard>
-      )}
+              )
+            : undefined
+        }
+        isPending={members.isPending}
+        error={members.error}
+        loadErrorPrefix="Could not load the members:"
+        emptyMessage="No members."
+      />
       {allows(workspace, "workspace.leave") && (
         <LeaveWorkspace workspaceId={workspace.id} />
+      )}
+      {manages && (
+        <AddMemberDialog
+          workspaceId={workspace.id}
+          open={adding}
+          onOpenChange={setAdding}
+          onUnsent={setUnsentTo}
+        />
       )}
     </section>
   );
 }
 
-function AddMemberForm({ workspaceId }: { workspaceId: string }) {
+function AddMemberDialog({
+  workspaceId,
+  open,
+  onOpenChange,
+  onUnsent,
+}: {
+  workspaceId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUnsent: (email: string | null) => void;
+}) {
   const add = useAddMember(workspaceId);
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
+  function onSubmit(form: FormData) {
     add.mutate(
       {
-        email: String(data.get("email") ?? "").trim(),
-        role: String(data.get("role")) as WorkspaceRole,
+        email: String(form.get("email") ?? "").trim(),
+        role: String(form.get("role")) as WorkspaceRole,
       },
       {
         onSuccess: (outcome) => {
-          form.reset();
+          onUnsent(null);
           if (outcome.outcome === "added") {
             toast.success(
               `${outcome.member.display_name} is now ${withArticle(outcome.member.role)}.`,
             );
           } else if (outcome.delivery === "sent") {
             toast.success(`Invitation emailed to ${outcome.invitation.email}.`);
+          } else {
+            onUnsent(outcome.invitation.email);
           }
+          onOpenChange(false);
         },
       },
     );
   }
 
-  const result = add.data;
   return (
-    <form
-      className={formCardClasses}
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) add.reset();
+        onOpenChange(next);
+      }}
+      title="Add member"
+      description="Someone without an account gets an invitation to join DAWAM and this Workspace."
+      submitLabel="Add member"
       onSubmit={onSubmit}
-      aria-label="Add member"
+      pending={add.isPending}
+      error={add.error}
     >
       <label className={labelClasses}>
         Email
@@ -145,28 +191,7 @@ function AddMemberForm({ workspaceId }: { workspaceId: string }) {
         Role
         <RoleSelect name="role" defaultValue="editor" />
       </label>
-      <Hint>
-        Someone without an account gets an invitation to join DAWAM and this
-        Workspace.
-      </Hint>
-      <Actions>
-        <Button type="submit" variant="primary" disabled={add.isPending}>
-          Add member
-        </Button>
-      </Actions>
-      {add.isError && <ErrorText>{add.error.message}</ErrorText>}
-      {result?.outcome === "invited" &&
-        result.delivery === "link_for_admin" && (
-          <OkText>
-            {result.invitation.email} is invited, but the email could not be
-            sent: an admin can copy the link from{" "}
-            <Link href="/admin/email/links" className={linkClasses}>
-              Links to share
-            </Link>
-            .
-          </OkText>
-        )}
-    </form>
+    </EntityFormDialog>
   );
 }
 
@@ -188,137 +213,152 @@ function withArticle(role: WorkspaceRole): string {
   return `${role === "owner" || role === "editor" ? "an" : "a"} ${ROLE_LABELS[role].toLowerCase()}`;
 }
 
-function MemberRow({
+/** What an owner can do to one member; removing and transferring ask first. */
+function MemberActions({
   workspaceId,
   member,
   isMe,
-  manages,
   transfers,
 }: {
   workspaceId: string;
   member: Member;
   isMe: boolean;
-  manages: boolean;
   transfers: boolean;
 }) {
-  const changeRole = useChangeMemberRole(workspaceId);
   const remove = useRemoveMember(workspaceId);
   const transfer = useTransferOwnership(workspaceId);
-  const error = changeRole.error ?? remove.error ?? transfer.error;
-  const name = `${member.display_name}${isMe ? " (you)" : ""}`;
+  const [changing, setChanging] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [transferring, setTransferring] = useState(false);
 
   return (
-    <TableRow aria-label={member.display_name}>
-      <TableCell className="font-medium">
-        {name}
-        {!member.is_active && " — deactivated"}
-      </TableCell>
-      <TableCell className="text-sand-11">{member.email}</TableCell>
-      <TableCell>
-        {manages ? (
-          <RoleSelect
-            aria-label={`Role of ${member.display_name}`}
-            className="h-8 w-auto"
-            value={member.role}
-            disabled={changeRole.isPending}
-            onChange={(event) =>
-              changeRole.mutate({
-                userId: member.user_id,
-                role: event.target.value as WorkspaceRole,
-              })
-            }
-          />
-        ) : (
-          ROLE_LABELS[member.role]
+    <>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => setChanging(true)}>
+          Change role
+        </Button>
+        {!isMe && (
+          <Button size="sm" onClick={() => setRemoving(true)}>
+            Remove
+          </Button>
         )}
-      </TableCell>
-      {manages && (
-        <TableCell>
-          {!isMe && (
-            <Actions>
-              <ConfirmButton
-                label="Remove"
-                confirm={`Remove ${member.display_name}`}
-                disabled={remove.isPending}
-                onConfirm={() => remove.mutate(member.user_id)}
-              />
-              {transfers && member.role !== "owner" && (
-                <ConfirmButton
-                  label="Transfer ownership"
-                  confirm={`Make ${member.display_name} owner, and become an editor`}
-                  disabled={transfer.isPending}
-                  onConfirm={() => transfer.mutate(member.user_id)}
-                />
-              )}
-            </Actions>
-          )}
-          {error && <ErrorText>{error.message}</ErrorText>}
-        </TableCell>
-      )}
-    </TableRow>
+        {!isMe && transfers && member.role !== "owner" && (
+          <Button size="sm" onClick={() => setTransferring(true)}>
+            Transfer ownership
+          </Button>
+        )}
+      </div>
+      <ChangeRoleDialog
+        workspaceId={workspaceId}
+        member={member}
+        open={changing}
+        onOpenChange={setChanging}
+      />
+      <ConfirmDialog
+        open={removing}
+        onOpenChange={(next) => {
+          if (!next) remove.reset();
+          setRemoving(next);
+        }}
+        title={`Remove ${member.display_name}?`}
+        description="They lose access to this Workspace."
+        confirmLabel="Remove"
+        pending={remove.isPending}
+        error={remove.error}
+        onConfirm={() =>
+          remove.mutate(member.user_id, { onSuccess: () => setRemoving(false) })
+        }
+      />
+      <ConfirmDialog
+        open={transferring}
+        onOpenChange={(next) => {
+          if (!next) transfer.reset();
+          setTransferring(next);
+        }}
+        title={`Make ${member.display_name} the owner?`}
+        description="You become an editor."
+        confirmLabel="Transfer ownership"
+        pending={transfer.isPending}
+        error={transfer.error}
+        onConfirm={() =>
+          transfer.mutate(member.user_id, {
+            onSuccess: () => setTransferring(false),
+          })
+        }
+      />
+    </>
+  );
+}
+
+function ChangeRoleDialog({
+  workspaceId,
+  member,
+  open,
+  onOpenChange,
+}: {
+  workspaceId: string;
+  member: Member;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const changeRole = useChangeMemberRole(workspaceId);
+
+  return (
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) changeRole.reset();
+        onOpenChange(next);
+      }}
+      title={`Change role of ${member.display_name}`}
+      description={member.email}
+      submitLabel="Save"
+      onSubmit={(form) => {
+        const role = String(form.get("role")) as WorkspaceRole;
+        if (role === member.role) {
+          onOpenChange(false);
+          return;
+        }
+        changeRole.mutate(
+          { userId: member.user_id, role },
+          { onSuccess: () => onOpenChange(false) },
+        );
+      }}
+      pending={changeRole.isPending}
+      error={changeRole.error}
+    >
+      <label className={labelClasses}>
+        Role
+        <RoleSelect name="role" defaultValue={member.role} />
+      </label>
+    </EntityFormDialog>
   );
 }
 
 function LeaveWorkspace({ workspaceId }: { workspaceId: string }) {
   const leave = useLeaveWorkspace(workspaceId);
   const router = useRouter();
+  const [asking, setAsking] = useState(false);
   return (
     <Actions>
-      <ConfirmButton
-        label="Leave Workspace"
-        confirm="Leave this Workspace"
-        disabled={leave.isPending}
+      <Button size="sm" disabled={leave.isPending} onClick={() => setAsking(true)}>
+        Leave Workspace
+      </Button>
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={(next) => {
+          if (!next) leave.reset();
+          setAsking(next);
+        }}
+        title="Leave this Workspace?"
+        description="You lose access to it until an owner adds you again."
+        confirmLabel="Leave Workspace"
+        pending={leave.isPending}
+        error={leave.error}
         onConfirm={() =>
           leave.mutate(undefined, { onSuccess: () => router.push("/") })
         }
       />
-      {leave.isError && <ErrorText>{leave.error.message}</ErrorText>}
     </Actions>
-  );
-}
-
-/** A button that asks once more before acting. */
-function ConfirmButton({
-  label,
-  confirm,
-  disabled,
-  onConfirm,
-}: {
-  label: string;
-  confirm: string;
-  disabled: boolean;
-  onConfirm: () => void;
-}) {
-  const [asking, setAsking] = useState(false);
-  if (!asking) {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        disabled={disabled}
-        onClick={() => setAsking(true)}
-      >
-        {label}
-      </Button>
-    );
-  }
-  return (
-    <>
-      <Button
-        type="button"
-        size="sm"
-        variant="primary"
-        disabled={disabled}
-        onClick={() => {
-          setAsking(false);
-          onConfirm();
-        }}
-      >
-        {confirm}
-      </Button>
-      <Button type="button" size="sm" onClick={() => setAsking(false)}>
-        Cancel
-      </Button>
-    </>
   );
 }

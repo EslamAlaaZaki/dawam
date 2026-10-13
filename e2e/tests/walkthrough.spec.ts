@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // The core flows with the keyboard only (spec #231: WCAG AA, keyboard navigation):
-// sign in, open a Workspace, browse its folders, review a Change Set, manage users.
+// sign in, open the New workspace popup, open a Workspace, browse its folders, review a
+// Change Set, manage users.
 // Nothing here clicks. It is a Playwright project that depends on smoke.spec.ts
 // (playwright.config.ts) and uses the Workspace and the pending Change Set that journey
 // leaves behind: the "Sync staging" one, since smoke accepts the generation Change Set.
@@ -66,6 +67,17 @@ test("the core flows by keyboard alone", async ({ page }) => {
     expect((await focused(page))?.name).toBe("Skip to the page");
     await page.keyboard.press("Enter");
     await expect(page.locator("main")).toBeFocused();
+  });
+
+  await test.step("the New workspace popup opens by keyboard, takes focus, and gives it back on Escape", async () => {
+    await tabTo(page, "New workspace", "button");
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "New workspace" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel("Name")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(page.getByRole("button", { name: "New workspace" })).toBeFocused();
   });
 
   await test.step("open a Workspace", async () => {

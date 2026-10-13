@@ -15,7 +15,6 @@ import UsersPage from "../app/(signed-in)/admin/users/page";
 import ChangePasswordPage from "../app/(signed-in)/change-password/page";
 import HomePage from "../app/(signed-in)/page";
 import ProfilePage from "../app/(signed-in)/profile/page";
-import NewWorkspace from "../app/(signed-in)/workspaces/new/page";
 import AcceptInvitationPage from "../app/accept-invitation/page";
 import ForgotPasswordPage from "../app/forgot-password/page";
 import LoginPage from "../app/login/page";
@@ -111,12 +110,6 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <HomePage />
-        </SignedInLayout>
-      );
-    case "/workspaces/new":
-      return (
-        <SignedInLayout>
-          <NewWorkspace />
         </SignedInLayout>
       );
   }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 
 import { ApiError } from "../api/client";
 import {
@@ -15,31 +16,29 @@ import {
   type KpiTarget,
 } from "../api/kpis";
 import { allows, type Workspace } from "../api/workspaces";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
+import { EntityFormDialog } from "../components/entity/EntityFormDialog";
+import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
+import { useReturnFocus } from "../components/entity/useReturnFocus";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import { Loading } from "../shell/Loading";
-import {
-  Actions,
   DetailList,
-  EmptyState,
-  ErrorText,
   Hint,
   NativeSelect,
-  TableCard,
-  formCardClasses,
   h3Classes,
-  h4Classes,
   labelClasses,
   linkButtonClasses,
   monoClasses,
@@ -86,8 +85,7 @@ interface Fields {
 }
 
 /** The form's fields, or an error message for the first one that is wrong. */
-function readFields(form: HTMLFormElement): Fields | string {
-  const data = new FormData(form);
+function readFields(data: FormData): Fields | string {
   const get = (name: string) => String(data.get(name) ?? "");
   const targets = parseTargets(get("targets"));
   if (typeof targets === "string") {
@@ -171,10 +169,13 @@ function KpiFields({ initial }: { initial?: Kpi }) {
   );
 }
 
+const CONFLICT_MESSAGE =
+  "Someone else changed this KPI since you opened it. The latest version is loaded: check your edits, then save again.";
+
 /**
  * The KPIs folder of a Source System (`systemId`) or of the Data Warehouse (`systemId`
- * null): the KPIs documented there, one open at a time, and for owners and editors a form
- * to document another.
+ * null): the KPIs documented there, and for owners and editors a popup to document
+ * another and per-row Edit and Delete.
  */
 export function KpiCatalog({
   workspace,
@@ -186,78 +187,78 @@ export function KpiCatalog({
   title: string;
 }) {
   const kpis = useKpis(workspace.id, scope);
-  const [openId, setOpenId] = useState<string | null>(null);
-
-  if (kpis.isPending) {
-    return <Loading />;
-  }
-  if (kpis.isError) {
-    return <ErrorText>Could not load the KPIs: {kpis.error.message}</ErrorText>;
-  }
-  const open = kpis.data.find((kpi) => kpi.id === openId);
+  const [adding, setAdding] = useState(false);
+  const canEdit = allows(workspace, "kpi.edit");
+  const addButton = canEdit ? (
+    <Button variant="primary" onClick={() => setAdding(true)}>
+      <Plus aria-hidden />
+      Add KPI
+    </Button>
+  ) : null;
+  const columns: EntityColumn<Kpi>[] = [
+    {
+      header: "Name",
+      cell: (kpi) => (
+        <>
+          <KpiViewButton kpi={kpi} />
+          {kpi.origin === "ai" && <AiLabel />}
+        </>
+      ),
+    },
+    {
+      header: "Status",
+      cell: (kpi) => (
+        <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
+          {KPI_STATUS_LABELS[kpi.status]}
+        </Badge>
+      ),
+    },
+    { header: "Unit", cell: (kpi) => kpi.unit || "—" },
+    { header: "Owner", cell: (kpi) => kpi.owner || "—" },
+    { header: "Refresh", cell: (kpi) => kpi.refresh_frequency || "—" },
+  ];
 
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-4">
-      <h3 id="folder-title" className={h3Classes}>
-        {title}
-      </h3>
-      {kpis.data.length === 0 ? (
-        <EmptyState>
-          {scope.systemId
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id="folder-title" className={h3Classes}>
+          {title}
+        </h3>
+        {addButton && <span className="ml-auto">{addButton}</span>}
+      </div>
+      <EntityTable
+        rows={kpis.data}
+        rowKey={(kpi) => kpi.id}
+        rowLabel={(kpi) => kpi.name}
+        columns={columns}
+        actions={
+          canEdit
+            ? (kpi) => (
+                <KpiActions
+                  workspaceId={workspace.id}
+                  kpi={kpi}
+                  reload={() => void kpis.refetch()}
+                />
+              )
+            : undefined
+        }
+        isPending={kpis.isPending}
+        error={kpis.error}
+        loadErrorPrefix="Could not load the KPIs:"
+        emptyMessage={
+          scope.systemId
             ? "No KPIs yet. KPIs based on this system will be listed here."
-            : "No KPIs yet. KPIs that span systems will be listed here."}
-        </EmptyState>
-      ) : (
-        <TableCard>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Name</TableHead>
-                <TableHead scope="col">Status</TableHead>
-                <TableHead scope="col">Unit</TableHead>
-                <TableHead scope="col">Owner</TableHead>
-                <TableHead scope="col">Refresh</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {kpis.data.map((kpi) => (
-                <TableRow key={kpi.id}>
-                  <TableCell>
-                    <button
-                      type="button"
-                      className={linkButtonClasses}
-                      onClick={() => setOpenId(kpi.id)}
-                    >
-                      {kpi.name}
-                    </button>
-                    {kpi.origin === "ai" && <AiLabel />}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
-                      {KPI_STATUS_LABELS[kpi.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{kpi.unit || "—"}</TableCell>
-                  <TableCell>{kpi.owner || "—"}</TableCell>
-                  <TableCell>{kpi.refresh_frequency || "—"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableCard>
-      )}
-      {open && (
-        <KpiDetails
-          workspace={workspace}
-          kpi={open}
-          reload={() => kpis.refetch()}
-          onClose={() => setOpenId(null)}
+            : "No KPIs yet. KPIs that span systems will be listed here."
+        }
+      />
+      {!canEdit && <Hint>Only owners and editors can document KPIs.</Hint>}
+      {canEdit && (
+        <AddKpiDialog
+          workspaceId={workspace.id}
+          scope={scope}
+          open={adding}
+          onOpenChange={setAdding}
         />
-      )}
-      {allows(workspace, "kpi.edit") ? (
-        <AddKpiForm workspaceId={workspace.id} scope={scope} onAdded={(kpi) => setOpenId(kpi.id)} />
-      ) : (
-        <Hint>Only owners and editors can document KPIs.</Hint>
       )}
     </section>
   );
@@ -284,21 +285,79 @@ function AiRationale({ kpi }: { kpi: Kpi }) {
   );
 }
 
-function AddKpiForm({
+/** The KPI's name, which opens its details read-only (for every role). */
+function KpiViewButton({ kpi }: { kpi: Kpi }) {
+  const [open, setOpen] = useState(false);
+  const returnFocus = useReturnFocus(open);
+
+  return (
+    <>
+      <button type="button" className={linkButtonClasses} onClick={() => setOpen(true)}>
+        {kpi.name}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent onCloseAutoFocus={returnFocus}>
+          <DialogHeader>
+            <DialogTitle>{kpi.name}</DialogTitle>
+            <DialogDescription>KPI details</DialogDescription>
+          </DialogHeader>
+          <AiRationale kpi={kpi} />
+          <DetailList>
+            <dt>Status</dt>
+            <dd>
+              <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
+                {KPI_STATUS_LABELS[kpi.status]}
+              </Badge>
+            </dd>
+            <dt>Business definition</dt>
+            <dd>{kpi.definition || "—"}</dd>
+            <dt>Formula in words</dt>
+            <dd>{kpi.formula_text || "—"}</dd>
+            <dt>Formula SQL</dt>
+            <dd>
+              {kpi.formula_sql ? (
+                <code className={monoClasses}>{kpi.formula_sql}</code>
+              ) : (
+                "—"
+              )}
+            </dd>
+            <dt>Unit</dt>
+            <dd>{kpi.unit || "—"}</dd>
+            <dt>Aggregation</dt>
+            <dd>{kpi.aggregation || "—"}</dd>
+            <dt>Owner</dt>
+            <dd>{kpi.owner || "—"}</dd>
+            <dt>Refresh frequency</dt>
+            <dd>{kpi.refresh_frequency || "—"}</dd>
+            <dt>Targets</dt>
+            <dd>{kpi.targets.length ? targetsToText(kpi.targets) : "—"}</dd>
+          </DetailList>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function AddKpiDialog({
   workspaceId,
   scope,
-  onAdded,
+  open,
+  onOpenChange,
 }: {
   workspaceId: string;
   scope: KpiScope;
-  onAdded: (kpi: Kpi) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const create = useCreateKpi(workspaceId);
   const [problem, setProblem] = useState<string | null>(null);
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
+  function onSubmit(form: FormData) {
     const fields = readFields(form);
     if (typeof fields === "string") {
       setProblem(fields);
@@ -309,110 +368,152 @@ function AddKpiForm({
       { ...fields, source_system_id: scope.systemId },
       {
         onSuccess: (kpi) => {
-          form.reset();
-          onAdded(kpi);
+          toast.success(`${kpi.name} added.`);
+          onOpenChange(false);
         },
       },
     );
   }
 
   return (
-    <form className={formCardClasses} onSubmit={onSubmit} aria-label="Add KPI">
-      <h4 className={h4Classes}>Document a KPI</h4>
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          create.reset();
+          setProblem(null);
+        }
+        onOpenChange(next);
+      }}
+      title="Add KPI"
+      description="Document a KPI: what it means and how it is calculated."
+      submitLabel="Add KPI"
+      onSubmit={onSubmit}
+      pending={create.isPending}
+      error={problem ? new Error(problem) : create.error}
+    >
       <KpiFields />
-      {(problem || create.isError) && (
-        <ErrorText>{problem ?? create.error?.message}</ErrorText>
-      )}
-      <Actions>
-        <Button type="submit" variant="primary" disabled={create.isPending}>
-          Add KPI
-        </Button>
-      </Actions>
-    </form>
+    </EntityFormDialog>
   );
 }
 
-/** One KPI: editable (and deletable) by owners and editors, read-only for viewers. */
-function KpiDetails({
-  workspace,
+/** What owners and editors can do to one KPI; deleting asks first. */
+function KpiActions({
+  workspaceId,
   kpi,
   reload,
-  onClose,
 }: {
-  workspace: Workspace;
+  workspaceId: string;
   kpi: Kpi;
   reload: () => void;
-  onClose: () => void;
 }) {
-  const update = useUpdateKpi(workspace.id, kpi.id);
-  const remove = useDeleteKpi(workspace.id, kpi.id);
+  const remove = useDeleteKpi(workspaceId, kpi.id);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
+        <Button size="sm" className="text-red-11" onClick={() => setDeleting(true)}>
+          Delete
+        </Button>
+      </div>
+      <EditKpiDialog
+        workspaceId={workspaceId}
+        kpi={kpi}
+        reload={reload}
+        open={editing}
+        onOpenChange={setEditing}
+      />
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={(next) => {
+          if (!next) remove.reset();
+          setDeleting(next);
+        }}
+        title={`Delete ${kpi.name}?`}
+        description="The KPI is removed from this list."
+        confirmLabel="Delete KPI"
+        pending={remove.isPending}
+        error={remove.error}
+        onConfirm={() =>
+          remove.mutate(undefined, { onSuccess: () => setDeleting(false) })
+        }
+      />
+    </>
+  );
+}
+
+/** One KPI's fields and status, saved against the version that was opened. */
+function EditKpiDialog({
+  workspaceId,
+  kpi,
+  reload,
+  open,
+  onOpenChange,
+}: {
+  workspaceId: string;
+  kpi: Kpi;
+  reload: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const update = useUpdateKpi(workspaceId, kpi.id);
   const [problem, setProblem] = useState<string | null>(null);
+  const conflict =
+    update.error instanceof ApiError && update.error.code === "version_conflict";
 
-  if (!allows(workspace, "kpi.edit")) {
-    return (
-      <section aria-label={`KPI ${kpi.name}`} className={formCardClasses}>
-        <h4 className={h4Classes}>{kpi.name}</h4>
-        <AiRationale kpi={kpi} />
-        <DetailList>
-          <dt>Status</dt>
-          <dd>
-            <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
-              {KPI_STATUS_LABELS[kpi.status]}
-            </Badge>
-          </dd>
-          <dt>Business definition</dt>
-          <dd>{kpi.definition || "—"}</dd>
-          <dt>Formula in words</dt>
-          <dd>{kpi.formula_text || "—"}</dd>
-          <dt>Formula SQL</dt>
-          <dd>{kpi.formula_sql ? <code className={monoClasses}>{kpi.formula_sql}</code> : "—"}</dd>
-          <dt>Unit</dt>
-          <dd>{kpi.unit || "—"}</dd>
-          <dt>Aggregation</dt>
-          <dd>{kpi.aggregation || "—"}</dd>
-          <dt>Owner</dt>
-          <dd>{kpi.owner || "—"}</dd>
-          <dt>Refresh frequency</dt>
-          <dd>{kpi.refresh_frequency || "—"}</dd>
-          <dt>Targets</dt>
-          <dd>{kpi.targets.length ? targetsToText(kpi.targets) : "—"}</dd>
-        </DetailList>
-        <Actions>
-          <Button type="button" onClick={onClose}>
-            Close
-          </Button>
-        </Actions>
-      </section>
-    );
-  }
-
-  const versionConflict = update.error instanceof ApiError && update.error.code === "version_conflict";
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
+  function onSubmit(form: FormData) {
     const fields = readFields(form);
     if (typeof fields === "string") {
       setProblem(fields);
       return;
     }
     setProblem(null);
-    const status = String(new FormData(form).get("status")) as KpiStatus;
+    const status = String(form.get("status")) as KpiStatus;
     update.mutate(
       { version: kpi.version, ...fields, status },
-      { onSuccess: () => toast.success("Saved.") },
+      {
+        onSuccess: () => {
+          toast.success("Saved.");
+          onOpenChange(false);
+        },
+        // The newer version loads, so saving again works.
+        onError: (error) => {
+          if (error instanceof ApiError && error.code === "version_conflict") {
+            reload();
+          }
+        },
+      },
     );
   }
 
   return (
-    // A new version (saved, or reloaded) refills the inputs.
-    <form
-      key={`${kpi.id}-${kpi.version}`}
-      className={formCardClasses}
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          update.reset();
+          setProblem(null);
+        }
+        onOpenChange(next);
+      }}
+      title="Edit KPI"
+      description={kpi.name}
+      submitLabel="Save"
       onSubmit={onSubmit}
-      aria-label={`KPI ${kpi.name}`}
+      pending={update.isPending}
+      error={
+        problem
+          ? new Error(problem)
+          : conflict
+            ? new Error(CONFLICT_MESSAGE)
+            : update.error
+      }
     >
-      <h4 className={h4Classes}>{kpi.name}</h4>
       <AiRationale kpi={kpi} />
       <label className={labelClasses}>
         Status
@@ -425,43 +526,6 @@ function KpiDetails({
         </NativeSelect>
       </label>
       <KpiFields initial={kpi} />
-      {versionConflict ? (
-        <div role="alert" className="flex flex-col items-start gap-2 text-sm text-red-11">
-          <p>
-            Someone else changed this KPI since you opened it. Reload it to see their changes,
-            then edit again.
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              update.reset();
-              reload();
-            }}
-          >
-            Reload
-          </Button>
-        </div>
-      ) : (
-        (problem || update.isError || remove.isError) && (
-          <ErrorText>{problem ?? update.error?.message ?? remove.error?.message}</ErrorText>
-        )
-      )}
-      <Actions>
-        <Button type="submit" variant="primary" disabled={update.isPending}>
-          Save
-        </Button>
-        <Button
-          type="button"
-          disabled={remove.isPending}
-          onClick={() => remove.mutate(undefined, { onSuccess: onClose })}
-        >
-          Delete KPI
-        </Button>
-        <Button type="button" onClick={onClose}>
-          Close
-        </Button>
-      </Actions>
-    </form>
+    </EntityFormDialog>
   );
 }

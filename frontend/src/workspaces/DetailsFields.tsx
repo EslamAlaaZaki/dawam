@@ -36,7 +36,10 @@ export function DetailsFields({ initial }: { initial?: Workspace }) {
 }
 
 export function readDetails(form: HTMLFormElement): Details {
-  const data = new FormData(form);
+  return detailsFrom(new FormData(form));
+}
+
+export function detailsFrom(data: FormData): Details {
   return {
     name: String(data.get("name") ?? ""),
     description: String(data.get("description") ?? ""),

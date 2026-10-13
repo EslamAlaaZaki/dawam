@@ -99,6 +99,12 @@ beforeEach(() => {
 });
 afterEach(() => clearCookie());
 
+/** Opens the Add member popup from the Members header. */
+async function openAddMember() {
+  fireEvent.click(await screen.findByRole("button", { name: "Add member" }));
+  return screen.findByRole("dialog", { name: "Add member" });
+}
+
 describe("the members panel", () => {
   it("lists the members with their roles for any member, read-only for non-owners", async () => {
     renderApp(backend("viewer", [{ ...ADA_MEMBER, role: "viewer" }, { ...GRACE, role: "owner" }]), PATH);
@@ -107,8 +113,8 @@ describe("the members panel", () => {
     expect(grace).toHaveTextContent("grace@example.com");
     expect(grace).toHaveTextContent("Owner");
     expect(screen.getByRole("row", { name: "Ada Lovelace" })).toHaveTextContent("(you)");
-    expect(screen.queryByRole("form", { name: "Add member" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /Role of/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add member" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change role" })).not.toBeInTheDocument();
   });
 
   it("lets an owner add someone by email with a role", async () => {
@@ -124,7 +130,7 @@ describe("the members panel", () => {
       PATH,
     );
 
-    const form = await screen.findByRole("form", { name: "Add member" });
+    const form = await openAddMember();
     fireEvent.change(within(form).getByLabelText("Email"), {
       target: { value: "alan@example.com" },
     });
@@ -156,7 +162,7 @@ describe("the members panel", () => {
       PATH,
     );
 
-    const form = await screen.findByRole("form", { name: "Add member" });
+    const form = await openAddMember();
     fireEvent.change(within(form).getByLabelText("Email"), {
       target: { value: "new@example.com" },
     });
@@ -175,7 +181,7 @@ describe("the members panel", () => {
       PATH,
     );
 
-    const form = await screen.findByRole("form", { name: "Add member" });
+    const form = await openAddMember();
     fireEvent.change(within(form).getByLabelText("Email"), {
       target: { value: "new@example.com" },
     });
@@ -194,9 +200,11 @@ describe("the members panel", () => {
       PATH,
     );
 
-    fireEvent.change(await screen.findByRole("combobox", { name: "Role of Grace Hopper" }), {
-      target: { value: "editor" },
-    });
+    const grace = await screen.findByRole("row", { name: "Grace Hopper" });
+    fireEvent.click(within(grace).getByRole("button", { name: "Change role" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change role of Grace Hopper" });
+    fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "editor" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(requests.find((r) => r.method === "PATCH")).toMatchObject({
@@ -216,12 +224,13 @@ describe("the members panel", () => {
       PATH,
     );
 
-    fireEvent.change(await screen.findByRole("combobox", { name: "Role of Ada Lovelace" }), {
-      target: { value: "viewer" },
-    });
+    const row = await screen.findByRole("row", { name: "Ada Lovelace" });
+    fireEvent.click(within(row).getByRole("button", { name: "Change role" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change role of Ada Lovelace" });
+    fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "viewer" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    const row = screen.getByRole("row", { name: "Ada Lovelace" });
-    expect(await within(row).findByRole("alert")).toHaveTextContent(
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "A Workspace needs at least one owner.",
     );
   });
@@ -240,8 +249,9 @@ describe("the members panel", () => {
 
     const grace = await screen.findByRole("row", { name: "Grace Hopper" });
     fireEvent.click(within(grace).getByRole("button", { name: "Remove" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove Grace Hopper?" });
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
-    fireEvent.click(within(grace).getByRole("button", { name: "Remove Grace Hopper" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("row", { name: "Grace Hopper" })).not.toBeInTheDocument(),
@@ -261,11 +271,8 @@ describe("the members panel", () => {
 
     const grace = await screen.findByRole("row", { name: "Grace Hopper" });
     fireEvent.click(within(grace).getByRole("button", { name: "Transfer ownership" }));
-    fireEvent.click(
-      within(grace).getByRole("button", {
-        name: "Make Grace Hopper owner, and become an editor",
-      }),
-    );
+    const dialog = await screen.findByRole("dialog", { name: "Make Grace Hopper the owner?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Transfer ownership" }));
 
     await waitFor(() =>
       expect(requests.find((r) => r.path.endsWith("/transfer-ownership"))?.body).toEqual({
@@ -283,7 +290,8 @@ describe("the members panel", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Leave Workspace" }));
-    fireEvent.click(screen.getByRole("button", { name: "Leave this Workspace" }));
+    const dialog = await screen.findByRole("dialog", { name: "Leave this Workspace?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Leave Workspace" }));
 
     await waitFor(() => expect(currentLocation()).toBe("/"));
   });
