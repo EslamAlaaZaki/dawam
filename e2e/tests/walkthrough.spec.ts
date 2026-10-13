@@ -118,11 +118,12 @@ test("the core flows by keyboard alone", async ({ page }) => {
   await test.step("manage users: create one, find it, reach its actions", async () => {
     await page.goto("/admin/users");
     await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
-    await tabTo(page, "Create user", "a");
+    await tabTo(page, "Create user", "button");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/admin\/users\/new$/);
+    await expect(page.getByRole("dialog", { name: "Create user" })).toBeVisible();
 
-    await tabTo(page, "", "input");
+    // The popup takes focus into its first field.
+    await expect(page.getByLabel("Email")).toBeFocused();
     await page.keyboard.type(EMAIL);
     await page.keyboard.press("Tab");
     await page.keyboard.type("Kay Board");
@@ -130,8 +131,10 @@ test("the core flows by keyboard alone", async ({ page }) => {
     await page.keyboard.press("Tab");
     await page.keyboard.type("keyboard-Passw0rd-2026");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByText(`${EMAIL} created.`)).toBeVisible();
+    // Closing the popup gives focus back to the button that opened it.
+    await expect(page.getByRole("button", { name: "Create user" })).toBeFocused();
 
     await tabTo(page, "Search", "button");
     await tabTo(page, "Make admin", "button");

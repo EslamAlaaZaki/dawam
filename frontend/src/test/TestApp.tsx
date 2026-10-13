@@ -11,7 +11,6 @@ import InvitationsPage from "../app/(signed-in)/admin/invitations/page";
 import AdminWorkspacesPage from "../app/(signed-in)/admin/workspaces/page";
 import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
 import SecurityEventsPage from "../app/(signed-in)/admin/security-events/page";
-import CreateUserPage from "../app/(signed-in)/admin/users/new/page";
 import UsersPage from "../app/(signed-in)/admin/users/page";
 import ChangePasswordPage from "../app/(signed-in)/change-password/page";
 import HomePage from "../app/(signed-in)/page";
@@ -52,12 +51,6 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <UsersPage />
-        </SignedInLayout>
-      );
-    case "/admin/users/new":
-      return (
-        <SignedInLayout>
-          <CreateUserPage />
         </SignedInLayout>
       );
     case "/admin/workspaces":
