@@ -212,7 +212,11 @@ def test_reindexing_embeds_again_with_the_new_model_and_dimension(roles, policy,
     assert [(str(m), d) for m, d in chunk_rows(app)] == [(first, 4)]
 
     admin = roles.client("admin")
-    admin.delete(f"{ADMIN}/models/{first}")
+    # Documents indexed with a model block its removal; drop their link to stand in for the
+    # model having gone away some other way (e.g. a database restore).
+    with app.state.engine.begin() as conn:
+        conn.execute(sa.text("UPDATE document_chunks SET embedding_model_id = NULL"))
+    assert admin.delete(f"{ADMIN}/models/{first}").status_code == 204
     fake_llm.dimension = 6
     second = register_embedding_model(roles, internal=True, name="bge-large")
     response = roles.client("editor").post(
@@ -313,10 +317,10 @@ def test_documents_are_indexed_with_the_workspaces_own_embedding_model(
 
 def test_an_embedding_model_with_indexed_documents_cannot_be_removed(roles, policy, fake_llm, app):
     model_id = register_embedding_model(roles, internal=True)
-    spare = register_embedding_model(roles, internal=True, name="spare")
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
     assert {str(m) for m, _ in chunk_rows(app)} == {model_id}
+    spare = register_embedding_model(roles, internal=True, name="spare")
     admin = roles.client("admin")
 
     refused = admin.post(f"{ADMIN}/models/{model_id}/removal", json={"embedding_model_id": spare})
