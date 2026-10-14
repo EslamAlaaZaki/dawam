@@ -78,6 +78,8 @@ class Conversation:
     owner_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    model_id: uuid.UUID | None = None
+    """The model picked for the last message; none until one is picked."""
 
 
 @dataclass(frozen=True)
@@ -120,6 +122,8 @@ class ChatMessage:
     """On the member's message: the run that answered it."""
     sender: Sender | None = None
     """On a member's message: who sent it. None on the assistant's replies."""
+    model: str | None = None
+    """On a reply: the display name of the model that answered."""
 
 
 @dataclass(frozen=True)
@@ -148,6 +152,8 @@ class Completed:
     run: RunView
     message_id: uuid.UUID | None
     """The saved answer; none when there was no text."""
+    model: str | None = None
+    """The display name of the model that answered."""
 
 
 StreamEvent = Started | Text | ToolFinished | Completed
@@ -266,6 +272,7 @@ class AssistantService:
                 )
             }
             senders = self._senders({m.sender_user_id for m in messages} - {None})
+            models = self._ai.model_names({m.model_id for m in messages} - {None})
             return ConversationDetail(
                 self._view(user, scope, record),
                 [
@@ -276,6 +283,7 @@ class AssistantService:
                         m.created_at,
                         runs.get(m.id),
                         senders.get(m.sender_user_id) if m.sender_user_id else None,
+                        models.get(m.model_id) if m.model_id else None,
                     )
                     for m in messages
                 ],
@@ -311,8 +319,12 @@ class AssistantService:
         conversation_id: uuid.UUID,
         content: str,
         context: PageContext | None = None,
+        model_id: uuid.UUID | None = None,
     ) -> Iterator[StreamEvent]:
         """Store the member's message and return the events of the run answering it.
+        ``model_id`` picks the model for this message (an allowed chat model, else 422
+        ``model_not_allowed`` / ``invalid_model_role``); without it the conversation's last
+        pick is used, else the Workspace's agent model.
         409 ``workspace_archived``, 409 ``run_in_progress``, 422 ``invalid_message``."""
         scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         content = content.strip()
@@ -323,6 +335,8 @@ class AssistantService:
                 f"A message must have 1 to {MESSAGE_MAX_LENGTH} characters.",
                 {"field": "content"},
             )
+        if model_id is not None:
+            self._ai.check_chat_model(workspace_id, model_id)
         now = self._clock()
         with Session(self._engine) as db, db.begin():
             record = self._load(
@@ -371,9 +385,17 @@ class AssistantService:
             if record.title == DEFAULT_TITLE:
                 record.title = _title_from(content)
             record.updated_at = now
+            if model_id is not None:
+                record.last_model_id = model_id
+            elif record.last_model_id is not None and self._ai.usable_model_id(
+                workspace_id, record.last_model_id
+            ):
+                model_id = record.last_model_id  # else the pick is gone: the default answers
             history = self._history(db, conversation_id)
             started = Started(run.id, message.id)
-        return self._stream(user, workspace_id, conversation_id, started, history, context)
+        return self._stream(
+            user, workspace_id, conversation_id, started, history, context, model_id
+        )
 
     def stop(self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
         """Ask the conversation's running response to stop (by a member who may post to it).
@@ -522,17 +544,25 @@ class AssistantService:
         started: Started,
         history: Sequence[Message],
         context: PageContext | None,
+        model_id: uuid.UUID | None = None,
     ) -> Iterator[StreamEvent]:
         began = self._timer()
         text: list[str] = []
         calls: list[ToolCallRecord] = []
         saved = False
+        answered_by = model_id
         try:
             yield started
             try:
-                gateway = self._roles.gateway_for_role(
-                    "agent", workspace_id=workspace_id, user_id=user.id
-                )
+                if model_id is None:
+                    gateway = self._roles.gateway_for_role(
+                        "agent", workspace_id=workspace_id, user_id=user.id
+                    )
+                    answered_by = self._ai.agent_model_id(workspace_id)
+                else:
+                    gateway = self._roles.metered_gateway(
+                        model_id, "agent", workspace_id=workspace_id, user_id=user.id
+                    )
                 tools = self._tools.bind(
                     user, workspace_id, self._ai.policy(workspace_id), conversation_id
                 )
@@ -569,13 +599,15 @@ class AssistantService:
                     "internal_error",
                     "The assistant hit an unexpected error.",
                 )
-            completed = self._finish(user, workspace_id, started, finished, self._timer() - began)
+            completed = self._finish(
+                user, workspace_id, started, finished, self._timer() - began, answered_by
+            )
             saved = True
             yield completed
         finally:
             if not saved:  # the browser went away mid-answer
                 gone = Finished("cancelled", "".join(text), calls, 0, 0)
-                self._finish(user, workspace_id, started, gone, self._timer() - began)
+                self._finish(user, workspace_id, started, gone, self._timer() - began, answered_by)
 
     def _finish(
         self,
@@ -584,6 +616,7 @@ class AssistantService:
         started: Started,
         finished: Finished,
         seconds: float,
+        model_id: uuid.UUID | None = None,
     ) -> Completed:
         now = self._clock()
         duration_ms = round(seconds * 1000)
@@ -605,6 +638,7 @@ class AssistantService:
                         position=self._next_position(db, run.conversation_id),
                         role="assistant",
                         content=redact_text(finished.text),
+                        model_id=model_id,
                         created_at=now,
                     )
                 )
@@ -641,7 +675,8 @@ class AssistantService:
                 "duration_ms": duration_ms,
             },
         )
-        return Completed(view, answer_id)
+        name = self._ai.model_names({model_id}).get(model_id) if model_id else None
+        return Completed(view, answer_id, name)
 
     def _cancel_requested(self, run_id: uuid.UUID) -> bool:
         with Session(self._engine) as db:
@@ -678,6 +713,7 @@ class AssistantService:
             owner_id=record.user_id,
             created_at=record.created_at,
             updated_at=record.updated_at,
+            model_id=record.last_model_id,
         )
 
     @staticmethod

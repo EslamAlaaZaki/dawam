@@ -5225,6 +5225,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Model Id
+             * @description The model picked for the last message, used again until another is picked; none until one is.
+             */
+            model_id: string | null;
         };
         /** CoverageOut */
         CoverageOut: {
@@ -7422,6 +7427,11 @@ export interface components {
             run: components["schemas"]["RunOut"] | null;
             /** @description On a member's message: who sent it. None on the assistant's replies. */
             sender: components["schemas"]["SenderOut"] | null;
+            /**
+             * Model
+             * @description On a reply: the display name of the model that answered.
+             */
+            model: string | null;
         };
         /** MoveLayerRequest */
         MoveLayerRequest: {
@@ -8436,6 +8446,11 @@ export interface components {
             content: string;
             /** @description The object on the current page; everything else is fetched. */
             context?: components["schemas"]["PageContextIn"] | null;
+            /**
+             * Model Id
+             * @description The model to answer with: a chat model in the Workspace's Allowed Models (422 `model_not_allowed` or `invalid_model_role` otherwise). Omitted: the conversation's last pick, else the Workspace's agent model.
+             */
+            model_id?: string | null;
         };
         /** SenderOut */
         SenderOut: {

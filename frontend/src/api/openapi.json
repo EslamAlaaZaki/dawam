@@ -17591,6 +17591,19 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "The model picked for the last message, used again until another is picked; none until one is."
           }
         },
         "type": "object",
@@ -17601,7 +17614,8 @@
           "mine",
           "can_post",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "model_id"
         ],
         "title": "ConversationOut"
       },
@@ -22519,6 +22533,18 @@
               }
             ],
             "description": "On a member's message: who sent it. None on the assistant's replies."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "On a reply: the display name of the model that answered."
           }
         },
         "type": "object",
@@ -22528,7 +22554,8 @@
           "content",
           "created_at",
           "run",
-          "sender"
+          "sender",
+          "model"
         ],
         "title": "MessageOut"
       },
@@ -24755,6 +24782,19 @@
               }
             ],
             "description": "The object on the current page; everything else is fetched."
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "The model to answer with: a chat model in the Workspace's Allowed Models (422 `model_not_allowed` or `invalid_model_role` otherwise). Omitted: the conversation's last pick, else the Workspace's agent model."
           }
         },
         "type": "object",

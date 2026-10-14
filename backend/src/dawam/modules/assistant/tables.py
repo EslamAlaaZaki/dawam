@@ -33,6 +33,10 @@ class ConversationRecord(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(sa.String(TITLE_MAX_LENGTH))
     shared_with_workspace: Mapped[bool]
+    last_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    """The model picked for the last message; used again until another is picked."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
@@ -57,6 +61,10 @@ class MessageRecord(Base):
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
     """The member who sent a ``user`` message; none on the assistant's replies."""
+    model_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
+    """On an answer: the model that wrote it."""
     content: Mapped[str] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
