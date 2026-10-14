@@ -351,7 +351,7 @@ describe("language models page", () => {
       return screen.findByRole("dialog", { name: "Add a model" });
     }
 
-    it("lists the provider's models, disables registered ones, searches and adds the pick", async () => {
+    it("lists the provider's models, disables registered ones and adds the pick", async () => {
       const out: { post?: ApiRequest } = {};
       openDialog(
         json({
@@ -366,21 +366,17 @@ describe("language models page", () => {
       );
 
       const dialog = await open();
-      const registered = await within(dialog).findByRole("option", {
-        name: /qwen3/,
-      });
-      expect(within(registered).getByRole("button")).toBeDisabled();
-      expect(
-        within(within(dialog).getByRole("listbox")).getAllByRole("option"),
-      ).toHaveLength(3);
+      const pick = await within(dialog).findByLabelText("Model name");
+      const options = within(pick).getAllByRole("option");
+      expect(options.map((o) => o.textContent)).toEqual([
+        "Choose a model",
+        "llama",
+        "qwen3 (already added)",
+        "mistral",
+      ]);
+      expect(options[2]).toBeDisabled();
 
-      fireEvent.change(within(dialog).getByLabelText("Model name"), {
-        target: { value: "MIS" },
-      });
-      expect(
-        within(within(dialog).getByRole("listbox")).getAllByRole("option"),
-      ).toHaveLength(1);
-      fireEvent.click(within(dialog).getByRole("button", { name: "mistral" }));
+      fireEvent.change(pick, { target: { value: "mistral" } });
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Add model" }),
       );
@@ -400,7 +396,7 @@ describe("language models page", () => {
       );
 
       const dialog = await open();
-      await within(dialog).findByRole("option", { name: /llama/ });
+      await within(dialog).findByRole("option", { name: "llama" });
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Add model" }),
       );
@@ -427,7 +423,9 @@ describe("language models page", () => {
       expect(
         await within(dialog).findByText(/The provider rejected the API key\./),
       ).toBeInTheDocument();
-      expect(within(dialog).queryByRole("listbox")).not.toBeInTheDocument();
+      expect(
+        within(dialog).getByRole("textbox", { name: "Model name" }),
+      ).toBeInTheDocument();
       fireEvent.change(within(dialog).getByLabelText("Model name"), {
         target: { value: "typed-model" },
       });

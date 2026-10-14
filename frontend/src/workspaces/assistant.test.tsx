@@ -504,7 +504,9 @@ describe("the assistant's chat panel", () => {
     );
     await openAssistant();
 
-    fireEvent.click(await screen.findByLabelText(/Share with the Workspace/));
+    fireEvent.click(
+      await screen.findByRole("switch", { name: /Share with the Workspace/ }),
+    );
 
     await waitFor(() =>
       expect(requests.find((r) => r.method === "PATCH")).toMatchObject({

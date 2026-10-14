@@ -80,6 +80,8 @@ afterEach(() => clearCookie());
 describe("the Workspace frame", () => {
   it("puts the Workspace switcher and the folder tree in the sidebar", async () => {
     renderApp(backend(), `${PATH}?folder=dw`);
+    // The Data Warehouse folder opens its setup dialog, which hides the page behind it.
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
 
     const sidebar = await screen.findByRole("complementary", {
       name: "Navigation",
