@@ -9,6 +9,8 @@ export type LlmProvider = components["schemas"]["LlmProvider"];
 export type LlmModel = components["schemas"]["LlmModel"];
 export type LlmProviderInput = components["schemas"]["LlmProviderRequest"];
 export type LlmModelInput = components["schemas"]["LlmModelRequest"];
+export type LlmModelUsage = components["schemas"]["LlmModelUsage"];
+export type LlmModelRemoval = components["schemas"]["LlmModelRemoval"];
 export type LlmSetup = components["schemas"]["LlmSetupStatus"];
 
 const providersKey = ["admin", "llm", "providers"] as const;
@@ -19,7 +21,9 @@ export function useLlmProviders() {
   return useQuery({
     queryKey: providersKey,
     queryFn: async () => {
-      const { data, error, response } = await client.GET("/api/v1/admin/llm/providers");
+      const { data, error, response } = await client.GET(
+        "/api/v1/admin/llm/providers",
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -35,7 +39,9 @@ export function useLlmSetup({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: setupKey,
     enabled,
     queryFn: async () => {
-      const { data, error, response } = await client.GET("/api/v1/admin/llm/setup");
+      const { data, error, response } = await client.GET(
+        "/api/v1/admin/llm/setup",
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -57,9 +63,12 @@ export function useCreateLlmProvider() {
   const refresh = useRefreshing();
   return useMutation({
     mutationFn: async (body: LlmProviderInput) => {
-      const { data, error, response } = await client.POST("/api/v1/admin/llm/providers", {
-        body,
-      });
+      const { data, error, response } = await client.POST(
+        "/api/v1/admin/llm/providers",
+        {
+          body,
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -127,10 +136,13 @@ export function useUpdateLlmModel(modelId: string) {
   const refresh = useRefreshing();
   return useMutation({
     mutationFn: async (body: LlmModelInput) => {
-      const { data, error, response } = await client.PUT("/api/v1/admin/llm/models/{model_id}", {
-        params: { path: { model_id: modelId } },
-        body,
-      });
+      const { data, error, response } = await client.PUT(
+        "/api/v1/admin/llm/models/{model_id}",
+        {
+          params: { path: { model_id: modelId } },
+          body,
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -145,9 +157,12 @@ export function useDeleteLlmModel() {
   const refresh = useRefreshing();
   return useMutation({
     mutationFn: async (modelId: string) => {
-      const { error, response } = await client.DELETE("/api/v1/admin/llm/models/{model_id}", {
-        params: { path: { model_id: modelId } },
-      });
+      const { error, response } = await client.DELETE(
+        "/api/v1/admin/llm/models/{model_id}",
+        {
+          params: { path: { model_id: modelId } },
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -169,6 +184,52 @@ export function useTestLlmModel() {
         throw new ApiError(response.status, error.error);
       }
       return data;
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** Where a model is used: what its removal popup has to ask a replacement for. */
+export function useLlmModelUsage(
+  modelId: string,
+  { enabled }: { enabled: boolean },
+) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["admin", "llm", "model-usage", modelId],
+    enabled,
+    gcTime: 0,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/admin/llm/models/{model_id}/usage",
+        {
+          params: { path: { model_id: modelId } },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+  });
+}
+
+/** Remove a model in use: one replacement per role, applied everywhere at once. */
+export function useRemoveLlmModelWithReplacements(modelId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: async (body: LlmModelRemoval) => {
+      const { error, response } = await client.POST(
+        "/api/v1/admin/llm/models/{model_id}/removal",
+        {
+          params: { path: { model_id: modelId } },
+          body,
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
     },
     onSuccess: refresh,
   });

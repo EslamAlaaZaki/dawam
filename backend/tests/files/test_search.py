@@ -309,3 +309,20 @@ def test_documents_are_indexed_with_the_workspaces_own_embedding_model(
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
 
     assert [str(m) for m, _ in chunk_rows(app)] == [second]
+
+
+def test_an_embedding_model_with_indexed_documents_cannot_be_removed(roles, policy, fake_llm, app):
+    model_id = register_embedding_model(roles, internal=True)
+    spare = register_embedding_model(roles, internal=True, name="spare")
+    sid = system(roles)
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+    assert {str(m) for m, _ in chunk_rows(app)} == {model_id}
+    admin = roles.client("admin")
+
+    refused = admin.post(f"{ADMIN}/models/{model_id}/removal", json={"embedding_model_id": spare})
+
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "embedding_model_indexed"
+    [named] = refused.json()["error"]["details"]["workspaces"]
+    assert named["id"] == str(roles.workspace_id)
+    assert admin.get(f"{ADMIN}/models/{model_id}/usage").json()["indexed_workspaces"]

@@ -3656,8 +3656,55 @@ export interface paths {
          */
         put: operations["updateLlmModel"];
         post?: never;
-        /** Delete Model */
+        /**
+         * Delete Model
+         * @description Remove an unused model (admins only). 409 `model_in_use` when a role or a Workspace
+         *     still uses it: remove it with `POST /models/{id}/removal` and a replacement.
+         */
         delete: operations["deleteLlmModel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/models/{model_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Usage
+         * @description Where a model is used, for the removal popup (admins only).
+         */
+        get: operations["getLlmModelUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/models/{model_id}/removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Model In Use
+         * @description Remove a model with one replacement per role it fills, applied to the installation
+         *     and every affected Workspace atomically (admins only). 422 `replacement_required`,
+         *     409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
+         *     (naming the Workspaces whose documents are indexed with it).
+         */
+        post: operations["removeLlmModel"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6924,6 +6971,23 @@ export interface components {
              */
             updated_at: string;
         };
+        /** LlmModelRemoval */
+        LlmModelRemoval: {
+            /**
+             * Agent Model Id
+             * @description Replacement for the agent role, when the model fills it.
+             */
+            agent_model_id?: string | null;
+            /** Light Model Id */
+            light_model_id?: string | null;
+            /** Embedding Model Id */
+            embedding_model_id?: string | null;
+            /**
+             * Workspace Replacements
+             * @description Per-Workspace replacements where the one above is not allowed.
+             */
+            workspace_replacements?: components["schemas"]["LlmWorkspaceReplacement"][];
+        };
         /** LlmModelRequest */
         LlmModelRequest: {
             /** Name */
@@ -6938,6 +7002,40 @@ export interface components {
              * @description Tokens. Leave out to take the server's figure when it reports one.
              */
             context_window?: number | null;
+        };
+        /** LlmModelUsage */
+        LlmModelUsage: {
+            /** In Use */
+            in_use: boolean;
+            /**
+             * Roles
+             * @description Every role the model fills, anywhere.
+             */
+            roles: ("agent" | "light" | "embedding")[];
+            /** Installation Roles */
+            installation_roles: ("agent" | "light" | "embedding")[];
+            /** Workspaces */
+            workspaces: components["schemas"]["LlmModelUsageWorkspace"][];
+            /**
+             * Indexed Workspaces
+             * @description Workspaces with documents indexed by this model: they block its removal.
+             */
+            indexed_workspaces: components["schemas"]["LlmModelUsageWorkspace"][];
+        };
+        /** LlmModelUsageWorkspace */
+        LlmModelUsageWorkspace: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Roles
+             * @description The roles the model fills in this Workspace.
+             */
+            roles: ("agent" | "light" | "embedding")[];
         };
         /** LlmProvider */
         LlmProvider: {
@@ -7130,6 +7228,20 @@ export interface components {
         LlmWorkspaceBudgetRequest: {
             /** Monthly Token Budget */
             monthly_token_budget: number;
+        };
+        /** LlmWorkspaceReplacement */
+        LlmWorkspaceReplacement: {
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Agent Model Id */
+            agent_model_id?: string | null;
+            /** Light Model Id */
+            light_model_id?: string | null;
+            /** Embedding Model Id */
+            embedding_model_id?: string | null;
         };
         /** LlmWorkspaceUsage */
         LlmWorkspaceUsage: {
@@ -18894,6 +19006,88 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmModelUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelUsage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeLlmModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelRemoval"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

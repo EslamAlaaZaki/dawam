@@ -8,17 +8,24 @@ import {
   useCreateLlmProvider,
   useDeleteLlmModel,
   useDeleteLlmProvider,
+  useLlmModelUsage,
   useLlmProviders,
+  useRemoveLlmModelWithReplacements,
   useLlmSetup,
   useTestLlmModel,
   useUpdateLlmModel,
   useUpdateLlmProvider,
   type LlmModel,
+  type LlmModelRemoval,
   type LlmProvider,
 } from "../api/llm";
+import { ApiError } from "../api/client";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
-import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
+import {
+  EntityTable,
+  type EntityColumn,
+} from "../components/entity/EntityTable";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -48,7 +55,9 @@ const MODEL_COLUMNS: EntityColumn<ModelRow>[] = [
       <>
         <strong>{model.name}</strong>
         {model.limited && (
-          <div className="text-sm text-sand-11">Limited: no native tool calling</div>
+          <div className="text-sm text-sand-11">
+            Limited: no native tool calling
+          </div>
         )}
       </>
     ),
@@ -58,15 +67,22 @@ const MODEL_COLUMNS: EntityColumn<ModelRow>[] = [
     cell: ({ provider }) => (
       <>
         {provider.name}{" "}
-        <Badge variant="neutral">{provider.internal ? "Internal" : "External"}</Badge>
+        <Badge variant="neutral">
+          {provider.internal ? "Internal" : "External"}
+        </Badge>
       </>
     ),
   },
   {
     header: "Roles",
-    cell: ({ model }) => model.roles.map((role) => ROLE_LABELS[role]).join(", "),
+    cell: ({ model }) =>
+      model.roles.map((role) => ROLE_LABELS[role]).join(", "),
   },
-  { header: "Test", className: "whitespace-normal", cell: ({ model }) => <TestResult model={model} /> },
+  {
+    header: "Test",
+    className: "whitespace-normal",
+    cell: ({ model }) => <TestResult model={model} />,
+  },
 ];
 
 const PROVIDER_COLUMNS: EntityColumn<LlmProvider>[] = [
@@ -74,10 +90,16 @@ const PROVIDER_COLUMNS: EntityColumn<LlmProvider>[] = [
   {
     header: "Where it runs",
     cell: (provider) => (
-      <Badge variant="neutral">{provider.internal ? "Internal" : "External"}</Badge>
+      <Badge variant="neutral">
+        {provider.internal ? "Internal" : "External"}
+      </Badge>
     ),
   },
-  { header: "Base URL", className: "text-sand-11", cell: (provider) => provider.base_url },
+  {
+    header: "Base URL",
+    className: "text-sand-11",
+    cell: (provider) => provider.base_url,
+  },
   {
     header: "Details",
     className: "text-sand-11",
@@ -97,9 +119,11 @@ function TestResult({ model }: { model: LlmModel }) {
   if (model.test_ok) {
     return (
       <p className="text-sm text-sand-11">
-        Tool calling: {yesNo(model.tool_calling)} · streaming: {yesNo(model.streaming)} · JSON
-        schema: {yesNo(model.json_schema)} · context window: {model.context_window ?? "unknown"}
-        {model.embedding_dimension !== null && ` · dimension: ${model.embedding_dimension}`}
+        Tool calling: {yesNo(model.tool_calling)} · streaming:{" "}
+        {yesNo(model.streaming)} · JSON schema: {yesNo(model.json_schema)} ·
+        context window: {model.context_window ?? "unknown"}
+        {model.embedding_dimension !== null &&
+          ` · dimension: ${model.embedding_dimension}`}
       </p>
     );
   }
@@ -153,7 +177,9 @@ export function LlmProvidersPage() {
         rowKey={({ model }) => model.id}
         rowLabel={({ model }) => `Model ${model.name}`}
         columns={MODEL_COLUMNS}
-        actions={(row) => <ModelActions row={row} />}
+        actions={(row) => (
+          <ModelActions row={row} models={models.map((r) => r.model)} />
+        )}
         isPending={providers.isPending}
         error={providers.error}
         loadErrorPrefix="Could not load the providers:"
@@ -162,7 +188,9 @@ export function LlmProvidersPage() {
       />
       {providers.isSuccess && (
         <>
-          <h3 className="text-md font-semibold tracking-[-0.005em]">Providers</h3>
+          <h3 className="text-md font-semibold tracking-[-0.005em]">
+            Providers
+          </h3>
           <EntityTable
             rows={list}
             rowKey={(provider) => provider.id}
@@ -175,7 +203,11 @@ export function LlmProvidersPage() {
         </>
       )}
       <ProviderDialog open={addingProvider} onOpenChange={setAddingProvider} />
-      <AddModelDialog providers={list} open={addingModel} onOpenChange={setAddingModel} />
+      <AddModelDialog
+        providers={list}
+        open={addingModel}
+        onOpenChange={setAddingModel}
+      />
     </section>
   );
 }
@@ -190,7 +222,10 @@ function ProviderFields({ provider }: { provider?: LlmProvider }) {
       </label>
       <label className={labelClasses}>
         Type
-        <NativeSelect name="adapter" defaultValue={provider?.adapter ?? "openai_compatible"}>
+        <NativeSelect
+          name="adapter"
+          defaultValue={provider?.adapter ?? "openai_compatible"}
+        >
           <option value="openai_compatible">
             OpenAI-compatible (vLLM, Ollama, OpenAI, ...)
           </option>
@@ -203,7 +238,12 @@ function ProviderFields({ provider }: { provider?: LlmProvider }) {
       <label className={labelClasses}>
         Base URL (with its version prefix, e.g. http://vllm:8000/v1 or
         https://api.anthropic.com/v1)
-        <Input name="base_url" type="url" defaultValue={provider?.base_url ?? ""} required />
+        <Input
+          name="base_url"
+          type="url"
+          defaultValue={provider?.base_url ?? ""}
+          required
+        />
       </label>
       <label className={labelClasses}>
         API key (optional)
@@ -211,12 +251,17 @@ function ProviderFields({ provider }: { provider?: LlmProvider }) {
           name="api_key"
           type="password"
           autoComplete="off"
-          placeholder={provider?.has_api_key ? "Saved: leave empty to keep it" : ""}
+          placeholder={
+            provider?.has_api_key ? "Saved: leave empty to keep it" : ""
+          }
         />
       </label>
       <label className={labelClasses}>
         Where it runs
-        <NativeSelect name="internal" defaultValue={provider?.internal === false ? "false" : "true"}>
+        <NativeSelect
+          name="internal"
+          defaultValue={provider?.internal === false ? "false" : "true"}
+        >
           <option value="true">Internal: inside your own infrastructure</option>
           <option value="false">External: a third-party service</option>
         </NativeSelect>
@@ -266,7 +311,9 @@ function ProviderDialog({
     const body = providerBody(form);
     save.mutate(body, {
       onSuccess: () => {
-        toast.success(provider ? `${body.name} updated.` : `${body.name} added.`);
+        toast.success(
+          provider ? `${body.name} updated.` : `${body.name} added.`,
+        );
         onOpenChange(false);
       },
     });
@@ -280,7 +327,11 @@ function ProviderDialog({
         onOpenChange(next);
       }}
       title={provider ? "Edit provider" : "Add a provider"}
-      description={provider ? provider.name : "Register a service that serves language models."}
+      description={
+        provider
+          ? provider.name
+          : "Register a service that serves language models."
+      }
       submitLabel={provider ? "Save" : "Add provider"}
       onSubmit={onSubmit}
       pending={save.isPending}
@@ -305,7 +356,11 @@ function ProviderActions({ provider }: { provider: LlmProvider }) {
           Remove provider
         </Button>
       </div>
-      <ProviderDialog provider={provider} open={editing} onOpenChange={setEditing} />
+      <ProviderDialog
+        provider={provider}
+        open={editing}
+        onOpenChange={setEditing}
+      />
       <ConfirmDialog
         open={removing}
         onOpenChange={(next) => {
@@ -317,15 +372,22 @@ function ProviderActions({ provider }: { provider: LlmProvider }) {
         confirmLabel="Remove provider"
         pending={remove.isPending}
         error={remove.error}
-        onConfirm={() => remove.mutate(provider.id, { onSuccess: () => setRemoving(false) })}
+        onConfirm={() =>
+          remove.mutate(provider.id, { onSuccess: () => setRemoving(false) })
+        }
       />
     </>
   );
 }
 
-function ModelActions({ row: { model, provider } }: { row: ModelRow }) {
+function ModelActions({
+  row: { model, provider },
+  models,
+}: {
+  row: ModelRow;
+  models: LlmModel[];
+}) {
   const test = useTestLlmModel();
-  const remove = useDeleteLlmModel();
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
   return (
@@ -334,7 +396,11 @@ function ModelActions({ row: { model, provider } }: { row: ModelRow }) {
         <Button size="sm" onClick={() => setEditing(true)}>
           Edit
         </Button>
-        <Button size="sm" onClick={() => test.mutate(model.id)} disabled={test.isPending}>
+        <Button
+          size="sm"
+          onClick={() => test.mutate(model.id)}
+          disabled={test.isPending}
+        >
           Test connection
         </Button>
         <Button size="sm" onClick={() => setRemoving(true)}>
@@ -343,20 +409,179 @@ function ModelActions({ row: { model, provider } }: { row: ModelRow }) {
       </div>
       {test.isError && <ErrorText>{test.error.message}</ErrorText>}
       <EditModelDialog model={model} open={editing} onOpenChange={setEditing} />
-      <ConfirmDialog
+      <RemoveModelDialog
+        model={model}
+        providerName={provider.name}
+        candidates={models}
         open={removing}
-        onOpenChange={(next) => {
-          if (!next) remove.reset();
-          setRemoving(next);
-        }}
-        title={`Remove ${model.name}?`}
-        description={`The model is removed from ${provider.name}.`}
-        confirmLabel="Remove model"
-        pending={remove.isPending}
-        error={remove.error}
-        onConfirm={() => remove.mutate(model.id, { onSuccess: () => setRemoving(false) })}
+        onOpenChange={setRemoving}
       />
     </>
+  );
+}
+
+type Role = LlmModel["roles"][number];
+type ReplacementKey =
+  "agent_model_id" | "light_model_id" | "embedding_model_id";
+const REPLACEMENT_KEY: Record<Role, ReplacementKey> = {
+  agent: "agent_model_id",
+  light: "light_model_id",
+  embedding: "embedding_model_id",
+};
+
+interface UnallowedWorkspace {
+  id: string;
+  name: string;
+  roles: Role[];
+}
+
+function unallowedWorkspaces(error: Error | null): UnallowedWorkspace[] {
+  if (!(error instanceof ApiError) || error.code !== "replacement_not_allowed")
+    return [];
+  const list = (error.details as Record<string, unknown> | null | undefined)
+    ?.workspaces;
+  return Array.isArray(list) ? (list as UnallowedWorkspace[]) : [];
+}
+
+/** Asks before removing a model. One in use also asks for a replacement per role it
+ * fills; Workspaces the replacement is not allowed for then get a choice of their own. */
+function RemoveModelDialog({
+  model,
+  providerName,
+  candidates,
+  open,
+  onOpenChange,
+}: {
+  model: LlmModel;
+  providerName: string;
+  candidates: LlmModel[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const usage = useLlmModelUsage(model.id, { enabled: open });
+  const remove = useDeleteLlmModel();
+  const replace = useRemoveLlmModelWithReplacements(model.id);
+  const [chosen, setChosen] = useState<Partial<Record<Role, string>>>({});
+  const [perWorkspace, setPerWorkspace] = useState<Record<string, string>>({});
+  const roles = usage.data?.roles ?? [];
+  const indexed = usage.data?.indexed_workspaces ?? [];
+  const unallowed = unallowedWorkspaces(replace.error);
+  const inUse = usage.data?.in_use ?? false;
+  const optionsFor = (role: Role) =>
+    candidates.filter(
+      (c) =>
+        c.id !== model.id &&
+        c.test_ok === true &&
+        c.roles.includes("embedding") === (role === "embedding"),
+    );
+  const complete =
+    roles.every((role) => chosen[role]) &&
+    unallowed.every((w) =>
+      w.roles.every((role) => perWorkspace[`${w.id}:${role}`]),
+    );
+
+  const close = (next: boolean) => {
+    if (!next) {
+      remove.reset();
+      replace.reset();
+      setChosen({});
+      setPerWorkspace({});
+    }
+    onOpenChange(next);
+  };
+  const confirm = () => {
+    const done = { onSuccess: () => close(false) };
+    if (!inUse) {
+      remove.mutate(model.id, done);
+      return;
+    }
+    const body: LlmModelRemoval = { workspace_replacements: [] };
+    for (const role of roles) body[REPLACEMENT_KEY[role]] = chosen[role];
+    for (const w of unallowed) {
+      const entry: NonNullable<
+        LlmModelRemoval["workspace_replacements"]
+      >[number] = {
+        workspace_id: w.id,
+      };
+      for (const role of w.roles)
+        entry[REPLACEMENT_KEY[role]] = perWorkspace[`${w.id}:${role}`];
+      body.workspace_replacements?.push(entry);
+    }
+    replace.mutate(body, done);
+  };
+  const picker = (
+    label: string,
+    value: string,
+    role: Role,
+    onChange: (id: string) => void,
+  ) => (
+    <label key={label} className={labelClasses}>
+      {label}
+      <NativeSelect
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">Choose a model</option>
+        {optionsFor(role).map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </NativeSelect>
+    </label>
+  );
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={close}
+      title={`Remove ${model.name}?`}
+      description={
+        inUse
+          ? "This model is in use. Choose what replaces it for each role it fills."
+          : `The model is removed from ${providerName}.`
+      }
+      confirmLabel="Remove model"
+      pending={usage.isLoading || remove.isPending || replace.isPending}
+      confirmDisabled={
+        usage.isLoading || indexed.length > 0 || (inUse && !complete)
+      }
+      error={remove.error ?? replace.error ?? usage.error}
+      onConfirm={confirm}
+    >
+      {indexed.length > 0 && (
+        <p role="alert" className="text-sm">
+          Documents in {indexed.map((w) => w.name).join(", ")} are indexed with
+          this model, so it cannot be removed.
+        </p>
+      )}
+      {indexed.length === 0 &&
+        roles.map((role) =>
+          picker(
+            `Replace as ${ROLE_LABELS[role]} model`,
+            chosen[role] ?? "",
+            role,
+            (id) => setChosen({ ...chosen, [role]: id }),
+          ),
+        )}
+      {unallowed.length > 0 && (
+        <p role="status" className="text-sm">
+          The replacement is not allowed in these Workspaces. Choose another
+          model for each.
+        </p>
+      )}
+      {unallowed.flatMap((w) =>
+        w.roles.map((role) =>
+          picker(
+            `${w.name}: ${ROLE_LABELS[role]} model`,
+            perWorkspace[`${w.id}:${role}`] ?? "",
+            role,
+            (id) =>
+              setPerWorkspace({ ...perWorkspace, [`${w.id}:${role}`]: id }),
+          ),
+        ),
+      )}
+    </ConfirmDialog>
   );
 }
 
@@ -438,7 +663,10 @@ function AddModelDialog({
     >
       <label className={labelClasses}>
         Provider
-        <NativeSelect value={chosen} onChange={(event) => setProviderId(event.target.value)}>
+        <NativeSelect
+          value={chosen}
+          onChange={(event) => setProviderId(event.target.value)}
+        >
           {providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
               {provider.name}
