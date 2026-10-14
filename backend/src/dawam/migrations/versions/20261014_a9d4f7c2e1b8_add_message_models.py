@@ -1,7 +1,7 @@
 """remember the model of each assistant message (assistant module).
 
 Revision ID: a9d4f7c2e1b8
-Revises: e3b8d1a6f204
+Revises: f4c9a2b7d815
 Create Date: 2026-10-14 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a9d4f7c2e1b8"
-down_revision: str | Sequence[str] | None = "e3b8d1a6f204"
+down_revision: str | Sequence[str] | None = "f4c9a2b7d815"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
