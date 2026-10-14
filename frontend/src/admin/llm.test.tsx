@@ -311,7 +311,7 @@ describe("language models page", () => {
     await screen.findByRole("row", { name: "Model qwen3" });
     fireEvent.click(screen.getByRole("button", { name: "Add model" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a model" });
-    fireEvent.change(within(dialog).getByLabelText("Model name"), {
+    fireEvent.change(await within(dialog).findByLabelText("Model name"), {
       target: { value: "llama" },
     });
     expect(within(dialog).queryByLabelText("Role")).not.toBeInTheDocument();
@@ -322,6 +322,133 @@ describe("language models page", () => {
     );
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       name: "llama",
+    });
+  });
+
+  describe("picking a model from the provider's list", () => {
+    const AVAILABLE = `/api/v1/admin/llm/providers/${PROVIDER.id}/available-models`;
+
+    function openDialog(
+      available: Response,
+      requestsOut: { post?: ApiRequest } = {},
+    ) {
+      const requests = renderApp(
+        providersApi([PROVIDER], (r) => {
+          if (r.method === "GET" && r.path === AVAILABLE) return available;
+          if (r.method === "POST" && r.path.endsWith("/models")) {
+            requestsOut.post = r;
+            return json(MODEL, 201);
+          }
+          return undefined;
+        }),
+        "/admin/llm",
+      );
+      return requests;
+    }
+
+    async function open() {
+      await screen.findByRole("row", { name: "Model qwen3" });
+      fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+      return screen.findByRole("dialog", { name: "Add a model" });
+    }
+
+    it("lists the provider's models, disables registered ones, searches and adds the pick", async () => {
+      const out: { post?: ApiRequest } = {};
+      openDialog(
+        json({
+          supported: true,
+          models: [
+            { name: "llama", registered: false },
+            { name: "qwen3", registered: true },
+            { name: "mistral", registered: false },
+          ],
+        }),
+        out,
+      );
+
+      const dialog = await open();
+      const registered = await within(dialog).findByRole("option", {
+        name: /qwen3/,
+      });
+      expect(within(registered).getByRole("button")).toBeDisabled();
+      expect(
+        within(within(dialog).getByRole("listbox")).getAllByRole("option"),
+      ).toHaveLength(3);
+
+      fireEvent.change(within(dialog).getByLabelText("Model name"), {
+        target: { value: "MIS" },
+      });
+      expect(
+        within(within(dialog).getByRole("listbox")).getAllByRole("option"),
+      ).toHaveLength(1);
+      fireEvent.click(within(dialog).getByRole("button", { name: "mistral" }));
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Add model" }),
+      );
+
+      await waitFor(() => expect(out.post).toBeDefined());
+      expect(out.post?.body).toEqual({ name: "mistral" });
+    });
+
+    it("asks for a choice before adding", async () => {
+      const out: { post?: ApiRequest } = {};
+      openDialog(
+        json({
+          supported: true,
+          models: [{ name: "llama", registered: false }],
+        }),
+        out,
+      );
+
+      const dialog = await open();
+      await within(dialog).findByRole("option", { name: /llama/ });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Add model" }),
+      );
+
+      expect(
+        await within(dialog).findByText("Choose or type a model name."),
+      ).toBeInTheDocument();
+      expect(out.post).toBeUndefined();
+    });
+
+    it("falls back to typing, with the error shown, when listing fails", async () => {
+      const out: { post?: ApiRequest } = {};
+      openDialog(
+        json({
+          supported: true,
+          models: [],
+          error: "The provider rejected the API key.",
+          error_code: "auth",
+        }),
+        out,
+      );
+
+      const dialog = await open();
+      expect(
+        await within(dialog).findByText(/The provider rejected the API key\./),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByRole("listbox")).not.toBeInTheDocument();
+      fireEvent.change(within(dialog).getByLabelText("Model name"), {
+        target: { value: "typed-model" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Add model" }),
+      );
+
+      await waitFor(() => expect(out.post).toBeDefined());
+      expect(out.post?.body).toEqual({ name: "typed-model" });
+    });
+
+    it("goes straight to typing when the provider cannot list", async () => {
+      openDialog(json({ supported: false, models: [] }));
+
+      const dialog = await open();
+
+      expect(
+        await within(dialog).findByText(/cannot list its models/),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByLabelText("Model name")).toBeEnabled();
     });
   });
 
@@ -338,7 +465,10 @@ describe("language models page", () => {
     const row = await screen.findByRole("row", { name: "Model qwen3" });
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit model" });
-    expect(within(dialog).queryByLabelText("Model name")).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Model name")).toHaveAttribute(
+      "readonly",
+    );
+    expect(within(dialog).getByLabelText("Model name")).toHaveValue("qwen3");
     fireEvent.change(
       within(dialog).getByLabelText(
         "Context window in tokens (empty: ask the server)",

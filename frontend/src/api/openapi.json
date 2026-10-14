@@ -13487,6 +13487,60 @@
         }
       }
     },
+    "/api/v1/admin/llm/providers/{provider_id}/available-models": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "List Provider Models",
+        "description": "The models the provider itself lists, with a `registered` flag, using its stored\nkey (never returned). A listing failure is reported in `error`, not as an HTTP error.\n404 `provider_not_found`.",
+        "operationId": "listLlmProviderModels",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Provider Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProviderModels"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/providers/{provider_id}/models": {
       "post": {
         "tags": [
@@ -21444,6 +21498,25 @@
         ],
         "title": "LlmBudgets"
       },
+      "LlmListedModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "registered": {
+            "type": "boolean",
+            "title": "Registered",
+            "description": "Already registered under this provider."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "registered"
+        ],
+        "title": "LlmListedModel"
+      },
       "LlmModel": {
         "properties": {
           "id": {
@@ -21906,6 +21979,52 @@
           "items"
         ],
         "title": "LlmProviderList"
+      },
+      "LlmProviderModels": {
+        "properties": {
+          "supported": {
+            "type": "boolean",
+            "title": "Supported",
+            "description": "False when the adapter cannot list its models."
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/LlmListedModel"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why listing failed (bad key, server down); no secrets."
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "The gateway's common error code when listing failed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "supported",
+          "models"
+        ],
+        "title": "LlmProviderModels"
       },
       "LlmProviderRequest": {
         "properties": {

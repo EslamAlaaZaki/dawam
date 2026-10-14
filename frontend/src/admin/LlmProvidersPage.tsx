@@ -9,6 +9,7 @@ import {
   useDeleteLlmModel,
   useDeleteLlmProvider,
   useLlmModelUsage,
+  useLlmProviderModels,
   useLlmProviders,
   useRemoveLlmModelWithReplacements,
   useLlmSetup,
@@ -471,10 +472,7 @@ function RemoveModelDialog({
   const inUse = usage.data?.in_use ?? false;
   const optionsFor = (role: Role) =>
     candidates.filter(
-      (c) =>
-        c.id !== model.id &&
-        c.test_ok === true &&
-        c.roles.includes(role),
+      (c) => c.id !== model.id && c.test_ok === true && c.roles.includes(role),
     );
   const complete =
     roles.every((role) => chosen[role]) &&
@@ -618,12 +616,18 @@ function AddModelDialog({
   const [providerId, setProviderId] = useState("");
   const chosen = providerId || providers[0]?.id || "";
   const add = useAddLlmModel(chosen);
+  const [name, setName] = useState("");
+  const [missing, setMissing] = useState(false);
 
   function onSubmit(form: FormData) {
     const body = {
-      name: String(form.get("name") ?? "").trim(),
+      name: name.trim(),
       context_window: contextWindow(form),
     };
+    if (!body.name) {
+      setMissing(true);
+      return;
+    }
     add.mutate(body, {
       onSuccess: () => {
         toast.success(`${body.name} added. Give it a role in AI settings.`);
@@ -636,7 +640,11 @@ function AddModelDialog({
     <EntityFormDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) add.reset();
+        if (!next) {
+          add.reset();
+          setName("");
+          setMissing(false);
+        }
         onOpenChange(next);
       }}
       title="Add a model"
@@ -650,7 +658,10 @@ function AddModelDialog({
         Provider
         <NativeSelect
           value={chosen}
-          onChange={(event) => setProviderId(event.target.value)}
+          onChange={(event) => {
+            setProviderId(event.target.value);
+            setName("");
+          }}
         >
           {providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
@@ -659,12 +670,120 @@ function AddModelDialog({
           ))}
         </NativeSelect>
       </label>
-      <label className={labelClasses}>
-        Model name
-        <Input name="name" required />
-      </label>
+      <ModelNamePicker
+        providerId={chosen}
+        open={open}
+        value={name}
+        onChange={(next) => {
+          setName(next);
+          setMissing(false);
+        }}
+      />
+      {missing && <ErrorText>Choose or type a model name.</ErrorText>}
       <ContextWindowField />
     </EntityFormDialog>
+  );
+}
+
+/** The model name: a searchable list of what the provider offers (already registered
+ * names disabled), or a plain text field when listing fails or is unsupported. */
+function ModelNamePicker({
+  providerId,
+  open,
+  value,
+  onChange,
+}: {
+  providerId: string;
+  open: boolean;
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const listing = useLlmProviderModels(providerId, { enabled: open });
+  const [query, setQuery] = useState("");
+
+  if (listing.isPending && listing.fetchStatus !== "idle") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Loading the provider's models…
+      </p>
+    );
+  }
+  const data = listing.data;
+  if (listing.isError || !data || !data.supported || data.error) {
+    const reason = listing.isError
+      ? "The provider's models could not be listed."
+      : data?.error
+        ? `The provider's models could not be listed: ${data.error}`
+        : "This provider cannot list its models.";
+    return (
+      <>
+        <label className={labelClasses}>
+          Model name
+          <Input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </label>
+        <p role="status" className="text-sm text-muted-foreground">
+          {reason} Type the name instead.
+        </p>
+      </>
+    );
+  }
+  const needle = query.trim().toLowerCase();
+  const shown = data.models.filter((m) =>
+    m.name.toLowerCase().includes(needle),
+  );
+  return (
+    <div className="space-y-2">
+      <label className={labelClasses}>
+        Model name
+        <Input
+          role="combobox"
+          aria-expanded
+          aria-controls="llm-model-options"
+          placeholder="Search the provider's models"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            onChange("");
+          }}
+        />
+      </label>
+      <ul
+        id="llm-model-options"
+        role="listbox"
+        aria-label="Provider models"
+        className="max-h-48 overflow-y-auto rounded-md border"
+      >
+        {shown.length === 0 && (
+          <li className="px-3 py-2 text-sm text-muted-foreground">
+            No model matches.
+          </li>
+        )}
+        {shown.map((m) => (
+          <li
+            key={m.name}
+            role="option"
+            aria-selected={value === m.name}
+            aria-disabled={m.registered}
+          >
+            <button
+              type="button"
+              disabled={m.registered}
+              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                onChange(m.name);
+                setQuery(m.name);
+              }}
+            >
+              <span>{m.name}</span>
+              {m.registered && <span className="text-xs">already added</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -699,12 +818,16 @@ function EditModelDialog({
         onOpenChange(next);
       }}
       title="Edit model"
-      description={`${model.name}: only the context window can change.`}
+      description="Only the context window can change."
       submitLabel="Save"
       onSubmit={onSubmit}
       pending={update.isPending}
       error={update.error}
     >
+      <label className={labelClasses}>
+        Model name
+        <Input value={model.name} readOnly />
+      </label>
       <ContextWindowField model={model} />
     </EntityFormDialog>
   );
