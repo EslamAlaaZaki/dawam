@@ -319,6 +319,12 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row(
+        "GET",
+        "/api/v1/admin/llm/providers/{provider_id}/available-models",
+        "list a provider's available models (story 281)",
+        admin_only(),
+    ),
+    Row(
         "POST",
         "/api/v1/admin/llm/providers/{provider_id}/models",
         "register a model (story 155)",
