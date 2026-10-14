@@ -1,6 +1,7 @@
-"""Removing a model in use (spec §6.18, ADR 0005): one replacement per role, applied to every
-Workspace that has the model among its Workspace Models at once; an internal-only Workspace
-needs an internal replacement, else its own; no re-index ever runs."""
+"""Removing a model or unticking a role (spec §6.18, ADR 0005): one rule. Only Workspaces where
+the model is a role's default or only model need a replacement, picked per Workspace and
+role; non-default extras are dropped silently; an internal-only Workspace takes only internal
+models; no re-index ever runs."""
 
 from __future__ import annotations
 
@@ -15,6 +16,17 @@ def register(client, name, *, internal=False, **options):
 
 def remove(client, model, **fields):
     return client.post(f"{BASE}/models/{model['id']}/removal", json=fields)
+
+
+def replace_in(workspace_id, **models):
+    return {"workspace_id": workspace_id, **{f"{k}_model_id": m["id"] for k, m in models.items()}}
+
+
+def untick(client, model, roles, *replacements):
+    return client.put(
+        f"{BASE}/models/{model['id']}/roles",
+        json={"roles": roles, "workspace_replacements": list(replacements)},
+    )
 
 
 def set_models(client, workspace_id, *models, **fields):
@@ -45,41 +57,77 @@ def test_deleting_a_model_in_use_is_refused_with_its_usage(
     usage = admin_client.get(f"{BASE}/models/{agent['id']}/usage").json()
     assert usage["in_use"] is True and usage["roles"] == ["agent"]
     assert [(w["name"], w["roles"]) for w in usage["workspaces"]] == [("First", ["agent"])]
+    assert usage["workspaces"][0]["internal_only"] is False
 
 
-def test_a_replacement_is_required_for_each_role_the_model_fills(
-    admin_client, signed_in_client, fake_llm
-):
+def test_a_replacement_is_required_per_workspace_and_role(admin_client, signed_in_client, fake_llm):
     both = register(admin_client, "both", roles=("agent", "light"))
     workspace = create_workspace(signed_in_client, "First", agent=both, light=both)
     spare = register(admin_client, "spare", roles=("agent", "light"))
 
-    partial = remove(admin_client, both, agent_model_id=spare["id"])
+    none = remove(admin_client, both)
+    partial = remove(
+        admin_client, both, workspace_replacements=[replace_in(workspace, agent=spare)]
+    )
 
-    assert partial.status_code == 422 and code(partial) == "replacement_required"
-    assert partial.json()["error"]["details"]["roles"] == ["light"]
-    done = remove(admin_client, both, agent_model_id=spare["id"], light_model_id=spare["id"])
+    assert none.status_code == 409 and code(none) == "replacement_required"
+    assert partial.status_code == 409 and code(partial) == "replacement_required"
+    [named] = partial.json()["error"]["details"]["workspaces"]
+    assert named["name"] == "First" and named["roles"] == ["light"]
+    done = remove(
+        admin_client,
+        both,
+        workspace_replacements=[replace_in(workspace, agent=spare, light=spare)],
+    )
     assert done.status_code == 204
     settings = read(signed_in_client, workspace)
     assert default_of(settings["agent_models"]) == "spare"
     assert default_of(settings["light_models"]) == "spare"
 
 
-def test_every_affected_workspace_moves_to_the_replacement(
+def test_only_workspaces_where_it_is_the_default_or_only_model_need_a_replacement(
     admin_client, signed_in_client, fake_llm
 ):
     main = register(admin_client, "main")
     spare = register(admin_client, "spare")
-    first = create_workspace(signed_in_client, "First", agent=main)
-    second = create_workspace(signed_in_client, "Second", agent=spare)
-    set_models(signed_in_client, second, [spare, main])
+    extra = create_workspace(signed_in_client, "Extra", agent=spare)
+    set_models(signed_in_client, extra, [spare, main])
+    default = create_workspace(signed_in_client, "Default", agent=main)
+    set_models(signed_in_client, default, [main, spare])
 
     usage = admin_client.get(f"{BASE}/models/{main['id']}/usage").json()
-    assert sorted(w["name"] for w in usage["workspaces"]) == ["First", "Second"]
-    assert remove(admin_client, main, agent_model_id=spare["id"]).status_code == 204
 
-    assert agent_of(signed_in_client, first) == "spare"
-    assert [m["name"] for m in read(signed_in_client, second)["agent_models"]] == ["spare"]
+    assert [w["name"] for w in usage["workspaces"]] == ["Default"]
+    done = remove(admin_client, main, workspace_replacements=[replace_in(default, agent=spare)])
+    assert done.status_code == 204, done.text
+    assert [m["name"] for m in read(signed_in_client, extra)["agent_models"]] == ["spare"]
+    assert agent_of(signed_in_client, default) == "spare"
+
+
+def test_a_model_held_only_as_an_extra_is_removed_at_once(admin_client, signed_in_client, fake_llm):
+    main = register(admin_client, "main")
+    extra = register(admin_client, "extra")
+    workspace = create_workspace(signed_in_client, "First", agent=main)
+    set_models(signed_in_client, workspace, [main, extra])
+
+    assert admin_client.get(f"{BASE}/models/{extra['id']}/usage").json()["in_use"] is False
+    assert admin_client.delete(f"{BASE}/models/{extra['id']}").status_code == 204
+    assert [m["name"] for m in read(signed_in_client, workspace)["agent_models"]] == ["main"]
+
+
+def test_the_replacement_becomes_the_default_even_when_already_an_extra(
+    admin_client, signed_in_client, fake_llm
+):
+    main = register(admin_client, "main")
+    spare = register(admin_client, "spare")
+    workspace = create_workspace(signed_in_client, "First", agent=main)
+    set_models(signed_in_client, workspace, [main, spare])
+
+    done = remove(admin_client, main, workspace_replacements=[replace_in(workspace, agent=spare)])
+
+    assert done.status_code == 204
+    models = read(signed_in_client, workspace)["agent_models"]
+    assert [(m["name"], m["is_default"]) for m in models] == [("spare", True)]
 
 
 def test_a_bad_replacement_changes_nothing(admin_client, signed_in_client, fake_llm):
@@ -87,12 +135,15 @@ def test_a_bad_replacement_changes_nothing(admin_client, signed_in_client, fake_
     untested = register(admin_client, "untested", tested=False)
     workspace = create_workspace(signed_in_client, "First", agent=main)
 
-    assert remove(admin_client, main, agent_model_id=untested["id"]).status_code == 422
-    assert remove(admin_client, main, agent_model_id=main["id"]).status_code == 422
+    for bad in (untested, main):
+        refused = remove(
+            admin_client, main, workspace_replacements=[replace_in(workspace, agent=bad)]
+        )
+        assert refused.status_code == 422
     assert agent_of(signed_in_client, workspace) == "main"
 
 
-def test_an_internal_only_workspace_needs_an_internal_replacement(
+def test_an_internal_only_workspace_is_offered_and_accepts_only_internal_models(
     admin_client, signed_in_client, fake_llm
 ):
     local = register(admin_client, "local", internal=True)
@@ -101,8 +152,17 @@ def test_an_internal_only_workspace_needs_an_internal_replacement(
     private = create_workspace(signed_in_client, "Private", agent=local)
     open_ = create_workspace(signed_in_client, "Open", agent=local)
     set_models(signed_in_client, open_, local)
+    flagged = {
+        w["name"]: w["internal_only"]
+        for w in admin_client.get(f"{BASE}/models/{local['id']}/usage").json()["workspaces"]
+    }
+    assert flagged == {"Private": True, "Open": False}
 
-    refused = remove(admin_client, local, agent_model_id=cloud["id"])
+    refused = remove(
+        admin_client,
+        local,
+        workspace_replacements=[replace_in(private, agent=cloud), replace_in(open_, agent=cloud)],
+    )
 
     assert refused.status_code == 409 and code(refused) == "replacement_not_allowed"
     [reported] = refused.json()["error"]["details"]["workspaces"]
@@ -111,8 +171,7 @@ def test_an_internal_only_workspace_needs_an_internal_replacement(
     done = remove(
         admin_client,
         local,
-        agent_model_id=cloud["id"],
-        workspace_replacements=[{"workspace_id": private, "agent_model_id": other["id"]}],
+        workspace_replacements=[replace_in(private, agent=other), replace_in(open_, agent=cloud)],
     )
     assert done.status_code == 204, done.text
     assert agent_of(signed_in_client, private) == "other"
@@ -127,5 +186,41 @@ def test_an_unindexed_embedding_model_is_replaced_like_any_other(
     chat = register(admin_client, "chat")
     workspace = create_workspace(signed_in_client, "First", agent=chat, embedding=old)
 
-    assert remove(admin_client, old, embedding_model_id=new["id"]).status_code == 204
+    done = remove(admin_client, old, workspace_replacements=[replace_in(workspace, embedding=new)])
+
+    assert done.status_code == 204
+    assert read(signed_in_client, workspace)["embedding_model"]["name"] == "emb-new"
+
+
+def test_unticking_a_role_shares_the_rule(admin_client, signed_in_client, fake_llm):
+    both = register(admin_client, "both", roles=("agent", "light"))
+    spare = register(admin_client, "spare", roles=("agent", "light"))
+    chat = register(admin_client, "chat")
+    needs = create_workspace(signed_in_client, "Needs", agent=chat, light=both)
+    extra = create_workspace(signed_in_client, "Extra", agent=chat, light=spare)
+    set_models(signed_in_client, extra, chat, [spare, both])
+
+    refused = untick(admin_client, both, ["agent"])
+
+    assert refused.status_code == 409 and code(refused) == "replacement_required"
+    [named] = refused.json()["error"]["details"]["workspaces"]
+    assert named["name"] == "Needs" and named["roles"] == ["light"]
+    done = untick(admin_client, both, ["agent"], replace_in(needs, light=spare))
+    assert done.status_code == 200, done.text
+    assert done.json()["roles"] == ["agent"]
+    assert default_of(read(signed_in_client, needs)["light_models"]) == "spare"
+    assert [m["name"] for m in read(signed_in_client, extra)["light_models"]] == ["spare"]
+
+
+def test_unticking_embedding_needs_a_replacement_too(admin_client, signed_in_client, fake_llm):
+    old = register(admin_client, "emb-old", roles=("embedding",))
+    new = register(admin_client, "emb-new", roles=("embedding",))
+    chat = register(admin_client, "chat")
+    workspace = create_workspace(signed_in_client, "First", agent=chat, embedding=old)
+
+    refused = untick(admin_client, old, [])
+    done = untick(admin_client, old, [], replace_in(workspace, embedding=new))
+
+    assert refused.status_code == 409 and code(refused) == "replacement_required"
+    assert done.status_code == 200 and done.json()["roles"] == []
     assert read(signed_in_client, workspace)["embedding_model"]["name"] == "emb-new"

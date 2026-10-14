@@ -330,10 +330,19 @@ def test_an_embedding_model_with_indexed_documents_cannot_be_removed(roles, poli
     spare = register_embedding_model(roles, internal=True, name="spare", use=False)
     admin = roles.client("admin")
 
-    refused = admin.post(f"{ADMIN}/models/{model_id}/removal", json={"embedding_model_id": spare})
+    replacement = {"workspace_id": str(roles.workspace_id), "embedding_model_id": spare}
+    refused = admin.post(
+        f"{ADMIN}/models/{model_id}/removal", json={"workspace_replacements": [replacement]}
+    )
+    unticked = admin.put(
+        f"{ADMIN}/models/{model_id}/roles",
+        json={"roles": [], "workspace_replacements": [replacement]},
+    )
 
     assert refused.status_code == 409
     assert refused.json()["error"]["code"] == "embedding_model_indexed"
     [named] = refused.json()["error"]["details"]["workspaces"]
     assert named["id"] == str(roles.workspace_id)
+    assert unticked.status_code == 409
+    assert unticked.json()["error"]["code"] == "embedding_model_indexed"
     assert admin.get(f"{ADMIN}/models/{model_id}/usage").json()["indexed_workspaces"]

@@ -15,7 +15,13 @@ from dawam.modules.auth import AuthService, CurrentUser, User
 from dawam.modules.workspaces import INSTALLATION, Action, WorkspaceService, can
 from dawam.platform.errors import ApiError
 
-from .model_removal import WorkspaceRef, WorkspaceReplacement, model_usage, remove_model
+from .model_removal import (
+    WorkspaceRef,
+    WorkspaceReplacement,
+    model_usage,
+    release_roles,
+    remove_model,
+)
 from .role_service import MAX_BUDGET, RoleService, UsageTotals
 from .service import (
     API_KEY_MAX_LENGTH,
@@ -141,11 +147,23 @@ class LlmModelUpdateRequest(BaseModel):
     )
 
 
+class LlmWorkspaceReplacement(BaseModel):
+    workspace_id: uuid.UUID
+    agent_model_id: uuid.UUID | None = None
+    light_model_id: uuid.UUID | None = None
+    embedding_model_id: uuid.UUID | None = None
+
+
 class LlmModelRolesRequest(BaseModel):
     roles: list[ModelRole] = Field(
         max_length=len(ROLES),
         description="Any combination of `agent`, `light` and `embedding`; none: the model is "
         "offered nowhere.",
+    )
+    workspace_replacements: list[LlmWorkspaceReplacement] = Field(
+        default_factory=list,
+        description="Per Workspace and role, the replacement for a role being unticked where "
+        "the model is the Workspace's default or only model for it.",
     )
 
 
@@ -327,22 +345,16 @@ def set_model_roles(
 ) -> LlmModel:
     """Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
-    provider's error when the model cannot embed. 409 `model_role_in_use` when a role being
-    removed is one of a Workspace's models."""
+    provider's error when the model cannot embed. Unticking a role needs a replacement in each
+    Workspace where the model is the default or only model for it: 409 `replacement_required`
+    lists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other
+    Workspaces just lose it."""
     current = providers.get_model(model_id)
-    removed = set(current.roles) - set(body.roles)
+    removed = tuple(role for role in ROLES if role in set(current.roles) - set(body.roles))
     if removed:
-        usage = model_usage(request.app.state.engine, model_id)
-        in_use = set().union(*(w.roles for w in usage.workspaces))
-        blocking = [role for role in ROLES if role in removed & in_use]
-        if blocking:
-            raise ApiError(
-                409,
-                "model_role_in_use",
-                f"This model is still used as {', '.join(blocking)}: choose another model "
-                "for it first.",
-                {"roles": blocking},
-            )
+        release_roles(
+            request.app.state.engine, model_id, removed, _replacements(body.workspace_replacements)
+        )
     return _model_out(providers.set_model_roles(model_id, body.roles))
 
 
@@ -350,8 +362,9 @@ def set_model_roles(
 def delete_model(
     model_id: uuid.UUID, request: Request, _admin: LlmAdmin, providers: ProviderServiceDep
 ) -> Response:
-    """Remove an unused model (admins only). 409 `model_in_use` when a Workspace still uses
-    it: remove it with `POST /models/{id}/removal` and a replacement."""
+    """Remove an unused model (admins only; Workspaces holding it only as a non-default extra
+    simply lose it). 409 `model_in_use` when a Workspace depends on it:
+    remove it with `POST /models/{id}/removal` and a replacement."""
     if model_usage(request.app.state.engine, model_id).in_use:
         raise ApiError(
             409,
@@ -365,7 +378,10 @@ def delete_model(
 class LlmModelUsageWorkspace(BaseModel):
     id: uuid.UUID
     name: str
-    roles: list[ModelRole] = Field(description="The roles the model fills in this Workspace.")
+    roles: list[ModelRole] = Field(
+        description="The roles in this Workspace that need a replacement."
+    )
+    internal_only: bool = Field(default=False, description="Only internal models are accepted.")
 
 
 class LlmModelUsage(BaseModel):
@@ -378,7 +394,10 @@ class LlmModelUsage(BaseModel):
 
 
 def _usage_ws(refs: list[WorkspaceRef]) -> list[LlmModelUsageWorkspace]:
-    return [LlmModelUsageWorkspace(id=w.id, name=w.name, roles=w.roles) for w in refs]  # type: ignore[arg-type]
+    return [
+        LlmModelUsageWorkspace(id=w.id, name=w.name, roles=w.roles, internal_only=w.internal_only)
+        for w in refs
+    ]  # type: ignore[arg-type]
 
 
 @router.get("/models/{model_id}/usage", operation_id="getLlmModelUsage")
@@ -393,53 +412,36 @@ def get_model_usage(model_id: uuid.UUID, request: Request, _admin: LlmAdmin) -> 
     )
 
 
-class LlmWorkspaceReplacement(BaseModel):
-    workspace_id: uuid.UUID
-    agent_model_id: uuid.UUID | None = None
-    light_model_id: uuid.UUID | None = None
-    embedding_model_id: uuid.UUID | None = None
-
-
 class LlmModelRemoval(BaseModel):
-    agent_model_id: uuid.UUID | None = Field(
-        default=None, description="Replacement for the agent role, when the model fills it."
-    )
-    light_model_id: uuid.UUID | None = None
-    embedding_model_id: uuid.UUID | None = None
     workspace_replacements: list[LlmWorkspaceReplacement] = Field(
         default_factory=list,
-        description="Per-Workspace replacements where the one above is not allowed "
-        "(an internal-only Workspace takes only internal models).",
+        description="Per Workspace and role, the replacement where the model is the "
+        "Workspace's default or only model for it (an internal-only Workspace takes only "
+        "internal models).",
     )
+
+
+def _replacements(items: list[LlmWorkspaceReplacement]) -> list[WorkspaceReplacement]:
+    return [
+        WorkspaceReplacement(
+            w.workspace_id, w.agent_model_id, w.light_model_id, w.embedding_model_id
+        )
+        for w in items
+    ]
 
 
 @router.post("/models/{model_id}/removal", operation_id="removeLlmModel", status_code=204)
 def remove_model_in_use(
     model_id: uuid.UUID, body: LlmModelRemoval, request: Request, _admin: LlmAdmin
 ) -> Response:
-    """Remove a model with one replacement per role it fills, applied to every affected
-    Workspace atomically (admins only). 422 `replacement_required`,
-    409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
+    """Remove a model with a replacement per Workspace and role where it is the default or
+    only model, applied atomically (admins only). 409 `replacement_required` and
+    `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
     (naming the Workspaces whose documents are indexed with it)."""
-    state = request.app.state
     remove_model(
-        state.engine,
+        request.app.state.engine,
         model_id,
-        replacements={
-            role: chosen
-            for role, chosen in (
-                ("agent", body.agent_model_id),
-                ("light", body.light_model_id),
-                ("embedding", body.embedding_model_id),
-            )
-            if chosen is not None
-        },
-        workspace_replacements=[
-            WorkspaceReplacement(
-                w.workspace_id, w.agent_model_id, w.light_model_id, w.embedding_model_id
-            )
-            for w in body.workspace_replacements
-        ],
+        workspace_replacements=_replacements(body.workspace_replacements),
     )
     return Response(status_code=204)
 

@@ -17,10 +17,8 @@ import {
   useUpdateLlmModel,
   useUpdateLlmProvider,
   type LlmModel,
-  type LlmModelRemoval,
   type LlmProvider,
 } from "../api/llm";
-import { ApiError } from "../api/client";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
 import {
@@ -32,12 +30,12 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
-
-const ROLE_LABELS: Record<LlmModel["roles"][number], string> = {
-  agent: "Agent",
-  light: "Light",
-  embedding: "Embedding",
-};
+import {
+  ROLE_LABELS,
+  ReplacementDialog,
+  neededWorkspaces,
+  type Candidate,
+} from "./ReplacementDialog";
 
 function yesNo(value: boolean | null): string {
   return value === null ? "not tested" : value ? "yes" : "no";
@@ -181,7 +179,7 @@ export function LlmProvidersPage() {
         rowLabel={({ model }) => `Model ${model.name}`}
         columns={MODEL_COLUMNS}
         actions={(row) => (
-          <ModelActions row={row} models={models.map((r) => r.model)} />
+          <ModelActions row={row} models={models} />
         )}
         isPending={providers.isPending}
         error={providers.error}
@@ -388,7 +386,7 @@ function ModelActions({
   models,
 }: {
   row: ModelRow;
-  models: LlmModel[];
+  models: ModelRow[];
 }) {
   const test = useTestLlmModel();
   const [editing, setEditing] = useState(false);
@@ -423,31 +421,9 @@ function ModelActions({
   );
 }
 
-type Role = LlmModel["roles"][number];
-type ReplacementKey =
-  "agent_model_id" | "light_model_id" | "embedding_model_id";
-const REPLACEMENT_KEY: Record<Role, ReplacementKey> = {
-  agent: "agent_model_id",
-  light: "light_model_id",
-  embedding: "embedding_model_id",
-};
-
-interface UnallowedWorkspace {
-  id: string;
-  name: string;
-  roles: Role[];
-}
-
-function unallowedWorkspaces(error: Error | null): UnallowedWorkspace[] {
-  if (!(error instanceof ApiError) || error.code !== "replacement_not_allowed")
-    return [];
-  const list = (error.details as Record<string, unknown> | null | undefined)
-    ?.workspaces;
-  return Array.isArray(list) ? (list as UnallowedWorkspace[]) : [];
-}
-
-/** Asks before removing a model. One in use also asks for a replacement per role it
- * fills; Workspaces the replacement is not allowed for then get a choice of their own. */
+/** Asks before removing a model. Where it is a Workspace's default or only model for a
+ * role, a replacement is chosen per Workspace and role in the shared replacement dialog;
+ * elsewhere it just goes. */
 function RemoveModelDialog({
   model,
   providerName,
@@ -457,131 +433,59 @@ function RemoveModelDialog({
 }: {
   model: LlmModel;
   providerName: string;
-  candidates: LlmModel[];
+  candidates: Candidate[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const usage = useLlmModelUsage(model.id, { enabled: open });
   const remove = useDeleteLlmModel();
   const replace = useRemoveLlmModelWithReplacements(model.id);
-  const [chosen, setChosen] = useState<Partial<Record<Role, string>>>({});
-  const [perWorkspace, setPerWorkspace] = useState<Record<string, string>>({});
-  const roles = usage.data?.roles ?? [];
   const indexed = usage.data?.indexed_workspaces ?? [];
-  const unallowed = unallowedWorkspaces(replace.error);
   const inUse = usage.data?.in_use ?? false;
-  const optionsFor = (role: Role) =>
-    candidates.filter(
-      (c) => c.id !== model.id && c.test_ok === true && c.roles.includes(role),
-    );
-  const complete =
-    roles.every((role) => chosen[role]) &&
-    unallowed.every((w) =>
-      w.roles.every((role) => perWorkspace[`${w.id}:${role}`]),
-    );
+  const workspaces =
+    neededWorkspaces(replace.error).length > 0
+      ? neededWorkspaces(replace.error)
+      : (usage.data?.workspaces ?? []);
 
   const close = (next: boolean) => {
     if (!next) {
       remove.reset();
       replace.reset();
-      setChosen({});
-      setPerWorkspace({});
     }
     onOpenChange(next);
   };
-  const confirm = () => {
-    const done = { onSuccess: () => close(false) };
-    if (!inUse) {
-      remove.mutate(model.id, done);
-      return;
-    }
-    const body: LlmModelRemoval = { workspace_replacements: [] };
-    for (const role of roles) body[REPLACEMENT_KEY[role]] = chosen[role];
-    for (const w of unallowed) {
-      const entry: NonNullable<
-        LlmModelRemoval["workspace_replacements"]
-      >[number] = {
-        workspace_id: w.id,
-      };
-      for (const role of w.roles)
-        entry[REPLACEMENT_KEY[role]] = perWorkspace[`${w.id}:${role}`];
-      body.workspace_replacements?.push(entry);
-    }
-    replace.mutate(body, done);
-  };
-  const picker = (
-    label: string,
-    value: string,
-    role: Role,
-    onChange: (id: string) => void,
-  ) => (
-    <label key={label} className={labelClasses}>
-      {label}
-      <NativeSelect
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">Choose a model</option>
-        {optionsFor(role).map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </NativeSelect>
-    </label>
-  );
+  const done = { onSuccess: () => close(false) };
 
   return (
-    <ConfirmDialog
+    <ReplacementDialog
       open={open}
       onOpenChange={close}
       title={`Remove ${model.name}?`}
       description={
         inUse
-          ? "This model is in use. Choose what replaces it for each role it fills."
+          ? "Some Workspaces depend on this model. Choose what replaces it for each; it is removed from the others."
           : `The model is removed from ${providerName}.`
       }
       confirmLabel="Remove model"
-      pending={usage.isLoading || remove.isPending || replace.isPending}
-      confirmDisabled={
-        usage.isLoading || indexed.length > 0 || (inUse && !complete)
+      workspaces={workspaces}
+      candidates={candidates}
+      excludeId={model.id}
+      blocked={
+        indexed.length > 0 ? (
+          <p role="alert" className="text-sm">
+            Documents in {indexed.map((w) => w.name).join(", ")} are indexed
+            with this model, so it cannot be removed.
+          </p>
+        ) : undefined
       }
+      pending={usage.isLoading || remove.isPending || replace.isPending}
       error={remove.error ?? replace.error ?? usage.error}
-      onConfirm={confirm}
-    >
-      {indexed.length > 0 && (
-        <p role="alert" className="text-sm">
-          Documents in {indexed.map((w) => w.name).join(", ")} are indexed with
-          this model, so it cannot be removed.
-        </p>
-      )}
-      {indexed.length === 0 &&
-        roles.map((role) =>
-          picker(
-            `Replace as ${ROLE_LABELS[role]} model`,
-            chosen[role] ?? "",
-            role,
-            (id) => setChosen({ ...chosen, [role]: id }),
-          ),
-        )}
-      {unallowed.length > 0 && (
-        <p role="status" className="text-sm">
-          The replacement is not allowed in these Workspaces. Choose another
-          model for each.
-        </p>
-      )}
-      {unallowed.flatMap((w) =>
-        w.roles.map((role) =>
-          picker(
-            `${w.name}: ${ROLE_LABELS[role]} model`,
-            perWorkspace[`${w.id}:${role}`] ?? "",
-            role,
-            (id) =>
-              setPerWorkspace({ ...perWorkspace, [`${w.id}:${role}`]: id }),
-          ),
-        ),
-      )}
-    </ConfirmDialog>
+      onConfirm={(replacements) =>
+        inUse
+          ? replace.mutate({ workspace_replacements: replacements }, done)
+          : remove.mutate(model.id, done)
+      }
+    />
   );
 }
 

@@ -252,23 +252,23 @@ def test_unticking_a_role_in_use_is_refused_until_it_is_free(
         json={"name": "Uses it", "agent_model_id": model["id"], "light_model_id": model["id"]},
     )
     assert created.status_code == 201, created.text
-    settings = f"/api/v1/workspaces/{created.json()['id']}/ai-settings"
 
     refused = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
-    assert refused.status_code == 409 and code(refused) == "model_role_in_use"
-    assert refused.json()["error"]["details"]["roles"] == ["light"]
-    freed_up = signed_in_client.put(
-        settings,
+    assert refused.status_code == 409 and code(refused) == "replacement_required"
+    [named] = refused.json()["error"]["details"]["workspaces"]
+    assert named["roles"] == ["light"]
+    spare = add_model(admin_client, provider, "spare", roles=("light",))
+    assert admin_client.post(f"{BASE}/models/{spare['id']}/test").json()["test_ok"] is True
+
+    freed = admin_client.put(
+        f"{BASE}/models/{model['id']}/roles",
         json={
-            "internal_only": True,
-            "data_sharing_level": "metadata",
-            "agent_model_ids": [model["id"]],
-            "light_model_ids": [],
+            "roles": ["agent"],
+            "workspace_replacements": [
+                {"workspace_id": created.json()["id"], "light_model_id": spare["id"]}
+            ],
         },
     )
-    assert freed_up.status_code == 200, freed_up.text
-
-    freed = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
     assert freed.status_code == 200 and freed.json()["roles"] == ["agent"]
 
 
