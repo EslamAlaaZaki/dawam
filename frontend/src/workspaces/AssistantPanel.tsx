@@ -34,6 +34,7 @@ import { ApiError } from "../api/client";
 import { useMe } from "../api/queries";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { isActive, useCancelJob, useJob } from "../api/jobs";
 import { useWorkspaceAiSettings } from "../api/workspaceAi";
@@ -46,7 +47,6 @@ import {
   ErrorText,
   Hint,
   NativeSelect,
-  checkClasses,
   checkLabelClasses,
   h3Classes,
 } from "./parts";
@@ -543,12 +543,10 @@ export function AssistantPanel({
           )}
           {current && mine && !archived && (
             <label className={checkLabelClasses}>
-              <input
-                type="checkbox"
-                className={checkClasses}
+              <Switch
                 checked={current.shared_with_workspace}
                 disabled={share.isPending}
-                onChange={(event) => share.mutate(event.target.checked)}
+                onCheckedChange={(checked) => share.mutate(checked)}
               />
               Share with the Workspace&apos;s members
             </label>

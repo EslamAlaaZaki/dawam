@@ -22,7 +22,11 @@ const ADA: Me = {
   must_change_password: false,
 };
 
-const PROGRESS = { source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] };
+const PROGRESS = {
+  source_analysis: [],
+  kpis: { status: "not_started" },
+  dw_modeling: [],
+};
 
 const NOT_SET_UP: DataWarehouse = {
   set_up: false,
@@ -63,7 +67,11 @@ const SET_UP: DataWarehouse = {
 };
 
 const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
-  owner: ["data_warehouse.change_platform", "data_warehouse.set_up", "workspace.view"],
+  owner: [
+    "data_warehouse.change_platform",
+    "data_warehouse.set_up",
+    "workspace.view",
+  ],
   editor: ["data_warehouse.set_up", "workspace.view"],
   viewer: ["workspace.view"],
 };
@@ -119,13 +127,19 @@ function open(
       current = SET_UP;
       return json(SET_UP);
     }
-    return json({ error: { code: "not_found", message: "Not Found", details: {} } }, 404);
+    return json(
+      { error: { code: "not_found", message: "Not Found", details: {} } },
+      404,
+    );
   };
   const client = createApiClient({
     baseUrl: "http://dawam.test",
-    fetch: async (input: RequestInfo | URL, init?: RequestInit) => handle(new Request(input, init)),
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) =>
+      handle(new Request(input, init)),
   });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
     <ApiClientContext.Provider value={client}>
       <QueryClientProvider client={queryClient}>
@@ -146,7 +160,7 @@ afterEach(() => {
 });
 
 function names() {
-  return screen.getAllByRole("treeitem").map((node) => {
+  return screen.getAllByRole("treeitem", { hidden: true }).map((node) => {
     const id = node.getAttribute("aria-labelledby");
     return document.getElementById(id!)?.textContent;
   });
@@ -155,10 +169,21 @@ function names() {
 describe("the Data Warehouse folder before setup", () => {
   it("shows only the setup step and KPIs", async () => {
     open("editor", NOT_SET_UP);
-    await screen.findByRole("tree", { name: "Workspace folders" });
+    await screen.findByRole("tree", {
+      name: "Workspace folders",
+      hidden: true,
+    });
 
-    expect(names()).toEqual(["Retail DW", "Systems", "Data Warehouse", "Set up Data Warehouse", "KPIs"]);
-    expect(await screen.findByRole("heading", { name: "Set up Data Warehouse" })).toBeInTheDocument();
+    expect(names()).toEqual([
+      "Retail DW",
+      "Systems",
+      "Data Warehouse",
+      "Set up Data Warehouse",
+      "KPIs",
+    ]);
+    expect(
+      await screen.findByRole("heading", { name: "Set up Data Warehouse" }),
+    ).toBeInTheDocument();
   });
 
   it("lets an editor choose the platform and sets it up", async () => {
@@ -171,7 +196,9 @@ describe("the Data Warehouse folder before setup", () => {
     fireEvent.change(screen.getByLabelText("Schema or dataset name: staging"), {
       target: { value: "raw" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Set up Data Warehouse" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up Data Warehouse" }),
+    );
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]!.method).toBe("POST");
@@ -179,7 +206,10 @@ describe("the Data Warehouse folder before setup", () => {
       target_platform: "snowflake",
       layer_schemas: { staging: "raw", core: "core", mart: "mart" },
       naming_rules: { case_style: "lower", dimension_prefix: "dim_" },
-      date_dimension: { weekend_days: ["saturday", "sunday"], fiscal_year_start_month: null },
+      date_dimension: {
+        weekend_days: ["saturday", "sunday"],
+        fiscal_year_start_month: null,
+      },
     });
   });
 
@@ -187,14 +217,19 @@ describe("the Data Warehouse folder before setup", () => {
     open("viewer", NOT_SET_UP);
 
     expect(await screen.findByLabelText("Target platform")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Set up Data Warehouse" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Set up Data Warehouse" }),
+    ).not.toBeInTheDocument();
   });
 });
 
 describe("the Data Warehouse folder after setup", () => {
   it("shows the full folder", async () => {
     open("owner", SET_UP);
-    await screen.findByRole("tree", { name: "Workspace folders" });
+    await screen.findByRole("tree", {
+      name: "Workspace folders",
+      hidden: true,
+    });
 
     await waitFor(() => expect(names()).toContain("Staging"));
     expect(names()).not.toContain("Set up Data Warehouse");
@@ -206,7 +241,9 @@ describe("the Data Warehouse folder after setup", () => {
     const platform = await screen.findByLabelText("Target platform");
     expect(platform).toBeDisabled();
     expect(platform).toHaveValue("oracle");
-    expect(screen.getByText("Only owners can change the platform after setup.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Only owners can change the platform after setup."),
+    ).toBeInTheDocument();
   });
 
   it("lets an owner change the platform, sending the version", async () => {
@@ -220,30 +257,60 @@ describe("the Data Warehouse folder after setup", () => {
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]!.method).toBe("PATCH");
-    expect(sent[0]!.body).toMatchObject({ version: 3, target_platform: "bigquery" });
+    expect(sent[0]!.body).toMatchObject({
+      version: 3,
+      target_platform: "bigquery",
+    });
   });
 
   it("lets an editor save other settings without a platform", async () => {
     const sent: Sent[] = [];
     open("editor", SET_UP, "dw", sent);
 
-    fireEvent.change(await screen.findByLabelText("Fact prefix"), { target: { value: "fct_" } });
+    fireEvent.change(await screen.findByLabelText("Fact prefix"), {
+      target: { value: "fct_" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]!.body).toMatchObject({ version: 3, naming_rules: { fact_prefix: "fct_" } });
+    expect(sent[0]!.body).toMatchObject({
+      version: 3,
+      naming_rules: { fact_prefix: "fct_" },
+    });
     expect(sent[0]!.body).not.toHaveProperty("target_platform");
   });
 
   it("stays in the Data Warehouse folder after the setup succeeds", async () => {
     open("editor", NOT_SET_UP, "dw/setup");
 
-    fireEvent.click(await screen.findByRole("button", { name: "Set up Data Warehouse" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Set up Data Warehouse" }),
+    );
 
     expect(await screen.findByText("Saved.")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Data Warehouse setup" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Data Warehouse setup" }),
+    ).toBeInTheDocument();
     expect(names()).toContain("Staging");
     expect(names()).not.toContain("Set up Data Warehouse");
+  });
+});
+
+describe("the Data Warehouse setup dialog", () => {
+  it("closes back to the Data Warehouse folder view and can be reopened", async () => {
+    open("editor", NOT_SET_UP);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Data Warehouse setup" }),
+    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });
 
@@ -251,17 +318,22 @@ describe("a link into the Data Warehouse folder", () => {
   it("waits for the setup to load instead of falling back to the Workspace", async () => {
     open("owner", SET_UP, "dw/staging");
 
-    expect(await screen.findByRole("heading", { name: "Staging" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Details" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Staging" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Details" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows an error, not the Workspace, when the setup cannot be loaded", async () => {
     open("owner", "error", "dw/staging");
 
-    expect(await screen.findByText(/Could not load the Data Warehouse/)).toHaveAttribute(
-      "role",
-      "alert",
-    );
-    expect(screen.queryByRole("heading", { name: "Details" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/Could not load the Data Warehouse/),
+    ).toHaveAttribute("role", "alert");
+    expect(
+      screen.queryByRole("heading", { name: "Details" }),
+    ).not.toBeInTheDocument();
   });
 });

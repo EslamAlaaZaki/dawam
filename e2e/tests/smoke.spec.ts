@@ -80,8 +80,9 @@ test("the main path: sign in to lineage", async ({ page }) => {
 
   await test.step("set up the Data Warehouse", async () => {
     await page.goto(`/workspaces/${workspaceId}?folder=dw/setup`);
-    await page.getByRole("button", { name: "Set up Data Warehouse" }).click();
-    await expect(page.getByRole("heading", { name: "Data Warehouse setup" })).toBeVisible();
+    const setup = page.getByRole("dialog");
+    await setup.getByRole("button", { name: "Set up Data Warehouse" }).click();
+    await expect(setup.getByRole("heading", { name: "Data Warehouse setup" })).toBeVisible();
   });
 
   await test.step("add the Source System and its Connection to the seeded database", async () => {

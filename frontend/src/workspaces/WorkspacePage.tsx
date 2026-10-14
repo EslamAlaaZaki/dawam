@@ -4,17 +4,16 @@ import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
-import {
-  ROLE_LABELS,
-  useWorkspace,
-} from "../api/workspaces";
+import { ROLE_LABELS, useWorkspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
+import { EmptyState, ErrorText, Hint, Panel, h3Classes } from "./parts";
 import {
-  EmptyState,
-  ErrorText,
-  Panel,
-  h3Classes,
-} from "./parts";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { Loading } from "../shell/Loading";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { AssistantPanel } from "./AssistantPanel";
@@ -46,6 +45,9 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const { folder, wanted, select, warehouse, systems, systemList } =
     useWorkspaceFolders(workspaceId, workspace.data?.name ?? "");
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // The folder whose setup dialog was closed: it stays closed until another folder is
+  // selected or the folder's button reopens it.
+  const [setupDismissed, setSetupDismissed] = useState<string | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const wasOpen = useRef(false);
@@ -75,9 +77,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     ) {
       return <WorkspaceNotFound />;
     }
-    return (
-      <ErrorText>Could not load the Workspace: {error.message}</ErrorText>
-    );
+    return <ErrorText>Could not load the Workspace: {error.message}</ErrorText>;
   }
   // Whether the Data Warehouse is set up decides which of its folders exist, so do not
   // resolve one (and fall back to the root) before that is known.
@@ -162,6 +162,23 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           </p>
         )}
         <StageProgressPanel workspaceId={workspaceId} />
+        <Dialog
+          open={
+            (folder.id === "dw" || folder.id === "dw/setup") &&
+            setupDismissed !== folder.id
+          }
+          onOpenChange={(open) => setSetupDismissed(open ? null : folder.id)}
+        >
+          <DialogContent className="max-h-[calc(100%-2rem)] w-[min(640px,calc(100%-2rem))]">
+            <DialogHeader>
+              <DialogTitle className="sr-only">Data Warehouse</DialogTitle>
+              <DialogDescription className="sr-only">
+                Set up or edit the Data Warehouse.
+              </DialogDescription>
+            </DialogHeader>
+            <DataWarehouseSetup workspace={workspace.data} />
+          </DialogContent>
+        </Dialog>
         <div className="flex min-w-0 flex-col gap-6">
           {inDataWarehouse && warehouse.isPending ? (
             <Loading />
@@ -175,7 +192,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               <DeletedObjectsPanel workspace={workspace.data} />
             </>
           ) : folder.id === "dw" || folder.id === "dw/setup" ? (
-            <DataWarehouseSetup workspace={workspace.data} />
+            <div className="flex flex-col items-start gap-3">
+              <Hint>
+                The Data Warehouse setup opens in a dialog: platform, schemas,
+                naming rules and the date dimension.
+              </Hint>
+              <Button onClick={() => setSetupDismissed(null)}>
+                Open Data Warehouse setup
+              </Button>
+            </div>
           ) : folder.id === "systems" ? (
             <SystemsPanel
               workspace={workspace.data}
