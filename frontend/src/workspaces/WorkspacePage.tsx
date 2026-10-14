@@ -48,7 +48,12 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // The folder whose setup dialog was closed: it stays closed until another folder is
   // selected or the folder's button reopens it.
   const [setupDismissed, setSetupDismissed] = useState<string | null>(null);
-  useEffect(() => setSetupDismissed(null), [folder.id]);
+  const [dismissedIn, setDismissedIn] = useState(folder.id);
+  if (dismissedIn !== folder.id) {
+    // A different folder was selected: adjust state during render, not in an effect.
+    setDismissedIn(folder.id);
+    setSetupDismissed(null);
+  }
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const wasOpen = useRef(false);

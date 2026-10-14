@@ -589,7 +589,7 @@ function AddModelDialog({
   );
 }
 
-/** The model name: a searchable list of what the provider offers (already registered
+/** The model name: a dropdown of what the provider offers (already registered
  * names disabled), or a plain text field when listing fails or is unsupported. */
 function ModelNamePicker({
   providerId,
@@ -603,7 +603,6 @@ function ModelNamePicker({
   onChange: (name: string) => void;
 }) {
   const listing = useLlmProviderModels(providerId, { enabled: open });
-  const [query, setQuery] = useState("");
 
   if (listing.isPending && listing.fetchStatus !== "idle") {
     return (
@@ -634,60 +633,21 @@ function ModelNamePicker({
       </>
     );
   }
-  const needle = query.trim().toLowerCase();
-  const shown = data.models.filter((m) =>
-    m.name.toLowerCase().includes(needle),
-  );
   return (
-    <div className="space-y-2">
-      <label className={labelClasses}>
-        Model name
-        <Input
-          role="combobox"
-          aria-expanded
-          aria-controls="llm-model-options"
-          placeholder="Search the provider's models"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            onChange("");
-          }}
-        />
-      </label>
-      <ul
-        id="llm-model-options"
-        role="listbox"
-        aria-label="Provider models"
-        className="max-h-48 overflow-y-auto rounded-md border"
+    <label className={labelClasses}>
+      Model name
+      <NativeSelect
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
       >
-        {shown.length === 0 && (
-          <li className="px-3 py-2 text-sm text-muted-foreground">
-            No model matches.
-          </li>
-        )}
-        {shown.map((m) => (
-          <li
-            key={m.name}
-            role="option"
-            aria-selected={value === m.name}
-            aria-disabled={m.registered}
-          >
-            <button
-              type="button"
-              disabled={m.registered}
-              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => {
-                onChange(m.name);
-                setQuery(m.name);
-              }}
-            >
-              <span>{m.name}</span>
-              {m.registered && <span className="text-xs">already added</span>}
-            </button>
-          </li>
+        <option value="">Choose a model</option>
+        {data.models.map((m) => (
+          <option key={m.name} value={m.name} disabled={m.registered}>
+            {m.registered ? `${m.name} (already added)` : m.name}
+          </option>
         ))}
-      </ul>
-    </div>
+      </NativeSelect>
+    </label>
   );
 }
 
