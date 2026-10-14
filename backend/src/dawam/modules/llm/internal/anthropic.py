@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator, Sequence
 from typing import Any
+from urllib.parse import quote
 
 from ..gateway import (
     BAD_REQUEST,
@@ -26,7 +27,7 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
-from .wire import detail, error_for, json_body
+from .wire import MAX_LIST_PAGES, detail, error_for, json_body
 
 API_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096
@@ -116,6 +117,31 @@ class AnthropicAdapter:
         if isinstance(value, int) and not isinstance(value, bool) and value > 0:
             return value
         return None
+
+    def list_models(self) -> list[str]:
+        names: list[str] = []
+        path = "/models?limit=1000"
+        for _ in range(MAX_LIST_PAGES):
+            response = self._send("GET", path, None)
+            try:
+                if response.status >= 400:
+                    raise error_for(response)
+                data = json_body(response)
+            except OSError:
+                raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+            finally:
+                response.close()
+            entries = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(entries, list):
+                raise LlmError(INVALID_RESPONSE, "The provider's model list was malformed.")
+            names += [
+                e["id"] for e in entries if isinstance(e, dict) and isinstance(e.get("id"), str)
+            ]
+            last = data.get("last_id")
+            if not data.get("has_more") or not isinstance(last, str):
+                break
+            path = f"/models?limit=1000&after_id={quote(last, safe='')}"
+        return names
 
     # -- HTTP ------------------------------------------------------------------------
 

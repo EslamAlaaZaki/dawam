@@ -3621,6 +3621,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/providers/{provider_id}/available-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Provider Models
+         * @description The models the provider itself lists, with a `registered` flag, using its stored
+         *     key (never returned). A listing failure is reported in `error`, not as an HTTP error.
+         *     404 `provider_not_found`.
+         */
+        get: operations["listLlmProviderModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/llm/providers/{provider_id}/models": {
         parameters: {
             query?: never;
@@ -6926,6 +6948,16 @@ export interface components {
             /** Workspaces */
             workspaces: components["schemas"]["LlmWorkspaceBudget"][];
         };
+        /** LlmListedModel */
+        LlmListedModel: {
+            /** Name */
+            name: string;
+            /**
+             * Registered
+             * @description Already registered under this provider.
+             */
+            registered: boolean;
+        };
         /** LlmModel */
         LlmModel: {
             /**
@@ -7113,6 +7145,26 @@ export interface components {
         LlmProviderList: {
             /** Items */
             items: components["schemas"]["LlmProvider"][];
+        };
+        /** LlmProviderModels */
+        LlmProviderModels: {
+            /**
+             * Supported
+             * @description False when the adapter cannot list its models.
+             */
+            supported: boolean;
+            /** Models */
+            models: components["schemas"]["LlmListedModel"][];
+            /**
+             * Error
+             * @description Why listing failed (bad key, server down); no secrets.
+             */
+            error?: string | null;
+            /**
+             * Error Code
+             * @description The gateway's common error code when listing failed.
+             */
+            error_code?: string | null;
         };
         /** LlmProviderRequest */
         LlmProviderRequest: {
@@ -18921,6 +18973,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listLlmProviderModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProviderModels"];
+                };
             };
             /** @description Validation error */
             422: {

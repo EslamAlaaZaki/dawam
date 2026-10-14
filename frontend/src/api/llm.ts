@@ -13,6 +13,7 @@ export type LlmModelUpdate = components["schemas"]["LlmModelUpdateRequest"];
 export type LlmModelRole = LlmModel["roles"][number];
 export type LlmModelUsage = components["schemas"]["LlmModelUsage"];
 export type LlmModelRemoval = components["schemas"]["LlmModelRemoval"];
+export type LlmProviderModels = components["schemas"]["LlmProviderModels"];
 export type LlmSetup = components["schemas"]["LlmSetupStatus"];
 
 const providersKey = ["admin", "llm", "providers"] as const;
@@ -207,6 +208,31 @@ export function useTestLlmModel() {
       return data;
     },
     onSuccess: refresh,
+  });
+}
+
+/** The models a provider itself lists, flagged when already registered. A listing
+ * failure comes back in the body (`error`), not as a thrown error. */
+export function useLlmProviderModels(
+  providerId: string,
+  { enabled }: { enabled: boolean },
+) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["admin", "llm", "available-models", providerId],
+    enabled: enabled && providerId !== "",
+    gcTime: 0,
+    retry: false,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/admin/llm/providers/{provider_id}/available-models",
+        { params: { path: { provider_id: providerId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
   });
 }
 

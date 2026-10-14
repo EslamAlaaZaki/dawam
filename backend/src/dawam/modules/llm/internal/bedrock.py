@@ -45,7 +45,7 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
-from .wire import detail, error_for, json_body
+from .wire import MAX_LIST_PAGES, detail, error_for, json_body
 
 DEFAULT_MAX_TOKENS = 4096
 """A cap on the reply that fits the Bedrock models' output limits."""
@@ -323,6 +323,40 @@ class BedrockAdapter:
     def context_window(self, model: str) -> int | None:
         return None
 
+    def list_models(self) -> list[str]:
+        """Foundation model IDs plus inference profile IDs (the control-plane endpoint)."""
+        control = self._base_url.replace("bedrock-runtime", "bedrock", 1)
+        names = self._list_all(control, "/foundation-models", "modelSummaries", "modelId")
+        names += self._list_all(
+            control, "/inference-profiles", "inferenceProfileSummaries", "inferenceProfileId"
+        )
+        return list(dict.fromkeys(names))
+
+    def _list_all(self, base: str, path: str, key: str, id_key: str) -> list[str]:
+        names: list[str] = []
+        url_path = path
+        for _ in range(MAX_LIST_PAGES):
+            response = self._send("GET", url_path, b"", base=base)
+            try:
+                if response.status >= 400:
+                    raise error_for(response, self._redact)
+                data = json_body(response)
+            except OSError:
+                raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+            finally:
+                response.close()
+            entries = data.get(key) if isinstance(data, dict) else None
+            if not isinstance(entries, list):
+                raise LlmError(INVALID_RESPONSE, "The provider's model list was malformed.")
+            names += [
+                e[id_key] for e in entries if isinstance(e, dict) and isinstance(e.get(id_key), str)
+            ]
+            token = data.get("nextToken")
+            if not isinstance(token, str) or not token:
+                break
+            url_path = f"{path}?nextToken={quote(token, safe='')}"
+        return names
+
     # -- HTTP ------------------------------------------------------------------------
 
     def _redact(self, text: str) -> str:
@@ -350,22 +384,26 @@ class BedrockAdapter:
                 )
         return self._role() if self._role is not None else self._static
 
-    def _send(self, method: str, path: str, body: bytes) -> HttpResponse:
+    def _send(
+        self, method: str, path: str, body: bytes, *, base: str | None = None
+    ) -> HttpResponse:
         if self._region is None:
             raise LlmError(
                 BAD_REQUEST,
                 "The base URL must be a bedrock-runtime.<region>.amazonaws.com endpoint.",
             )
-        response = self._send_once(method, path, body)
+        response = self._send_once(method, path, body, base)
         if response.status == 403 and self._role is not None:
             response.close()
             self._role.invalidate()  # the role's credentials may have expired: retry once
-            response = self._send_once(method, path, body)
+            response = self._send_once(method, path, body, base)
         return response
 
-    def _send_once(self, method: str, path: str, body: bytes) -> HttpResponse:
+    def _send_once(
+        self, method: str, path: str, body: bytes, base: str | None = None
+    ) -> HttpResponse:
         assert self._region is not None
-        url = self._base_url + path
+        url = (base or self._base_url) + path
         try:
             headers = sign_v4(
                 method,

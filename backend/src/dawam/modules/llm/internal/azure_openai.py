@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
-from ..gateway import AUTH, UNAVAILABLE, LlmError
+from ..gateway import AUTH, UNAVAILABLE, ListingUnsupported, LlmError
 from .openai_compatible import OpenAICompatibleAdapter
 from .transport import HttpResponse, Transport, TransportError
 
@@ -169,6 +169,9 @@ class AzureOpenAIAdapter(OpenAICompatibleAdapter):
                 return super()._post(full, body)
             except LlmError as again:
                 raise _redacted(again, source) from None
+
+    def list_models(self) -> list[str]:
+        raise ListingUnsupported("Azure OpenAI names deployments, which the API cannot list.")
 
     def _url(self, path: str) -> str:
         if path == "/models":

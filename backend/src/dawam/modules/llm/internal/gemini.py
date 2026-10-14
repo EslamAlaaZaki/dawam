@@ -33,6 +33,7 @@ from ..gateway import (
     UNAVAILABLE,
     ChatEvent,
     Done,
+    ListingUnsupported,
     LlmError,
     Message,
     TextDelta,
@@ -42,7 +43,7 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
-from .wire import detail, error_for, json_body
+from .wire import MAX_LIST_PAGES, detail, error_for, json_body
 
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -294,6 +295,34 @@ class GeminiAdapter:
         if isinstance(value, int) and not isinstance(value, bool) and value > 0:
             return value
         return None
+
+    def list_models(self) -> list[str]:
+        if "aiplatform.googleapis.com" in self._base_url:
+            raise ListingUnsupported("Vertex AI has no reliable model list here.")
+        names: list[str] = []
+        path = "/models?pageSize=1000"
+        for _ in range(MAX_LIST_PAGES):
+            response = self._send("GET", path, None)
+            try:
+                if response.status >= 400:
+                    raise self._error(response)
+                data = json_body(response)
+            except OSError:
+                raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+            finally:
+                response.close()
+            entries = data.get("models") if isinstance(data, dict) else None
+            if not isinstance(entries, list):
+                raise LlmError(INVALID_RESPONSE, "The provider's model list was malformed.")
+            for entry in entries:
+                name = entry.get("name") if isinstance(entry, dict) else None
+                if isinstance(name, str):
+                    names.append(name.removeprefix("models/"))
+            token = data.get("nextPageToken")
+            if not isinstance(token, str) or not token:
+                break
+            path = f"/models?pageSize=1000&pageToken={quote(token, safe='')}"
+        return names
 
     # -- HTTP ------------------------------------------------------------------------
 
