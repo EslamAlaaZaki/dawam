@@ -87,6 +87,11 @@ function Effective({ settings }: { settings: WorkspaceAiSettings }) {
             )
           : "None assigned: light tasks use the agent model"}
       </dd>
+      <dt>Embedding model</dt>
+      <dd>
+        {settings.embedding_model_name ?? "None assigned"}{" "}
+        <span className="text-muted-foreground">(fixed at creation)</span>
+      </dd>
     </DetailList>
   );
 }

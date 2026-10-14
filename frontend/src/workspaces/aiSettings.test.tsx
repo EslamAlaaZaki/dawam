@@ -26,6 +26,7 @@ const ADA: Me = {
 
 const BIG = "aaaaaaaa-0000-4000-8000-000000000001";
 const SMALL = "aaaaaaaa-0000-4000-8000-000000000002";
+const EMBED = "aaaaaaaa-0000-4000-8000-000000000003";
 const EMBED_LESS = { internal: false, provider_name: "Cloud" };
 
 function workspace(role: WorkspaceRole): Workspace {
@@ -60,6 +61,8 @@ function settings(
     data_sharing_level: "metadata",
     agent_model_id: own.agent ?? null,
     light_model_id: own.light ?? null,
+    embedding_model_id: EMBED,
+    embedding_model_name: "Embed-1",
     effective_agent_model_id: agent,
     effective_agent_model_name: name(agent),
     effective_light_model_id: light,
@@ -123,9 +126,29 @@ describe("the Workspace AI settings card", () => {
     const card = await screen.findByRole("region", { name: "AI settings" });
     expect(card).toHaveTextContent("Agent modelBig (installation default)");
     expect(card).toHaveTextContent("Light modelBig");
+    expect(card).toHaveTextContent(
+      "Embedding modelEmbed-1 (fixed at creation)",
+    );
     expect(card).not.toHaveTextContent("Light modelBig (installation default)");
     expect(
       within(card).queryByRole("button", { name: "Save" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the embedding model read-only, for owners too", async () => {
+    renderApp(
+      backend("owner", (r) =>
+        r.method === "GET" && r.path === AI ? json(settings()) : undefined,
+      ),
+      PATH,
+    );
+
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    expect(card).toHaveTextContent(
+      "Embedding modelEmbed-1 (fixed at creation)",
+    );
+    expect(
+      within(card).queryByLabelText("Embedding model"),
     ).not.toBeInTheDocument();
   });
 

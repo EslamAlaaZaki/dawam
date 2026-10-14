@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useEmbeddingModels } from "../api/workspaceAi";
 import {
   ROLE_LABELS,
   allows,
@@ -17,14 +18,17 @@ import {
   type Workspace,
 } from "../api/workspaces";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
-import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
+import {
+  EntityTable,
+  type EntityColumn,
+} from "../components/entity/EntityTable";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { PageHead } from "../admin/parts";
 import { DetailsFields, detailsFrom } from "./DetailsFields";
-import { ErrorText, labelClasses } from "./parts";
+import { ErrorText, Hint, NativeSelect, labelClasses } from "./parts";
 
 const COLUMNS: EntityColumn<Workspace>[] = [
   {
@@ -93,6 +97,7 @@ function CreateWorkspaceDialog({
 }) {
   const create = useCreateWorkspace();
   const router = useRouter();
+  const embeddings = useEmbeddingModels();
 
   return (
     <EntityFormDialog
@@ -105,14 +110,45 @@ function CreateWorkspaceDialog({
       description="You become its owner and can add members once it exists."
       submitLabel="Create Workspace"
       onSubmit={(form) =>
-        create.mutate(detailsFrom(form), {
-          onSuccess: (workspace) => router.push(`/workspaces/${workspace.id}`),
-        })
+        create.mutate(
+          {
+            ...detailsFrom(form),
+            embedding_model_id: String(form.get("embedding") ?? "") || null,
+          },
+          {
+            onSuccess: (workspace) =>
+              router.push(`/workspaces/${workspace.id}`),
+          },
+        )
       }
       pending={create.isPending}
       error={create.error}
     >
       <DetailsFields />
+      {embeddings.data && embeddings.data.models.length > 0 && (
+        <>
+          <label className={labelClasses}>
+            Embedding model
+            <NativeSelect
+              name="embedding"
+              defaultValue={embeddings.data.default_model_id ?? ""}
+            >
+              {embeddings.data.default_model_id === null && (
+                <option value="">Installation default</option>
+              )}
+              {embeddings.data.models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.provider_name})
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <Hint>
+            Used to search this workspace&apos;s documents. It can&apos;t be
+            changed later.
+          </Hint>
+        </>
+      )}
     </EntityFormDialog>
   );
 }
@@ -242,8 +278,8 @@ function DeleteWorkspaceDialog({
       title={`Delete ${workspace.name}?`}
       description={
         <>
-          Deleting is permanent and removes everything in the Workspace. Type its
-          name, <strong>{workspace.name}</strong>, to confirm.
+          Deleting is permanent and removes everything in the Workspace. Type
+          its name, <strong>{workspace.name}</strong>, to confirm.
         </>
       }
       submitLabel="Delete Workspace"

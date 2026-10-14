@@ -9,6 +9,8 @@ export type WorkspaceAiSettings = components["schemas"]["WorkspaceAiSettings"];
 export type WorkspaceAiSettingsRequest =
   components["schemas"]["WorkspaceAiSettingsRequest"];
 
+export type EmbeddingChoices = components["schemas"]["EmbeddingChoicesOut"];
+
 const aiKey = (workspaceId: string) =>
   ["workspace", workspaceId, "ai-settings"] as const;
 
@@ -46,5 +48,22 @@ export function useSetWorkspaceAiSettings(workspaceId: string) {
       return data;
     },
     onSuccess: (data) => queryClient.setQueryData(aiKey(workspaceId), data),
+  });
+}
+
+/** The embedding models the "New workspace" form offers and the installation's default. */
+export function useEmbeddingModels() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["ai", "embedding-models"] as const,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/ai/embedding-models",
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
   });
 }

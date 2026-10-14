@@ -26,7 +26,13 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
 from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
-from dawam.modules.llm import LlmError, MeteredGateway, ProviderService, RoleService
+from dawam.modules.llm import (
+    LlmError,
+    MeteredGateway,
+    ProviderService,
+    RoleService,
+    workspace_embedding_model_id,
+)
 from dawam.modules.sources import hidden_source_system_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
@@ -79,26 +85,37 @@ class EmbeddingModels(Protocol):
     def current(
         self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> EmbeddingModel | None:
-        """The installation's embedding model (calls are attributed to the Workspace and,
-        when a user is behind them, the user), or ``None`` if none is registered."""
+        """The Workspace's embedding model (calls are attributed to the Workspace and, when a
+        user is behind them, the user), or ``None`` if none is usable."""
         ...
 
 
 class RegisteredEmbeddingModels:
-    """The first tested embedding model of the admin's provider registry."""
+    """The Workspace's own embedding model, fixed at creation (ADR 0005); a Workspace without
+    one uses the first tested embedding model of the admin's provider registry."""
 
-    def __init__(self, providers: ProviderService, roles: RoleService) -> None:
+    def __init__(
+        self, providers: ProviderService, roles: RoleService, engine: sa.Engine | None = None
+    ) -> None:
         self._providers = providers
         self._roles = roles
+        self._engine = engine
 
     def current(
         self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> EmbeddingModel | None:
+        chosen = (
+            workspace_embedding_model_id(self._engine, workspace_id)
+            if self._engine is not None
+            else None
+        )
         candidates = [
             (provider, model)
             for provider in self._providers.list_providers()
             for model in provider.models
-            if "embedding" in model.roles and model.test_ok
+            if "embedding" in model.roles
+            and model.test_ok
+            and (chosen is None or model.id == chosen)
         ]
         if not candidates:
             return None

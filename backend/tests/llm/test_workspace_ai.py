@@ -515,3 +515,113 @@ def test_an_external_workspace_light_model_falls_back_to_the_agent_when_internal
     list(gateway.chat(ASK))
 
     assert gateway.role == "agent" and fake_llm.calls[-1].model == "local"
+
+
+# -- embedding model: chosen at creation, then fixed (ADR 0005) -------------------------
+
+
+def create_with_embedding(client, model_id, name="Embeds"):
+    return client.post("/api/v1/workspaces", json={"name": name, "embedding_model_id": model_id})
+
+
+def test_a_new_workspace_takes_the_installations_embedding_model_by_default(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    agent = register(admin, "agent-a", internal=False)
+    embed = register(admin, "bge", internal=False, roles=("embedding",))
+    assert assign(admin, agent, embedding=embed).status_code == 200
+
+    offered = roles.client("owner").get("/api/v1/ai/embedding-models").json()
+    workspace_id = create_workspace(roles.client("owner"))
+
+    assert offered["default_model_id"] == embed["id"]
+    assert [m["name"] for m in offered["models"]] == ["bge"]
+    settings = read(roles.client("owner"), workspace_id)
+    assert settings["embedding_model_id"] == embed["id"]
+    assert settings["embedding_model_name"] == "bge"
+
+
+def test_a_workspace_is_created_with_the_embedding_model_its_creator_picks(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    one = register(admin, "bge-small", internal=False, roles=("embedding",))
+    two = register(admin, "bge-large", internal=False, roles=("embedding",))
+    assert (
+        assign(admin, register(admin, "agent-a", internal=False), embedding=one).status_code == 200
+    )
+
+    response = create_with_embedding(roles.client("owner"), two["id"])
+
+    assert response.status_code == 201, response.text
+    assert read(roles.client("owner"), response.json()["id"])["embedding_model_id"] == two["id"]
+
+
+def test_the_creation_embedding_model_must_be_a_tested_embedding_model(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    chat = register(admin, "chat-a", internal=False)
+    untested = register(admin, "bge-x", internal=False, roles=("embedding",), tested=False)
+    owner = roles.client("owner")
+
+    for model_id in (chat["id"], untested["id"], str(uuid.uuid4())):
+        response = create_with_embedding(owner, model_id)
+        assert response.status_code == 422, response.text
+        assert code(response) == "invalid_model_role"
+    names = [w["name"] for w in owner.get("/api/v1/workspaces").json()["items"]]
+    assert "Embeds" not in names
+
+
+def test_an_internal_only_workspace_is_not_created_with_an_external_embedding_model(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    internal_agent = register(admin, "agent-in", internal=True)
+    external = register(admin, "bge-ext", internal=False, roles=("embedding",))
+    internal = register(admin, "bge-in", internal=True, roles=("embedding",))
+    assert assign(admin, internal_agent, embedding=internal).status_code == 200
+    owner = roles.client("owner")
+
+    refused = create_with_embedding(owner, external["id"])
+    accepted = create_with_embedding(owner, internal["id"])
+    offered = owner.get("/api/v1/ai/embedding-models").json()
+
+    assert refused.status_code == 422 and code(refused) == "model_not_allowed"
+    assert accepted.status_code == 201, accepted.text
+    assert [m["name"] for m in offered["models"]] == ["bge-in"]
+
+
+def test_the_embedding_model_cannot_be_changed_after_creation(roles: RoleClients, fake_llm):
+    admin = roles.client("admin")
+    one = register(admin, "bge-small", internal=False, roles=("embedding",))
+    two = register(admin, "bge-large", internal=False, roles=("embedding",))
+    owner = roles.client("owner")
+    workspace_id = create_with_embedding(owner, one["id"]).json()["id"]
+    path = f"/api/v1/workspaces/{workspace_id}/ai-settings"
+
+    refused = owner.put(path, json=body(embedding_model_id=two["id"]))
+    same = owner.put(path, json=body(embedding_model_id=one["id"]))
+    left_out = owner.put(path, json=body())
+
+    assert refused.status_code == 422 and code(refused) == "embedding_model_fixed"
+    assert same.status_code == 200 and left_out.status_code == 200
+    assert read(owner, workspace_id)["embedding_model_id"] == one["id"]
+
+
+def test_changing_the_installations_embedding_model_leaves_existing_workspaces_alone(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    agent = register(admin, "agent-a", internal=False)
+    one = register(admin, "bge-small", internal=False, roles=("embedding",))
+    two = register(admin, "bge-large", internal=False, roles=("embedding",))
+    owner = roles.client("owner")
+    assert assign(admin, agent, embedding=one).status_code == 200
+    workspace_id = create_workspace(owner)
+
+    assert assign(admin, agent, embedding=two).status_code == 200
+
+    assert read(owner, workspace_id)["embedding_model_id"] == one["id"]
+    assert read(owner, create_workspace(owner, "Newer"))["embedding_model_id"] == two["id"]
