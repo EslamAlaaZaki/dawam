@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 
 type SwitchProps = Omit<
   ComponentProps<"button">,
-  "onChange" | "role" | "type"
+  "onChange" | "onClick" | "role" | "type"
 > & {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;

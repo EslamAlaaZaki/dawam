@@ -314,6 +314,21 @@ describe("the Data Warehouse setup dialog", () => {
   });
 });
 
+describe("reselecting the Data Warehouse folder", () => {
+  it("opens the setup dialog again after it was dismissed", async () => {
+    open("editor", NOT_SET_UP);
+
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("treeitem", { name: "Systems" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "Data Warehouse" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+});
+
 describe("a link into the Data Warehouse folder", () => {
   it("waits for the setup to load instead of falling back to the Workspace", async () => {
     open("owner", SET_UP, "dw/staging");
