@@ -13619,6 +13619,7 @@
           "llm"
         ],
         "summary": "Delete Model",
+        "description": "Remove an unused model (admins only). 409 `model_in_use` when a role or a Workspace\nstill uses it: remove it with `POST /models/{id}/removal` and a replacement.",
         "operationId": "deleteLlmModel",
         "parameters": [
           {
@@ -13632,6 +13633,117 @@
             }
           }
         ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/models/{model_id}/usage": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Model Usage",
+        "description": "Where a model is used, for the removal popup (admins only).",
+        "operationId": "getLlmModelUsage",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelUsage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/models/{model_id}/removal": {
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Remove Model In Use",
+        "description": "Remove a model with one replacement per role it fills, applied to the installation\nand every affected Workspace atomically (admins only). 422 `replacement_required`,\n409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`\n(naming the Workspaces whose documents are indexed with it).",
+        "operationId": "removeLlmModel",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmModelRemoval"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -21439,6 +21551,57 @@
         ],
         "title": "LlmModel"
       },
+      "LlmModelRemoval": {
+        "properties": {
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "Replacement for the agent role, when the model fills it."
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id"
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id"
+          },
+          "workspace_replacements": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceReplacement"
+            },
+            "type": "array",
+            "title": "Workspace Replacements",
+            "description": "Per-Workspace replacements where the one above is not allowed."
+          }
+        },
+        "type": "object",
+        "title": "LlmModelRemoval"
+      },
       "LlmModelRequest": {
         "properties": {
           "name": {
@@ -21481,6 +21644,96 @@
           "roles"
         ],
         "title": "LlmModelRequest"
+      },
+      "LlmModelUsage": {
+        "properties": {
+          "in_use": {
+            "type": "boolean",
+            "title": "In Use"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding"
+              ]
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Every role the model fills, anywhere."
+          },
+          "installation_roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding"
+              ]
+            },
+            "type": "array",
+            "title": "Installation Roles"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModelUsageWorkspace"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "indexed_workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModelUsageWorkspace"
+            },
+            "type": "array",
+            "title": "Indexed Workspaces",
+            "description": "Workspaces with documents indexed by this model: they block its removal."
+          }
+        },
+        "type": "object",
+        "required": [
+          "in_use",
+          "roles",
+          "installation_roles",
+          "workspaces",
+          "indexed_workspaces"
+        ],
+        "title": "LlmModelUsage"
+      },
+      "LlmModelUsageWorkspace": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding"
+              ]
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "The roles the model fills in this Workspace."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "roles"
+        ],
+        "title": "LlmModelUsageWorkspace"
       },
       "LlmProvider": {
         "properties": {
@@ -21952,6 +22205,56 @@
           "monthly_token_budget"
         ],
         "title": "LlmWorkspaceBudgetRequest"
+      },
+      "LlmWorkspaceReplacement": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id"
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id"
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id"
+        ],
+        "title": "LlmWorkspaceReplacement"
       },
       "LlmWorkspaceUsage": {
         "properties": {

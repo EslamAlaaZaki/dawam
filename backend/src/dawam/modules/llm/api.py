@@ -15,6 +15,7 @@ from dawam.modules.auth import AuthService, CurrentUser, User
 from dawam.modules.workspaces import INSTALLATION, Action, WorkspaceService, can
 from dawam.platform.errors import ApiError
 
+from .model_removal import WorkspaceRef, WorkspaceReplacement, model_usage, remove_model
 from .role_service import MAX_BUDGET, RoleService, UsageTotals
 from .service import (
     API_KEY_MAX_LENGTH,
@@ -271,8 +272,102 @@ def update_model(
 
 
 @router.delete("/models/{model_id}", operation_id="deleteLlmModel", status_code=204)
-def delete_model(model_id: uuid.UUID, _admin: LlmAdmin, providers: ProviderServiceDep) -> Response:
+def delete_model(
+    model_id: uuid.UUID, request: Request, _admin: LlmAdmin, providers: ProviderServiceDep
+) -> Response:
+    """Remove an unused model (admins only). 409 `model_in_use` when a role or a Workspace
+    still uses it: remove it with `POST /models/{id}/removal` and a replacement."""
+    if model_usage(request.app.state.engine, model_id).in_use:
+        raise ApiError(
+            409,
+            "model_in_use",
+            "This model is in use: choose a replacement for each role it fills.",
+        )
     providers.delete_model(model_id)
+    return Response(status_code=204)
+
+
+class LlmModelUsageWorkspace(BaseModel):
+    id: uuid.UUID
+    name: str
+    roles: list[ModelRole] = Field(description="The roles the model fills in this Workspace.")
+
+
+class LlmModelUsage(BaseModel):
+    in_use: bool
+    roles: list[ModelRole] = Field(description="Every role the model fills, anywhere.")
+    installation_roles: list[ModelRole]
+    workspaces: list[LlmModelUsageWorkspace]
+    indexed_workspaces: list[LlmModelUsageWorkspace] = Field(
+        description="Workspaces with documents indexed by this model: they block its removal."
+    )
+
+
+def _usage_ws(refs: list[WorkspaceRef]) -> list[LlmModelUsageWorkspace]:
+    return [LlmModelUsageWorkspace(id=w.id, name=w.name, roles=w.roles) for w in refs]  # type: ignore[arg-type]
+
+
+@router.get("/models/{model_id}/usage", operation_id="getLlmModelUsage")
+def get_model_usage(model_id: uuid.UUID, request: Request, _admin: LlmAdmin) -> LlmModelUsage:
+    """Where a model is used, for the removal popup (admins only)."""
+    usage = model_usage(request.app.state.engine, model_id)
+    return LlmModelUsage(
+        in_use=usage.in_use,
+        roles=usage.roles,  # type: ignore[arg-type]
+        installation_roles=usage.installation_roles,  # type: ignore[arg-type]
+        workspaces=_usage_ws(usage.workspaces),
+        indexed_workspaces=_usage_ws(usage.indexed_workspaces),
+    )
+
+
+class LlmWorkspaceReplacement(BaseModel):
+    workspace_id: uuid.UUID
+    agent_model_id: uuid.UUID | None = None
+    light_model_id: uuid.UUID | None = None
+    embedding_model_id: uuid.UUID | None = None
+
+
+class LlmModelRemoval(BaseModel):
+    agent_model_id: uuid.UUID | None = Field(
+        default=None, description="Replacement for the agent role, when the model fills it."
+    )
+    light_model_id: uuid.UUID | None = None
+    embedding_model_id: uuid.UUID | None = None
+    workspace_replacements: list[LlmWorkspaceReplacement] = Field(
+        default_factory=list,
+        description="Per-Workspace replacements where the one above is not allowed.",
+    )
+
+
+@router.post("/models/{model_id}/removal", operation_id="removeLlmModel", status_code=204)
+def remove_model_in_use(
+    model_id: uuid.UUID, body: LlmModelRemoval, request: Request, _admin: LlmAdmin
+) -> Response:
+    """Remove a model with one replacement per role it fills, applied to the installation
+    and every affected Workspace atomically (admins only). 422 `replacement_required`,
+    409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
+    (naming the Workspaces whose documents are indexed with it)."""
+    state = request.app.state
+    remove_model(
+        state.engine,
+        model_id,
+        replacements={
+            role: chosen
+            for role, chosen in (
+                ("agent", body.agent_model_id),
+                ("light", body.light_model_id),
+                ("embedding", body.embedding_model_id),
+            )
+            if chosen is not None
+        },
+        workspace_replacements=[
+            WorkspaceReplacement(
+                w.workspace_id, w.agent_model_id, w.light_model_id, w.embedding_model_id
+            )
+            for w in body.workspace_replacements
+        ],
+        at=state.services.clock(),
+    )
     return Response(status_code=204)
 
 

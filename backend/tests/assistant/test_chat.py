@@ -820,3 +820,23 @@ def test_without_a_pick_the_last_one_is_used_else_the_workspace_agent_model(
     assert used(fake_llm) == "other"
     detail = owner.get(f"{base(roles)}/conversations/{cid}").json()
     assert detail["conversation"]["model_id"] == other["id"]
+
+
+def test_a_removed_last_pick_falls_back_to_the_workspace_agent_model(
+    roles, model, fake_llm, admin_client
+):
+    other = register(admin_client, "other", roles=("light",))
+    replacement = register(admin_client, "spare", roles=("light",))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+    assert pick(owner, roles, cid, other["id"]).status_code == 200
+
+    removed = admin_client.delete(f"{LLM}/models/{other['id']}")
+    assert removed.status_code in (204, 409), removed.text
+    if removed.status_code == 409:
+        removed = admin_client.post(
+            f"{LLM}/models/{other['id']}/removal", json={"light_model_id": replacement["id"]}
+        )
+        assert removed.status_code == 204, removed.text
+
+    assert done(ask(owner, roles, cid, "again"))["model"] == "assistant-model"

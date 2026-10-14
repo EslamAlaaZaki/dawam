@@ -333,6 +333,14 @@ ROWS: list[Row] = [
         json=lambda roles: {"name": "qwen3-14b", "roles": ["agent"]},
     ),
     Row("DELETE", "/api/v1/admin/llm/models/{model_id}", "remove a model", admin_only()),
+    Row("GET", "/api/v1/admin/llm/models/{model_id}/usage", "where a model is used", admin_only()),
+    Row(
+        "POST",
+        "/api/v1/admin/llm/models/{model_id}/removal",
+        "remove a model with replacements",
+        admin_only(),
+        json=lambda roles: {},
+    ),
     Row(
         "POST",
         "/api/v1/admin/llm/models/{model_id}/test",
