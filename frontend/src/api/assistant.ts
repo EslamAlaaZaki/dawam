@@ -166,11 +166,17 @@ export function useSendMessage(workspaceId: string) {
       conversationId: string;
       content: string;
       context?: PageContext;
+      /** The model to answer with; omitted: the conversation's last pick. */
+      modelId?: string;
       onEvent: (event: AnswerEvent) => void;
     }) => {
       const { error, response } = await client.POST(`${ROOT}/{conversation_id}/messages`, {
         params: { path: { workspace_id: workspaceId, conversation_id: input.conversationId } },
-        body: { content: input.content, context: input.context ?? null },
+        body: {
+          content: input.content,
+          context: input.context ?? null,
+          model_id: input.modelId ?? null,
+        },
         parseAs: "stream",
       });
       if (error || !response.body) {

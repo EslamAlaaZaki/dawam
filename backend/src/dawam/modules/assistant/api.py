@@ -69,6 +69,10 @@ class ConversationOut(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+    model_id: uuid.UUID | None = Field(
+        description="The model picked for the last message, used again until another is "
+        "picked; none until one is."
+    )
 
 
 class ConversationList(BaseModel):
@@ -116,6 +120,9 @@ class MessageOut(BaseModel):
     sender: SenderOut | None = Field(
         description="On a member's message: who sent it. None on the assistant's replies."
     )
+    model: str | None = Field(
+        description="On a reply: the display name of the model that answered."
+    )
 
 
 class ConversationDetailOut(BaseModel):
@@ -155,6 +162,12 @@ class SendMessageRequest(BaseModel):
     context: PageContextIn | None = Field(
         default=None, description="The object on the current page; everything else is fetched."
     )
+    model_id: uuid.UUID | None = Field(
+        default=None,
+        description="The model to answer with: a chat model in the Workspace's Allowed "
+        "Models (422 `model_not_allowed` or `invalid_model_role` otherwise). Omitted: the "
+        "conversation's last pick, else the Workspace's agent model.",
+    )
 
 
 def _conversation(view: Conversation) -> ConversationOut:
@@ -166,6 +179,7 @@ def _conversation(view: Conversation) -> ConversationOut:
         can_post=view.can_post,
         created_at=view.created_at,
         updated_at=view.updated_at,
+        model_id=view.model_id,
     )
 
 
@@ -199,6 +213,7 @@ def _message(view: ChatMessage) -> MessageOut:
         created_at=view.created_at,
         run=_run(view.run) if view.run else None,
         sender=SenderOut(id=view.sender.id, email=view.sender.email) if view.sender else None,
+        model=view.model,
     )
 
 
@@ -294,6 +309,7 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
                 {
                     "run": json.loads(_run(event.run).model_dump_json()),
                     "message_id": str(event.message_id) if event.message_id else None,
+                    "model": event.model,
                 },
             )
 
@@ -330,7 +346,9 @@ def send_message(
         if body.context
         else None
     )
-    events = service.send_message(user, workspace_id, conversation_id, body.content, context)
+    events = service.send_message(
+        user, workspace_id, conversation_id, body.content, context, body.model_id
+    )
     return StreamingResponse(
         _frames(events),
         media_type="text/event-stream",

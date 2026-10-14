@@ -313,6 +313,45 @@ class WorkspaceAiService:
         """The Workspace's data-sharing policy, for server-side callers."""
         return self.settings(workspace_id).policy
 
+    def agent_model_id(self, workspace_id: uuid.UUID) -> uuid.UUID | None:
+        """The model that answers by default: the Workspace's own agent model, else the
+        installation's. Authorizes nothing: callers have."""
+        with Session(self._engine) as db:
+            return load_settings(db, workspace_id).agent_model_id or _installation_agent(db)
+
+    def check_chat_model(self, workspace_id: uuid.UUID, model_id: uuid.UUID) -> None:
+        """A model a member may pick for a message: a tested chat model (never an embedding
+        model) that the Workspace may use, i.e. in its Allowed Models and, if it is
+        internal-only, internal. 422 ``invalid_model_role`` / ``model_not_allowed``."""
+        with Session(self._engine) as db:
+            model = db.get(ModelRecord, model_id)
+            if model is None or "embedding" in model.roles or model.test_ok is not True:
+                raise _invalid("That is not a chat model.", "model_id", "invalid_model_role")
+            if model_id not in allowed_model_ids(db, workspace_id):
+                raise _invalid(
+                    "That model is not in the Workspace's Allowed Models.",
+                    "model_id",
+                    "model_not_allowed",
+                )
+
+    def usable_model_id(self, workspace_id: uuid.UUID, model_id: uuid.UUID) -> bool:
+        """Whether a remembered pick can still be used: a chat model the Workspace may use."""
+        try:
+            self.check_chat_model(workspace_id, model_id)
+        except ApiError:
+            return False
+        return True
+
+    def model_names(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Display names of the models that still exist."""
+        with Session(self._engine) as db:
+            return {
+                model_id: name
+                for model_id, name in db.execute(
+                    sa.select(ModelRecord.id, ModelRecord.name).where(ModelRecord.id.in_(ids))
+                )
+            }
+
     def get(self, user: User, workspace_id: uuid.UUID) -> WorkspaceAiView:
         """The settings and what an owner may choose from, for any member."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)

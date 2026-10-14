@@ -724,3 +724,99 @@ def test_propose_changes_refuses_objects_outside_the_named_source_system(roles, 
         assert [d["status"] for n, d in events if n == "tool"] == ["error"]
     listing = owner.get(f"/api/v1/workspaces/{roles.workspace_id}/change-sets")
     assert listing.json()["items"] == []
+
+
+# -- the model of each message ---------------------------------------------------------
+
+
+def pick(client, roles, cid, model_id, content="hi"):
+    return client.post(
+        f"{base(roles)}/conversations/{cid}/messages",
+        json={"content": content, "model_id": model_id},
+    )
+
+
+def used(fake_llm) -> str:
+    return [c for c in fake_llm.calls if c.kind == "chat"][-1].model
+
+
+def test_a_message_can_pick_an_allowed_chat_model_and_the_reply_names_it(
+    roles, model, fake_llm, admin_client
+):
+    other = register(admin_client, "other", roles=("light",))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    with owner.stream(
+        "POST",
+        f"{base(roles)}/conversations/{cid}/messages",
+        json={"content": "hi", "model_id": other["id"]},
+    ) as response:
+        assert response.status_code == 200, response.read()
+        final = done(sse(response.read().decode()))
+
+    assert used(fake_llm) == "other" and final["model"] == "other"
+    detail = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    assert detail["conversation"]["model_id"] == other["id"]
+    assert [m["model"] for m in detail["messages"]] == [None, "other"]
+
+
+def test_a_model_outside_the_allowed_models_is_refused(roles, model, fake_llm, admin_client):
+    other = register(admin_client, "other", roles=("light",))
+    listed = admin_client.put(
+        f"{LLM}/workspaces/{roles.workspace_id}/allowed-models", json={"model_ids": [model["id"]]}
+    )
+    assert listed.status_code == 200
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    response = pick(owner, roles, cid, other["id"])
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "model_not_allowed"
+    assert owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"] == []
+
+
+def test_an_external_model_is_refused_for_an_internal_only_workspace(
+    roles, model, fake_llm, admin_client
+):
+    cloud = register(admin_client, "cloud", provider=_external_provider(admin_client))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+    settings_url = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
+    restricted = owner.put(
+        settings_url, json={"internal_only": True, "data_sharing_level": "metadata"}
+    )
+    assert restricted.status_code == 200
+
+    response = pick(owner, roles, cid, cloud["id"])
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "model_not_allowed"
+
+
+def test_an_embedding_model_is_refused(roles, model, fake_llm, admin_client):
+    embedding = register(admin_client, "embed", roles=("embedding",))
+    owner = roles.client("owner")
+
+    response = pick(owner, roles, conversation(owner, roles), embedding["id"])
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_model_role"
+
+
+def test_without_a_pick_the_last_one_is_used_else_the_workspace_agent_model(
+    roles, model, fake_llm, admin_client
+):
+    other = register(admin_client, "other", roles=("light",))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    first = done(ask(owner, roles, cid, "one"))
+    assert used(fake_llm) == "assistant-model" and first["model"] == "assistant-model"
+
+    assert pick(owner, roles, cid, other["id"], "two").status_code == 200
+    assert done(ask(owner, roles, cid, "three"))["model"] == "other"
+    assert used(fake_llm) == "other"
+    detail = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    assert detail["conversation"]["model_id"] == other["id"]

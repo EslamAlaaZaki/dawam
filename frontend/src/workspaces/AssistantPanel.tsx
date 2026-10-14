@@ -36,6 +36,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { isActive, useCancelJob, useJob } from "../api/jobs";
+import { useWorkspaceAiSettings } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
 import { ConversationChangeSets } from "./ChangeSetReview";
@@ -44,6 +45,7 @@ import type { AssistantRequest } from "./FailedChecksPanel";
 import {
   ErrorText,
   Hint,
+  NativeSelect,
   checkClasses,
   checkLabelClasses,
   h3Classes,
@@ -213,11 +215,14 @@ function hasNotes(run: Run | null | undefined): boolean {
 function Bubble({
   email,
   at,
+  model = null,
   busy = false,
   children,
 }: {
   email: string | null;
   at: string;
+  /** On a reply: the model that answered. */
+  model?: string | null;
   busy?: boolean;
   children: ReactNode;
 }) {
@@ -233,6 +238,14 @@ function Bubble({
         <p className="flex items-baseline gap-2">
           <span className="truncate text-sm font-semibold">{name}</span>
           <MessageTime at={at} />
+          {model && (
+            <span
+              aria-label="Answered by"
+              className="truncate text-xs text-sand-11"
+            >
+              {model}
+            </span>
+          )}
         </p>
         <div
           className={cn(
@@ -269,7 +282,11 @@ function Turn({
         {message.content}
       </Bubble>
       {(answer || hasNotes(run)) && (
-        <Bubble email={null} at={answer?.created_at ?? message.created_at}>
+        <Bubble
+          email={null}
+          at={answer?.created_at ?? message.created_at}
+          model={answer?.model}
+        >
           {answer && <Markdown>{answer.content}</Markdown>}
           {run && <RunNotes run={run} workspaceId={workspaceId} />}
         </Bubble>
@@ -311,6 +328,8 @@ export function AssistantPanel({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [failed, setFailed] = useState<Run | null>(null);
   const [listOpen, setListOpen] = useState(isWide);
+  const [picked, setPicked] = useState<string | null>(null);
+  const ai = useWorkspaceAiSettings(workspace.id);
   const send = useSendMessage(workspace.id);
   const stop = useStopResponse(workspace.id);
   const share = useShareConversation(workspace.id, selected ?? "");
@@ -322,6 +341,11 @@ export function AssistantPanel({
   // The server decides: the starter, or an Owner or Editor in a shared conversation.
   const canPost = current?.can_post ?? true;
   const running = draft !== null;
+  // The picker starts on the conversation's last pick, else the Workspace's agent model.
+  const models = ai.data?.light_models ?? [];
+  const remembered = models.find((m) => m.id === current?.model_id)?.id;
+  const modelId =
+    picked ?? remembered ?? ai.data?.effective_agent_model_id ?? "";
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
@@ -343,6 +367,7 @@ export function AssistantPanel({
         conversationId,
         content,
         context: asking ?? undefined,
+        modelId: picked ?? undefined,
         onEvent: (event: AnswerEvent) => {
           if (event.type === "text") {
             setDraft((d) => d && { ...d, text: d.text + event.text });
@@ -412,6 +437,7 @@ export function AssistantPanel({
 
   function choose(id: string) {
     setChosen(id);
+    setPicked(null);
     setFailed(null);
     setRefusal(null);
     if (!isWide()) {
@@ -596,8 +622,31 @@ export function AssistantPanel({
                 }}
                 rows={1}
                 maxLength={8000}
-                className="max-h-48 min-h-10 resize-none pr-11"
+                className={cn(
+                  "max-h-48 min-h-10 resize-none pr-11",
+                  models.length > 0 && "pr-52",
+                )}
               />
+              {models.length > 0 && (
+                <NativeSelect
+                  aria-label="Model for this message"
+                  className="absolute right-12 bottom-1.5 h-8 w-36 text-xs"
+                  disabled={!canPost || running}
+                  value={modelId}
+                  onChange={(event) => setPicked(event.target.value)}
+                >
+                  {!models.some((m) => m.id === modelId) && (
+                    <option value={modelId}>
+                      {ai.data?.effective_agent_model_name ?? "Default"}
+                    </option>
+                  )}
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              )}
               {running ? (
                 <Button
                   type="button"

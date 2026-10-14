@@ -56,6 +56,7 @@ const NEW_CONVERSATION = {
   can_post: true,
   created_at: "2026-01-05T10:00:00Z",
   updated_at: "2026-01-05T10:00:00Z",
+  model_id: null,
 };
 
 function run(overrides: Partial<Run> = {}): Run {
@@ -97,6 +98,7 @@ interface Options {
   answer?: () => Response | Promise<Response>;
   stopped?: () => void;
   job?: Record<string, unknown>;
+  ai?: Record<string, unknown>;
 }
 
 function backend(options: Options = {}) {
@@ -116,6 +118,8 @@ function backend(options: Options = {}) {
         return json({ items: [] });
       case `GET ${API}/jobs`:
         return json({ items: [], next_cursor: null });
+      case `GET ${API}/ai-settings`:
+        return options.ai ? json(options.ai) : undefined;
       case `GET ${ASSISTANT}`:
         return json({ items: options.conversations ?? [] });
       case `POST ${ASSISTANT}`:
@@ -179,6 +183,7 @@ describe("the assistant's chat panel", () => {
               created_at: "2026-01-05T10:00:00Z",
               run: run({ tool_calls: [TOOL] }),
               sender: ADA_SENDER,
+              model: null,
             },
             {
               id: "m2",
@@ -187,6 +192,7 @@ describe("the assistant's chat panel", () => {
               created_at: "2026-01-05T10:00:01Z",
               run: null,
               sender: null,
+              model: null,
             },
           ],
         },
@@ -249,6 +255,7 @@ describe("the assistant's chat panel", () => {
               created_at: "2026-01-05T10:00:00Z",
               run: run({ tool_calls: [query] }),
               sender: ADA_SENDER,
+              model: null,
             },
             {
               id: "m2",
@@ -257,6 +264,7 @@ describe("the assistant's chat panel", () => {
               created_at: "2026-01-05T10:00:01Z",
               run: null,
               sender: null,
+              model: null,
             },
           ],
         },
@@ -297,6 +305,7 @@ describe("the assistant's chat panel", () => {
               created_at: "2026-01-05T10:00:00Z",
               run: run({ tool_calls: [start] }),
               sender: ADA_SENDER,
+              model: null,
             },
           ],
         },
@@ -419,6 +428,7 @@ describe("the assistant's chat panel", () => {
               created_at: "2026-01-05T10:00:00Z",
               run: run(),
               sender: ADA_SENDER,
+              model: null,
             },
           ],
         },
@@ -525,6 +535,7 @@ describe("the chat's messages, input and Conversation list", () => {
               created_at: "2026-01-05T10:00:00Z",
               run: run(),
               sender: { id: "g", email: "grace.hopper@example.com" },
+              model: null,
             },
             {
               id: "m2",
@@ -533,6 +544,7 @@ describe("the chat's messages, input and Conversation list", () => {
               created_at: "2026-01-05T10:01:30Z",
               run: null,
               sender: null,
+              model: null,
             },
           ],
         },
@@ -815,5 +827,114 @@ describe("explaining and fixing a failed check", () => {
 
     await screen.findByRole("button", { name: "Explain" });
     expect(screen.queryByRole("button", { name: "Fix impacts" })).toBeNull();
+  });
+});
+
+const BIG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SMALL = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const AI = {
+  effective_agent_model_id: BIG,
+  effective_agent_model_name: "Big",
+  light_models: [
+    { id: BIG, name: "Big", provider_name: "Cloud", internal: false },
+    { id: SMALL, name: "Small", provider_name: "Cloud", internal: false },
+  ],
+};
+const ANSWERED = sse([
+  frame("started", { run_id: "r", message_id: "m" }),
+  frame("text", { text: "Done." }),
+  frame("done", { run: run(), message_id: "a", model: "Small" }),
+]);
+
+describe("picking the model of a message", () => {
+  it("lists the allowed chat models, starts on the Workspace's agent model and sends the pick", async () => {
+    const requests = renderApp(
+      backend({ ai: AI, answer: () => ANSWERED.clone() }),
+      PATH,
+    );
+    await openAssistant();
+
+    const picker = await screen.findByLabelText("Model for this message");
+    await waitFor(() => expect(picker).toHaveValue(BIG));
+    expect(
+      within(picker)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Big", "Small"]);
+    fireEvent.change(picker, { target: { value: SMALL } });
+    await ask("Hi");
+
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        ),
+      ).toMatchObject({ body: { content: "Hi", model_id: SMALL } }),
+    );
+  });
+
+  it("starts on the Conversation's last pick and sends no model until another is picked", async () => {
+    const conversation = { ...NEW_CONVERSATION, model_id: SMALL };
+    const requests = renderApp(
+      backend({
+        ai: AI,
+        conversations: [conversation],
+        detail: { conversation, messages: [] },
+        answer: () => ANSWERED.clone(),
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    const picker = await screen.findByLabelText("Model for this message");
+    await waitFor(() => expect(picker).toHaveValue(SMALL));
+    await ask("Hi");
+
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        )?.body,
+      ).toMatchObject({ content: "Hi", model_id: null }),
+    );
+  });
+
+  it("labels each reply with the model that answered", async () => {
+    renderApp(
+      backend({
+        ai: AI,
+        conversations: [NEW_CONVERSATION],
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Hello",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run(),
+              sender: ADA_SENDER,
+              model: null,
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Hi there.",
+              created_at: "2026-01-05T10:00:01Z",
+              run: null,
+              sender: null,
+              model: "Small",
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    const reply = await screen.findByRole("listitem", { name: /DAWAM/ });
+    expect(within(reply).getByLabelText("Answered by")).toHaveTextContent(
+      "Small",
+    );
   });
 });
