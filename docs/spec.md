@@ -871,13 +871,13 @@ LlmProvider(id, name, adapter[openai_compatible|anthropic|azure_openai|gemini|be
             base_url?, api_key_encrypted?, extra_config JSON, is_internal, enabled, last_tested_at)
 LlmModel(id, provider_id, model_name, display_name, kind[chat|embedding], supports_tools,
          supports_streaming, supports_json_schema, context_window, embedding_dim?, enabled)
-ModelRoleAssignment(role[agent|light|embedding], model_id)               -- installation defaults
+                                                  -- roles[agent|light|embedding]: any combination, may be empty
 AiBudget(scope[installation|workspace], workspace_id?, monthly_token_limit)
 WorkspaceAiSettings(workspace_id, data_level[metadata|profiles|documents|samples],
-                    agent_model_id?, light_model_id?, embedding_model_id?, internal_providers_only)
-                                                  -- embedding_model_id set at creation, fixed
-WorkspaceAllowedModel(workspace_id, model_id)     -- none listed = all models allowed
-                                                  -- default set in code at creation (§6.18)
+                    internal_providers_only)
+WorkspaceModel(workspace_id, model_id, role[agent|light|embedding], is_default)
+                                                  -- one default per role; one embedding row when set
+                                                  -- embedding changes only while nothing is indexed (ADR 0005)
 DocumentChunk(id, file_id, ordinal, text, tsv, embedding vector?)
 Conversation(id, workspace_id, user_id, title, shared_with_workspace, last_model_id?, created_at)
 Message(id, conversation_id, role[user|assistant|tool], sender_user_id?, model_id?, content JSON,
