@@ -73,7 +73,7 @@ def build_document_search(
         workspaces=WorkspaceService(engine, clock=clock),
         ai=document_ai or NoDocumentAi(),
         embeddings=RegisteredEmbeddingModels(
-            providers, RoleService(engine, providers=providers, clock=clock)
+            providers, RoleService(engine, providers=providers, clock=clock), engine
         ),
         jobs=runner,
         clock=clock,

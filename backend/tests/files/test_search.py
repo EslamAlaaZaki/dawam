@@ -275,3 +275,37 @@ def test_a_soft_deleted_systems_documents_are_not_found_by_meaning(roles, policy
 
     fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
     assert search(roles, "zzz").json()["items"] == []
+
+
+def test_documents_are_indexed_with_the_workspaces_own_embedding_model(
+    roles, policy, fake_llm, app
+):
+    admin = roles.client("admin")
+    first = register_embedding_model(roles, internal=True, name="bge-small")
+    second = register_embedding_model(roles, internal=True, name="bge-large")
+    agent = admin.post(
+        f"{ADMIN}/providers/{admin.get(f'{ADMIN}/providers').json()['items'][0]['id']}/models",
+        json={"name": "agent-a", "roles": ["agent"]},
+    ).json()
+    assert admin.post(f"{ADMIN}/models/{agent['id']}/test").json()["test_ok"] is True
+    put = admin.put(
+        f"{ADMIN}/roles",
+        json={"agent_model_id": agent["id"], "light_model_id": None, "embedding_model_id": first},
+    )
+    assert put.status_code == 200, put.text
+    pinned = roles.client("owner").post(
+        "/api/v1/workspaces", json={"name": "Pinned", "embedding_model_id": second}
+    )
+    assert pinned.status_code == 201, pinned.text
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "UPDATE llm_workspace_settings SET embedding_model_id = :m WHERE workspace_id = :w"
+            ),
+            {"m": second, "w": roles.workspace_id},
+        )
+    sid = system(roles)
+
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+
+    assert [str(m) for m, _ in chunk_rows(app)] == [second]

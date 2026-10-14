@@ -8784,7 +8784,7 @@
           "workspaces"
         ],
         "summary": "Create Workspace",
-        "description": "Create a Workspace; you become its owner.",
+        "description": "Create a Workspace; you become its owner. 422 `invalid_model_role` for a model that is\nnot a tested embedding model; 422 `model_not_allowed` for one the internal-only setting\nrefuses.",
         "operationId": "createWorkspace",
         "requestBody": {
           "required": true,
@@ -14287,7 +14287,7 @@
           "llm"
         ],
         "summary": "Set Ai Settings",
-        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model (or a light model that is not a tested chat model);\n422 `model_not_allowed` for a model outside the Workspace's Allowed Models;\n422 `no_internal_model` when internal-only has no internal agent model to use.",
+        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model (or a light model that is not a tested chat model);\n422 `model_not_allowed` for a model outside the Workspace's Allowed Models;\n422 `embedding_model_fixed` for a different embedding model (it cannot change);\n422 `no_internal_model` when internal-only has no internal agent model to use.",
         "operationId": "setWorkspaceAiSettings",
         "parameters": [
           {
@@ -14318,6 +14318,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/embedding-models": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "List Embedding Models",
+        "description": "The embedding models the \"New workspace\" form offers, and the installation's default\n(any signed-in user). A Workspace keeps its choice for good.",
+        "operationId": "listEmbeddingModels",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingChoicesOut"
                 }
               }
             }
@@ -18100,6 +18142,19 @@
             "maxLength": 200,
             "title": "Domain",
             "default": ""
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id",
+            "description": "The Workspace's embedding model, fixed from now on: a tested embedding model that passes the internal-only check. Null: the installation's."
           }
         },
         "type": "object",
@@ -19316,6 +19371,37 @@
           "defaults"
         ],
         "title": "DwUnknownMember"
+      },
+      "EmbeddingChoicesOut": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovedAgentModel"
+            },
+            "type": "array",
+            "title": "Models",
+            "description": "Tested embedding models a new Workspace may be created with."
+          },
+          "default_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Model Id",
+            "description": "The installation's embedding model: pre-select it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "models",
+          "default_model_id"
+        ],
+        "title": "EmbeddingChoicesOut"
       },
       "ErrorBody": {
         "properties": {
@@ -28733,6 +28819,30 @@
             "title": "Light Model Id",
             "description": "The Workspace's own light model; null: the installation's."
           },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id",
+            "description": "The Workspace's embedding model, chosen at creation and fixed (read-only); null: none was registered then."
+          },
+          "embedding_model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Name"
+          },
           "effective_agent_model_id": {
             "anyOf": [
               {
@@ -28814,6 +28924,8 @@
           "data_sharing_level",
           "agent_model_id",
           "light_model_id",
+          "embedding_model_id",
+          "embedding_model_name",
           "effective_agent_model_id",
           "effective_agent_model_name",
           "effective_light_model_id",
@@ -28859,6 +28971,19 @@
             ],
             "title": "Light Model Id",
             "description": "A tested chat model; null: use the installation's."
+          },
+          "embedding_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model Id",
+            "description": "Must be left out or equal the Workspace's current embedding model: it is fixed at creation."
           }
         },
         "type": "object",

@@ -2465,7 +2465,9 @@ export interface paths {
         put?: never;
         /**
          * Create Workspace
-         * @description Create a Workspace; you become its owner.
+         * @description Create a Workspace; you become its owner. 422 `invalid_model_role` for a model that is
+         *     not a tested embedding model; 422 `model_not_allowed` for one the internal-only setting
+         *     refuses.
          */
         post: operations["createWorkspace"];
         delete?: never;
@@ -3861,9 +3863,31 @@ export interface paths {
          * @description Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
          *     that is not an approved agent model (or a light model that is not a tested chat model);
          *     422 `model_not_allowed` for a model outside the Workspace's Allowed Models;
+         *     422 `embedding_model_fixed` for a different embedding model (it cannot change);
          *     422 `no_internal_model` when internal-only has no internal agent model to use.
          */
         put: operations["setWorkspaceAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/embedding-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Embedding Models
+         * @description The embedding models the "New workspace" form offers, and the installation's default
+         *     (any signed-in user). A Workspace keeps its choice for good.
+         */
+        get: operations["listEmbeddingModels"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -5447,6 +5471,11 @@ export interface components {
              * @default
              */
             domain: string;
+            /**
+             * Embedding Model Id
+             * @description The Workspace's embedding model, fixed from now on: a tested embedding model that passes the internal-only check. Null: the installation's.
+             */
+            embedding_model_id?: string | null;
         };
         /** CustomPiiRule */
         CustomPiiRule: {
@@ -5950,6 +5979,19 @@ export interface components {
             defaults: {
                 [key: string]: string | number | boolean | null;
             };
+        };
+        /** EmbeddingChoicesOut */
+        EmbeddingChoicesOut: {
+            /**
+             * Models
+             * @description Tested embedding models a new Workspace may be created with.
+             */
+            models: components["schemas"]["ApprovedAgentModel"][];
+            /**
+             * Default Model Id
+             * @description The installation's embedding model: pre-select it.
+             */
+            default_model_id: string | null;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -10089,6 +10131,13 @@ export interface components {
              */
             light_model_id: string | null;
             /**
+             * Embedding Model Id
+             * @description The Workspace's embedding model, chosen at creation and fixed (read-only); null: none was registered then.
+             */
+            embedding_model_id: string | null;
+            /** Embedding Model Name */
+            embedding_model_name: string | null;
+            /**
              * Effective Agent Model Id
              * @description The agent model in use: the Workspace's, else the installation's.
              */
@@ -10138,6 +10187,11 @@ export interface components {
              * @description A tested chat model; null: use the installation's.
              */
             light_model_id?: string | null;
+            /**
+             * Embedding Model Id
+             * @description Must be left out or equal the Workspace's current embedding model: it is fixed at creation.
+             */
+            embedding_model_id?: string | null;
         };
         /** WorkspaceFile */
         WorkspaceFile: {
@@ -19360,6 +19414,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listEmbeddingModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingChoicesOut"];
                 };
             };
             /** @description Validation error */

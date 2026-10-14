@@ -85,12 +85,15 @@ from .workspace_ai import (
     WorkspaceAiSettings,
     WorkspaceAiView,
     on_workspace_created,
+    workspace_embedding_model_id,
 )
+from .workspace_ai_api import embedding_router
 from .workspace_ai_api import router as workspace_ai_router
 
 router = APIRouter()
 router.include_router(admin_router)
 router.include_router(workspace_ai_router)
+router.include_router(embedding_router)
 
 __all__ = [
     "Adapter",
@@ -129,4 +132,5 @@ __all__ = [
     "fake_adapter_factory",
     "on_workspace_created",
     "router",
+    "workspace_embedding_model_id",
 ]

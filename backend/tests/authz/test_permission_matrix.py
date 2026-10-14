@@ -525,6 +525,12 @@ ROWS: list[Row] = [
     ),
     Row(
         "GET",
+        "/api/v1/ai/embedding-models",
+        "see the embedding models offered when creating a Workspace",
+        signed_in(),
+    ),
+    Row(
+        "GET",
         "/api/v1/workspaces/{workspace_id}",
         "Open Workspace content",
         workspace(admin=False, owner=True, editor=True, viewer=True),

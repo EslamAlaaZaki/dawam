@@ -16,7 +16,13 @@ from pydantic import BaseModel, Field
 from dawam.modules.auth import CurrentUser, SecurityEventRecorder
 from dawam.modules.workspaces import WorkspaceService
 
-from .workspace_ai import ApprovedModel, DataSharingLevel, WorkspaceAiService, WorkspaceAiView
+from .workspace_ai import (
+    ApprovedModel,
+    DataSharingLevel,
+    WorkspaceAiService,
+    WorkspaceAiView,
+    embedding_choices,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/ai-settings", tags=["llm"])
 
@@ -54,6 +60,11 @@ class WorkspaceAiSettings(BaseModel):
     light_model_id: uuid.UUID | None = Field(
         description="The Workspace's own light model; null: the installation's."
     )
+    embedding_model_id: uuid.UUID | None = Field(
+        description="The Workspace's embedding model, chosen at creation and fixed (read-only); "
+        "null: none was registered then."
+    )
+    embedding_model_name: str | None
     effective_agent_model_id: uuid.UUID | None = Field(
         description="The agent model in use: the Workspace's, else the installation's."
     )
@@ -87,6 +98,11 @@ class WorkspaceAiSettingsRequest(BaseModel):
     light_model_id: uuid.UUID | None = Field(
         default=None, description="A tested chat model; null: use the installation's."
     )
+    embedding_model_id: uuid.UUID | None = Field(
+        default=None,
+        description="Must be left out or equal the Workspace's current embedding model: it is "
+        "fixed at creation.",
+    )
 
 
 def _model_out(m: ApprovedModel) -> ApprovedAgentModel:
@@ -104,6 +120,8 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
         data_sharing_level=settings.data_sharing_level,
         agent_model_id=settings.agent_model_id,
         light_model_id=settings.light_model_id,
+        embedding_model_id=settings.embedding_model_id,
+        embedding_model_name=view.embedding_model_name,
         effective_agent_model_id=agent,
         effective_agent_model_name=view.model_names.get(agent) if agent else None,
         effective_light_model_id=light,
@@ -133,6 +151,7 @@ def set_ai_settings(
     """Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
     that is not an approved agent model (or a light model that is not a tested chat model);
     422 `model_not_allowed` for a model outside the Workspace's Allowed Models;
+    422 `embedding_model_fixed` for a different embedding model (it cannot change);
     422 `no_internal_model` when internal-only has no internal agent model to use."""
     return _out(
         service.update(
@@ -142,5 +161,28 @@ def set_ai_settings(
             data_sharing_level=body.data_sharing_level,
             agent_model_id=body.agent_model_id,
             light_model_id=body.light_model_id,
+            embedding_model_id=body.embedding_model_id,
         )
+    )
+
+
+embedding_router = APIRouter(prefix="/ai/embedding-models", tags=["llm"])
+
+
+class EmbeddingChoicesOut(BaseModel):
+    models: list[ApprovedAgentModel] = Field(
+        description="Tested embedding models a new Workspace may be created with."
+    )
+    default_model_id: uuid.UUID | None = Field(
+        description="The installation's embedding model: pre-select it."
+    )
+
+
+@embedding_router.get("", operation_id="listEmbeddingModels")
+def list_embedding_models(request: Request, user: CurrentUser) -> EmbeddingChoicesOut:
+    """The embedding models the "New workspace" form offers, and the installation's default
+    (any signed-in user). A Workspace keeps its choice for good."""
+    choices = embedding_choices(request.app.state.engine)
+    return EmbeddingChoicesOut(
+        models=[_model_out(m) for m in choices.models], default_model_id=choices.default_model_id
     )

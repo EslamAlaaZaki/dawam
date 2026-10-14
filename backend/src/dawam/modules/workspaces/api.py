@@ -133,6 +133,11 @@ class CreateWorkspaceRequest(BaseModel):
     name: Name
     description: Description = ""
     domain: Domain = ""
+    embedding_model_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Workspace's embedding model, fixed from now on: a tested embedding "
+        "model that passes the internal-only check. Null: the installation's.",
+    )
 
 
 class UpdateWorkspaceRequest(BaseModel):
@@ -216,9 +221,17 @@ def list_workspaces(
 def create_workspace(
     body: CreateWorkspaceRequest, user: CurrentUser, workspaces: WorkspaceServiceDep
 ) -> Workspace:
-    """Create a Workspace; you become its owner."""
+    """Create a Workspace; you become its owner. 422 `invalid_model_role` for a model that is
+    not a tested embedding model; 422 `model_not_allowed` for one the internal-only setting
+    refuses."""
     return _out(
-        workspaces.create(user, name=body.name, description=body.description, domain=body.domain)
+        workspaces.create(
+            user,
+            name=body.name,
+            description=body.description,
+            domain=body.domain,
+            embedding_model_id=body.embedding_model_id,
+        )
     )
 
 

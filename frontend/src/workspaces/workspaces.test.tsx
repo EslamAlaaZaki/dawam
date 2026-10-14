@@ -142,7 +142,9 @@ function fakeBackend(
       );
     }
     const lifecycle =
-      /^\/api\/v1\/workspaces\/([^/]+)\/(archive|unarchive)$/.exec(url.pathname);
+      /^\/api\/v1\/workspaces\/([^/]+)\/(archive|unarchive)$/.exec(
+        url.pathname,
+      );
     if (lifecycle && request.method === "POST") {
       const found = store.get(lifecycle[1]!);
       if (!found) {
@@ -204,6 +206,24 @@ function fakeBackend(
         return json({ name: "DAWAM", version: "1.2.3" });
       case "GET /api/v1/me":
         return json(ADA);
+      case "GET /api/v1/ai/embedding-models":
+        return json({
+          models: [
+            {
+              id: BGE_SMALL,
+              name: "bge-small",
+              provider_name: "Local",
+              internal: true,
+            },
+            {
+              id: BGE_LARGE,
+              name: "bge-large",
+              provider_name: "Local",
+              internal: true,
+            },
+          ],
+          default_model_id: BGE_LARGE,
+        });
       case "GET /api/v1/workspaces": {
         const start = Number(url.searchParams.get("cursor") ?? 0);
         const items = sorted().slice(start, start + pageSize);
@@ -350,17 +370,50 @@ describe("the Workspace list", () => {
   });
 });
 
+const BGE_SMALL = "bbbbbbbb-0000-4000-8000-000000000001";
+const BGE_LARGE = "bbbbbbbb-0000-4000-8000-000000000002";
+
 describe("creating a Workspace", () => {
+  it("pre-selects the installation's embedding model, warns it is fixed, and sends the choice", async () => {
+    const backend = fakeBackend();
+    renderApp(backend);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New workspace" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "New workspace" });
+    const picker = await within(dialog).findByLabelText("Embedding model");
+    expect(picker).toHaveValue(BGE_LARGE);
+    expect(dialog).toHaveTextContent("It can't be changed later.");
+    fillIn(dialog, "Name", "Retail DW");
+    fireEvent.change(picker, { target: { value: BGE_SMALL } });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Create Workspace" }),
+    );
+
+    await screen.findByRole("heading", { name: "Retail DW" });
+    expect(
+      backend.requests.find((r) => r.method === "POST")?.body,
+    ).toMatchObject({
+      name: "Retail DW",
+      embedding_model_id: BGE_SMALL,
+    });
+  });
+
   it("creates a Workspace and opens it, with the creator as its owner", async () => {
     const backend = fakeBackend();
     renderApp(backend);
 
-    fireEvent.click(await screen.findByRole("button", { name: "New workspace" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New workspace" }),
+    );
     const dialog = await screen.findByRole("dialog", { name: "New workspace" });
     fillIn(dialog, "Name", "Retail DW");
     fillIn(dialog, "Description", "The retail bank's warehouse");
     fillIn(dialog, "Business domain", "Retail banking");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Create Workspace" }),
+    );
 
     expect(
       await screen.findByRole("heading", { name: "Retail DW" }),
@@ -391,10 +444,14 @@ describe("creating a Workspace", () => {
   it("shows the API's message when the Workspace cannot be created", async () => {
     renderApp(fakeBackend({ createFails: true }));
 
-    fireEvent.click(await screen.findByRole("button", { name: "New workspace" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New workspace" }),
+    );
     const dialog = await screen.findByRole("dialog", { name: "New workspace" });
     fillIn(dialog, "Name", "Retail DW");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Create Workspace" }),
+    );
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "The request is not valid.",
@@ -419,7 +476,9 @@ describe("a Workspace's row in the list", () => {
 
     const row = await screen.findByRole("row", { name: "Retail DW" });
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
-    const dialog = await screen.findByRole("dialog", { name: "Edit workspace" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit workspace",
+    });
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Retail DW");
     fillIn(dialog, "Name", "Retail warehouse");
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -483,15 +542,21 @@ describe("a Workspace's row in the list", () => {
 
     const row = await screen.findByRole("row", { name: "Retail DW" });
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
-    const dialog = await screen.findByRole("dialog", { name: "Delete Retail DW?" });
-    const confirm = within(dialog).getByRole("button", { name: "Delete Workspace" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete Retail DW?",
+    });
+    const confirm = within(dialog).getByRole("button", {
+      name: "Delete Workspace",
+    });
     expect(confirm).toBeDisabled();
     fillIn(dialog, "Workspace name", "Retail DW");
     expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
 
     await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "Retail DW" })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole("link", { name: "Retail DW" }),
+      ).not.toBeInTheDocument(),
     );
     expect(backend.requests.find((r) => r.method === "DELETE")).toMatchObject({
       path: `/api/v1/workspaces/${RETAIL.id}`,
