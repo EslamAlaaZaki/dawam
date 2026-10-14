@@ -10366,6 +10366,11 @@ export interface components {
             internal: boolean;
             /** Is Default */
             is_default: boolean;
+            /**
+             * Limited
+             * @description Tested and without native tool calling: less reliable tool use.
+             */
+            limited: boolean;
         };
         /** WorkspaceOwner */
         WorkspaceOwner: {
