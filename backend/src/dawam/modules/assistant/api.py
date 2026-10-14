@@ -164,8 +164,8 @@ class SendMessageRequest(BaseModel):
     )
     model_id: uuid.UUID | None = Field(
         default=None,
-        description="The model to answer with: a chat model in the Workspace's Allowed "
-        "Models (422 `model_not_allowed` or `invalid_model_role` otherwise). Omitted: the "
+        description="The model to answer with: one of the Workspace's agent models "
+        "(422 `model_not_allowed` otherwise). Omitted: the "
         "conversation's last pick, else the Workspace's agent model.",
     )
 

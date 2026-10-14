@@ -111,6 +111,8 @@ class ChosenModel:
     provider_name: str
     internal: bool
     is_default: bool
+    limited: bool = False
+    """Tested and without native tool calling."""
 
 
 @dataclass(frozen=True)
@@ -431,21 +433,12 @@ class WorkspaceAiService:
             return default_model_id(db, workspace_id, "agent")
 
     def check_chat_model(self, workspace_id: uuid.UUID, model_id: uuid.UUID) -> None:
-        """A model a member may pick for a message: a tested chat model that the Workspace
-        may use, i.e. internal when it is internal-only. 422 ``invalid_model_role`` /
-        ``model_not_allowed``."""
+        """A model a member may pick for a message: one of the Workspace's agent models.
+        422 ``model_not_allowed`` otherwise."""
         with Session(self._engine) as db:
-            model = db.get(ModelRecord, model_id)
-            if (
-                model is None
-                or not {"agent", "light"} & set(model.roles)
-                or model.test_ok is not True
-            ):
-                raise _invalid("That is not a chat model.", "model_id", "invalid_model_role")
-            internal_only = load_settings(db, workspace_id).internal_only
-            if internal_only and not model_is_internal(db, model_id):
+            if model_id not in load_settings(db, workspace_id).models.agent:
                 raise _invalid(
-                    "An internal-only Workspace uses only models on internal providers.",
+                    "That model is not one of this Workspace's agent models.",
                     "model_id",
                     "model_not_allowed",
                 )
@@ -556,7 +549,15 @@ class WorkspaceAiService:
         internal_available = _internal_agent_available(db)
         chosen: dict[str, list[ChosenModel]] = {role: [] for role in ROLES}
         for w, m, p in _model_rows(db, workspace_id):
-            chosen[w.role].append(ChosenModel(m.id, m.name, p.name, p.is_internal, w.is_default))
+            chosen[w.role].append(ChosenModel(
+                    m.id,
+                    m.name,
+                    p.name,
+                    p.is_internal,
+                    w.is_default,
+                    m.test_ok is True and m.supports_tools is False,
+                )
+            )
         return WorkspaceAiView(
             settings=settings,
             chosen=chosen,

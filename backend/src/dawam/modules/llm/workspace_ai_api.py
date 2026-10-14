@@ -50,6 +50,9 @@ class ModelChoice(BaseModel):
 
 class WorkspaceModel(ModelChoice):
     is_default: bool
+    limited: bool = Field(
+        description="Tested and without native tool calling: less reliable tool use."
+    )
 
 
 class ModelChoices(BaseModel):
@@ -128,6 +131,7 @@ def _chosen(m: ChosenModel) -> WorkspaceModel:
         provider_name=m.provider_name,
         internal=m.internal,
         is_default=m.is_default,
+        limited=m.limited,
     )
 
 

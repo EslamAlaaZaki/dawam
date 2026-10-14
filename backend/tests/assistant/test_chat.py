@@ -746,11 +746,26 @@ def used(fake_llm) -> str:
     return [c for c in fake_llm.calls if c.kind == "chat"][-1].model
 
 
-def test_a_message_can_pick_an_allowed_chat_model_and_the_reply_names_it(
+def workspace_agents(owner, roles, *agents) -> None:
+    """The owner makes ``agents`` the Workspace's agent models, the first the default."""
+    response = owner.put(
+        f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
+        json={
+            "internal_only": False,
+            "data_sharing_level": "metadata",
+            "agent_model_ids": [a["id"] for a in agents],
+            "default_agent_model_id": agents[0]["id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_a_message_can_pick_one_of_the_workspace_agent_models_and_the_reply_names_it(
     roles, model, fake_llm, admin_client
 ):
-    other = register(admin_client, "other", roles=("light",))
+    other = register(admin_client, "other")
     owner = roles.client("owner")
+    workspace_agents(owner, roles, model, other)
     cid = conversation(owner, roles)
 
     with owner.stream(
@@ -767,39 +782,28 @@ def test_a_message_can_pick_an_allowed_chat_model_and_the_reply_names_it(
     assert [m["model"] for m in detail["messages"]] == [None, "other"]
 
 
-def test_an_external_model_is_refused_for_an_internal_only_workspace(
-    roles, model, fake_llm, admin_client
+@pytest.mark.parametrize("roles_of_model", [("agent",), ("light",), ("embedding",)])
+def test_a_model_outside_the_workspace_agent_models_is_refused(
+    roles, model, fake_llm, admin_client, roles_of_model
 ):
-    cloud = register(admin_client, "cloud", provider=_external_provider(admin_client))
+    outsider = register(admin_client, "outsider", roles=roles_of_model)
     owner = roles.client("owner")
     cid = conversation(owner, roles)
-    settings_url = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
-    restricted = owner.put(
-        settings_url, json={"internal_only": True, "data_sharing_level": "metadata"}
-    )
-    assert restricted.status_code == 200
+    fake_llm.calls.clear()
 
-    response = pick(owner, roles, cid, cloud["id"])
+    response = pick(owner, roles, cid, outsider["id"])
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "model_not_allowed"
+    assert fake_llm.calls == []
 
 
-def test_an_embedding_model_is_refused(roles, model, fake_llm, admin_client):
-    embedding = register(admin_client, "embed", roles=("embedding",))
-    owner = roles.client("owner")
-
-    response = pick(owner, roles, conversation(owner, roles), embedding["id"])
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "invalid_model_role"
-
-
-def test_without_a_pick_the_last_one_is_used_else_the_workspace_agent_model(
+def test_without_a_pick_the_last_one_is_used_else_the_workspace_default_agent_model(
     roles, model, fake_llm, admin_client
 ):
-    other = register(admin_client, "other", roles=("light",))
+    other = register(admin_client, "other")
     owner = roles.client("owner")
+    workspace_agents(owner, roles, model, other)
     cid = conversation(owner, roles)
 
     first = done(ask(owner, roles, cid, "one"))
@@ -812,21 +816,18 @@ def test_without_a_pick_the_last_one_is_used_else_the_workspace_agent_model(
     assert detail["conversation"]["model_id"] == other["id"]
 
 
-def test_a_removed_last_pick_falls_back_to_the_workspace_agent_model(
+def test_history_still_names_a_model_that_left_the_workspace(
     roles, model, fake_llm, admin_client
 ):
-    other = register(admin_client, "other", roles=("light",))
-    replacement = register(admin_client, "spare", roles=("light",))
+    other = register(admin_client, "other")
     owner = roles.client("owner")
+    workspace_agents(owner, roles, model, other)
     cid = conversation(owner, roles)
     assert pick(owner, roles, cid, other["id"]).status_code == 200
 
-    removed = admin_client.delete(f"{LLM}/models/{other['id']}")
-    assert removed.status_code in (204, 409), removed.text
-    if removed.status_code == 409:
-        removed = admin_client.post(
-            f"{LLM}/models/{other['id']}/removal", json={"light_model_id": replacement["id"]}
-        )
-        assert removed.status_code == 204, removed.text
+    workspace_agents(owner, roles, model)  # `other` leaves the Workspace
 
     assert done(ask(owner, roles, cid, "again"))["model"] == "assistant-model"
+    detail = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    assert [m["model"] for m in detail["messages"]] == [None, "other", None, "assistant-model"]
+    assert pick(owner, roles, cid, other["id"]).status_code == 422

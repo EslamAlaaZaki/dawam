@@ -643,7 +643,7 @@ export function AssistantPanel({
                   )}
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name}
+                      {m.limited ? `${m.name} (limited)` : m.name}
                     </option>
                   ))}
                 </NativeSelect>

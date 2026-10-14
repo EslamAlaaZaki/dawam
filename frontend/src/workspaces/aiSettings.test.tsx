@@ -35,7 +35,7 @@ function choice(id: string, name: string, internal = false) {
 }
 
 function chosen(id: string, name: string, isDefault: boolean) {
-  return { ...choice(id, name), is_default: isDefault };
+  return { ...choice(id, name), is_default: isDefault, limited: false };
 }
 
 function workspace(role: WorkspaceRole): Workspace {

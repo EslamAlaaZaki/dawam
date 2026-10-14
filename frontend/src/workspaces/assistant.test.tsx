@@ -840,6 +840,7 @@ const AI = {
       provider_name: "Cloud",
       internal: false,
       is_default: true,
+      limited: false,
     },
     {
       id: SMALL,
@@ -847,6 +848,7 @@ const AI = {
       provider_name: "Cloud",
       internal: false,
       is_default: false,
+      limited: true,
     },
   ],
 };
@@ -870,7 +872,7 @@ describe("picking the model of a message", () => {
       within(picker)
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual(["Big", "Small"]);
+    ).toEqual(["Big", "Small (limited)"]);
     fireEvent.change(picker, { target: { value: SMALL } });
     await ask("Hi");
 

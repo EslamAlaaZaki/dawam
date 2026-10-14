@@ -322,8 +322,8 @@ class AssistantService:
         model_id: uuid.UUID | None = None,
     ) -> Iterator[StreamEvent]:
         """Store the member's message and return the events of the run answering it.
-        ``model_id`` picks the model for this message (an allowed chat model, else 422
-        ``model_not_allowed`` / ``invalid_model_role``); without it the conversation's last
+        ``model_id`` picks the model for this message (one of the Workspace's agent models, else
+        422 ``model_not_allowed``); without it the conversation's last
         pick is used, else the Workspace's agent model.
         409 ``workspace_archived``, 409 ``run_in_progress``, 422 ``invalid_message``."""
         scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
