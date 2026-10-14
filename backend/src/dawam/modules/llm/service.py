@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import parse_qsl, urlsplit
 
@@ -24,7 +24,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 
-from .gateway import Capabilities, Gateway, ProbeResult, probe
+from .gateway import Capabilities, Gateway, ListingUnsupported, LlmError, ProbeResult, probe
 from .internal import reindex
 from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, adapter_kinds
 from .tables import (
@@ -103,6 +103,20 @@ class ModelInput:
     name: str
     context_window: int | None = None
     """The admin's own figure; the test fills it from the server's metadata if left out."""
+
+
+@dataclass(frozen=True)
+class ListedModel:
+    name: str
+    registered: bool
+
+
+@dataclass(frozen=True)
+class ProviderModelList:
+    supported: bool
+    models: list[ListedModel] = field(default_factory=list)
+    error_code: str | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -417,6 +431,25 @@ class ProviderService:
             return _model_view(record)
 
     # -- the gateway -----------------------------------------------------------------
+
+    def list_provider_models(self, provider_id: uuid.UUID) -> ProviderModelList:
+        """The provider's live model list with each name's ``registered`` flag. Listing
+        failures are reported (``error_code`` / ``error``), not raised; ``supported`` is
+        false when the adapter cannot list. Talks to the provider outside any transaction."""
+        with Session(self._engine) as db:
+            provider = self._load_provider(db, provider_id)
+            registered = {m.name for m in self._models_of(db, provider_id)}
+            gateway = self._gateway(provider, "")
+        try:
+            listed = gateway.list_models()
+        except ListingUnsupported:
+            return ProviderModelList(supported=False)
+        except LlmError as exc:
+            return ProviderModelList(supported=True, error_code=exc.code, error=exc.message)
+        names = sorted(set(listed), key=str.lower)
+        return ProviderModelList(
+            supported=True, models=[ListedModel(n, n in registered) for n in names]
+        )
 
     def gateway_for(self, model_id: uuid.UUID) -> Gateway:
         """The gateway for a registered model, carrying what its last test found. Other

@@ -48,6 +48,11 @@ class LlmError(Exception):
         return self.code in RETRYABLE_CODES
 
 
+class ListingUnsupported(Exception):
+    """The adapter cannot list the provider's models (Azure OpenAI deployments, Vertex AI,
+    a plugin without listing): the admin types the model name instead."""
+
+
 @dataclass(frozen=True)
 class ToolCall:
     id: str
@@ -140,6 +145,9 @@ class Adapter(Protocol):
         """The model's context window from the server's metadata, if it reports one."""
         ...
 
+    # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
+    # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
+
 
 def estimate_tokens(text: str) -> int:
     return max(1, len(text) // CHARS_PER_TOKEN) if text else 0
@@ -171,6 +179,14 @@ class Gateway:
     def capabilities(self) -> Capabilities:
         """What the last "Test connection" found (unknown fields are ``None``)."""
         return self._capabilities
+
+    def list_models(self) -> list[str]:
+        """The model names the provider lists (optional adapter capability).
+        Raises ``ListingUnsupported`` when the adapter cannot list, ``LlmError`` on failure."""
+        lister = getattr(self._adapter, "list_models", None)
+        if lister is None:
+            raise ListingUnsupported("This provider cannot list its models.")
+        return list(lister())
 
     def server_context_window(self) -> int | None:
         """The context window the provider's own metadata reports for this model."""

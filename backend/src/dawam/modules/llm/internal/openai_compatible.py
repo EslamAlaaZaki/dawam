@@ -120,6 +120,21 @@ class OpenAICompatibleAdapter:
                         return value
         return None
 
+    def list_models(self) -> list[str]:
+        response = self._send("GET", "/models", None)
+        try:
+            if response.status >= 400:
+                raise error_for(response)
+            data = json_body(response)
+        except OSError:
+            raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+        finally:
+            response.close()
+        entries = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(entries, list):
+            raise LlmError(INVALID_RESPONSE, "The provider's model list was malformed.")
+        return [e["id"] for e in entries if isinstance(e, dict) and isinstance(e.get("id"), str)]
+
     # -- HTTP ------------------------------------------------------------------------
 
     def _post(self, path: str, body: dict[str, Any]) -> HttpResponse:

@@ -214,6 +214,22 @@ def _model_input(body: LlmModelRequest) -> ModelInput:
     return ModelInput(name=body.name, context_window=body.context_window)
 
 
+class LlmListedModel(BaseModel):
+    name: str
+    registered: bool = Field(description="Already registered under this provider.")
+
+
+class LlmProviderModels(BaseModel):
+    supported: bool = Field(description="False when the adapter cannot list its models.")
+    models: list[LlmListedModel]
+    error: str | None = Field(
+        default=None, description="Why listing failed (bad key, server down); no secrets."
+    )
+    error_code: str | None = Field(
+        default=None, description="The gateway's common error code when listing failed."
+    )
+
+
 class LlmProviderList(BaseModel):
     items: list[LlmProvider]
 
@@ -260,6 +276,22 @@ def delete_provider(
     """Remove a provider and its models (admins only)."""
     providers.delete_provider(provider_id)
     return Response(status_code=204)
+
+
+@router.get("/providers/{provider_id}/available-models", operation_id="listLlmProviderModels")
+def list_provider_models(
+    provider_id: uuid.UUID, _admin: LlmAdmin, providers: ProviderServiceDep
+) -> LlmProviderModels:
+    """The models the provider itself lists, with a `registered` flag, using its stored
+    key (never returned). A listing failure is reported in `error`, not as an HTTP error.
+    404 `provider_not_found`."""
+    listing = providers.list_provider_models(provider_id)
+    return LlmProviderModels(
+        supported=listing.supported,
+        models=[LlmListedModel(name=m.name, registered=m.registered) for m in listing.models],
+        error=listing.error,
+        error_code=listing.error_code,
+    )
 
 
 @router.post("/providers/{provider_id}/models", operation_id="addLlmModel", status_code=201)

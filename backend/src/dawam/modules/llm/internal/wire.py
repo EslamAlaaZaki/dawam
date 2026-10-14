@@ -18,6 +18,8 @@ from ..gateway import (
 from .transport import HttpResponse
 
 MAX_DETAIL_CHARS = 300
+MAX_LIST_PAGES = 20
+"""A cap on the pages read when listing a provider's models."""
 _CONTEXT_MARKERS = (
     "context_length_exceeded",
     "context length",

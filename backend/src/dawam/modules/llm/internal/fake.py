@@ -19,6 +19,7 @@ from ..gateway import (
     BAD_REQUEST,
     ChatEvent,
     Done,
+    ListingUnsupported,
     LlmError,
     Message,
     TextDelta,
@@ -68,6 +69,8 @@ class FakeAdapter:
         self.dimension = embedding_dimension
         self._script: deque[Reply | list[float] | LlmError] = deque()
         self.calls: list[FakeCall] = []
+        self.models: list[str] | LlmError | None = None
+        """What ``list_models`` returns (or raises); ``None``: listing unsupported."""
 
     def script(self, *outcomes: Reply | LlmError) -> FakeAdapter:
         self._script.extend(outcomes)
@@ -121,6 +124,13 @@ class FakeAdapter:
 
     def context_window(self, model: str) -> int | None:
         return self.window
+
+    def list_models(self) -> list[str]:
+        if self.models is None:
+            raise ListingUnsupported("The fake provider cannot list models.")
+        if isinstance(self.models, LlmError):
+            raise self.models
+        return list(self.models)
 
     # -- default behaviour -------------------------------------------------------------
 
