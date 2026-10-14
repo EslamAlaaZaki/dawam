@@ -26,7 +26,7 @@ from tests.assistant.test_chat import (
     tool,
 )
 from tests.llm.test_roles_budgets import BASE as LLM
-from tests.llm.test_roles_budgets import assign, register
+from tests.llm.test_roles_budgets import register, use_models
 from tests.roles import RoleClients
 
 JOB_CAP = 6
@@ -41,9 +41,10 @@ def settings(settings: Settings) -> Settings:
 
 
 @pytest.fixture
-def model(admin_client, fake_llm):
+def model(admin_client, fake_llm, roles: RoleClients):
+    assert roles.workspace_id  # created first, while there is no model to choose
     agent = register(admin_client, "assistant-model")
-    assert assign(admin_client, agent).status_code == 200
+    assert use_models(roles.client("owner"), roles.workspace_id, agent).status_code == 200
     fake_llm.calls.clear()  # the connection test is not what the tests look at
     return agent
 
@@ -246,7 +247,7 @@ def test_a_spent_budget_aborts_the_job(app, services, roles, model, fake_llm, ad
 def test_no_assigned_model_aborts_the_job(app, services, roles, fake_llm):
     job = submit(app, services, roles)
 
-    assert job.status == "failed" and "agent role" in (job.error or "")
+    assert job.status == "failed" and "no agent model" in (job.error or "")
 
 
 class _CancellingAdapter(FakeAdapter):

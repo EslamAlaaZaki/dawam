@@ -66,7 +66,6 @@ const PROVIDER: LlmProvider = {
 const UNUSED: LlmModelUsage = {
   in_use: false,
   roles: [],
-  installation_roles: [],
   workspaces: [],
   indexed_workspaces: [],
 };
@@ -571,7 +570,6 @@ describe("language models page", () => {
     const inUse = (extra: Partial<LlmModelUsage> = {}): LlmModelUsage => ({
       in_use: true,
       roles: ["agent"],
-      installation_roles: ["agent"],
       workspaces: [],
       indexed_workspaces: [],
       ...extra,

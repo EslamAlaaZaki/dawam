@@ -1,12 +1,14 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import {
   useSetWorkspaceAiSettings,
   useWorkspaceAiSettings,
+  type ModelChoice,
   type WorkspaceAiSettings,
+  type WorkspaceModel,
 } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
@@ -19,17 +21,21 @@ import {
   Hint,
   NativeSelect,
   Panel,
+  checkClasses,
+  checkLabelClasses,
+  fieldsetClasses,
   formCardClasses,
   h3Classes,
+  h4Classes,
   labelClasses,
 } from "./parts";
 
-const INSTALLATION = "";
+const NONE = "";
 
 /**
- * The Workspace's AI settings (stories 160, 161): the model each role uses. Every member
- * sees the effective models; owners choose the agent and light model from the Workspace's
- * Allowed Models, or fall back to the installation's.
+ * The Workspace's AI settings (stories 160, 161): its Workspace Models. Every member sees
+ * them; owners of an active Workspace choose one or more agent and light models (one of
+ * each the default) and the embedding model, from the models an admin enabled per role.
  */
 export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
   const settings = useWorkspaceAiSettings(workspace.id);
@@ -55,45 +61,68 @@ export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
       <h3 id="ai-title" className={h3Classes}>
         AI settings
       </h3>
-      <Effective settings={settings.data} />
-      <Hint>Only owners can choose the models.</Hint>
+      <Chosen settings={settings.data} />
+      <Hint>
+        {workspace.status === "active"
+          ? "Only owners can choose the models."
+          : "The Workspace is archived, so its models cannot change."}
+      </Hint>
     </Panel>
   );
 }
 
-function modelText(name: string | null | undefined, own: boolean): string {
-  if (!name) {
-    return "None assigned";
-  }
-  return own ? name : `${name} (installation default)`;
+function names(models: WorkspaceModel[]): string {
+  return models
+    .map((m) => (m.is_default ? `${m.name} (default)` : m.name))
+    .join(", ");
 }
 
-function Effective({ settings }: { settings: WorkspaceAiSettings }) {
+function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
   return (
     <DetailList>
-      <dt>Agent model</dt>
+      <dt>Agent models</dt>
+      <dd>{names(settings.agent_models) || "None chosen"}</dd>
+      <dt>Light models</dt>
       <dd>
-        {modelText(
-          settings.effective_agent_model_name,
-          settings.agent_model_id !== null,
-        )}
-      </dd>
-      <dt>Light model</dt>
-      <dd>
-        {settings.effective_light_model_name
-          ? modelText(
-              settings.effective_light_model_name,
-              settings.light_model_id !== null,
-            )
-          : "None assigned: light tasks use the agent model"}
+        {names(settings.light_models) ||
+          "None: light tasks use the default agent model"}
       </dd>
       <dt>Embedding model</dt>
       <dd>
-        {settings.embedding_model_name ?? "None assigned"}{" "}
-        <span className="text-muted-foreground">(fixed at creation)</span>
+        {settings.embedding_model?.name ??
+          "None: document search matches text only"}
+        {settings.embedding_locked && (
+          <span className="text-muted-foreground">
+            {" "}
+            (fixed: documents are indexed)
+          </span>
+        )}
       </dd>
     </DetailList>
   );
+}
+
+type Pick = { ids: string[]; defaultId: string | null };
+
+function initial(models: WorkspaceModel[]): Pick {
+  return {
+    ids: models.map((m) => m.id),
+    defaultId: models.find((m) => m.is_default)?.id ?? null,
+  };
+}
+
+/** What an owner may choose for a role, plus chosen models no longer offered. */
+function offered(
+  settings: WorkspaceAiSettings,
+  choices: ModelChoice[],
+  chosen: WorkspaceModel[],
+): { model: ModelChoice; stale: boolean }[] {
+  const usable = choices.filter((m) => m.internal || !settings.internal_only);
+  const stale = chosen.filter((c) => !usable.some((m) => m.id === c.id));
+  return [
+    ...usable.map((model) => ({ model, stale: false })),
+    ...stale.map((model) => ({ model, stale: true })),
+  ];
 }
 
 function OwnerForm({
@@ -104,17 +133,28 @@ function OwnerForm({
   settings: WorkspaceAiSettings;
 }) {
   const save = useSetWorkspaceAiSettings(workspaceId);
+  const [agent, setAgent] = useState(() => initial(settings.agent_models));
+  const [light, setLight] = useState(() => initial(settings.light_models));
+  const [embedding, setEmbedding] = useState(
+    settings.embedding_model?.id ?? NONE,
+  );
+  const embeddingChoices = offered(
+    settings,
+    settings.choices.embedding,
+    settings.embedding_model ? [settings.embedding_model] : [],
+  );
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const pick = (field: string) => String(form.get(field)) || null;
     save
       .mutateAsync({
         internal_only: settings.internal_only,
         data_sharing_level: settings.data_sharing_level,
-        agent_model_id: pick("agent"),
-        light_model_id: pick("light"),
+        agent_model_ids: agent.ids,
+        default_agent_model_id: agent.defaultId,
+        light_model_ids: light.ids,
+        default_light_model_id: light.defaultId,
+        embedding_model_id: embedding || null,
       })
       .then(
         () => toast.success("Saved."),
@@ -124,8 +164,6 @@ function OwnerForm({
 
   return (
     <form
-      // Saved settings refill the selects.
-      key={`${settings.agent_model_id}/${settings.light_model_id}`}
       className={formCardClasses}
       onSubmit={onSubmit}
       aria-labelledby="ai-title"
@@ -133,48 +171,48 @@ function OwnerForm({
       <h3 id="ai-title" className={h3Classes}>
         AI settings
       </h3>
-      <Effective settings={settings} />
+      <RoleModels
+        role="agent"
+        title="Agent models"
+        rows={offered(settings, settings.choices.agent, settings.agent_models)}
+        pick={agent}
+        onChange={setAgent}
+      />
+      <RoleModels
+        role="light"
+        title="Light models"
+        rows={offered(settings, settings.choices.light, settings.light_models)}
+        pick={light}
+        onChange={setLight}
+        none="None chosen: light tasks use the default agent model."
+      />
       <label className={labelClasses}>
-        Agent model
+        Embedding model
         <NativeSelect
-          name="agent"
-          defaultValue={settings.agent_model_id ?? INSTALLATION}
+          value={embedding}
+          disabled={settings.embedding_locked}
+          onChange={(event) => setEmbedding(event.target.value)}
         >
-          <option value={INSTALLATION}>Installation default</option>
-          {settings.approved_models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} ({m.provider_name})
+          <option value={NONE}>None: document search matches text only</option>
+          {embeddingChoices.map(({ model, stale }) => (
+            <option key={model.id} value={model.id}>
+              {model.name} ({model.provider_name})
+              {stale ? " (no longer offered)" : ""}
             </option>
           ))}
-          <StaleOption
-            id={settings.agent_model_id}
-            listed={settings.approved_models}
-            name={settings.effective_agent_model_name}
-          />
         </NativeSelect>
       </label>
-      <label className={labelClasses}>
-        Light model
-        <NativeSelect
-          name="light"
-          defaultValue={settings.light_model_id ?? INSTALLATION}
-        >
-          <option value={INSTALLATION}>Installation default</option>
-          {settings.light_models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} ({m.provider_name})
-            </option>
-          ))}
-          <StaleOption
-            id={settings.light_model_id}
-            listed={settings.light_models}
-            name={settings.effective_light_model_name}
-          />
-        </NativeSelect>
-      </label>
-      <Hint>
-        Only models in the Workspace&apos;s Allowed Models can be chosen.
-      </Hint>
+      {settings.embedding_locked && (
+        <Hint>
+          Fixed: this Workspace has indexed documents, and changing the model
+          would need them indexed again.
+        </Hint>
+      )}
+      {settings.internal_only && (
+        <Hint>
+          The Workspace is internal-only: only internal models are offered.
+        </Hint>
+      )}
       {save.isError && (
         <ErrorText>
           {save.error instanceof ApiError
@@ -191,18 +229,62 @@ function OwnerForm({
   );
 }
 
-/** The saved choice when it is no longer offered, so Save keeps it unless the owner picks. */
-function StaleOption({
-  id,
-  listed,
-  name,
+/** One role's models: a checkbox per model and a radio marking the default. */
+function RoleModels({
+  role,
+  title,
+  rows,
+  pick,
+  onChange,
+  none,
 }: {
-  id: string | null;
-  listed: { id: string }[];
-  name: string | null | undefined;
+  role: "agent" | "light";
+  title: string;
+  rows: { model: ModelChoice; stale: boolean }[];
+  pick: Pick;
+  onChange: (next: Pick) => void;
+  none?: string;
 }) {
-  if (id === null || listed.some((m) => m.id === id)) {
-    return null;
+  function toggle(id: string, on: boolean) {
+    const ids = on ? [...pick.ids, id] : pick.ids.filter((x) => x !== id);
+    const keep = pick.defaultId !== null && ids.includes(pick.defaultId);
+    onChange({ ids, defaultId: keep ? pick.defaultId : (ids[0] ?? null) });
   }
-  return <option value={id}>{name ?? id} (no longer allowed)</option>;
+
+  return (
+    <fieldset className={fieldsetClasses}>
+      <legend className={h4Classes}>{title}</legend>
+      {rows.length === 0 && <Hint>No model is enabled for this role.</Hint>}
+      {rows.map(({ model, stale }) => {
+        const chosen = pick.ids.includes(model.id);
+        return (
+          <div key={model.id} className="flex flex-wrap items-center gap-4">
+            <label className={checkLabelClasses}>
+              <input
+                type="checkbox"
+                className={checkClasses}
+                checked={chosen}
+                onChange={(event) => toggle(model.id, event.target.checked)}
+              />
+              {model.name} ({model.provider_name})
+              {stale ? " (no longer offered)" : ""}
+            </label>
+            <label className={checkLabelClasses}>
+              <input
+                type="radio"
+                name={`default-${role}`}
+                className={checkClasses}
+                aria-label={`Default ${role} model: ${model.name}`}
+                checked={pick.defaultId === model.id}
+                disabled={!chosen}
+                onChange={() => onChange({ ...pick, defaultId: model.id })}
+              />
+              Default
+            </label>
+          </div>
+        );
+      })}
+      {none && pick.ids.length === 0 && <Hint>{none}</Hint>}
+    </fieldset>
+  );
 }

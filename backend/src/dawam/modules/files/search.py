@@ -91,8 +91,8 @@ class EmbeddingModels(Protocol):
 
 
 class RegisteredEmbeddingModels:
-    """The Workspace's own embedding model, fixed at creation (ADR 0005); a Workspace without
-    one uses the first tested embedding model of the admin's provider registry."""
+    """The Workspace's own embedding model, one of its Workspace Models (ADR 0005). A
+    Workspace without one has no embedding model: search then matches text only."""
 
     def __init__(
         self, providers: ProviderService, roles: RoleService, engine: sa.Engine | None = None
@@ -104,22 +104,18 @@ class RegisteredEmbeddingModels:
     def current(
         self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> EmbeddingModel | None:
-        chosen = (
-            workspace_embedding_model_id(self._engine, workspace_id)
-            if self._engine is not None
-            else None
-        )
-        candidates = [
+        if self._engine is None:
+            return None
+        chosen = workspace_embedding_model_id(self._engine, workspace_id)
+        found = [
             (provider, model)
             for provider in self._providers.list_providers()
             for model in provider.models
-            if "embedding" in model.roles
-            and model.test_ok
-            and (chosen is None or model.id == chosen)
+            if model.id == chosen and "embedding" in model.roles and model.test_ok
         ]
-        if not candidates:
+        if not found:
             return None
-        provider, model = min(candidates, key=lambda pair: (pair[1].created_at, str(pair[1].id)))
+        provider, model = found[0]
         gateway = self._roles.metered_gateway(
             model.id, "embedding", workspace_id=workspace_id, user_id=user_id
         )

@@ -16,31 +16,30 @@ Public interface. Other modules import only what is re-exported here:
   ``/chat/completions`` and ``/embeddings``) or the ``anthropic`` one (Claude through
   the Messages API; chat only, no embeddings). Nothing else imports a vendor SDK.
 - ``FakeAdapter`` (with ``Reply``): the scripted fake provider every test can use.
-- ``RoleService``: model roles (``agent`` required, ``light``, ``embedding``), monthly token
-  budgets (installation and per Workspace) and usage. ``gateway_for_role(role, workspace_id=,
-  user_id=)`` is how features call a model: the ``MeteredGateway`` checks the budgets before
-  every call (429 ``token_budget_exhausted``) and records tokens per call; ``light`` falls
-  back to the agent model when unassigned or not allowed.
-- ``WorkspaceAiService``: a Workspace's AI settings (its agent model, internal-only, data-sharing
-  level; owners only, audited). ``policy(workspace_id)`` is the one ``DataSharingPolicy``
-  other modules ask before sending data to a model: ``policy.allows(DataSharingLevel.SAMPLES)``
-  (levels are cumulative: metadata < profiles < documents < samples). An internal-only
-  Workspace's gateway refuses external providers for every role (409
-  ``external_provider_refused``). ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the
-  composition root sets (``app.state.on_workspace_created``): internal-only by default when the
-  installation's agent model is internal, decided in code.
-- Allowed Models: an admin narrows the models a Workspace may use (``GET|PUT
-  /admin/llm/workspaces/{workspace_id}/allowed-models``; none chosen: every registered model).
-  One check, ``allowed_model_ids``, combines them with the internal-only flag; the Workspace's
-  agent-model override must be in it (422 ``model_not_allowed``), and a call on a model outside
-  a narrowed list is refused (409 ``model_not_allowed``).
+- ``RoleService``: monthly token budgets (installation and per Workspace) and usage.
+  ``gateway_for_role(role, workspace_id=, user_id=)`` is how features call a model, resolved
+  from the Workspace's Workspace Models (``agent``: its default agent model; ``light``: its
+  default light model, else its default agent model; ``embedding``: its embedding model): the
+  ``MeteredGateway`` checks the budgets before every call (429 ``token_budget_exhausted``) and
+  records tokens per call.
+- ``WorkspaceAiService``: a Workspace's AI settings (its Workspace Models, internal-only,
+  data-sharing level; owners only, audited). ``policy(workspace_id)`` is the one
+  ``DataSharingPolicy`` other modules ask before sending data to a model:
+  ``policy.allows(DataSharingLevel.SAMPLES)`` (levels are cumulative: metadata < profiles <
+  documents < samples). An internal-only Workspace takes only internal models, and its gateway
+  refuses external providers for every role (409 ``external_provider_refused``).
+  ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the composition root sets
+  (``app.state.on_workspace_created``): it stores the creator's embedding, default agent and
+  light models, and makes the Workspace internal-only when the installation has a tested
+  internal agent model, decided in code.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` (members read, owners
-  change), then, admins only, ``/admin/llm/roles``, ``/admin/llm/budgets[...]``,
+  change), ``GET /ai/new-workspace-models`` (the "New workspace" form's choices), then,
+  admins only, ``/admin/llm/budgets[...]``,
   ``/admin/llm/usage``, ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
 Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
-``llm_usage``, ``llm_workspace_settings`` and ``llm_workspace_allowed_models`` tables. Imports
+``llm_usage``, ``llm_workspace_settings`` and ``llm_workspace_models`` tables. Imports
 ``auth``, ``activity``, ``audit`` and ``workspaces`` (for the admin policy).
 """
 
@@ -65,7 +64,6 @@ from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, fake_
 from .internal.fake import FakeAdapter, Reply
 from .role_service import (
     MeteredGateway,
-    RoleAssignments,
     RoleService,
     UsageReport,
 )
@@ -87,13 +85,13 @@ from .workspace_ai import (
     on_workspace_created,
     workspace_embedding_model_id,
 )
-from .workspace_ai_api import embedding_router
+from .workspace_ai_api import new_workspace_router
 from .workspace_ai_api import router as workspace_ai_router
 
 router = APIRouter()
 router.include_router(admin_router)
 router.include_router(workspace_ai_router)
-router.include_router(embedding_router)
+router.include_router(new_workspace_router)
 
 __all__ = [
     "Adapter",
@@ -116,7 +114,6 @@ __all__ = [
     "ProviderInput",
     "ProviderService",
     "Reply",
-    "RoleAssignments",
     "RoleService",
     "SetupStatus",
     "TextDelta",

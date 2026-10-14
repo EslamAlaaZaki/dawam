@@ -1,8 +1,9 @@
-"""``/api/v1/workspaces/{workspace_id}/ai-settings``: a Workspace's agent model,
-internal-only restriction and data-sharing level (spec stories 160, 161).
+"""``/api/v1/workspaces/{workspace_id}/ai-settings``: a Workspace's Workspace Models,
+internal-only restriction and data-sharing level (spec §6.18, stories 160, 161).
 
 Handlers only translate HTTP to ``WorkspaceAiService`` calls; the service authorizes
-through the workspaces module's policy (any member reads, owners change).
+through the workspaces module's policy (any member reads, owners of an active Workspace
+change).
 """
 
 from __future__ import annotations
@@ -18,10 +19,11 @@ from dawam.modules.workspaces import WorkspaceService
 
 from .workspace_ai import (
     ApprovedModel,
+    ChosenModel,
     DataSharingLevel,
     WorkspaceAiService,
     WorkspaceAiView,
-    embedding_choices,
+    new_workspace_choices,
 )
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/ai-settings", tags=["llm"])
@@ -39,11 +41,21 @@ def workspace_ai_service(request: Request) -> WorkspaceAiService:
 WorkspaceAiServiceDep = Annotated[WorkspaceAiService, Depends(workspace_ai_service)]
 
 
-class ApprovedAgentModel(BaseModel):
+class ModelChoice(BaseModel):
     id: uuid.UUID
     name: str
     provider_name: str
     internal: bool = Field(description="True when the provider is inside your infrastructure.")
+
+
+class WorkspaceModel(ModelChoice):
+    is_default: bool
+
+
+class ModelChoices(BaseModel):
+    agent: list[ModelChoice]
+    light: list[ModelChoice]
+    embedding: list[ModelChoice]
 
 
 class WorkspaceAiSettings(BaseModel):
@@ -54,34 +66,25 @@ class WorkspaceAiSettings(BaseModel):
         description="What the AI may see, cumulative: `metadata` < `profiles` < `documents` "
         "< `samples`."
     )
-    agent_model_id: uuid.UUID | None = Field(
-        description="The Workspace's own agent model; null: the installation's."
+    agent_models: list[WorkspaceModel] = Field(
+        description="The Workspace's agent models; the default answers unless a message "
+        "names another."
     )
-    light_model_id: uuid.UUID | None = Field(
-        description="The Workspace's own light model; null: the installation's."
+    light_models: list[WorkspaceModel] = Field(
+        description="The Workspace's light models; none: light tasks use the default agent model."
     )
-    embedding_model_id: uuid.UUID | None = Field(
-        description="The Workspace's embedding model, chosen at creation and fixed (read-only); "
-        "null: none was registered then."
+    embedding_model: WorkspaceModel | None = Field(
+        description="The Workspace's embedding model; null: document search matches text only."
     )
-    embedding_model_name: str | None
-    effective_agent_model_id: uuid.UUID | None = Field(
-        description="The agent model in use: the Workspace's, else the installation's."
+    embedding_locked: bool = Field(
+        description="The Workspace has indexed documents, so its embedding model is fixed."
     )
-    effective_agent_model_name: str | None
-    effective_light_model_id: uuid.UUID | None = Field(
-        description="The light model in use: the Workspace's, else the installation's; "
-        "null: light tasks use the agent model."
-    )
-    effective_light_model_name: str | None
-    light_models: list[ApprovedAgentModel] = Field(
-        description="The chat models an owner may choose as the light model."
-    )
-    approved_models: list[ApprovedAgentModel] = Field(
-        description="The admin-approved agent models an owner may choose from."
+    choices: ModelChoices = Field(
+        description="Per role, the tested models an admin enabled for it, for an owner to choose "
+        "from (an internal-only Workspace takes only internal ones)."
     )
     internal_agent_available: bool = Field(
-        description="The installation has an agent model on an internal provider."
+        description="The installation has a tested agent model on an internal provider."
     )
     banner: bool = Field(
         description="Show a banner: the Workspace is not internal-only and the installation "
@@ -90,44 +93,63 @@ class WorkspaceAiSettings(BaseModel):
 
 
 class WorkspaceAiSettingsRequest(BaseModel):
+    """Model fields left out keep their current value."""
+
     internal_only: bool
     data_sharing_level: DataSharingLevel
-    agent_model_id: uuid.UUID | None = Field(
-        default=None, description="An approved agent model; null: use the installation's."
+    agent_model_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="Models enabled for the agent role; required when there is any to choose.",
     )
-    light_model_id: uuid.UUID | None = Field(
-        default=None, description="A tested chat model; null: use the installation's."
+    default_agent_model_id: uuid.UUID | None = Field(
+        default=None, description="One of `agent_model_ids`; optional when there is only one."
+    )
+    light_model_ids: list[uuid.UUID] = Field(
+        default_factory=list, description="Models enabled for the light role; optional."
+    )
+    default_light_model_id: uuid.UUID | None = Field(
+        default=None, description="One of `light_model_ids`; optional when there is only one."
     )
     embedding_model_id: uuid.UUID | None = Field(
         default=None,
-        description="Must be left out or equal the Workspace's current embedding model: it is "
-        "fixed at creation.",
+        description="A model enabled for the embedding role; changes only while the Workspace "
+        "has no indexed documents.",
     )
 
 
-def _model_out(m: ApprovedModel) -> ApprovedAgentModel:
-    return ApprovedAgentModel(
-        id=m.id, name=m.name, provider_name=m.provider_name, internal=m.internal
+def _choice(m: ApprovedModel) -> ModelChoice:
+    return ModelChoice(id=m.id, name=m.name, provider_name=m.provider_name, internal=m.internal)
+
+
+def _chosen(m: ChosenModel) -> WorkspaceModel:
+    return WorkspaceModel(
+        id=m.id,
+        name=m.name,
+        provider_name=m.provider_name,
+        internal=m.internal,
+        is_default=m.is_default,
+    )
+
+
+def _choices(choices: dict[str, list[ApprovedModel]]) -> ModelChoices:
+    return ModelChoices(
+        agent=[_choice(m) for m in choices["agent"]],
+        light=[_choice(m) for m in choices["light"]],
+        embedding=[_choice(m) for m in choices["embedding"]],
     )
 
 
 def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     settings = view.settings
-    agent = settings.agent_model_id or view.installation_agent_model_id
-    light = settings.light_model_id or view.installation_light_model_id
+    embedding = view.chosen["embedding"]
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
-        agent_model_id=settings.agent_model_id,
-        light_model_id=settings.light_model_id,
-        embedding_model_id=settings.embedding_model_id,
-        embedding_model_name=view.embedding_model_name,
-        effective_agent_model_id=agent,
-        effective_agent_model_name=view.model_names.get(agent) if agent else None,
-        effective_light_model_id=light,
-        effective_light_model_name=view.model_names.get(light) if light else None,
-        approved_models=[_model_out(m) for m in view.approved_models],
-        light_models=[_model_out(m) for m in view.light_models],
+        agent_models=[_chosen(m) for m in view.chosen["agent"]],
+        light_models=[_chosen(m) for m in view.chosen["light"]],
+        embedding_model=_chosen(embedding[0]) if embedding else None,
+        embedding_locked=view.embedding_locked,
+        choices=_choices(view.choices),
         internal_agent_available=view.internal_agent_available,
         banner=view.banner,
     )
@@ -148,41 +170,61 @@ def set_ai_settings(
     user: CurrentUser,
     service: WorkspaceAiServiceDep,
 ) -> WorkspaceAiSettings:
-    """Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
-    that is not an approved agent model (or a light model that is not a tested chat model);
-    422 `model_not_allowed` for a model outside the Workspace's Allowed Models;
-    422 `embedding_model_fixed` for a different embedding model (it cannot change);
-    422 `no_internal_model` when internal-only has no internal agent model to use."""
+    """Replace the settings and the Workspace Models (owners of an active Workspace; audited);
+    model fields left out keep their current value.
+    422 `invalid_model_role` for a model not enabled (and tested) for its role;
+    422 `model_not_allowed` for an external model in an internal-only Workspace;
+    422 `no_internal_model` when internal-only has no internal agent model to use;
+    422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the
+    default is not one of the chosen models; 422 `embedding_model_fixed` for a different
+    embedding model once documents are indexed."""
+    sent = body.model_fields_set
+    current = service.settings(workspace_id).models
+    agents = "agent_model_ids" in sent
+    lights = "light_model_ids" in sent
     return _out(
         service.update(
             user,
             workspace_id,
             internal_only=body.internal_only,
             data_sharing_level=body.data_sharing_level,
-            agent_model_id=body.agent_model_id,
-            light_model_id=body.light_model_id,
-            embedding_model_id=body.embedding_model_id,
+            agent_model_ids=body.agent_model_ids if agents else list(current.agent),
+            default_agent_model_id=(
+                body.default_agent_model_id
+                if agents or "default_agent_model_id" in sent
+                else current.default_agent
+            ),
+            light_model_ids=body.light_model_ids if lights else list(current.light),
+            default_light_model_id=(
+                body.default_light_model_id
+                if lights or "default_light_model_id" in sent
+                else current.default_light
+            ),
+            embedding_model_id=(
+                body.embedding_model_id if "embedding_model_id" in sent else current.embedding
+            ),
         )
     )
 
 
-embedding_router = APIRouter(prefix="/ai/embedding-models", tags=["llm"])
+new_workspace_router = APIRouter(prefix="/ai/new-workspace-models", tags=["llm"])
 
 
-class EmbeddingChoicesOut(BaseModel):
-    models: list[ApprovedAgentModel] = Field(
-        description="Tested embedding models a new Workspace may be created with."
+class NewWorkspaceModels(BaseModel):
+    internal_only: bool = Field(
+        description="A new Workspace starts internal-only, so only internal models are offered."
     )
-    default_model_id: uuid.UUID | None = Field(
-        description="The installation's embedding model: pre-select it."
+    choices: ModelChoices = Field(
+        description="Per role, the models a new Workspace may be created with. No embedding "
+        "model to offer: the Workspace is created without one and document search matches "
+        "text only until an owner sets it."
     )
 
 
-@embedding_router.get("", operation_id="listEmbeddingModels")
-def list_embedding_models(request: Request, user: CurrentUser) -> EmbeddingChoicesOut:
-    """The embedding models the "New workspace" form offers, and the installation's default
-    (any signed-in user). A Workspace keeps its choice for good."""
-    choices = embedding_choices(request.app.state.engine)
-    return EmbeddingChoicesOut(
-        models=[_model_out(m) for m in choices.models], default_model_id=choices.default_model_id
+@new_workspace_router.get("", operation_id="listNewWorkspaceModels")
+def list_new_workspace_models(request: Request, user: CurrentUser) -> NewWorkspaceModels:
+    """The models the "New workspace" form offers for each role (any signed-in user)."""
+    choices = new_workspace_choices(request.app.state.engine)
+    return NewWorkspaceModels(
+        internal_only=choices.internal_only, choices=_choices(choices.choices)
     )

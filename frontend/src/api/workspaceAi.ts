@@ -1,4 +1,4 @@
-// A Workspace's AI settings: its agent and light models (spec §6.18, stories 160, 161).
+// A Workspace's AI settings: its Workspace Models (spec §6.18, stories 160, 161).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "./client";
@@ -9,12 +9,14 @@ export type WorkspaceAiSettings = components["schemas"]["WorkspaceAiSettings"];
 export type WorkspaceAiSettingsRequest =
   components["schemas"]["WorkspaceAiSettingsRequest"];
 
-export type EmbeddingChoices = components["schemas"]["EmbeddingChoicesOut"];
+export type WorkspaceModel = components["schemas"]["WorkspaceModel"];
+export type ModelChoice = components["schemas"]["ModelChoice"];
+export type NewWorkspaceModels = components["schemas"]["NewWorkspaceModels"];
 
 const aiKey = (workspaceId: string) =>
   ["workspace", workspaceId, "ai-settings"] as const;
 
-/** The settings, the effective model per role and the models an owner may choose. */
+/** The settings, the Workspace Models and the models an owner may choose per role. */
 export function useWorkspaceAiSettings(workspaceId: string) {
   const client = useApiClient();
   return useQuery({
@@ -51,14 +53,14 @@ export function useSetWorkspaceAiSettings(workspaceId: string) {
   });
 }
 
-/** The embedding models the "New workspace" form offers and the installation's default. */
-export function useEmbeddingModels() {
+/** The models the "New workspace" form offers for each role. */
+export function useNewWorkspaceModels() {
   const client = useApiClient();
   return useQuery({
-    queryKey: ["ai", "embedding-models"] as const,
+    queryKey: ["ai", "new-workspace-models"] as const,
     queryFn: async () => {
       const { data, error, response } = await client.GET(
-        "/api/v1/ai/embedding-models",
+        "/api/v1/ai/new-workspace-models",
       );
       if (error) {
         throw new ApiError(response.status, error.error);

@@ -74,26 +74,6 @@ const ARCHIVED = workspace("Old DW", {
   archived_at: "2026-02-01T09:00:00Z",
 });
 
-const ALLOWED = {
-  model_ids: [],
-  models: [
-    {
-      id: "m1",
-      name: "big",
-      provider_name: "Cloud",
-      internal: false,
-      allowed: true,
-    },
-    {
-      id: "m2",
-      name: "local",
-      provider_name: "Onsite",
-      internal: true,
-      allowed: true,
-    },
-  ],
-};
-
 function backend(
   handle: (r: ApiRequest) => Response | undefined = () => undefined,
 ) {
@@ -106,8 +86,6 @@ function backend(
           items: [workspace("Retail DW"), ORPHAN, ARCHIVED],
           next_cursor: null,
         });
-      case `GET /api/v1/admin/llm/workspaces/${workspace("Retail DW").id}/allowed-models`:
-        return json(ALLOWED);
       case "GET /api/v1/admin/users":
         return json({ items: [GRACE], next_cursor: null });
       default:
@@ -269,36 +247,12 @@ describe("the admin Workspace list", () => {
     );
   });
 
-  it("edits a Workspace's Allowed Models in a popup", async () => {
-    const requests = renderApp(
-      backend((r) =>
-        r.method === "PUT"
-          ? json({ ...ALLOWED, model_ids: ["m2"] })
-          : undefined,
-      ),
-      "/admin/workspaces",
-    );
+  it("has no Allowed Models control: owners choose their Workspace Models", async () => {
+    renderApp(backend(), "/admin/workspaces");
 
     const retail = await screen.findByRole("row", { name: "Retail DW" });
-    fireEvent.click(
-      within(retail).getByRole("button", { name: "Allowed models" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Allowed models for Retail DW",
-    });
-    expect(await within(dialog).findByLabelText(/big/)).not.toBeChecked();
-    fireEvent.click(within(dialog).getByLabelText(/local/));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(requests).toContainEqual(
-        expect.objectContaining({
-          method: "PUT",
-          path: `/api/v1/admin/llm/workspaces/${workspace("Retail DW").id}/allowed-models`,
-          csrf: CSRF_TOKEN,
-          body: { model_ids: ["m2"] },
-        }),
-      ),
-    );
+    expect(
+      within(retail).queryByRole("button", { name: "Allowed models" }),
+    ).not.toBeInTheDocument();
   });
 });

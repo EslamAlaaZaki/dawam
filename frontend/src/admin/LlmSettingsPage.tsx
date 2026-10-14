@@ -13,10 +13,8 @@ import {
 import {
   useClearWorkspaceBudget,
   useLlmBudgets,
-  useLlmRoles,
   useLlmUsage,
   useSetInstallationBudget,
-  useSetLlmRoles,
   useSetWorkspaceBudget,
   type LlmBudgets,
 } from "../api/llmSettings";
@@ -50,42 +48,12 @@ export function LlmSettingsPage() {
     <section className="flex flex-col gap-5">
       <PageHead
         title="AI roles, budgets and usage"
-        description="Which models play which role, how many tokens each Workspace may use per month, and what was used."
+        description="Which roles each model may play, how many tokens each Workspace may use per month, and what was used. Each Workspace's owner chooses its models from these."
       />
       <ModelRolesSection />
-      <RolesSection />
       <BudgetsSection />
       <UsageSection />
     </section>
-  );
-}
-
-function ModelSelect({
-  label,
-  name,
-  models,
-  value,
-  required,
-}: {
-  label: string;
-  name: string;
-  models: { id: string; label: string }[];
-  value: string | null;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClasses}>
-      {label}
-      <NativeSelect name={name} defaultValue={value ?? ""} required={required}>
-        {!required && <option value="">None</option>}
-        {required && <option value="">Choose a model</option>}
-        {models.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.label}
-          </option>
-        ))}
-      </NativeSelect>
-    </label>
   );
 }
 
@@ -226,88 +194,6 @@ function ModelRoleRow({
         </Button>
       </TableCell>
     </TableRow>
-  );
-}
-
-function RolesSection() {
-  const roles = useLlmRoles();
-  const providers = useLlmProviders();
-  const save = useSetLlmRoles();
-  if (roles.isPending || providers.isPending) {
-    return <Loading />;
-  }
-  if (roles.isError || providers.isError) {
-    return <ErrorText>Could not load the model roles.</ErrorText>;
-  }
-  // Only tested models that have the role in the roles table can be chosen for it.
-  const offered = (role: LlmModelRole) =>
-    providers.data.flatMap((provider) =>
-      provider.models
-        .filter(
-          (model: LlmModel) =>
-            model.test_ok === true && model.roles.includes(role),
-        )
-        .map((model: LlmModel) => ({
-          id: model.id,
-          label: `${provider.name} / ${model.name}`,
-        })),
-    );
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    save.mutate(
-      {
-        agent_model_id: String(data.get("agent")),
-        light_model_id: String(data.get("light") ?? "") || null,
-        embedding_model_id: String(data.get("embedding") ?? "") || null,
-      },
-      { onSuccess: () => toast.success("Roles saved.") },
-    );
-  }
-
-  return (
-    <form onSubmit={onSubmit} aria-label="Model roles">
-      <SettingsCard
-        title="Installation defaults"
-        description='Each list offers the tested models that have that role in the table above.'
-        footer={
-          <Button type="submit" variant="primary" disabled={save.isPending}>
-            Save roles
-          </Button>
-        }
-      >
-        {roles.data.reindex_needed && (
-          <p
-            role="status"
-            className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
-          >
-            Documents must be indexed again: the embedding model or its vector
-            dimension changed.
-          </p>
-        )}
-        <ModelSelect
-          label="Agent model (required)"
-          name="agent"
-          models={offered("agent")}
-          value={roles.data.agent_model_id}
-          required
-        />
-        <ModelSelect
-          label="Light model (empty: use the agent model)"
-          name="light"
-          models={offered("light")}
-          value={roles.data.light_model_id}
-        />
-        <ModelSelect
-          label="Embedding model"
-          name="embedding"
-          models={offered("embedding")}
-          value={roles.data.embedding_model_id}
-        />
-        {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      </SettingsCard>
-    </form>
   );
 }
 

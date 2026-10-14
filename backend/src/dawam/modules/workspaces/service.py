@@ -290,9 +290,11 @@ class WorkspaceService:
         description: str = "",
         domain: str = "",
         embedding_model_id: uuid.UUID | None = None,
+        agent_model_id: uuid.UUID | None = None,
+        light_model_id: uuid.UUID | None = None,
     ) -> Workspace:
-        """Create a Workspace with ``user`` as its owner. ``embedding_model_id`` is handed to
-        the creation hook, which owns the choice (and refuses a bad one)."""
+        """Create a Workspace with ``user`` as its owner. The model ids are handed to the
+        creation hook, which owns the choice (and refuses a bad one)."""
         if not can(user, Action.CREATE_WORKSPACE, INSTALLATION):
             raise ApiError(403, "forbidden", "You may not create Workspaces.")
         now = self._clock()
@@ -329,7 +331,14 @@ class WorkspaceService:
                 at=now,
             )
             if self._on_created is not None:
-                self._on_created(db, record.id, now, embedding_model_id)
+                self._on_created(
+                    db,
+                    record.id,
+                    now,
+                    embedding_model_id=embedding_model_id,
+                    agent_model_id=agent_model_id,
+                    light_model_id=light_model_id,
+                )
             return workspace_view(user, record, "owner")
 
     def list_for(

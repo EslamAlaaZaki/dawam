@@ -2,7 +2,6 @@
 import {
   useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 
@@ -63,52 +62,5 @@ export function useReassignOwner() {
       return data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: key }),
-  });
-}
-
-export type AllowedModels = components["schemas"]["AllowedModels"];
-
-const allowedKey = (workspaceId: string) =>
-  ["admin", "allowed-models", workspaceId] as const;
-
-/** A Workspace's Allowed Models and every registered model with whether it may use it. */
-export function useAllowedModels(workspaceId: string, enabled: boolean) {
-  const client = useApiClient();
-  return useQuery({
-    queryKey: allowedKey(workspaceId),
-    enabled,
-    queryFn: async (): Promise<AllowedModels> => {
-      const { data, error, response } = await client.GET(
-        "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models",
-        { params: { path: { workspace_id: workspaceId } } },
-      );
-      if (error) {
-        throw new ApiError(response.status, error.error);
-      }
-      return data;
-    },
-  });
-}
-
-/** Replace a Workspace's Allowed Models; an empty list allows every registered model. */
-export function useSetAllowedModels(workspaceId: string) {
-  const client = useApiClient();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (modelIds: string[]) => {
-      const { data, error, response } = await client.PUT(
-        "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models",
-        {
-          params: { path: { workspace_id: workspaceId } },
-          body: { model_ids: modelIds },
-        },
-      );
-      if (error) {
-        throw new ApiError(response.status, error.error);
-      }
-      return data;
-    },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: allowedKey(workspaceId) }),
   });
 }

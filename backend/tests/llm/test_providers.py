@@ -241,32 +241,48 @@ def test_ticking_embedding_refuses_with_the_providers_error_when_the_model_canno
     assert kept["roles"] == ["agent"] and kept["embedding_dimension"] is None
 
 
-def test_unticking_a_role_in_use_is_refused_until_it_is_free(admin_client, fake_llm):
+def test_unticking_a_role_in_use_is_refused_until_it_is_free(
+    admin_client, signed_in_client, fake_llm
+):
     provider = add_provider(admin_client)
     model = add_model(admin_client, provider, roles=("agent", "light"))
     assert admin_client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
-    assert admin_client.put(
-        f"{BASE}/roles", json={"agent_model_id": model["id"], "light_model_id": model["id"]}
-    ).is_success
+    created = signed_in_client.post(
+        "/api/v1/workspaces",
+        json={"name": "Uses it", "agent_model_id": model["id"], "light_model_id": model["id"]},
+    )
+    assert created.status_code == 201, created.text
+    settings = f"/api/v1/workspaces/{created.json()['id']}/ai-settings"
 
     refused = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
     assert refused.status_code == 409 and code(refused) == "model_role_in_use"
     assert refused.json()["error"]["details"]["roles"] == ["light"]
-    assert admin_client.put(f"{BASE}/roles", json={"agent_model_id": model["id"]}).is_success
+    freed_up = signed_in_client.put(
+        settings,
+        json={
+            "internal_only": True,
+            "data_sharing_level": "metadata",
+            "agent_model_ids": [model["id"]],
+            "light_model_ids": [],
+        },
+    )
+    assert freed_up.status_code == 200, freed_up.text
 
     freed = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
     assert freed.status_code == 200 and freed.json()["roles"] == ["agent"]
 
 
-def test_a_model_with_no_role_cannot_be_assigned_and_does_not_count_for_setup(
-    admin_client, fake_llm
+def test_a_model_with_no_role_cannot_be_chosen_and_does_not_count_for_setup(
+    admin_client, signed_in_client, fake_llm
 ):
     model = add_model(admin_client, add_provider(admin_client), roles=())
     assert admin_client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
 
-    assigned = admin_client.put(f"{BASE}/roles", json={"agent_model_id": model["id"]})
+    chosen = signed_in_client.post(
+        "/api/v1/workspaces", json={"name": "Nope", "agent_model_id": model["id"]}
+    )
 
-    assert assigned.status_code == 422 and code(assigned) == "invalid_model_role"
+    assert chosen.status_code == 422 and code(chosen) == "invalid_model_role"
     assert admin_client.get(f"{BASE}/setup").json()["complete"] is False
     admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
     assert admin_client.get(f"{BASE}/setup").json()["complete"] is True

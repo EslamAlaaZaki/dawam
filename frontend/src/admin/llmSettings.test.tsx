@@ -2,10 +2,9 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { LlmModel, LlmProvider } from "../api/llm";
-import type { LlmBudgets, LlmRoles, LlmUsage } from "../api/llmSettings";
+import type { LlmBudgets, LlmUsage } from "../api/llmSettings";
 import type { Me } from "../api/queries";
 import {
-  CSRF_TOKEN,
   json,
   noContent,
   renderApp,
@@ -72,15 +71,6 @@ const PROVIDER: LlmProvider = {
   updated_at: "2026-01-05T09:00:00Z",
 };
 
-const ROLES: LlmRoles = {
-  agent_model_id: BIG.id,
-  light_model_id: null,
-  embedding_model_id: null,
-  reindex_needed: false,
-  reindex_reason: null,
-  reindex_flagged_at: null,
-};
-
 const BUDGETS: LlmBudgets = {
   installation_monthly_token_budget: 1000,
   workspaces: [
@@ -124,17 +114,11 @@ const USAGE: LlmUsage = {
   ],
 };
 
-function api(
-  over: { roles?: LlmRoles } = {},
-  extra?: (r: ApiRequest) => Response | undefined,
-) {
+function api(extra?: (r: ApiRequest) => Response | undefined) {
   return (r: ApiRequest) => {
     if (r.path === "/api/v1/me") return json(ROOT);
     if (r.path === "/api/v1/admin/llm/providers")
       return json({ items: [PROVIDER] });
-    if (r.path === "/api/v1/admin/llm/roles" && r.method === "GET") {
-      return json(over.roles ?? ROLES);
-    }
     if (r.path === "/api/v1/admin/llm/budgets") return json(BUDGETS);
     if (r.path === "/api/v1/admin/llm/usage") return json(USAGE);
     if (r.path === "/api/v1/admin/workspaces") {
@@ -154,20 +138,15 @@ beforeEach(() => {
 afterEach(() => clearCookie());
 
 describe("AI roles, budgets and usage page", () => {
-  it("offers only tested models for each role", async () => {
+  it("has no installation default model per role", async () => {
     renderApp(api(), "/admin/llm/settings");
 
-    const agent = await screen.findByLabelText(/^Agent model/);
-    const names = within(agent as HTMLElement)
-      .getAllByRole("option")
-      .map((o) => o.textContent);
-    expect(names).toContain("Local / big");
-    expect(names).not.toContain("Local / fresh");
-    expect(names).not.toContain("Local / embed");
-    const embedding = screen.getByLabelText("Embedding model");
+    await screen.findByRole("row", { name: "Roles of big" });
+    expect(screen.queryByLabelText(/^Agent model/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Embedding model")).not.toBeInTheDocument();
     expect(
-      within(embedding).getByRole("option", { name: "Local / embed" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Save roles" }),
+    ).not.toBeInTheDocument();
   });
 
   it("lists every model with provider, internal flag, last test and role checkboxes", async () => {
@@ -187,7 +166,7 @@ describe("AI roles, budgets and usage page", () => {
   it("saves any combination of roles for a model, and hints about embedding", async () => {
     const saved: LlmModel = { ...BIG, roles: ["agent", "light", "embedding"] };
     const requests = renderApp(
-      api({}, (r) =>
+      api((r) =>
         r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
           ? json(saved)
           : undefined,
@@ -214,7 +193,7 @@ describe("AI roles, budgets and usage page", () => {
 
   it("shows the refusal when a role cannot be saved", async () => {
     renderApp(
-      api({}, (r) =>
+      api((r) =>
         r.method === "PUT" && r.path.includes("/models/")
           ? json(
               {
@@ -239,55 +218,9 @@ describe("AI roles, budgets and usage page", () => {
     expect(await within(row).findByText(/no embeddings here/)).toBeInTheDocument();
   });
 
-  it("saves the roles", async () => {
-    const requests = renderApp(
-      api({}, (r) =>
-        r.path === "/api/v1/admin/llm/roles" ? json(ROLES) : undefined,
-      ),
-      "/admin/llm/settings",
-    );
-
-    fireEvent.change(await screen.findByLabelText("Embedding model"), {
-      target: { value: EMBED.id },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save roles" }));
-
-    await waitFor(() =>
-      expect(requests.some((r) => r.method === "PUT")).toBe(true),
-    );
-    expect(requests.find((r) => r.method === "PUT")).toEqual({
-      method: "PUT",
-      path: "/api/v1/admin/llm/roles",
-      query: {},
-      csrf: CSRF_TOKEN,
-      body: {
-        agent_model_id: BIG.id,
-        light_model_id: null,
-        embedding_model_id: EMBED.id,
-      },
-    });
-  });
-
-  it("says when documents must be indexed again", async () => {
-    renderApp(
-      api({
-        roles: {
-          ...ROLES,
-          reindex_needed: true,
-          reindex_reason: "embedding_model_changed",
-        },
-      }),
-      "/admin/llm/settings",
-    );
-
-    expect(
-      await screen.findByText(/must be indexed again/),
-    ).toBeInTheDocument();
-  });
-
   it("sets the installation budget and a Workspace budget", async () => {
     const requests = renderApp(
-      api({}, (r) => (r.method === "PUT" ? noContent() : undefined)),
+      api((r) => (r.method === "PUT" ? noContent() : undefined)),
       "/admin/llm/settings",
     );
 

@@ -38,7 +38,11 @@ def policy(services, fake_llm) -> Policy:
     return policy
 
 
-def register_embedding_model(roles: RoleClients, *, internal: bool, name: str = "bge") -> str:
+def register_embedding_model(
+    roles: RoleClients, *, internal: bool, name: str = "bge", use: bool = True
+) -> str:
+    """Register a tested embedding model and, with ``use``, make it the Workspace's."""
+    assert roles.workspace_id  # created first, while there is no model to choose
     admin = roles.client("admin")
     provider = admin.post(
         f"{ADMIN}/providers",
@@ -54,6 +58,19 @@ def register_embedding_model(roles: RoleClients, *, internal: bool, name: str = 
     assert roled.status_code == 200, roled.text
     tested = admin.post(f"{ADMIN}/models/{model.json()['id']}/test")
     assert tested.json()["test_ok"] is True, tested.text
+    if use:
+        owner = roles.client("owner")
+        path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
+        current = owner.get(path).json()
+        chosen = owner.put(
+            path,
+            json={
+                "internal_only": current["internal_only"],
+                "data_sharing_level": current["data_sharing_level"],
+                "embedding_model_id": model.json()["id"],
+            },
+        )
+        assert chosen.status_code == 200, chosen.text
     return model.json()["id"]
 
 
@@ -218,9 +235,9 @@ def test_reindexing_embeds_again_with_the_new_model_and_dimension(roles, policy,
     # model having gone away some other way (e.g. a database restore).
     with app.state.engine.begin() as conn:
         conn.execute(sa.text("UPDATE document_chunks SET embedding_model_id = NULL"))
-    assert admin.delete(f"{ADMIN}/models/{first}").status_code == 204
     fake_llm.dimension = 6
     second = register_embedding_model(roles, internal=True, name="bge-large")
+    assert admin.delete(f"{ADMIN}/models/{first}").status_code == 204
     response = roles.client("editor").post(
         f"/api/v1/workspaces/{roles.workspace_id}/documents/reindex"
     )
@@ -286,36 +303,23 @@ def test_a_soft_deleted_systems_documents_are_not_found_by_meaning(roles, policy
 def test_documents_are_indexed_with_the_workspaces_own_embedding_model(
     roles, policy, fake_llm, app
 ):
-    admin = roles.client("admin")
-    first = register_embedding_model(roles, internal=True, name="bge-small")
-    second = register_embedding_model(roles, internal=True, name="bge-large")
-    agent = admin.post(
-        f"{ADMIN}/providers/{admin.get(f'{ADMIN}/providers').json()['items'][0]['id']}/models",
-        json={"name": "agent-a"},
-    ).json()
-    admin.put(f"{ADMIN}/models/{agent['id']}/roles", json={"roles": ["agent"]})
-    assert admin.post(f"{ADMIN}/models/{agent['id']}/test").json()["test_ok"] is True
-    put = admin.put(
-        f"{ADMIN}/roles",
-        json={"agent_model_id": agent["id"], "light_model_id": None, "embedding_model_id": first},
-    )
-    assert put.status_code == 200, put.text
-    pinned = roles.client("owner").post(
-        "/api/v1/workspaces", json={"name": "Pinned", "embedding_model_id": second}
-    )
-    assert pinned.status_code == 201, pinned.text
-    with app.state.engine.begin() as conn:
-        conn.execute(
-            sa.text(
-                "UPDATE llm_workspace_settings SET embedding_model_id = :m WHERE workspace_id = :w"
-            ),
-            {"m": second, "w": roles.workspace_id},
-        )
+    register_embedding_model(roles, internal=True, name="bge-small", use=False)
+    chosen = register_embedding_model(roles, internal=True, name="bge-large")
     sid = system(roles)
 
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
 
-    assert [str(m) for m, _ in chunk_rows(app)] == [second]
+    assert [str(m) for m, _ in chunk_rows(app)] == [chosen]
+
+
+def test_a_workspace_without_an_embedding_model_indexes_text_only(roles, policy, fake_llm, app):
+    register_embedding_model(roles, internal=True, use=False)
+    sid = system(roles)
+
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+
+    assert chunk_rows(app) == [(None, None)]
+    assert len(search(roles, "postings").json()["items"]) == 1
 
 
 def test_an_embedding_model_with_indexed_documents_cannot_be_removed(roles, policy, fake_llm, app):
@@ -323,7 +327,7 @@ def test_an_embedding_model_with_indexed_documents_cannot_be_removed(roles, poli
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
     assert {str(m) for m, _ in chunk_rows(app)} == {model_id}
-    spare = register_embedding_model(roles, internal=True, name="spare")
+    spare = register_embedding_model(roles, internal=True, name="spare", use=False)
     admin = roles.client("admin")
 
     refused = admin.post(f"{ADMIN}/models/{model_id}/removal", json={"embedding_model_id": spare})

@@ -47,11 +47,6 @@ test("the main path: sign in to lineage", async ({ page }) => {
     await api(page, "PUT", `/admin/llm/models/${model.id}/roles`, { roles: ["agent"] });
     const tested = await api(page, "POST", `/admin/llm/models/${model.id}/test`);
     expect(tested.test_ok).toBe(true);
-    await api(page, "PUT", "/admin/llm/roles", {
-      agent_model_id: model.id,
-      light_model_id: null,
-      embedding_model_id: null,
-    });
     await api(page, "POST", "/admin/users", {
       email: MEMBER.email,
       display_name: "Mona Member",
@@ -65,6 +60,8 @@ test("the main path: sign in to lineage", async ({ page }) => {
     const dialog = page.getByRole("dialog", { name: "New workspace" });
     await dialog.getByLabel("Name").fill("Smoke Shop");
     await dialog.getByLabel("Business domain").fill("Retail");
+    // The only agent model is pre-selected as the Workspace's default.
+    await expect(dialog.getByLabel("Default agent model")).toHaveValue(/[0-9a-f-]{36}/);
     await dialog.getByRole("button", { name: "Create Workspace" }).click();
     await page.waitForURL(/\/workspaces\/[0-9a-f-]{36}$/);
     workspaceId = page.url().split("/").pop() ?? "";

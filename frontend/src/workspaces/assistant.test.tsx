@@ -833,11 +833,21 @@ describe("explaining and fixing a failed check", () => {
 const BIG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SMALL = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const AI = {
-  effective_agent_model_id: BIG,
-  effective_agent_model_name: "Big",
-  light_models: [
-    { id: BIG, name: "Big", provider_name: "Cloud", internal: false },
-    { id: SMALL, name: "Small", provider_name: "Cloud", internal: false },
+  agent_models: [
+    {
+      id: BIG,
+      name: "Big",
+      provider_name: "Cloud",
+      internal: false,
+      is_default: true,
+    },
+    {
+      id: SMALL,
+      name: "Small",
+      provider_name: "Cloud",
+      internal: false,
+      is_default: false,
+    },
   ],
 };
 const ANSWERED = sse([
