@@ -128,15 +128,26 @@ class LlmProviderRequest(BaseModel):
 
 class LlmModelRequest(BaseModel):
     name: str = Field(max_length=MODEL_NAME_MAX_LENGTH * 2)
-    roles: list[ModelRole] = Field(
-        min_length=1,
-        max_length=len(ROLES),
-        description="`agent`, `light`, or `embedding` (on its own).",
-    )
     context_window: int | None = Field(
         default=None,
         ge=1,
         description="Tokens. Leave out to take the server's figure when it reports one.",
+    )
+
+
+class LlmModelUpdateRequest(BaseModel):
+    context_window: int | None = Field(
+        default=None,
+        ge=1,
+        description="Tokens. Null: take the server's figure on the next test.",
+    )
+
+
+class LlmModelRolesRequest(BaseModel):
+    roles: list[ModelRole] = Field(
+        max_length=len(ROLES),
+        description="Any combination of `agent`, `light` and `embedding`; none: the model is "
+        "offered nowhere.",
     )
 
 
@@ -200,7 +211,7 @@ def _provider_input(body: LlmProviderRequest) -> ProviderInput:
 
 
 def _model_input(body: LlmModelRequest) -> ModelInput:
-    return ModelInput(name=body.name, roles=body.roles, context_window=body.context_window)
+    return ModelInput(name=body.name, context_window=body.context_window)
 
 
 class LlmProviderList(BaseModel):
@@ -258,17 +269,51 @@ def add_model(
     _admin: LlmAdmin,
     providers: ProviderServiceDep,
 ) -> LlmModel:
-    """Register a model of the provider (admins only). 409 `model_exists`."""
+    """Register a model of the provider with no role (admins only): its roles are set in
+    the roles table. 409 `model_exists`."""
     return _model_out(providers.add_model(provider_id, _model_input(body)))
 
 
 @router.put("/models/{model_id}", operation_id="updateLlmModel")
 def update_model(
-    model_id: uuid.UUID, body: LlmModelRequest, _admin: LlmAdmin, providers: ProviderServiceDep
+    model_id: uuid.UUID,
+    body: LlmModelUpdateRequest,
+    _admin: LlmAdmin,
+    providers: ProviderServiceDep,
 ) -> LlmModel:
-    """Replace a model's name, roles and context window (admins only). A new name or
-    roles drop its test result."""
-    return _model_out(providers.update_model(model_id, _model_input(body)))
+    """Change a model's context window (admins only); nothing else about it is editable."""
+    return _model_out(
+        providers.update_model(model_id, ModelInput(name="", context_window=body.context_window))
+    )
+
+
+@router.put("/models/{model_id}/roles", operation_id="setLlmModelRoles")
+def set_model_roles(
+    model_id: uuid.UUID,
+    body: LlmModelRolesRequest,
+    request: Request,
+    _admin: LlmAdmin,
+    providers: ProviderServiceDep,
+) -> LlmModel:
+    """Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
+    an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
+    provider's error when the model cannot embed. 409 `model_role_in_use` when a role being
+    removed is the installation's default or a Workspace's own choice."""
+    current = providers.get_model(model_id)
+    removed = set(current.roles) - set(body.roles)
+    if removed:
+        usage = model_usage(request.app.state.engine, model_id)
+        in_use = set(usage.installation_roles).union(*(w.roles for w in usage.workspaces))
+        blocking = [role for role in ROLES if role in removed & in_use]
+        if blocking:
+            raise ApiError(
+                409,
+                "model_role_in_use",
+                f"This model is still used as {', '.join(blocking)}: choose another model "
+                "for it first.",
+                {"roles": blocking},
+            )
+    return _model_out(providers.set_model_roles(model_id, body.roles))
 
 
 @router.delete("/models/{model_id}", operation_id="deleteLlmModel", status_code=204)

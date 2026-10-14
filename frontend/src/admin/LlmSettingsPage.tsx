@@ -3,7 +3,13 @@
 import { useState, type FormEvent } from "react";
 
 import { useAdminWorkspaces } from "../api/adminWorkspaces";
-import { useLlmProviders, type LlmModel } from "../api/llm";
+import {
+  useLlmProviders,
+  useSetLlmModelRoles,
+  type LlmModel,
+  type LlmModelRole,
+  type LlmProvider,
+} from "../api/llm";
 import {
   useClearWorkspaceBudget,
   useLlmBudgets,
@@ -16,6 +22,7 @@ import {
 } from "../api/llmSettings";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { SettingsCard } from "../components/entity/SettingsCard";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
@@ -45,6 +52,7 @@ export function LlmSettingsPage() {
         title="AI roles, budgets and usage"
         description="Which models play which role, how many tokens each Workspace may use per month, and what was used."
       />
+      <ModelRolesSection />
       <RolesSection />
       <BudgetsSection />
       <UsageSection />
@@ -81,6 +89,146 @@ function ModelSelect({
   );
 }
 
+const ROLE_COLUMNS: { role: LlmModelRole; label: string }[] = [
+  { role: "agent", label: "Agent" },
+  { role: "light", label: "Light" },
+  { role: "embedding", label: "Embedding" },
+];
+
+const EMBEDDING_HINT =
+  "Dedicated embedding models usually give better document search";
+
+function testSummary(model: LlmModel): string {
+  if (model.test_ok === false) {
+    return `Failed (${model.test_error_code}): ${model.test_error}`;
+  }
+  if (model.test_ok) return "Passed";
+  return "Not tested";
+}
+
+/** Every registered model with its three Model Role checkboxes (any combination). */
+function ModelRolesSection() {
+  const providers = useLlmProviders();
+  if (providers.isPending) {
+    return <Loading />;
+  }
+  if (providers.isError) {
+    return <ErrorText>Could not load the models.</ErrorText>;
+  }
+  const rows = providers.data.flatMap((provider) =>
+    provider.models.map((model) => ({ model, provider })),
+  );
+  return (
+    <div className="flex flex-col gap-3.5">
+      <h3 className={h3Classes}>Model roles</h3>
+      <p className="text-sm text-sand-11">
+        A model with no role is offered nowhere. Add models on the Language
+        models page.
+      </p>
+      <TableCard>
+        <Table aria-label="Model roles table">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Model</TableHead>
+              <TableHead>Provider</TableHead>
+              <TableHead>Last test</TableHead>
+              {ROLE_COLUMNS.map(({ role, label }) => (
+                <TableHead key={role}>{label}</TableHead>
+              ))}
+              <TableHead>
+                <span className="sr-only">Save</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7}>No models registered yet.</TableCell>
+              </TableRow>
+            )}
+            {rows.map(({ model, provider }) => (
+              <ModelRoleRow key={model.id} model={model} provider={provider} />
+            ))}
+          </TableBody>
+        </Table>
+      </TableCard>
+    </div>
+  );
+}
+
+function ModelRoleRow({
+  model,
+  provider,
+}: {
+  model: LlmModel;
+  provider: LlmProvider;
+}) {
+  const save = useSetLlmModelRoles(model.id);
+  const [roles, setRoles] = useState<LlmModelRole[]>(model.roles);
+  const changed =
+    ROLE_COLUMNS.some(({ role }) => roles.includes(role) !== model.roles.includes(role));
+  const mixed =
+    roles.includes("embedding") &&
+    (roles.includes("agent") || roles.includes("light"));
+
+  function toggle(role: LlmModelRole, on: boolean) {
+    save.reset();
+    setRoles(
+      ROLE_COLUMNS.map((c) => c.role).filter((r) =>
+        r === role ? on : roles.includes(r),
+      ),
+    );
+  }
+
+  return (
+    <TableRow aria-label={`Roles of ${model.name}`}>
+      <TableCell className="whitespace-normal">
+        <strong>{model.name}</strong>
+        {mixed && (
+          <div role="note" className="text-sm text-sand-11">
+            {EMBEDDING_HINT}
+          </div>
+        )}
+        {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+      </TableCell>
+      <TableCell>
+        {provider.name}{" "}
+        <Badge variant="neutral">
+          {provider.internal ? "Internal" : "External"}
+        </Badge>
+      </TableCell>
+      <TableCell className="whitespace-normal text-sand-11">
+        {testSummary(model)}
+      </TableCell>
+      {ROLE_COLUMNS.map(({ role, label }) => (
+        <TableCell key={role}>
+          <input
+            type="checkbox"
+            aria-label={`${label} role of ${model.name}`}
+            className="size-4 accent-[var(--accent-solid)]"
+            checked={roles.includes(role)}
+            onChange={(event) => toggle(role, event.target.checked)}
+          />
+        </TableCell>
+      ))}
+      <TableCell>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!changed || save.isPending}
+          onClick={() =>
+            save.mutate(roles, {
+              onSuccess: () => toast.success(`Roles of ${model.name} saved.`),
+            })
+          }
+        >
+          Save roles of {model.name}
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function RolesSection() {
   const roles = useLlmRoles();
   const providers = useLlmProviders();
@@ -91,18 +239,19 @@ function RolesSection() {
   if (roles.isError || providers.isError) {
     return <ErrorText>Could not load the model roles.</ErrorText>;
   }
-  // Only models that passed "Test connection" can be assigned.
-  const tested = providers.data.flatMap((provider) =>
-    provider.models
-      .filter((model: LlmModel) => model.test_ok === true)
-      .map((model: LlmModel) => ({
-        id: model.id,
-        label: `${provider.name} / ${model.name}`,
-        embedding: model.roles.includes("embedding"),
-      })),
-  );
-  const chat = tested.filter((model) => !model.embedding);
-  const embedding = tested.filter((model) => model.embedding);
+  // Only tested models that have the role in the roles table can be chosen for it.
+  const offered = (role: LlmModelRole) =>
+    providers.data.flatMap((provider) =>
+      provider.models
+        .filter(
+          (model: LlmModel) =>
+            model.test_ok === true && model.roles.includes(role),
+        )
+        .map((model: LlmModel) => ({
+          id: model.id,
+          label: `${provider.name} / ${model.name}`,
+        })),
+    );
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,8 +269,8 @@ function RolesSection() {
   return (
     <form onSubmit={onSubmit} aria-label="Model roles">
       <SettingsCard
-        title="Model roles"
-        description='Only models that passed "Test connection" are offered.'
+        title="Installation defaults"
+        description='Each list offers the tested models that have that role in the table above.'
         footer={
           <Button type="submit" variant="primary" disabled={save.isPending}>
             Save roles
@@ -140,20 +289,20 @@ function RolesSection() {
         <ModelSelect
           label="Agent model (required)"
           name="agent"
-          models={chat}
+          models={offered("agent")}
           value={roles.data.agent_model_id}
           required
         />
         <ModelSelect
           label="Light model (empty: use the agent model)"
           name="light"
-          models={chat}
+          models={offered("light")}
           value={roles.data.light_model_id}
         />
         <ModelSelect
           label="Embedding model"
           name="embedding"
-          models={embedding}
+          models={offered("embedding")}
           value={roles.data.embedding_model_id}
         />
         {save.isError && <ErrorText>{save.error.message}</ErrorText>}

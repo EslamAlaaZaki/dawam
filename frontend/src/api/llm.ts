@@ -9,6 +9,8 @@ export type LlmProvider = components["schemas"]["LlmProvider"];
 export type LlmModel = components["schemas"]["LlmModel"];
 export type LlmProviderInput = components["schemas"]["LlmProviderRequest"];
 export type LlmModelInput = components["schemas"]["LlmModelRequest"];
+export type LlmModelUpdate = components["schemas"]["LlmModelUpdateRequest"];
+export type LlmModelRole = LlmModel["roles"][number];
 export type LlmModelUsage = components["schemas"]["LlmModelUsage"];
 export type LlmModelRemoval = components["schemas"]["LlmModelRemoval"];
 export type LlmSetup = components["schemas"]["LlmSetupStatus"];
@@ -135,13 +137,32 @@ export function useUpdateLlmModel(modelId: string) {
   const client = useApiClient();
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: async (body: LlmModelInput) => {
+    mutationFn: async (body: LlmModelUpdate) => {
       const { data, error, response } = await client.PUT(
         "/api/v1/admin/llm/models/{model_id}",
         {
           params: { path: { model_id: modelId } },
           body,
         },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** Set the roles a model fills (any combination). Ticking embedding runs a test. */
+export function useSetLlmModelRoles(modelId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: async (roles: LlmModelRole[]) => {
+      const { data, error, response } = await client.PUT(
+        "/api/v1/admin/llm/models/{model_id}/roles",
+        { params: { path: { model_id: modelId } }, body: { roles } },
       );
       if (error) {
         throw new ApiError(response.status, error.error);

@@ -1,6 +1,6 @@
-# A Workspace's embedding model is fixed at creation
+# A Workspace's embedding model is fixed once it has indexed documents
 
-Each Workspace chooses its own embedding model in the "New workspace" form, pre-selected with the installation's embedding model, and cannot change it afterwards in this release. Document vectors made by one model are not comparable with another's (a different dimension breaks search outright; the same dimension silently returns meaningless matches), so changing the model would need a per-Workspace re-index we are not building yet. For the same reason an admin cannot remove an embedding model while any Workspace has documents indexed with it; with no indexed documents it is replaced like any other model. A later release may allow changing it together with a re-index.
+Each Workspace's owner chooses its embedding model in the "New workspace" form, from the models an admin enabled for the embedding role. The owner may change it in Workspace settings until the Workspace has indexed documents; after that it is fixed in this release. Document vectors made by one model are not comparable with another's (a different dimension breaks search outright; the same dimension silently returns meaningless matches), so changing the model after indexing would need a per-Workspace re-index we are not building yet. For the same reason an admin cannot remove a model, or take the embedding role off it, while any Workspace has documents indexed with it; with no indexed documents it is replaced like any other model. A later release may allow changing it together with a re-index.
 
 ## Considered options
 

@@ -127,10 +127,12 @@ def _check_replacement(db: Session, role: str, model_id: uuid.UUID, removed: uui
             "Choose another registered model as the replacement.",
             {"field": field_name},
         )
-    if (role == "embedding") != ("embedding" in model.roles):
-        kind = "an embedding" if role == "embedding" else "a chat"
+    if role not in model.roles:
         raise ApiError(
-            422, "invalid_model_role", f"The {role} role needs {kind} model.", {"field": field_name}
+            422,
+            "invalid_model_role",
+            f"That model does not have the {role} role.",
+            {"field": field_name},
         )
     if model.test_ok is not True:
         raise ApiError(

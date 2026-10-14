@@ -13493,7 +13493,7 @@
           "llm"
         ],
         "summary": "Add Model",
-        "description": "Register a model of the provider (admins only). 409 `model_exists`.",
+        "description": "Register a model of the provider with no role (admins only): its roles are set in\nthe roles table. 409 `model_exists`.",
         "operationId": "addLlmModel",
         "parameters": [
           {
@@ -13557,7 +13557,7 @@
           "llm"
         ],
         "summary": "Update Model",
-        "description": "Replace a model's name, roles and context window (admins only). A new name or\nroles drop its test result.",
+        "description": "Change a model's context window (admins only); nothing else about it is editable.",
         "operationId": "updateLlmModel",
         "parameters": [
           {
@@ -13576,7 +13576,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LlmModelRequest"
+                "$ref": "#/components/schemas/LlmModelUpdateRequest"
               }
             }
           }
@@ -13636,6 +13636,70 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/models/{model_id}/roles": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Model Roles",
+        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. 409 `model_role_in_use` when a role being\nremoved is the installation's default or a Workspace's own choice.",
+        "operationId": "setLlmModelRoles",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmModelRolesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error",
@@ -21609,21 +21673,6 @@
             "maxLength": 400,
             "title": "Name"
           },
-          "roles": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "agent",
-                "light",
-                "embedding"
-              ]
-            },
-            "type": "array",
-            "maxItems": 3,
-            "minItems": 1,
-            "title": "Roles",
-            "description": "`agent`, `light`, or `embedding` (on its own)."
-          },
           "context_window": {
             "anyOf": [
               {
@@ -21640,10 +21689,51 @@
         },
         "type": "object",
         "required": [
-          "name",
-          "roles"
+          "name"
         ],
         "title": "LlmModelRequest"
+      },
+      "LlmModelRolesRequest": {
+        "properties": {
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding"
+              ]
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Roles",
+            "description": "Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere."
+          }
+        },
+        "type": "object",
+        "required": [
+          "roles"
+        ],
+        "title": "LlmModelRolesRequest"
+      },
+      "LlmModelUpdateRequest": {
+        "properties": {
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window",
+            "description": "Tokens. Null: take the server's figure on the next test."
+          }
+        },
+        "type": "object",
+        "title": "LlmModelUpdateRequest"
       },
       "LlmModelUsage": {
         "properties": {

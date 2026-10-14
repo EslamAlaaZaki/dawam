@@ -21,7 +21,7 @@ from dawam.modules.llm import (
 )
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.errors import ApiError
-from tests.llm.test_roles_budgets import BASE, assign, code
+from tests.llm.test_roles_budgets import BASE, add_model, assign, code
 from tests.roles import RoleClients
 
 ASK = [Message("user", "Hi")]
@@ -32,9 +32,7 @@ def register(client, name, *, internal, roles=("agent",), tested=True) -> dict:
         f"{BASE}/providers",
         json={"name": f"P-{name}", "base_url": "http://llm.test/v1", "internal": internal},
     ).json()
-    model = client.post(
-        f"{BASE}/providers/{provider['id']}/models", json={"name": name, "roles": list(roles)}
-    ).json()
+    model = add_model(client, provider, name, roles)
     if tested:
         assert client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
     return model
@@ -226,7 +224,7 @@ def internal_only_workspace(roles: RoleClients, fake_llm):
     assert roles.workspace_id  # created now: internal-only by default
     assert roles.client("owner").get(settings_path(roles)).json()["internal_only"] is True
     cloud_agent = register(admin, "cloud-agent", internal=False)
-    cloud_light = register(admin, "cloud-light", internal=False)
+    cloud_light = register(admin, "cloud-light", internal=False, roles=("agent", "light"))
     cloud_embed = register(admin, "cloud-embed", internal=False, roles=("embedding",))
     assert assign(admin, cloud_agent, cloud_light, cloud_embed).status_code == 200
     fake_llm.calls.clear()  # the connection tests above are not what is asserted
@@ -282,7 +280,7 @@ def test_an_internal_only_workspace_uses_its_agent_model_when_the_light_model_is
 ):
     admin = roles.client("admin")
     local = register(admin, "local", internal=True)
-    cloud_light = register(admin, "cloud-light", internal=False)
+    cloud_light = register(admin, "cloud-light", internal=False, roles=("agent", "light"))
     assert assign(admin, local, cloud_light).status_code == 200
     assert roles.client("owner").get(settings_path(roles)).json()["internal_only"] is True
 
@@ -324,7 +322,7 @@ def allowed_path(roles: RoleClients) -> str:
 
 def test_a_new_workspace_allows_every_registered_model(roles: RoleClients, fake_llm):
     admin = roles.client("admin")
-    register(admin, "one", internal=False)
+    register(admin, "one", internal=False, roles=("agent", "light"))
     register(admin, "two", internal=True)
 
     listed = admin.get(allowed_path(roles)).json()
@@ -335,8 +333,8 @@ def test_a_new_workspace_allows_every_registered_model(roles: RoleClients, fake_
 
 def test_an_admin_narrows_and_widens_the_allowed_models(roles: RoleClients, fake_llm):
     admin = roles.client("admin")
-    one = register(admin, "one", internal=False)
-    register(admin, "two", internal=False)
+    one = register(admin, "one", internal=False, roles=("agent", "light"))
+    register(admin, "two", internal=False, roles=("agent", "light"))
 
     narrowed = admin.put(allowed_path(roles), json={"model_ids": [one["id"]]})
     assert narrowed.status_code == 200, narrowed.text
@@ -378,8 +376,8 @@ def test_an_internal_only_workspace_is_never_offered_an_external_model(
 
 def test_the_agent_model_override_must_be_an_allowed_model(roles: RoleClients, fake_llm):
     admin = roles.client("admin")
-    one = register(admin, "one", internal=False)
-    two = register(admin, "two", internal=False)
+    one = register(admin, "one", internal=False, roles=("agent", "light"))
+    two = register(admin, "two", internal=False, roles=("agent", "light"))
     admin.put(allowed_path(roles), json={"model_ids": [one["id"]]})
     owner = roles.client("owner")
 
@@ -431,13 +429,13 @@ def test_an_owner_sets_and_clears_the_agent_and_light_models(roles: RoleClients,
     assert chosen.json()["light_model_id"] == light["id"]
     assert chosen.json()["effective_light_model_id"] == light["id"]
     assert chosen.json()["effective_light_model_name"] == "light-a"
-    assert [m["name"] for m in chosen.json()["light_models"]] == ["agent-a", "light-a"]
+    assert [m["name"] for m in chosen.json()["light_models"]] == ["light-a"]
     assert cleared.json()["agent_model_id"] is None and cleared.json()["light_model_id"] is None
 
 
 @pytest.mark.parametrize("role", ["editor", "viewer"])
 def test_editors_and_viewers_cannot_choose_the_models(roles: RoleClients, fake_llm, role):
-    light = register(roles.client("admin"), "light-a", internal=False)
+    light = register(roles.client("admin"), "light-a", internal=False, roles=("agent", "light"))
 
     refused = roles.client(role).put(settings_path(roles), json=body(light_model_id=light["id"]))
 
@@ -446,8 +444,8 @@ def test_editors_and_viewers_cannot_choose_the_models(roles: RoleClients, fake_l
 
 def test_the_light_model_must_be_an_allowed_chat_model(roles: RoleClients, fake_llm):
     admin = roles.client("admin")
-    one = register(admin, "one", internal=False)
-    two = register(admin, "two", internal=False)
+    one = register(admin, "one", internal=False, roles=("agent", "light"))
+    two = register(admin, "two", internal=False, roles=("agent", "light"))
     embed = register(admin, "embed", internal=False, roles=("embedding",))
     admin.put(allowed_path(roles), json={"model_ids": [one["id"], embed["id"]]})
     owner = roles.client("owner")
@@ -466,8 +464,8 @@ def test_light_tasks_use_the_workspace_light_model_else_the_installations(
 ):
     admin = roles.client("admin")
     default = register(admin, "default", internal=False)
-    default_light = register(admin, "default-light", internal=False)
-    own_light = register(admin, "own-light", internal=False)
+    default_light = register(admin, "default-light", internal=False, roles=("agent", "light"))
+    own_light = register(admin, "own-light", internal=False, roles=("agent", "light"))
     assert assign(admin, default, default_light).status_code == 200
     gateway_for = gateways[0].gateway_for_role
 
@@ -486,7 +484,7 @@ def test_the_workspace_light_model_serves_light_tasks_without_an_installation_on
 ):
     admin = roles.client("admin")
     assert assign(admin, register(admin, "default", internal=False)).status_code == 200
-    own_light = register(admin, "own-light", internal=False)
+    own_light = register(admin, "own-light", internal=False, roles=("agent", "light"))
     roles.client("owner").put(settings_path(roles), json=body(light_model_id=own_light["id"]))
 
     list(gateways[0].gateway_for_role("light", workspace_id=roles.workspace_id).chat(ASK))
@@ -499,7 +497,7 @@ def test_an_external_workspace_light_model_falls_back_to_the_agent_when_internal
 ):
     admin = roles.client("admin")
     local = register(admin, "local", internal=True)
-    cloud = register(admin, "cloud", internal=False)
+    cloud = register(admin, "cloud", internal=False, roles=("agent", "light"))
     assert assign(admin, local).status_code == 200
     owner = roles.client("owner")
     # A new Workspace here is internal-only already, which refuses an external model.

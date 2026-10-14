@@ -76,7 +76,9 @@ const MODEL_COLUMNS: EntityColumn<ModelRow>[] = [
   {
     header: "Roles",
     cell: ({ model }) =>
-      model.roles.map((role) => ROLE_LABELS[role]).join(", "),
+      model.roles.length
+        ? model.roles.map((role) => ROLE_LABELS[role]).join(", ")
+        : "None yet",
   },
   {
     header: "Test",
@@ -472,7 +474,7 @@ function RemoveModelDialog({
       (c) =>
         c.id !== model.id &&
         c.test_ok === true &&
-        c.roles.includes("embedding") === (role === "embedding"),
+        c.roles.includes(role),
     );
   const complete =
     roles.every((role) => chosen[role]) &&
@@ -585,43 +587,23 @@ function RemoveModelDialog({
   );
 }
 
-function ModelFields({ model }: { model?: LlmModel }) {
+function ContextWindowField({ model }: { model?: LlmModel }) {
   return (
-    <>
-      <label className={labelClasses}>
-        Model name
-        <Input name="name" defaultValue={model?.name ?? ""} required />
-      </label>
-      <label className={labelClasses}>
-        Role
-        <NativeSelect name="role" defaultValue={model?.roles[0] ?? "agent"}>
-          <option value="agent">Agent</option>
-          <option value="light">Light</option>
-          <option value="embedding">Embedding</option>
-        </NativeSelect>
-      </label>
-      <label className={labelClasses}>
-        Context window in tokens (empty: ask the server)
-        <Input
-          name="context_window"
-          type="number"
-          min={1}
-          defaultValue={model?.context_window ?? ""}
-        />
-      </label>
-    </>
+    <label className={labelClasses}>
+      Context window in tokens (empty: ask the server)
+      <Input
+        name="context_window"
+        type="number"
+        min={1}
+        defaultValue={model?.context_window ?? ""}
+      />
+    </label>
   );
 }
 
-function modelBody(form: FormData, current?: LlmModel) {
+function contextWindow(form: FormData): number | undefined {
   const window = String(form.get("context_window") ?? "").trim();
-  const role = String(form.get("role")) as LlmModel["roles"][number];
-  return {
-    name: String(form.get("name") ?? "").trim(),
-    // An untouched role keeps every role the model has.
-    roles: current && current.roles[0] === role ? current.roles : [role],
-    context_window: window ? Number(window) : undefined,
-  };
+  return window ? Number(window) : undefined;
 }
 
 function AddModelDialog({
@@ -638,10 +620,13 @@ function AddModelDialog({
   const add = useAddLlmModel(chosen);
 
   function onSubmit(form: FormData) {
-    const body = modelBody(form);
+    const body = {
+      name: String(form.get("name") ?? "").trim(),
+      context_window: contextWindow(form),
+    };
     add.mutate(body, {
       onSuccess: () => {
-        toast.success(`${body.name} added.`);
+        toast.success(`${body.name} added. Give it a role in AI settings.`);
         onOpenChange(false);
       },
     });
@@ -655,7 +640,7 @@ function AddModelDialog({
         onOpenChange(next);
       }}
       title="Add a model"
-      description="Register a model on one of the providers."
+      description="Register a model on one of the providers. Its roles are set in the AI settings."
       submitLabel="Add model"
       onSubmit={onSubmit}
       pending={add.isPending}
@@ -674,7 +659,11 @@ function AddModelDialog({
           ))}
         </NativeSelect>
       </label>
-      <ModelFields />
+      <label className={labelClasses}>
+        Model name
+        <Input name="name" required />
+      </label>
+      <ContextWindowField />
     </EntityFormDialog>
   );
 }
@@ -691,12 +680,15 @@ function EditModelDialog({
   const update = useUpdateLlmModel(model.id);
 
   function onSubmit(form: FormData) {
-    update.mutate(modelBody(form, model), {
-      onSuccess: () => {
-        toast.success(`${model.name} updated.`);
-        onOpenChange(false);
+    update.mutate(
+      { context_window: contextWindow(form) },
+      {
+        onSuccess: () => {
+          toast.success(`${model.name} updated.`);
+          onOpenChange(false);
+        },
       },
-    });
+    );
   }
 
   return (
@@ -707,13 +699,13 @@ function EditModelDialog({
         onOpenChange(next);
       }}
       title="Edit model"
-      description="A new name or role drops its test result."
+      description={`${model.name}: only the context window can change.`}
       submitLabel="Save"
       onSubmit={onSubmit}
       pending={update.isPending}
       error={update.error}
     >
-      <ModelFields model={model} />
+      <ContextWindowField model={model} />
     </EntityFormDialog>
   );
 }

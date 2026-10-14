@@ -47,9 +47,11 @@ def register_embedding_model(roles: RoleClients, *, internal: bool, name: str = 
     assert provider.status_code == 201, provider.text
     model = admin.post(
         f"{ADMIN}/providers/{provider.json()['id']}/models",
-        json={"name": name, "roles": ["embedding"]},
+        json={"name": name},
     )
     assert model.status_code == 201, model.text
+    roled = admin.put(f"{ADMIN}/models/{model.json()['id']}/roles", json={"roles": ["embedding"]})
+    assert roled.status_code == 200, roled.text
     tested = admin.post(f"{ADMIN}/models/{model.json()['id']}/test")
     assert tested.json()["test_ok"] is True, tested.text
     return model.json()["id"]
@@ -289,8 +291,9 @@ def test_documents_are_indexed_with_the_workspaces_own_embedding_model(
     second = register_embedding_model(roles, internal=True, name="bge-large")
     agent = admin.post(
         f"{ADMIN}/providers/{admin.get(f'{ADMIN}/providers').json()['items'][0]['id']}/models",
-        json={"name": "agent-a", "roles": ["agent"]},
+        json={"name": "agent-a"},
     ).json()
+    admin.put(f"{ADMIN}/models/{agent['id']}/roles", json={"roles": ["agent"]})
     assert admin.post(f"{ADMIN}/models/{agent['id']}/test").json()["test_ok"] is True
     put = admin.put(
         f"{ADMIN}/roles",

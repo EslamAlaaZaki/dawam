@@ -325,7 +325,11 @@ class WorkspaceAiService:
         internal-only, internal. 422 ``invalid_model_role`` / ``model_not_allowed``."""
         with Session(self._engine) as db:
             model = db.get(ModelRecord, model_id)
-            if model is None or "embedding" in model.roles or model.test_ok is not True:
+            if (
+                model is None
+                or not {"agent", "light"} & set(model.roles)
+                or model.test_ok is not True
+            ):
                 raise _invalid("That is not a chat model.", "model_id", "invalid_model_role")
             if model_id not in allowed_model_ids(db, workspace_id):
                 raise _invalid(
@@ -403,7 +407,7 @@ class WorkspaceAiService:
                 )
             if light_model_id is not None:
                 light = db.get(ModelRecord, light_model_id)
-                if light is None or "embedding" in light.roles or light.test_ok is not True:
+                if light is None or "light" not in light.roles or light.test_ok is not True:
                     raise _invalid(
                         "That model is not an approved chat model.",
                         "light_model_id",
@@ -541,6 +545,7 @@ class WorkspaceAiService:
         rows = db.execute(
             sa.select(ModelRecord, ProviderRecord)
             .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
+            .where(sa.func.cardinality(ModelRecord.roles) > 0)  # no role: offered nowhere
             .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
         )
         return AllowedModels(
@@ -556,7 +561,7 @@ class WorkspaceAiService:
         rows = db.execute(
             sa.select(ModelRecord, ProviderRecord)
             .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
-            .where(sa.literal("embedding") != sa.all_(ModelRecord.roles))
+            .where(sa.literal("light") == sa.any_(ModelRecord.roles))
             .where(ModelRecord.test_ok.is_(True))
             .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
         )
