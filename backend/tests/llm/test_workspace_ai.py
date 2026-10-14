@@ -625,3 +625,19 @@ def test_changing_the_installations_embedding_model_leaves_existing_workspaces_a
 
     assert read(owner, workspace_id)["embedding_model_id"] == one["id"]
     assert read(owner, create_workspace(owner, "Newer"))["embedding_model_id"] == two["id"]
+
+
+def test_an_internal_only_workspace_does_not_default_to_an_external_embedding_model(
+    roles: RoleClients, fake_llm
+):
+    admin = roles.client("admin")
+    internal_agent = register(admin, "agent-in", internal=True)
+    external = register(admin, "bge-ext", internal=False, roles=("embedding",))
+    assert assign(admin, internal_agent, embedding=external).status_code == 200
+    owner = roles.client("owner")
+
+    settings = read(owner, create_workspace(owner))
+
+    assert settings["internal_only"] is True
+    assert settings["embedding_model_id"] is None
+    assert owner.get("/api/v1/ai/embedding-models").json()["default_model_id"] is None

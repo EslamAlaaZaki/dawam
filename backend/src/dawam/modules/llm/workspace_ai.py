@@ -224,9 +224,18 @@ def new_workspace_settings(
         data_sharing_level=DataSharingLevel.METADATA.value,
         agent_model_id=None,
         light_model_id=None,
-        embedding_model_id=_installation_embedding(db),
+        embedding_model_id=None,
         updated_at=at,
     )
+
+
+def _pin_default_embedding(db: Session, record: WorkspaceAiSettingsRecord) -> None:
+    """Pin the installation's embedding model, unless the Workspace's one allowed-models
+    check (internal-only included) refuses it: then the Workspace has none."""
+    db.flush()
+    default = _installation_embedding(db)
+    if default is not None and default in allowed_model_ids(db, record.workspace_id):
+        record.embedding_model_id = default
 
 
 def on_workspace_created(
@@ -241,8 +250,8 @@ def on_workspace_created(
     fixed from then on."""
     record = new_workspace_settings(db, workspace_id, at)
     db.add(record)
+    _pin_default_embedding(db, record)
     if embedding_model_id is not None:
-        db.flush()
         model = db.get(ModelRecord, embedding_model_id)
         if model is None or "embedding" not in model.roles or model.test_ok is not True:
             raise _invalid(
@@ -337,7 +346,7 @@ class WorkspaceAiService:
             if record is None:
                 record = new_workspace_settings(db, workspace_id, now)
                 db.add(record)
-                db.flush()
+                _pin_default_embedding(db, record)
             approved = {m.id for m in self._approved(db)}
             if agent_model_id is not None and agent_model_id in approved - allowed_model_ids(
                 db, workspace_id
