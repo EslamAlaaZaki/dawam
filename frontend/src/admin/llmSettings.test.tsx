@@ -326,10 +326,16 @@ describe("AI roles, budgets and usage page", () => {
       "/admin/llm/settings",
     );
 
-    const installation = await screen.findByLabelText(/^Installation \(tokens/);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Budget settings" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Budget settings" });
+    const installation = await within(dialog).findByLabelText(
+      /^Installation \(tokens/,
+    );
     fireEvent.change(installation, { target: { value: "2000" } });
     fireEvent.click(
-      screen.getByRole("button", { name: "Save installation budget" }),
+      within(dialog).getByRole("button", { name: "Save installation budget" }),
     );
     await waitFor(() =>
       expect(requests.some((r) => r.method === "PUT")).toBe(true),
@@ -338,14 +344,14 @@ describe("AI roles, budgets and usage page", () => {
       monthly_token_budget: 2000,
     });
 
-    fireEvent.change(await screen.findByLabelText("Workspace"), {
+    fireEvent.change(await within(dialog).findByLabelText("Workspace"), {
       target: { value: WORKSPACE },
     });
-    fireEvent.change(screen.getByLabelText("Tokens per month"), {
+    fireEvent.change(within(dialog).getByLabelText("Tokens per month"), {
       target: { value: "300" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Set Workspace budget" }),
+      within(dialog).getByRole("button", { name: "Set Workspace budget" }),
     );
     await waitFor(() =>
       expect(

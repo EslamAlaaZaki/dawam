@@ -1,5 +1,6 @@
 "use client";
 
+import { Settings } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { useAdminWorkspaces } from "../api/adminWorkspaces";
@@ -22,6 +23,14 @@ import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { SettingsCard } from "../components/entity/SettingsCard";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import {
@@ -248,6 +257,31 @@ function ModelRoleRow({
 }
 
 function BudgetsSection() {
+  return (
+    <div className="flex flex-col items-start gap-3.5">
+      <h3 className={h3Classes}>Monthly token budgets</h3>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button>
+            <Settings aria-hidden />
+            Budget settings
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[min(720px,calc(100%-2rem))] w-[min(640px,calc(100%-2rem))] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Budget settings</DialogTitle>
+            <DialogDescription>
+              Monthly token budgets for the installation and per Workspace.
+            </DialogDescription>
+          </DialogHeader>
+          <BudgetsPanel />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function BudgetsPanel() {
   const budgets = useLlmBudgets();
   const workspaces = useAdminWorkspaces();
   const setInstallation = useSetInstallationBudget();
@@ -282,7 +316,6 @@ function BudgetsSection() {
   const failure = setInstallation.error ?? setWorkspace.error;
   return (
     <div className="flex flex-col gap-3.5">
-      <h3 className={h3Classes}>Monthly token budgets</h3>
       <form onSubmit={onInstallation} aria-label="Installation budget">
         <SettingsCard
           title="Installation budget"
