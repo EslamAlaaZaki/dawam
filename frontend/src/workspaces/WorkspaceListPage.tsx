@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { useEmbeddingModels } from "../api/workspaceAi";
+import {
+  useNewWorkspaceModels,
+  type ModelChoice,
+  type NewWorkspaceModels,
+} from "../api/workspaceAi";
 import {
   ROLE_LABELS,
   allows,
@@ -97,7 +101,9 @@ function CreateWorkspaceDialog({
 }) {
   const create = useCreateWorkspace();
   const router = useRouter();
-  const embeddings = useEmbeddingModels();
+  const models = useNewWorkspaceModels();
+  const picked = (form: FormData, field: string) =>
+    String(form.get(field) ?? "") || null;
 
   return (
     <EntityFormDialog
@@ -113,7 +119,9 @@ function CreateWorkspaceDialog({
         create.mutate(
           {
             ...detailsFrom(form),
-            embedding_model_id: String(form.get("embedding") ?? "") || null,
+            agent_model_id: picked(form, "agent"),
+            light_model_id: picked(form, "light"),
+            embedding_model_id: picked(form, "embedding"),
           },
           {
             onSuccess: (workspace) =>
@@ -125,31 +133,72 @@ function CreateWorkspaceDialog({
       error={create.error}
     >
       <DetailsFields />
-      {embeddings.data && embeddings.data.models.length > 0 && (
+      {models.data && <NewWorkspaceModelFields offered={models.data} />}
+    </EntityFormDialog>
+  );
+}
+
+/**
+ * The new Workspace's models: its default agent model (required when there is one to
+ * choose), an optional light model and its embedding model (optional only when no model
+ * has the Embedding role). An internal-only Workspace is offered internal models only.
+ */
+function NewWorkspaceModelFields({ offered }: { offered: NewWorkspaceModels }) {
+  const { agent, light, embedding } = offered.choices;
+  const option = (m: ModelChoice) => (
+    <option key={m.id} value={m.id}>
+      {m.name} ({m.provider_name})
+    </option>
+  );
+  return (
+    <>
+      {offered.internal_only && (
+        <Hint>
+          This Workspace starts internal-only, so only internal models are
+          offered.
+        </Hint>
+      )}
+      {agent.length > 0 && (
+        <label className={labelClasses}>
+          Default agent model
+          <NativeSelect name="agent" required defaultValue={agent[0]?.id}>
+            {agent.map(option)}
+          </NativeSelect>
+        </label>
+      )}
+      {light.length > 0 && (
+        <label className={labelClasses}>
+          Light model
+          <NativeSelect name="light" defaultValue="">
+            <option value="">None: light tasks use the agent model</option>
+            {light.map(option)}
+          </NativeSelect>
+        </label>
+      )}
+      {embedding.length > 0 ? (
         <>
           <label className={labelClasses}>
             Embedding model
             <NativeSelect
               name="embedding"
-              defaultValue={embeddings.data.default_model_id ?? ""}
+              required
+              defaultValue={embedding[0]?.id}
             >
-              {embeddings.data.default_model_id === null && (
-                <option value="">Installation default</option>
-              )}
-              {embeddings.data.models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.provider_name})
-                </option>
-              ))}
+              {embedding.map(option)}
             </NativeSelect>
           </label>
           <Hint>
-            Used to search this workspace&apos;s documents. It can&apos;t be
-            changed later.
+            Used to search this workspace&apos;s documents. It can be changed
+            until documents are indexed.
           </Hint>
         </>
+      ) : (
+        <Hint>
+          No model has the Embedding role yet, so document search is unavailable
+          until an owner sets an embedding model.
+        </Hint>
       )}
-    </EntityFormDialog>
+    </>
   );
 }
 

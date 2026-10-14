@@ -25,7 +25,6 @@ from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 
 from .gateway import Capabilities, Gateway, ListingUnsupported, LlmError, ProbeResult, probe
-from .internal import reindex
 from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, adapter_kinds
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
@@ -33,7 +32,6 @@ from .tables import (
     URL_MAX_LENGTH,
     ModelRecord,
     ProviderRecord,
-    SettingsRecord,
 )
 
 API_KEY_CONTEXT = "llm.provider.api_key"
@@ -376,9 +374,6 @@ class ProviderService:
                         409, "model_changed", "The provider changed meanwhile: try again."
                     )
                 record.embedding_dimension = dimension
-                settings = db.get(SettingsRecord, 1)
-                if settings is not None:
-                    reindex.note_tested(settings, model_id, dimension, self._clock())
             elif "embedding" not in wanted:
                 record.embedding_dimension = None
             record.roles = wanted
@@ -424,10 +419,6 @@ class ProviderService:
             record.embedding_dimension = caps.embedding_dimension
             if record.context_window is None:
                 record.context_window = caps.context_window
-            if result.ok:
-                settings = db.get(SettingsRecord, 1)
-                if settings is not None:
-                    reindex.note_tested(settings, model_id, caps.embedding_dimension, self._clock())
             return _model_view(record)
 
     # -- the gateway -----------------------------------------------------------------

@@ -39,7 +39,6 @@ from tests.authz.matrix import (
     staging_table_name,
     system_id,
     table_id,
-    tested_model_id,
     use_fake_llm,
     workspace,
 )
@@ -362,29 +361,7 @@ ROWS: list[Row] = [
         setup=use_fake_llm,
     ),
     Row("GET", "/api/v1/admin/llm/setup", "AI setup status (story 158)", admin_only()),
-    Row(
-        "GET",
-        "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models",
-        "see a Workspace's Allowed Models",
-        admin_only(),
-    ),
-    Row(
-        "PUT",
-        "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models",
-        "replace a Workspace's Allowed Models",
-        admin_only(),
-        json=lambda roles: {"model_ids": []},
-    ),
-    # Model roles, token budgets and AI usage (stories 157, 159, 162).
-    Row("GET", "/api/v1/admin/llm/roles", "see the model roles (story 157)", admin_only()),
-    Row(
-        "PUT",
-        "/api/v1/admin/llm/roles",
-        "assign models to roles (story 157)",
-        admin_only(),
-        json=lambda roles: {"agent_model_id": str(tested_model_id(roles))},
-        setup=use_fake_llm,
-    ),
+    # Token budgets and AI usage (stories 159, 162).
     Row("GET", "/api/v1/admin/llm/budgets", "see the token budgets (story 159)", admin_only()),
     Row(
         "PUT",
@@ -546,8 +523,8 @@ ROWS: list[Row] = [
     ),
     Row(
         "GET",
-        "/api/v1/ai/embedding-models",
-        "see the embedding models offered when creating a Workspace",
+        "/api/v1/ai/new-workspace-models",
+        "see the models offered when creating a Workspace",
         signed_in(),
     ),
     Row(
@@ -662,7 +639,7 @@ ROWS: list[Row] = [
     Row(
         "PUT",
         "/api/v1/workspaces/{workspace_id}/ai-settings",
-        "Choose the Workspace's model, data-sharing level and internal-only restriction",
+        "Choose the Workspace Models, data-sharing level and internal-only restriction",
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"internal_only": False, "data_sharing_level": "profiles"},
     ),

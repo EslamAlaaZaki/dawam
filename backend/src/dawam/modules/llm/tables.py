@@ -60,29 +60,15 @@ class ModelRecord(Base):
 
 
 class SettingsRecord(Base):
-    """The installation's one row of AI settings (spec §6.18): which model fills each
-    role, the monthly token budget and whether the embedding index is stale."""
+    """The installation's one row of AI settings (spec §6.18): the monthly token budget.
+    Which models a Workspace uses is its owner's choice (``WorkspaceModelRecord``)."""
 
     __tablename__ = "llm_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     """Always 1: there is one row."""
-    agent_model_id: Mapped[uuid.UUID | None] = mapped_column(
-        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
-    )
-    light_model_id: Mapped[uuid.UUID | None] = mapped_column(
-        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
-    )
-    embedding_model_id: Mapped[uuid.UUID | None] = mapped_column(
-        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
-    )
-    embedding_dimension: Mapped[int | None]
-    """The vector dimension of the assigned embedding model's index."""
     monthly_token_budget: Mapped[int | None] = mapped_column(sa.BigInteger)
     """Tokens per calendar month (UTC) for the whole installation; null: unlimited."""
-    reindex_needed: Mapped[bool]
-    reindex_reason: Mapped[str | None] = mapped_column(sa.String(64))
-    reindex_flagged_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
@@ -117,27 +103,26 @@ class WorkspaceAiSettingsRecord(Base):
     internal_only: Mapped[bool]
     """True: the gateway refuses every external provider for every model role."""
     data_sharing_level: Mapped[str] = mapped_column(sa.String(16))
-    agent_model_id: Mapped[uuid.UUID | None] = mapped_column(
-        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
-    )
-    """The Workspace's own agent model; null: the installation's."""
-    light_model_id: Mapped[uuid.UUID | None] = mapped_column(
-        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
-    )
-    """The Workspace's own light model; null: the installation's."""
-    embedding_model_id: Mapped[uuid.UUID | None] = mapped_column(
-        sa.ForeignKey("llm_models.id", ondelete="SET NULL")
-    )
-    """The Workspace's embedding model, fixed at creation (ADR 0005); null only for a
-    Workspace made while the installation had none (indexing then uses the first tested one)."""
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
-class WorkspaceAllowedModelRecord(Base):
-    """One model an admin allows a Workspace to use. A Workspace with no rows allows every
-    registered model."""
+class WorkspaceModelRecord(Base):
+    """One of a Workspace's Workspace Models (spec §6.18): a model the owner chose for a
+    Model Role. Agent and light have one or more rows, one of them the default; embedding
+    has at most one row, which is the default."""
 
-    __tablename__ = "llm_workspace_allowed_models"
+    __tablename__ = "llm_workspace_models"
+    __table_args__ = (
+        sa.CheckConstraint("role IN ('agent', 'light', 'embedding')", name="role"),
+        sa.CheckConstraint("role <> 'embedding' OR is_default", name="embedding_is_default"),
+        sa.Index(
+            "uq_llm_workspace_models_default",
+            "workspace_id",
+            "role",
+            unique=True,
+            postgresql_where=sa.text("is_default"),
+        ),
+    )
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
@@ -145,6 +130,8 @@ class WorkspaceAllowedModelRecord(Base):
     model_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("llm_models.id", ondelete="CASCADE"), primary_key=True
     )
+    role: Mapped[str] = mapped_column(sa.String(16), primary_key=True)
+    is_default: Mapped[bool]
 
 
 class UsageRecord(Base):

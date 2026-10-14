@@ -4,9 +4,7 @@ import { useState } from "react";
 
 import {
   useAdminWorkspaces,
-  useAllowedModels,
   useReassignOwner,
-  useSetAllowedModels,
   type AdminWorkspace,
 } from "../api/adminWorkspaces";
 import { useUsers } from "../api/users";
@@ -104,16 +102,12 @@ export function WorkspacesPage() {
 function WorkspaceActions({ workspace }: { workspace: AdminWorkspace }) {
   const [reassigning, setReassigning] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [choosingModels, setChoosingModels] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const archived = workspace.status === "archived";
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => setChoosingModels(true)}>
-          Allowed models
-        </Button>
         {!workspace.has_active_owner && (
           <Button size="sm" onClick={() => setReassigning(true)}>
             Reassign ownership
@@ -134,11 +128,6 @@ function WorkspaceActions({ workspace }: { workspace: AdminWorkspace }) {
           </Button>
         )}
       </div>
-      <AllowedModelsDialog
-        workspace={workspace}
-        open={choosingModels}
-        onOpenChange={setChoosingModels}
-      />
       {!workspace.has_active_owner && (
         <ReassignDialog
           workspace={workspace}
@@ -161,61 +150,6 @@ function WorkspaceActions({ workspace }: { workspace: AdminWorkspace }) {
         />
       )}
     </>
-  );
-}
-
-/**
- * Which models the Workspace may use. None ticked: every registered model. An
- * internal-only Workspace is never offered an external one, whatever is ticked.
- */
-function AllowedModelsDialog({
-  workspace,
-  open,
-  onOpenChange,
-}: {
-  workspace: AdminWorkspace;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const allowed = useAllowedModels(workspace.id, open);
-  const save = useSetAllowedModels(workspace.id);
-  const models = allowed.data?.models ?? [];
-  const listed = new Set(allowed.data?.model_ids ?? []);
-
-  return (
-    <EntityFormDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) save.reset();
-        onOpenChange(next);
-      }}
-      title={`Allowed models for ${workspace.name}`}
-      description="Tick the models this Workspace may use. With none ticked, every registered model is allowed. An internal-only Workspace is never offered an external model."
-      submitLabel="Save"
-      onSubmit={(form) =>
-        save.mutate(form.getAll("model").map(String), {
-          onSuccess: () => {
-            onOpenChange(false);
-            toast.success(`Allowed models saved for ${workspace.name}.`);
-          },
-        })
-      }
-      pending={save.isPending || allowed.isPending}
-      error={save.error ?? allowed.error}
-    >
-      {models.map((model) => (
-        <label key={model.id} className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="model"
-            value={model.id}
-            defaultChecked={listed.has(model.id)}
-          />
-          {model.name} ({model.provider_name},{" "}
-          {model.internal ? "internal" : "external"})
-        </label>
-      ))}
-    </EntityFormDialog>
   );
 }
 

@@ -8784,7 +8784,7 @@
           "workspaces"
         ],
         "summary": "Create Workspace",
-        "description": "Create a Workspace; you become its owner. 422 `invalid_model_role` for a model that is\nnot a tested embedding model; 422 `model_not_allowed` for one the internal-only setting\nrefuses.",
+        "description": "Create a Workspace with its Workspace Models; you become its owner. 422\n`invalid_model_role` for a model not enabled (and tested) for its role; 422\n`model_not_allowed` for an external model when the Workspace starts internal-only; 422\n`agent_model_required` / `embedding_model_required` when one could be chosen but is not.",
         "operationId": "createWorkspace",
         "requestBody": {
           "required": true,
@@ -13673,7 +13673,7 @@
           "llm"
         ],
         "summary": "Delete Model",
-        "description": "Remove an unused model (admins only). 409 `model_in_use` when a role or a Workspace\nstill uses it: remove it with `POST /models/{id}/removal` and a replacement.",
+        "description": "Remove an unused model (admins only). 409 `model_in_use` when a Workspace still uses\nit: remove it with `POST /models/{id}/removal` and a replacement.",
         "operationId": "deleteLlmModel",
         "parameters": [
           {
@@ -13720,7 +13720,7 @@
           "llm"
         ],
         "summary": "Set Model Roles",
-        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. 409 `model_role_in_use` when a role being\nremoved is the installation's default or a Workspace's own choice.",
+        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. 409 `model_role_in_use` when a role being\nremoved is one of a Workspace's models.",
         "operationId": "setLlmModelRoles",
         "parameters": [
           {
@@ -13838,7 +13838,7 @@
           "llm"
         ],
         "summary": "Remove Model In Use",
-        "description": "Remove a model with one replacement per role it fills, applied to the installation\nand every affected Workspace atomically (admins only). 422 `replacement_required`,\n409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`\n(naming the Workspaces whose documents are indexed with it).",
+        "description": "Remove a model with one replacement per role it fills, applied to every affected\nWorkspace atomically (admins only). 422 `replacement_required`,\n409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`\n(naming the Workspaces whose documents are indexed with it).",
         "operationId": "removeLlmModel",
         "parameters": [
           {
@@ -13958,98 +13958,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LlmSetupStatus"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/llm/roles": {
-      "get": {
-        "tags": [
-          "llm"
-        ],
-        "summary": "Get Roles",
-        "description": "Which model fills each role, and whether re-indexing is needed (admins only).",
-        "operationId": "getLlmRoles",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmRoles"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "llm"
-        ],
-        "summary": "Set Roles",
-        "description": "Assign models to the roles (admins only). The agent role is required; every model\nmust be registered and have passed \"Test connection\". Switching the embedding model\nsets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`.",
-        "operationId": "setLlmRoles",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LlmRolesRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmRoles"
                 }
               }
             }
@@ -14343,122 +14251,6 @@
         }
       }
     },
-    "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models": {
-      "get": {
-        "tags": [
-          "llm"
-        ],
-        "summary": "Get Allowed Models",
-        "description": "A Workspace's Allowed Models and every registered model with whether it may use it\n(admins only).",
-        "operationId": "getAllowedModels",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AllowedModels"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "llm"
-        ],
-        "summary": "Set Allowed Models",
-        "description": "Replace a Workspace's Allowed Models (admins only; audited). An empty list allows\nevery registered model. 422 `invalid_model` for an id that is not registered.",
-        "operationId": "setAllowedModels",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AllowedModelsRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AllowedModels"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
       "get": {
         "tags": [
@@ -14517,7 +14309,7 @@
           "llm"
         ],
         "summary": "Set Ai Settings",
-        "description": "Replace the settings (owners only; audited). 422 `invalid_model_role` for a model\nthat is not an approved agent model (or a light model that is not a tested chat model);\n422 `model_not_allowed` for a model outside the Workspace's Allowed Models;\n422 `embedding_model_fixed` for a different embedding model (it cannot change);\n422 `no_internal_model` when internal-only has no internal agent model to use.",
+        "description": "Replace the settings and the Workspace Models (owners of an active Workspace; audited);\nmodel fields left out keep their current value.\n422 `invalid_model_role` for a model not enabled (and tested) for its role;\n422 `model_not_allowed` for an external model in an internal-only Workspace;\n422 `no_internal_model` when internal-only has no internal agent model to use;\n422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the\ndefault is not one of the chosen models; 422 `embedding_model_fixed` for a different\nembedding model once documents are indexed.",
         "operationId": "setWorkspaceAiSettings",
         "parameters": [
           {
@@ -14575,21 +14367,21 @@
         }
       }
     },
-    "/api/v1/ai/embedding-models": {
+    "/api/v1/ai/new-workspace-models": {
       "get": {
         "tags": [
           "llm"
         ],
-        "summary": "List Embedding Models",
-        "description": "The embedding models the \"New workspace\" form offers, and the installation's default\n(any signed-in user). A Workspace keeps its choice for good.",
-        "operationId": "listEmbeddingModels",
+        "summary": "List New Workspace Models",
+        "description": "The models the \"New workspace\" form offers for each role (any signed-in user).",
+        "operationId": "listNewWorkspaceModels",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EmbeddingChoicesOut"
+                  "$ref": "#/components/schemas/NewWorkspaceModels"
                 }
               }
             }
@@ -15991,86 +15783,6 @@
         ],
         "title": "AiEvaluationList"
       },
-      "AllowedModelChoice": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "provider_name": {
-            "type": "string",
-            "title": "Provider Name"
-          },
-          "internal": {
-            "type": "boolean",
-            "title": "Internal"
-          },
-          "allowed": {
-            "type": "boolean",
-            "title": "Allowed",
-            "description": "The Workspace may use it: listed (or nothing is listed) and, when the Workspace is internal-only, internal."
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "provider_name",
-          "internal",
-          "allowed"
-        ],
-        "title": "AllowedModelChoice"
-      },
-      "AllowedModels": {
-        "properties": {
-          "model_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "title": "Model Ids",
-            "description": "The admin's list of allowed model ids; empty: every registered model."
-          },
-          "models": {
-            "items": {
-              "$ref": "#/components/schemas/AllowedModelChoice"
-            },
-            "type": "array",
-            "title": "Models",
-            "description": "Every registered model."
-          }
-        },
-        "type": "object",
-        "required": [
-          "model_ids",
-          "models"
-        ],
-        "title": "AllowedModels"
-      },
-      "AllowedModelsRequest": {
-        "properties": {
-          "model_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "title": "Model Ids",
-            "description": "Registered model ids; empty: every registered model is allowed."
-          }
-        },
-        "type": "object",
-        "required": [
-          "model_ids"
-        ],
-        "title": "AllowedModelsRequest"
-      },
       "ApplyResult": {
         "properties": {
           "change_set": {
@@ -16124,36 +15836,6 @@
           "require_distinct_approver"
         ],
         "title": "ApprovalSettingsRequest"
-      },
-      "ApprovedAgentModel": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "provider_name": {
-            "type": "string",
-            "title": "Provider Name"
-          },
-          "internal": {
-            "type": "boolean",
-            "title": "Internal",
-            "description": "True when the provider is inside your infrastructure."
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "provider_name",
-          "internal"
-        ],
-        "title": "ApprovedAgentModel"
       },
       "AuditEntry": {
         "properties": {
@@ -18398,7 +18080,33 @@
               }
             ],
             "title": "Embedding Model Id",
-            "description": "The Workspace's embedding model, fixed from now on: a tested embedding model that passes the internal-only check. Null: the installation's."
+            "description": "The Workspace's embedding model: a model enabled for the embedding role that passes the internal-only check. Null only when there is none to choose."
+          },
+          "agent_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Model Id",
+            "description": "The Workspace's default agent model: a model enabled for the agent role that passes the internal-only check. Null only when there is none to choose."
+          },
+          "light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Light Model Id",
+            "description": "The Workspace's default light model; optional."
           }
         },
         "type": "object",
@@ -19615,37 +19323,6 @@
           "defaults"
         ],
         "title": "DwUnknownMember"
-      },
-      "EmbeddingChoicesOut": {
-        "properties": {
-          "models": {
-            "items": {
-              "$ref": "#/components/schemas/ApprovedAgentModel"
-            },
-            "type": "array",
-            "title": "Models",
-            "description": "Tested embedding models a new Workspace may be created with."
-          },
-          "default_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Model Id",
-            "description": "The installation's embedding model: pre-select it."
-          }
-        },
-        "type": "object",
-        "required": [
-          "models",
-          "default_model_id"
-        ],
-        "title": "EmbeddingChoicesOut"
       },
       "ErrorBody": {
         "properties": {
@@ -21733,7 +21410,7 @@
             },
             "type": "array",
             "title": "Workspace Replacements",
-            "description": "Per-Workspace replacements where the one above is not allowed."
+            "description": "Per-Workspace replacements where the one above is not allowed (an internal-only Workspace takes only internal models)."
           }
         },
         "type": "object",
@@ -21825,19 +21502,7 @@
             },
             "type": "array",
             "title": "Roles",
-            "description": "Every role the model fills, anywhere."
-          },
-          "installation_roles": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "agent",
-                "light",
-                "embedding"
-              ]
-            },
-            "type": "array",
-            "title": "Installation Roles"
+            "description": "Every role the model fills, in any Workspace."
           },
           "workspaces": {
             "items": {
@@ -21859,7 +21524,6 @@
         "required": [
           "in_use",
           "roles",
-          "installation_roles",
           "workspaces",
           "indexed_workspaces"
         ],
@@ -22078,128 +21742,6 @@
           "internal"
         ],
         "title": "LlmProviderRequest"
-      },
-      "LlmRoles": {
-        "properties": {
-          "agent_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Model Id",
-            "description": "Required for AI to work; null only until an admin assigns one."
-          },
-          "light_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Light Model Id",
-            "description": "Null: light tasks (titles, short summaries) use the agent model."
-          },
-          "embedding_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Model Id"
-          },
-          "reindex_needed": {
-            "type": "boolean",
-            "title": "Reindex Needed",
-            "description": "True after the embedding model or its vector dimension changed: documents must be indexed again."
-          },
-          "reindex_reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "embedding_model_changed",
-                  "embedding_dimension_changed"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reindex Reason"
-          },
-          "reindex_flagged_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reindex Flagged At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "agent_model_id",
-          "light_model_id",
-          "embedding_model_id",
-          "reindex_needed",
-          "reindex_reason",
-          "reindex_flagged_at"
-        ],
-        "title": "LlmRoles"
-      },
-      "LlmRolesRequest": {
-        "properties": {
-          "agent_model_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Agent Model Id"
-          },
-          "light_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Light Model Id"
-          },
-          "embedding_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Model Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "agent_model_id"
-        ],
-        "title": "LlmRolesRequest"
       },
       "LlmSetupStatus": {
         "properties": {
@@ -23071,6 +22613,68 @@
         ],
         "title": "MessageOut"
       },
+      "ModelChoice": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "True when the provider is inside your infrastructure."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "provider_name",
+          "internal"
+        ],
+        "title": "ModelChoice"
+      },
+      "ModelChoices": {
+        "properties": {
+          "agent": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Agent"
+          },
+          "light": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Light"
+          },
+          "embedding": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Embedding"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent",
+          "light",
+          "embedding"
+        ],
+        "title": "ModelChoices"
+      },
       "MoveLayerRequest": {
         "properties": {
           "status": {
@@ -23164,6 +22768,25 @@
           "expected"
         ],
         "title": "NamingViolation"
+      },
+      "NewWorkspaceModels": {
+        "properties": {
+          "internal_only": {
+            "type": "boolean",
+            "title": "Internal Only",
+            "description": "A new Workspace starts internal-only, so only internal models are offered."
+          },
+          "choices": {
+            "$ref": "#/components/schemas/ModelChoices",
+            "description": "Per role, the models a new Workspace may be created with. No embedding model to offer: the Workspace is created without one and document search matches text only until an owner sets it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "internal_only",
+          "choices"
+        ],
+        "title": "NewWorkspaceModels"
       },
       "NodeLineage": {
         "properties": {
@@ -29345,124 +28968,46 @@
             "$ref": "#/components/schemas/DataSharingLevel",
             "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
           },
-          "agent_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Model Id",
-            "description": "The Workspace's own agent model; null: the installation's."
-          },
-          "light_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Light Model Id",
-            "description": "The Workspace's own light model; null: the installation's."
-          },
-          "embedding_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Model Id",
-            "description": "The Workspace's embedding model, chosen at creation and fixed (read-only); null: none was registered then."
-          },
-          "embedding_model_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Model Name"
-          },
-          "effective_agent_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective Agent Model Id",
-            "description": "The agent model in use: the Workspace's, else the installation's."
-          },
-          "effective_agent_model_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective Agent Model Name"
-          },
-          "effective_light_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective Light Model Id",
-            "description": "The light model in use: the Workspace's, else the installation's; null: light tasks use the agent model."
-          },
-          "effective_light_model_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective Light Model Name"
+          "agent_models": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceModel"
+            },
+            "type": "array",
+            "title": "Agent Models",
+            "description": "The Workspace's agent models; the default answers unless a message names another."
           },
           "light_models": {
             "items": {
-              "$ref": "#/components/schemas/ApprovedAgentModel"
+              "$ref": "#/components/schemas/WorkspaceModel"
             },
             "type": "array",
             "title": "Light Models",
-            "description": "The chat models an owner may choose as the light model."
+            "description": "The Workspace's light models; none: light tasks use the default agent model."
           },
-          "approved_models": {
-            "items": {
-              "$ref": "#/components/schemas/ApprovedAgentModel"
-            },
-            "type": "array",
-            "title": "Approved Models",
-            "description": "The admin-approved agent models an owner may choose from."
+          "embedding_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Workspace's embedding model; null: document search matches text only."
+          },
+          "embedding_locked": {
+            "type": "boolean",
+            "title": "Embedding Locked",
+            "description": "The Workspace has indexed documents, so its embedding model is fixed."
+          },
+          "choices": {
+            "$ref": "#/components/schemas/ModelChoices",
+            "description": "Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones)."
           },
           "internal_agent_available": {
             "type": "boolean",
             "title": "Internal Agent Available",
-            "description": "The installation has an agent model on an internal provider."
+            "description": "The installation has a tested agent model on an internal provider."
           },
           "banner": {
             "type": "boolean",
@@ -29474,16 +29019,11 @@
         "required": [
           "internal_only",
           "data_sharing_level",
-          "agent_model_id",
-          "light_model_id",
-          "embedding_model_id",
-          "embedding_model_name",
-          "effective_agent_model_id",
-          "effective_agent_model_name",
-          "effective_light_model_id",
-          "effective_light_model_name",
+          "agent_models",
           "light_models",
-          "approved_models",
+          "embedding_model",
+          "embedding_locked",
+          "choices",
           "internal_agent_available",
           "banner"
         ],
@@ -29498,20 +29038,16 @@
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel"
           },
-          "agent_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Model Id",
-            "description": "An approved agent model; null: use the installation's."
+          "agent_model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Agent Model Ids",
+            "description": "Models enabled for the agent role; required when there is any to choose."
           },
-          "light_model_id": {
+          "default_agent_model_id": {
             "anyOf": [
               {
                 "type": "string",
@@ -29521,8 +29057,30 @@
                 "type": "null"
               }
             ],
-            "title": "Light Model Id",
-            "description": "A tested chat model; null: use the installation's."
+            "title": "Default Agent Model Id",
+            "description": "One of `agent_model_ids`; optional when there is only one."
+          },
+          "light_model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Light Model Ids",
+            "description": "Models enabled for the light role; optional."
+          },
+          "default_light_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Light Model Id",
+            "description": "One of `light_model_ids`; optional when there is only one."
           },
           "embedding_model_id": {
             "anyOf": [
@@ -29535,7 +29093,7 @@
               }
             ],
             "title": "Embedding Model Id",
-            "description": "Must be left out or equal the Workspace's current embedding model: it is fixed at creation."
+            "description": "A model enabled for the embedding role; changes only while the Workspace has no indexed documents."
           }
         },
         "type": "object",
@@ -29543,7 +29101,8 @@
           "internal_only",
           "data_sharing_level"
         ],
-        "title": "WorkspaceAiSettingsRequest"
+        "title": "WorkspaceAiSettingsRequest",
+        "description": "Model fields left out keep their current value."
       },
       "WorkspaceFile": {
         "properties": {
@@ -29653,6 +29212,41 @@
           "next_cursor"
         ],
         "title": "WorkspaceFilePage"
+      },
+      "WorkspaceModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "provider_name": {
+            "type": "string",
+            "title": "Provider Name"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "True when the provider is inside your infrastructure."
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "provider_name",
+          "internal",
+          "is_default"
+        ],
+        "title": "WorkspaceModel"
       },
       "WorkspaceOwner": {
         "properties": {

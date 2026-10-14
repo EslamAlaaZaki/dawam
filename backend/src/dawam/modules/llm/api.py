@@ -1,5 +1,5 @@
-"""``/api/v1/admin/llm``: LLM providers, their models, setup status, model roles, token
-budgets and usage, admins only (spec §6.18, stories 155-159, 162). No response ever carries an
+"""``/api/v1/admin/llm``: LLM providers, their models and their Model Roles, setup status,
+token budgets and usage, admins only (spec §6.18, stories 155-159, 162). No response ever carries an
 API key: it reports ``has_api_key``."""
 
 from __future__ import annotations
@@ -30,8 +30,6 @@ from .service import Model as ModelView
 from .service import Provider as ProviderView
 from .service import SetupStatus as SetupStatusView
 from .tables import MODEL_NAME_MAX_LENGTH, NAME_MAX_LENGTH, URL_MAX_LENGTH
-from .workspace_ai import AllowedModels as AllowedModelsView
-from .workspace_ai_api import WorkspaceAiServiceDep
 
 router = APIRouter(prefix="/admin/llm", tags=["llm"])
 
@@ -330,12 +328,12 @@ def set_model_roles(
     """Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
     provider's error when the model cannot embed. 409 `model_role_in_use` when a role being
-    removed is the installation's default or a Workspace's own choice."""
+    removed is one of a Workspace's models."""
     current = providers.get_model(model_id)
     removed = set(current.roles) - set(body.roles)
     if removed:
         usage = model_usage(request.app.state.engine, model_id)
-        in_use = set(usage.installation_roles).union(*(w.roles for w in usage.workspaces))
+        in_use = set().union(*(w.roles for w in usage.workspaces))
         blocking = [role for role in ROLES if role in removed & in_use]
         if blocking:
             raise ApiError(
@@ -352,8 +350,8 @@ def set_model_roles(
 def delete_model(
     model_id: uuid.UUID, request: Request, _admin: LlmAdmin, providers: ProviderServiceDep
 ) -> Response:
-    """Remove an unused model (admins only). 409 `model_in_use` when a role or a Workspace
-    still uses it: remove it with `POST /models/{id}/removal` and a replacement."""
+    """Remove an unused model (admins only). 409 `model_in_use` when a Workspace still uses
+    it: remove it with `POST /models/{id}/removal` and a replacement."""
     if model_usage(request.app.state.engine, model_id).in_use:
         raise ApiError(
             409,
@@ -372,8 +370,7 @@ class LlmModelUsageWorkspace(BaseModel):
 
 class LlmModelUsage(BaseModel):
     in_use: bool
-    roles: list[ModelRole] = Field(description="Every role the model fills, anywhere.")
-    installation_roles: list[ModelRole]
+    roles: list[ModelRole] = Field(description="Every role the model fills, in any Workspace.")
     workspaces: list[LlmModelUsageWorkspace]
     indexed_workspaces: list[LlmModelUsageWorkspace] = Field(
         description="Workspaces with documents indexed by this model: they block its removal."
@@ -391,7 +388,6 @@ def get_model_usage(model_id: uuid.UUID, request: Request, _admin: LlmAdmin) -> 
     return LlmModelUsage(
         in_use=usage.in_use,
         roles=usage.roles,  # type: ignore[arg-type]
-        installation_roles=usage.installation_roles,  # type: ignore[arg-type]
         workspaces=_usage_ws(usage.workspaces),
         indexed_workspaces=_usage_ws(usage.indexed_workspaces),
     )
@@ -412,7 +408,8 @@ class LlmModelRemoval(BaseModel):
     embedding_model_id: uuid.UUID | None = None
     workspace_replacements: list[LlmWorkspaceReplacement] = Field(
         default_factory=list,
-        description="Per-Workspace replacements where the one above is not allowed.",
+        description="Per-Workspace replacements where the one above is not allowed "
+        "(an internal-only Workspace takes only internal models).",
     )
 
 
@@ -420,8 +417,8 @@ class LlmModelRemoval(BaseModel):
 def remove_model_in_use(
     model_id: uuid.UUID, body: LlmModelRemoval, request: Request, _admin: LlmAdmin
 ) -> Response:
-    """Remove a model with one replacement per role it fills, applied to the installation
-    and every affected Workspace atomically (admins only). 422 `replacement_required`,
+    """Remove a model with one replacement per role it fills, applied to every affected
+    Workspace atomically (admins only). 422 `replacement_required`,
     409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
     (naming the Workspaces whose documents are indexed with it)."""
     state = request.app.state
@@ -443,7 +440,6 @@ def remove_model_in_use(
             )
             for w in body.workspace_replacements
         ],
-        at=state.services.clock(),
     )
     return Response(status_code=204)
 
@@ -495,28 +491,6 @@ def auth_users(request: Request) -> AuthService:
 
 
 AuthUsersDep = Annotated[AuthService, Depends(auth_users)]
-
-
-class LlmRoles(BaseModel):
-    agent_model_id: uuid.UUID | None = Field(
-        description="Required for AI to work; null only until an admin assigns one."
-    )
-    light_model_id: uuid.UUID | None = Field(
-        description="Null: light tasks (titles, short summaries) use the agent model."
-    )
-    embedding_model_id: uuid.UUID | None
-    reindex_needed: bool = Field(
-        description="True after the embedding model or its vector dimension changed: "
-        "documents must be indexed again."
-    )
-    reindex_reason: Literal["embedding_model_changed", "embedding_dimension_changed"] | None
-    reindex_flagged_at: datetime | None
-
-
-class LlmRolesRequest(BaseModel):
-    agent_model_id: uuid.UUID
-    light_model_id: uuid.UUID | None = None
-    embedding_model_id: uuid.UUID | None = None
 
 
 class LlmWorkspaceBudget(BaseModel):
@@ -586,18 +560,6 @@ def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
     )
 
 
-def _roles_out(roles: RoleService) -> LlmRoles:
-    view = roles.assignments()
-    return LlmRoles(
-        agent_model_id=view.agent_model_id,
-        light_model_id=view.light_model_id,
-        embedding_model_id=view.embedding_model_id,
-        reindex_needed=view.reindex_needed,
-        reindex_reason=view.reindex_reason,  # type: ignore[arg-type]
-        reindex_flagged_at=view.reindex_flagged_at,
-    )
-
-
 def _budgets_out(roles: RoleService, workspaces: WorkspaceService) -> LlmBudgets:
     budgets = roles.budgets()
     names = workspaces.names_by_id(b.workspace_id for b in budgets.workspaces)
@@ -612,25 +574,6 @@ def _budgets_out(roles: RoleService, workspaces: WorkspaceService) -> LlmBudgets
             for b in budgets.workspaces
         ],
     )
-
-
-@router.get("/roles", operation_id="getLlmRoles")
-def get_roles(_admin: LlmAdmin, roles: RoleServiceDep) -> LlmRoles:
-    """Which model fills each role, and whether re-indexing is needed (admins only)."""
-    return _roles_out(roles)
-
-
-@router.put("/roles", operation_id="setLlmRoles")
-def set_roles(body: LlmRolesRequest, _admin: LlmAdmin, roles: RoleServiceDep) -> LlmRoles:
-    """Assign models to the roles (admins only). The agent role is required; every model
-    must be registered and have passed "Test connection". Switching the embedding model
-    sets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`."""
-    roles.assign_roles(
-        agent_model_id=body.agent_model_id,
-        light_model_id=body.light_model_id,
-        embedding_model_id=body.embedding_model_id,
-    )
-    return _roles_out(roles)
 
 
 @router.get("/budgets", operation_id="getLlmBudgets")
@@ -723,78 +666,3 @@ def get_usage(
             for u in report.users
         ],
     )
-
-
-# -- Allowed Models per Workspace --------------------------------------------------------
-
-
-class AllowedModelChoice(BaseModel):
-    id: uuid.UUID
-    name: str
-    provider_name: str
-    internal: bool
-    allowed: bool = Field(
-        description="The Workspace may use it: listed (or nothing is listed) and, when the "
-        "Workspace is internal-only, internal."
-    )
-
-
-class AllowedModels(BaseModel):
-    model_ids: list[uuid.UUID] = Field(
-        description="The admin's list of allowed model ids; empty: every registered model."
-    )
-    models: list[AllowedModelChoice] = Field(description="Every registered model.")
-
-
-class AllowedModelsRequest(BaseModel):
-    model_ids: list[uuid.UUID] = Field(
-        description="Registered model ids; empty: every registered model is allowed."
-    )
-
-
-def _allowed_out(view: AllowedModelsView) -> AllowedModels:
-    return AllowedModels(
-        model_ids=view.model_ids,
-        models=[
-            AllowedModelChoice(
-                id=m.id,
-                name=m.name,
-                provider_name=m.provider_name,
-                internal=m.internal,
-                allowed=m.allowed,
-            )
-            for m in view.models
-        ],
-    )
-
-
-def _require_workspace(workspaces: WorkspaceService, workspace_id: uuid.UUID) -> None:
-    if workspace_id not in workspaces.names_by_id([workspace_id]):
-        raise ApiError(404, "not_found", "No such Workspace.")
-
-
-@router.get("/workspaces/{workspace_id}/allowed-models", operation_id="getAllowedModels")
-def get_allowed_models(
-    workspace_id: uuid.UUID,
-    _admin: LlmAdmin,
-    service: WorkspaceAiServiceDep,
-    workspaces: WorkspaceNamesDep,
-) -> AllowedModels:
-    """A Workspace's Allowed Models and every registered model with whether it may use it
-    (admins only)."""
-    _require_workspace(workspaces, workspace_id)
-    return _allowed_out(service.allowed_models(workspace_id))
-
-
-@router.put("/workspaces/{workspace_id}/allowed-models", operation_id="setAllowedModels")
-def set_allowed_models(
-    workspace_id: uuid.UUID,
-    body: AllowedModelsRequest,
-    admin: LlmAdmin,
-    service: WorkspaceAiServiceDep,
-    workspaces: WorkspaceNamesDep,
-) -> AllowedModels:
-    """Replace a Workspace's Allowed Models (admins only; audited). An empty list allows
-    every registered model. 422 `invalid_model` for an id that is not registered."""
-    _require_workspace(workspaces, workspace_id)
-    return _allowed_out(service.set_allowed_models(admin, workspace_id, body.model_ids))

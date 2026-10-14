@@ -1,4 +1,5 @@
-"""Model roles, monthly token budgets and AI usage (spec §6.18, stories 157, 159, 162).
+"""Monthly token budgets and AI usage, and how a call's model is resolved from the
+Workspace (spec §6.18, stories 157, 159, 162).
 
 Admin behaviour goes through the HTTP API; a feature's model call goes through
 ``RoleService.gateway_for_role``, the seam every AI feature uses. The scripted fake
@@ -39,13 +40,18 @@ def register(client, name, roles=("agent",), tested=True, provider=None) -> dict
     return model
 
 
-def assign(client, agent, light=None, embedding=None):
+def use_models(client, workspace_id, agent, light=None, embedding=None, **fields):
+    """The owner (``client``) gives the Workspace one default agent model, and a light and
+    an embedding model when given."""
     return client.put(
-        f"{BASE}/roles",
+        f"/api/v1/workspaces/{workspace_id}/ai-settings",
         json={
-            "agent_model_id": agent["id"],
-            "light_model_id": light["id"] if light else None,
+            "internal_only": False,
+            "data_sharing_level": "metadata",
+            "agent_model_ids": [agent["id"]],
+            "light_model_ids": [light["id"]] if light else [],
             "embedding_model_id": embedding["id"] if embedding else None,
+            **fields,
         },
     )
 
@@ -67,135 +73,36 @@ def role_service(app, clock, fake_llm):
 
 
 @pytest.fixture
-def setup(admin_client, fake_llm):
+def setup(admin_client, fake_llm, roles: RoleClients):
+    """The Workspace's id, with a tested agent model as its default."""
+    assert roles.workspace_id  # created first, while there is no model to choose
     agent = register(admin_client, "big-model")
-    assert assign(admin_client, agent).status_code == 200
-    return agent
+    assert use_models(roles.client("owner"), roles.workspace_id, agent).status_code == 200
+    return roles.workspace_id
 
 
-# -- roles -----------------------------------------------------------------------------
+# -- resolving a role from the Workspace ----------------------------------------------
 
 
-def test_roles_are_empty_until_an_admin_assigns_them(admin_client):
-    body = admin_client.get(f"{BASE}/roles").json()
-
-    assert body["agent_model_id"] is None and body["light_model_id"] is None
-    assert body["embedding_model_id"] is None and body["reindex_needed"] is False
-
-
-def test_an_admin_assigns_models_to_the_three_roles(admin_client, fake_llm):
-    agent = register(admin_client, "big")
-    light = register(admin_client, "small", roles=("agent", "light"))
-    embedding = register(admin_client, "embed", roles=("embedding",))
-
-    response = assign(admin_client, agent, light, embedding)
-
-    assert response.status_code == 200, response.text
-    assert response.json()["agent_model_id"] == agent["id"]
-    assert response.json()["light_model_id"] == light["id"]
-    assert admin_client.get(f"{BASE}/roles").json()["embedding_model_id"] == embedding["id"]
-
-
-def test_the_agent_role_is_required(admin_client, fake_llm):
-    light = register(admin_client, "small", roles=("agent", "light"))
-
-    response = admin_client.put(f"{BASE}/roles", json={"light_model_id": light["id"]})
-
-    assert response.status_code == 422
-
-
-def test_only_a_tested_model_can_be_assigned(admin_client, fake_llm):
-    untested = register(admin_client, "fresh", tested=False)
-
-    response = assign(admin_client, untested)
-
-    assert response.status_code == 422 and code(response) == "model_not_tested"
-
-
-def test_an_unregistered_model_or_the_wrong_kind_of_model_is_refused(admin_client, fake_llm):
-    agent = register(admin_client, "big")
-    embedding = register(admin_client, "embed", roles=("embedding",))
-
-    unknown = assign(admin_client, {"id": "00000000-0000-0000-0000-000000000000"})
-    chat_as_embedding = assign(admin_client, agent, embedding=agent)
-    embedding_as_agent = assign(admin_client, embedding)
-
-    assert [r.status_code for r in (unknown, chat_as_embedding, embedding_as_agent)] == [422] * 3
-    assert {code(r) for r in (unknown, chat_as_embedding, embedding_as_agent)} == {
-        "invalid_model_role"
-    }
-
-
-def test_light_tasks_use_the_agent_model_when_no_light_model_is_assigned(
-    admin_client, role_service, setup, fake_llm
+def test_light_tasks_use_the_default_agent_model_when_the_workspace_has_no_light_model(
+    role_service, setup, fake_llm
 ):
-    gateway = role_service.gateway_for_role("light")
+    gateway = role_service.gateway_for_role("light", workspace_id=setup)
     list(gateway.chat(ASK))
 
     assert gateway.role == "agent"
     assert fake_llm.calls[-1].model == "big-model"
 
 
-def test_light_tasks_use_the_light_model_unless_it_is_not_allowed(
-    admin_client, role_service, setup, fake_llm
-):
-    light = register(admin_client, "small", roles=("agent", "light"))
-    assert assign(admin_client, setup, light).status_code == 200
-
-    list(role_service.gateway_for_role("light").chat(ASK))
-    assert fake_llm.calls[-1].model == "small"
-
-    fallback = role_service.gateway_for_role("light", light_allowed=False)
-    list(fallback.chat(ASK))
-    assert fake_llm.calls[-1].model == "big-model" and fallback.role == "agent"
-
-
-def test_a_role_without_a_model_says_so(role_service):
+def test_a_role_without_a_model_says_so(role_service, roles: RoleClients):
     with pytest.raises(Exception) as caught:
-        role_service.gateway_for_role("agent")
+        role_service.gateway_for_role("agent", workspace_id=roles.workspace_id)
 
     assert caught.value.code == "model_role_unassigned"
 
 
-# -- re-indexing -----------------------------------------------------------------------
-
-
-def test_switching_the_embedding_model_records_that_reindexing_is_needed(admin_client, fake_llm):
-    agent = register(admin_client, "big")
-    first = register(admin_client, "embed-1", roles=("embedding",))
-    second = register(admin_client, "embed-2", roles=("embedding",))
-
-    assert assign(admin_client, agent, embedding=first).json()["reindex_needed"] is True
-    assert assign(admin_client, agent, embedding=second).json()["reindex_reason"] == (
-        "embedding_model_changed"
-    )
-
-
-def test_assigning_the_same_embedding_model_again_does_not_flag_anything_new(
-    admin_client, role_service, fake_llm
-):
-    agent = register(admin_client, "big")
-    embedding = register(admin_client, "embed", roles=("embedding",))
-    assign(admin_client, agent, embedding=embedding)
-    role_service.mark_reindexed()
-
-    assert assign(admin_client, agent, embedding=embedding).json()["reindex_needed"] is False
-
-
-def test_a_changed_vector_dimension_records_that_reindexing_is_needed(
-    admin_client, role_service, fake_llm
-):
-    agent = register(admin_client, "big")
-    embedding = register(admin_client, "embed", roles=("embedding",))
-    assign(admin_client, agent, embedding=embedding)
-    role_service.mark_reindexed()
-    fake_llm.dimension = 8
-
-    admin_client.post(f"{BASE}/models/{embedding['id']}/test")
-
-    body = admin_client.get(f"{BASE}/roles").json()
-    assert body["reindex_needed"] is True
-    assert body["reindex_reason"] == "embedding_dimension_changed"
+def test_the_installation_has_no_role_defaults_any_more(admin_client):
+    assert admin_client.get(f"{BASE}/roles").status_code in (404, 405)
 
 
 # -- usage -----------------------------------------------------------------------------
@@ -226,9 +133,10 @@ def test_every_call_records_tokens_with_workspace_user_and_role(
 def test_embedding_calls_are_recorded_as_estimated_usage(
     admin_client, role_service, fake_llm, roles: RoleClients
 ):
+    assert roles.workspace_id
     agent = register(admin_client, "big")
     embedding = register(admin_client, "embed", roles=("embedding",))
-    assign(admin_client, agent, embedding=embedding)
+    use_models(roles.client("owner"), roles.workspace_id, agent, embedding=embedding)
 
     role_service.gateway_for_role(
         "embedding", workspace_id=roles.workspace["id"], user_id=roles.user("owner").id
@@ -240,10 +148,10 @@ def test_embedding_calls_are_recorded_as_estimated_usage(
 
 
 def test_usage_is_filterable_by_month(admin_client, role_service, setup, fake_llm, clock):
-    list(role_service.gateway_for_role("agent").chat(ASK))
+    list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
     # An admin's session would time out over such a gap, so the report is read directly.
     clock.advance(timedelta(days=40))
-    list(role_service.gateway_for_role("agent").chat(ASK))
+    list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
 
     january, february = role_service.usage_report("2026-01"), role_service.usage_report("2026-02")
 
@@ -269,10 +177,11 @@ def test_an_exhausted_installation_budget_refuses_the_next_call_with_a_clear_err
         ).status_code
         == 200
     )
-    list(role_service.gateway_for_role("agent").chat(ASK))  # uses 15 tokens: now at the limit
+    # Uses 15 tokens: now at the limit.
+    list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
 
     with pytest.raises(Exception) as caught:
-        list(role_service.gateway_for_role("agent").chat(ASK))
+        list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
 
     assert caught.value.status_code == 429 and caught.value.code == "token_budget_exhausted"
     assert caught.value.details["scope"] == "installation"
@@ -292,18 +201,21 @@ def test_a_workspace_budget_stops_that_workspace_only(
 
     with pytest.raises(Exception) as caught:
         list(role_service.gateway_for_role("agent", workspace_id=workspace).chat(ASK))
-    list(role_service.gateway_for_role("agent").chat(ASK))  # no Workspace: unaffected
+    other = roles.client("owner").post(
+        "/api/v1/workspaces", json={"name": "Other", "agent_model_id": big_model(admin_client)}
+    )
+    list(role_service.gateway_for_role("agent", workspace_id=other.json()["id"]).chat(ASK))
 
     assert caught.value.details["scope"] == "workspace"
 
 
 def test_the_budget_starts_over_next_month(admin_client, role_service, setup, fake_llm, clock):
     admin_client.put(f"{BASE}/budgets/installation", json={"monthly_token_budget": 15})
-    list(role_service.gateway_for_role("agent").chat(ASK))
+    list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
 
     clock.advance(timedelta(days=30))
 
-    list(role_service.gateway_for_role("agent").chat(ASK))
+    list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
 
 
 def test_removing_a_budget_lifts_the_limit(
@@ -346,16 +258,21 @@ def test_a_failed_call_is_recorded_with_estimated_tokens(
     fake_llm.script(*[LlmError(RATE_LIMIT, "slow down")] * 4)
 
     with pytest.raises(LlmError):
-        list(role_service.gateway_for_role("agent").chat(ASK))
+        list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
 
     totals = admin_client.get(f"{BASE}/usage").json()["totals"]
     assert totals["calls"] == 1 and totals["estimated_calls"] == 1
 
 
+def big_model(client) -> str:
+    [provider] = client.get(f"{BASE}/providers").json()["items"]
+    return provider["models"][0]["id"]
+
+
 def test_an_abandoned_stream_is_recorded(admin_client, role_service, setup, fake_llm):
     fake_llm.script(Reply(text="one two three four", usage=Usage(50, 10)))
 
-    stream = role_service.gateway_for_role("agent").chat(ASK, stream=True)
+    stream = role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK, stream=True)
     next(stream)
     stream.close()
 

@@ -135,8 +135,16 @@ class CreateWorkspaceRequest(BaseModel):
     domain: Domain = ""
     embedding_model_id: uuid.UUID | None = Field(
         default=None,
-        description="The Workspace's embedding model, fixed from now on: a tested embedding "
-        "model that passes the internal-only check. Null: the installation's.",
+        description="The Workspace's embedding model: a model enabled for the embedding role "
+        "that passes the internal-only check. Null only when there is none to choose.",
+    )
+    agent_model_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Workspace's default agent model: a model enabled for the agent role "
+        "that passes the internal-only check. Null only when there is none to choose.",
+    )
+    light_model_id: uuid.UUID | None = Field(
+        default=None, description="The Workspace's default light model; optional."
     )
 
 
@@ -221,9 +229,10 @@ def list_workspaces(
 def create_workspace(
     body: CreateWorkspaceRequest, user: CurrentUser, workspaces: WorkspaceServiceDep
 ) -> Workspace:
-    """Create a Workspace; you become its owner. 422 `invalid_model_role` for a model that is
-    not a tested embedding model; 422 `model_not_allowed` for one the internal-only setting
-    refuses."""
+    """Create a Workspace with its Workspace Models; you become its owner. 422
+    `invalid_model_role` for a model not enabled (and tested) for its role; 422
+    `model_not_allowed` for an external model when the Workspace starts internal-only; 422
+    `agent_model_required` / `embedding_model_required` when one could be chosen but is not."""
     return _out(
         workspaces.create(
             user,
@@ -231,6 +240,8 @@ def create_workspace(
             description=body.description,
             domain=body.domain,
             embedding_model_id=body.embedding_model_id,
+            agent_model_id=body.agent_model_id,
+            light_model_id=body.light_model_id,
         )
     )
 

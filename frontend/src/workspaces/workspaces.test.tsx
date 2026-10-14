@@ -13,6 +13,7 @@ import { createApiClient } from "../api/client";
 import { Toaster } from "../components/ui/sonner";
 import { ApiClientContext } from "../api/context";
 import type { Me } from "../api/queries";
+import type { NewWorkspaceModels } from "../api/workspaceAi";
 import type { Workspace, WorkspaceRole } from "../api/workspaces";
 import { currentLocation, setLocation } from "../test/navigation";
 import { TestApp } from "../test/TestApp";
@@ -110,6 +111,7 @@ function fakeBackend(
     workspaces?: Workspace[];
     pageSize?: number;
     createFails?: boolean;
+    models?: NewWorkspaceModels;
   } = {},
 ) {
   const store = new Map(
@@ -207,24 +209,8 @@ function fakeBackend(
         return json({ name: "DAWAM", version: "1.2.3" });
       case "GET /api/v1/me":
         return json(ADA);
-      case "GET /api/v1/ai/embedding-models":
-        return json({
-          models: [
-            {
-              id: BGE_SMALL,
-              name: "bge-small",
-              provider_name: "Local",
-              internal: true,
-            },
-            {
-              id: BGE_LARGE,
-              name: "bge-large",
-              provider_name: "Local",
-              internal: true,
-            },
-          ],
-          default_model_id: BGE_LARGE,
-        });
+      case "GET /api/v1/ai/new-workspace-models":
+        return json(options.models ?? MODELS);
       case "GET /api/v1/workspaces": {
         const start = Number(url.searchParams.get("cursor") ?? 0);
         const items = sorted().slice(start, start + pageSize);
@@ -373,9 +359,24 @@ describe("the Workspace list", () => {
 
 const BGE_SMALL = "bbbbbbbb-0000-4000-8000-000000000001";
 const BGE_LARGE = "bbbbbbbb-0000-4000-8000-000000000002";
+const BIG = "bbbbbbbb-0000-4000-8000-000000000003";
+const SMALL = "bbbbbbbb-0000-4000-8000-000000000004";
+
+function local(id: string, name: string) {
+  return { id, name, provider_name: "Local", internal: true };
+}
+
+const MODELS: NewWorkspaceModels = {
+  internal_only: true,
+  choices: {
+    agent: [local(BIG, "big"), local(SMALL, "small")],
+    light: [local(SMALL, "small")],
+    embedding: [local(BGE_SMALL, "bge-small"), local(BGE_LARGE, "bge-large")],
+  },
+};
 
 describe("creating a Workspace", () => {
-  it("pre-selects the installation's embedding model, warns it is fixed, and sends the choice", async () => {
+  it("asks for the default agent, light and embedding models and sends the choice", async () => {
     const backend = fakeBackend();
     renderApp(backend);
 
@@ -383,11 +384,21 @@ describe("creating a Workspace", () => {
       await screen.findByRole("button", { name: "New workspace" }),
     );
     const dialog = await screen.findByRole("dialog", { name: "New workspace" });
-    const picker = await within(dialog).findByLabelText("Embedding model");
-    expect(picker).toHaveValue(BGE_LARGE);
-    expect(dialog).toHaveTextContent("It can't be changed later.");
+    const agent = await within(dialog).findByLabelText("Default agent model");
+    expect(agent).toHaveValue(BIG);
+    expect(within(dialog).getByLabelText("Light model")).toHaveValue("");
+    expect(within(dialog).getByLabelText("Embedding model")).toHaveValue(
+      BGE_SMALL,
+    );
+    expect(dialog).toHaveTextContent("only internal models are offered");
     fillIn(dialog, "Name", "Retail DW");
-    fireEvent.change(picker, { target: { value: BGE_SMALL } });
+    fireEvent.change(agent, { target: { value: SMALL } });
+    fireEvent.change(within(dialog).getByLabelText("Light model"), {
+      target: { value: SMALL },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Embedding model"), {
+      target: { value: BGE_LARGE },
+    });
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Create Workspace" }),
     );
@@ -397,8 +408,42 @@ describe("creating a Workspace", () => {
       backend.requests.find((r) => r.method === "POST")?.body,
     ).toMatchObject({
       name: "Retail DW",
-      embedding_model_id: BGE_SMALL,
+      agent_model_id: SMALL,
+      light_model_id: SMALL,
+      embedding_model_id: BGE_LARGE,
     });
+  });
+
+  it("says document search is unavailable when no model has the Embedding role", async () => {
+    const backend = fakeBackend({
+      models: {
+        internal_only: false,
+        choices: { agent: [local(BIG, "big")], light: [], embedding: [] },
+      },
+    });
+    renderApp(backend);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New workspace" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "New workspace" });
+    await within(dialog).findByLabelText("Default agent model");
+    expect(
+      within(dialog).queryByLabelText("Embedding model"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText("Light model"),
+    ).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent("document search is unavailable");
+    fillIn(dialog, "Name", "Retail DW");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Create Workspace" }),
+    );
+
+    await screen.findByRole("heading", { name: "Retail DW" });
+    expect(
+      backend.requests.find((r) => r.method === "POST")?.body,
+    ).toMatchObject({ agent_model_id: BIG, embedding_model_id: null });
   });
 
   it("creates a Workspace and opens it, with the creator as its owner", async () => {

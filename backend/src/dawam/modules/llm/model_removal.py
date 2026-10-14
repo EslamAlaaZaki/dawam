@@ -1,24 +1,22 @@
 """Removing a model that is in use (spec §6.18, ADR 0005): the admin names one replacement
-per role the model fills, applied to the installation and to every affected Workspace in
-one transaction. A Workspace the replacement is not allowed for (Allowed Models,
-internal-only) needs its own. A Workspace's indexed documents pin its embedding model, so
-that removal is refused while any exist; nothing is ever re-indexed.
+per role the model fills, applied to every Workspace that has it among its Workspace Models
+in one transaction. An internal-only Workspace takes only an internal replacement, else it
+needs its own. A Workspace's indexed documents pin its embedding model, so that removal is
+refused while any exist; nothing is ever re-indexed.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.platform.errors import ApiError
 
-from .internal import reindex
-from .tables import ModelRecord, SettingsRecord, WorkspaceAiSettingsRecord
-from .workspace_ai import allowed_model_ids
+from .tables import ModelRecord, WorkspaceModelRecord
+from .workspace_ai import load_settings, model_is_internal
 
 ROLES = ("agent", "light", "embedding")
 
@@ -33,21 +31,20 @@ class WorkspaceRef:
 
 @dataclass(frozen=True)
 class ModelUsage:
-    installation_roles: list[str]
     workspaces: list[WorkspaceRef]
     indexed_workspaces: list[WorkspaceRef]
     """Workspaces with documents indexed by this (embedding) model."""
 
     @property
     def roles(self) -> list[str]:
-        used = set(self.installation_roles)
+        used: set[str] = set()
         for workspace in self.workspaces:
             used.update(workspace.roles)
         return [r for r in ROLES if r in used]
 
     @property
     def in_use(self) -> bool:
-        return bool(self.installation_roles or self.workspaces or self.indexed_workspaces)
+        return bool(self.workspaces or self.indexed_workspaces)
 
 
 @dataclass(frozen=True)
@@ -70,17 +67,12 @@ def _names(db: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
 
 
 def _usage(db: Session, model_id: uuid.UUID) -> ModelUsage:
-    settings = db.get(SettingsRecord, 1)
-    installation = [
-        r for r in ROLES if settings is not None and getattr(settings, f"{r}_model_id") == model_id
-    ]
     rows = db.scalars(
-        sa.select(WorkspaceAiSettingsRecord).where(
-            sa.or_(
-                *(getattr(WorkspaceAiSettingsRecord, f"{r}_model_id") == model_id for r in ROLES)
-            )
-        )
+        sa.select(WorkspaceModelRecord).where(WorkspaceModelRecord.model_id == model_id)
     ).all()
+    roles: dict[uuid.UUID, set[str]] = {}
+    for row in rows:
+        roles.setdefault(row.workspace_id, set()).add(row.role)
     indexed = list(
         db.scalars(
             sa.text(
@@ -89,28 +81,23 @@ def _usage(db: Session, model_id: uuid.UUID) -> ModelUsage:
             {"m": model_id},
         )
     )
-    names = _names(db, [r.workspace_id for r in rows] + indexed)
+    names = _names(db, [*roles, *indexed])
     refs = sorted(
         (
-            WorkspaceRef(
-                r.workspace_id,
-                names.get(r.workspace_id, ""),
-                [x for x in ROLES if getattr(r, f"{x}_model_id") == model_id],
-            )
-            for r in rows
+            WorkspaceRef(workspace_id, names.get(workspace_id, ""), [r for r in ROLES if r in used])
+            for workspace_id, used in roles.items()
         ),
         key=lambda w: w.name.lower(),
     )
     return ModelUsage(
-        installation,
         refs,
         sorted((WorkspaceRef(w, names.get(w, "")) for w in indexed), key=lambda w: w.name.lower()),
     )
 
 
 def model_usage(engine: sa.Engine, model_id: uuid.UUID) -> ModelUsage:
-    """Where the model is used: the installation's roles, each Workspace's, and the
-    Workspaces holding documents indexed with it. 404 ``model_not_found``."""
+    """Where the model is used: the roles it fills in each Workspace, and the Workspaces
+    holding documents indexed with it. 404 ``model_not_found``."""
     with Session(engine) as db:
         if db.get(ModelRecord, model_id) is None:
             raise _not_found()
@@ -149,10 +136,10 @@ def remove_model(
     *,
     replacements: dict[str, uuid.UUID],
     workspace_replacements: list[WorkspaceReplacement],
-    at: datetime,
 ) -> None:
-    """Delete the model, moving every role it fills to its replacement first. All or
-    nothing. 409 ``embedding_model_indexed`` / ``replacement_not_allowed``, 422
+    """Delete the model, moving every role it fills to its replacement first: the
+    replacement takes its place among the Workspace's models, as the default when it was.
+    All or nothing. 409 ``embedding_model_indexed`` / ``replacement_not_allowed``, 422
     ``replacement_required``."""
     overrides = {w.workspace_id: w for w in workspace_replacements}
     with Session(engine) as db, db.begin():
@@ -185,15 +172,15 @@ def remove_model(
         unallowed: list[dict[str, object]] = []
         plan: list[tuple[uuid.UUID, str, uuid.UUID]] = []
         for workspace in usage.workspaces:
-            allowed = allowed_model_ids(db, workspace.id)
+            internal_only = load_settings(db, workspace.id).internal_only
             bad: list[str] = []
             for role in workspace.roles:
                 chosen = replacements[role]
-                if chosen not in allowed:
+                if internal_only and not model_is_internal(db, chosen):
                     chosen = getattr(overrides.get(workspace.id), role, None)
                     if chosen is not None:
                         _check_replacement(db, role, chosen, model_id)
-                    if chosen is None or chosen not in allowed:
+                    if chosen is None or (internal_only and not model_is_internal(db, chosen)):
                         bad.append(role)
                         continue
                 plan.append((workspace.id, role, chosen))
@@ -208,19 +195,23 @@ def remove_model(
                 {"workspaces": unallowed},
             )
         for workspace_id, role, chosen in plan:
-            settings = db.get(WorkspaceAiSettingsRecord, workspace_id)
-            if settings is not None:
-                setattr(settings, f"{role}_model_id", chosen)
-                settings.updated_at = at
-        installation = db.get(SettingsRecord, 1)
-        for role in usage.installation_roles:
-            chosen = replacements[role]
-            if role == "embedding":
-                dimension = db.get(ModelRecord, chosen).embedding_dimension  # type: ignore[union-attr]
-                reindex.note_assigned(installation, chosen, dimension, at)
-            else:
-                setattr(installation, f"{role}_model_id", chosen)
-            installation.updated_at = at
+            removed = db.get(WorkspaceModelRecord, (workspace_id, model_id, role))
+            assert removed is not None
+            was_default = removed.is_default
+            db.delete(removed)
+            db.flush()
+            present = db.get(WorkspaceModelRecord, (workspace_id, chosen, role))
+            if present is None:
+                db.add(
+                    WorkspaceModelRecord(
+                        workspace_id=workspace_id,
+                        model_id=chosen,
+                        role=role,
+                        is_default=was_default,
+                    )
+                )
+            elif was_default:
+                present.is_default = True
         db.flush()
         # Conversations whose last pick was this model fall back to the Workspace's agent
         # model: the foreign key nulls the pick.

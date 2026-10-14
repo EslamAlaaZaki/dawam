@@ -20,7 +20,7 @@ from dawam.platform.config import Settings
 from dawam.platform.csrf import CSRF_HEADER
 from tests.helpers import csrf_token, sign_in
 from tests.llm.test_roles_budgets import BASE as LLM
-from tests.llm.test_roles_budgets import assign, register
+from tests.llm.test_roles_budgets import register, use_models
 from tests.roles import PASSWORD, RoleClients
 
 TOOL_CAP = 3
@@ -32,9 +32,10 @@ def settings(settings: Settings) -> Settings:
 
 
 @pytest.fixture
-def model(admin_client, fake_llm):
+def model(admin_client, fake_llm, roles: RoleClients):
+    assert roles.workspace_id  # created first, while there is no model to choose
     agent = register(admin_client, "assistant-model")
-    assert assign(admin_client, agent).status_code == 200
+    assert use_models(roles.client("owner"), roles.workspace_id, agent).status_code == 200
     fake_llm.calls.clear()  # the connection test is not what the tests look at
     return agent
 
@@ -333,7 +334,7 @@ def test_without_an_assigned_model_the_stream_says_why(roles, fake_llm):
 
     assert final["run"]["status"] == "failed"
     assert final["run"]["error_code"] == "model_role_unassigned"
-    assert "agent role" in final["run"]["error_message"]
+    assert "no agent model" in final["run"]["error_message"]
 
 
 def test_a_provider_failure_is_shown_as_the_reason(roles, model, fake_llm):
@@ -363,12 +364,15 @@ def test_a_spent_budget_is_shown_as_the_reason(roles, model, fake_llm, admin_cli
 def test_an_internal_only_workspace_never_reaches_an_external_provider(
     roles, fake_llm, admin_client
 ):
+    assert roles.workspace_id
     local = register(admin_client, "local")  # an internal provider
-    assert assign(admin_client, local).status_code == 200
     owner = roles.client("owner")
-    assert roles.workspace_id  # created now: internal-only, as the installation's model is
-    cloud = register(admin_client, "cloud", provider=_external_provider(admin_client))
-    assert assign(admin_client, cloud).status_code == 200  # the admin moves to a cloud model
+    assert use_models(owner, roles.workspace_id, local, internal_only=True).status_code == 200
+    flagged = admin_client.put(  # the admin flags the provider external afterwards
+        f"{LLM}/providers/{local['provider_id']}",
+        json={"name": "P-local", "base_url": "http://llm.test/v1", "internal": False},
+    )
+    assert flagged.status_code == 200, flagged.text
     fake_llm.calls.clear()
 
     final = done(ask(owner, roles, conversation(owner, roles), "hi"))
@@ -549,7 +553,9 @@ def test_each_message_names_its_sender_and_replies_have_none(roles, model, fake_
 def test_a_conversation_is_not_reachable_through_another_workspace(roles, model, signed_in_client):
     owner = roles.client("owner")
     cid = conversation(owner, roles)
-    other = signed_in_client.post("/api/v1/workspaces", json={"name": "Other"}).json()["id"]
+    other = signed_in_client.post(
+        "/api/v1/workspaces", json={"name": "Other", "agent_model_id": model["id"]}
+    ).json()["id"]
 
     response = signed_in_client.get(f"/api/v1/workspaces/{other}/assistant/conversations/{cid}")
 
@@ -759,22 +765,6 @@ def test_a_message_can_pick_an_allowed_chat_model_and_the_reply_names_it(
     detail = owner.get(f"{base(roles)}/conversations/{cid}").json()
     assert detail["conversation"]["model_id"] == other["id"]
     assert [m["model"] for m in detail["messages"]] == [None, "other"]
-
-
-def test_a_model_outside_the_allowed_models_is_refused(roles, model, fake_llm, admin_client):
-    other = register(admin_client, "other", roles=("light",))
-    listed = admin_client.put(
-        f"{LLM}/workspaces/{roles.workspace_id}/allowed-models", json={"model_ids": [model["id"]]}
-    )
-    assert listed.status_code == 200
-    owner = roles.client("owner")
-    cid = conversation(owner, roles)
-
-    response = pick(owner, roles, cid, other["id"])
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "model_not_allowed"
-    assert owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"] == []
 
 
 def test_an_external_model_is_refused_for_an_internal_only_workspace(

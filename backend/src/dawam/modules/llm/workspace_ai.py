@@ -1,10 +1,13 @@
-"""A Workspace's AI settings: its agent model, the internal-only restriction and the
+"""A Workspace's AI settings: its Workspace Models, the internal-only restriction and the
 data-sharing level (spec §6.18, stories 160, 161).
 
 Only owners change them (``Action.CHANGE_AI_SETTINGS``); every change is audited. The
-restriction applies to every model role and is enforced in the gateway
-(``RoleService.metered_gateway``); the level is exposed as one ``DataSharingPolicy`` that
-other modules ask before they put data in a prompt.
+Workspace Models are one embedding model and one or more agent and light models, one of
+each the default, chosen from the models an admin enabled for each Model Role; the gateway
+resolves every call's model from them (``RoleService.gateway_for_role``). The restriction
+applies to every model role and is enforced in the gateway (``RoleService.metered_gateway``);
+the level is exposed as one ``DataSharingPolicy`` that other modules ask before they put data
+in a prompt.
 """
 
 from __future__ import annotations
@@ -24,15 +27,10 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
-from .tables import (
-    ModelRecord,
-    ProviderRecord,
-    SettingsRecord,
-    WorkspaceAiSettingsRecord,
-    WorkspaceAllowedModelRecord,
-)
+from .tables import ModelRecord, ProviderRecord, WorkspaceAiSettingsRecord, WorkspaceModelRecord
 
 AUDIT_ENTITY = "workspace_ai_settings"
+ROLES = ("agent", "light", "embedding")
 
 
 class DataSharingLevel(StrEnum):
@@ -64,27 +62,39 @@ class DataSharingPolicy:
 
 
 @dataclass(frozen=True)
+class WorkspaceModels:
+    """A Workspace's Workspace Models: the models chosen for each Model Role. Every
+    non-empty agent or light list has its default; embedding is one model or none."""
+
+    agent: tuple[uuid.UUID, ...] = ()
+    default_agent: uuid.UUID | None = None
+    light: tuple[uuid.UUID, ...] = ()
+    default_light: uuid.UUID | None = None
+    """``None``: light tasks use the default agent model."""
+    embedding: uuid.UUID | None = None
+    """``None``: document search has no embedding model, so it matches text only."""
+
+
+@dataclass(frozen=True)
 class WorkspaceAiSettings:
     workspace_id: uuid.UUID
     internal_only: bool
     data_sharing_level: DataSharingLevel
-    agent_model_id: uuid.UUID | None
-    """The Workspace's own agent model; ``None``: the installation's."""
-    light_model_id: uuid.UUID | None
-    """The Workspace's own light model; ``None``: the installation's."""
-    embedding_model_id: uuid.UUID | None
-    """The Workspace's embedding model, fixed at creation (ADR 0005); ``None``: none was
-    registered then, and indexing uses the first tested embedding model."""
+    models: WorkspaceModels
     updated_at: datetime | None
 
     @property
     def policy(self) -> DataSharingPolicy:
         return DataSharingPolicy(self.data_sharing_level)
 
+    @property
+    def embedding_model_id(self) -> uuid.UUID | None:
+        return self.models.embedding
+
 
 @dataclass(frozen=True)
 class ApprovedModel:
-    """An admin-approved agent model: registered, with the agent role, and tested."""
+    """A model an owner may choose for a role: tested and enabled for it by an admin."""
 
     id: uuid.UUID
     name: str
@@ -93,64 +103,102 @@ class ApprovedModel:
 
 
 @dataclass(frozen=True)
-class AllowedModelChoice:
+class ChosenModel:
+    """One of the Workspace's models, for display."""
+
     id: uuid.UUID
     name: str
     provider_name: str
     internal: bool
-    allowed: bool
-    """In effect: listed (or nothing is listed) and, if internal-only, internal."""
-
-
-@dataclass(frozen=True)
-class AllowedModels:
-    model_ids: list[uuid.UUID]
-    """The admin's explicit list; empty: every registered model."""
-    models: list[AllowedModelChoice]
+    is_default: bool
 
 
 @dataclass(frozen=True)
 class WorkspaceAiView:
     settings: WorkspaceAiSettings
-    approved_models: list[ApprovedModel]
-    light_models: list[ApprovedModel]
-    """The chat models an owner may choose as the light model."""
-    installation_agent_model_id: uuid.UUID | None
-    installation_light_model_id: uuid.UUID | None
-    embedding_model_name: str | None
-    """The Workspace's fixed embedding model, for display."""
-    model_names: dict[uuid.UUID, str]
-    """Names of the installation's and the Workspace's chosen models, for display."""
+    chosen: dict[str, list[ChosenModel]]
+    """The Workspace Models per role, with names."""
+    choices: dict[str, list[ApprovedModel]]
+    """Per role, every model an owner may choose (an internal-only Workspace takes only
+    the internal ones)."""
+    embedding_locked: bool
+    """The Workspace has indexed documents, so its embedding model is fixed (ADR 0005)."""
     internal_agent_available: bool
-    """The installation has an agent model on an internal provider."""
+    """The installation has a tested agent model on an internal provider."""
     banner: bool
     """Show the "not internal-only" banner: the Workspace is not restricted and the
     installation has no internal agent model to restrict it to."""
+
+
+@dataclass(frozen=True)
+class NewWorkspaceChoices:
+    internal_only: bool
+    """A new Workspace starts internal-only: only internal models are offered."""
+    choices: dict[str, list[ApprovedModel]]
+
+
+def _model_rows(
+    db: Session, workspace_id: uuid.UUID
+) -> list[tuple[WorkspaceModelRecord, ModelRecord, ProviderRecord]]:
+    rows = db.execute(
+        sa.select(WorkspaceModelRecord, ModelRecord, ProviderRecord)
+        .join(ModelRecord, ModelRecord.id == WorkspaceModelRecord.model_id)
+        .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
+        .where(WorkspaceModelRecord.workspace_id == workspace_id)
+        .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
+    )
+    return [(w, m, p) for w, m, p in rows]
+
+
+def _models(
+    rows: list[tuple[WorkspaceModelRecord, ModelRecord, ProviderRecord]],
+) -> WorkspaceModels:
+    def ids(role: str) -> tuple[uuid.UUID, ...]:
+        return tuple(w.model_id for w, _, _ in rows if w.role == role)
+
+    def default(role: str) -> uuid.UUID | None:
+        return next((w.model_id for w, _, _ in rows if w.role == role and w.is_default), None)
+
+    return WorkspaceModels(
+        agent=ids("agent"),
+        default_agent=default("agent"),
+        light=ids("light"),
+        default_light=default("light"),
+        embedding=default("embedding"),
+    )
 
 
 def load_settings(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
     """The Workspace's settings. A Workspace without a row (created before the hook was
     wired, e.g. in a bare test setup) is unrestricted at the lowest level."""
     record = db.get(WorkspaceAiSettingsRecord, workspace_id)
+    models = _models(_model_rows(db, workspace_id))
     if record is None:
-        return WorkspaceAiSettings(
-            workspace_id, False, DataSharingLevel.METADATA, None, None, None, None
-        )
+        return WorkspaceAiSettings(workspace_id, False, DataSharingLevel.METADATA, models, None)
     return WorkspaceAiSettings(
         workspace_id=record.workspace_id,
         internal_only=record.internal_only,
         data_sharing_level=DataSharingLevel(record.data_sharing_level),
-        agent_model_id=record.agent_model_id,
-        light_model_id=record.light_model_id,
-        embedding_model_id=record.embedding_model_id,
+        models=models,
         updated_at=record.updated_at,
     )
 
 
+def default_model_id(db: Session, workspace_id: uuid.UUID, role: str) -> uuid.UUID | None:
+    """The Workspace's default model for ``role``; ``None``: it has none."""
+    return db.scalar(
+        sa.select(WorkspaceModelRecord.model_id).where(
+            WorkspaceModelRecord.workspace_id == workspace_id,
+            WorkspaceModelRecord.role == role,
+            WorkspaceModelRecord.is_default.is_(True),
+        )
+    )
+
+
 def workspace_embedding_model_id(engine: sa.Engine, workspace_id: uuid.UUID) -> uuid.UUID | None:
-    """The embedding model fixed at the Workspace's creation; ``None``: it has none."""
+    """The Workspace's embedding model; ``None``: it has none."""
     with Session(engine) as db:
-        return load_settings(db, workspace_id).embedding_model_id
+        return default_model_id(db, workspace_id, "embedding")
 
 
 def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
@@ -162,140 +210,203 @@ def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
     return bool(internal)
 
 
-def _listed_model_ids(db: Session, workspace_id: uuid.UUID) -> set[uuid.UUID]:
-    return set(
-        db.scalars(
-            sa.select(WorkspaceAllowedModelRecord.model_id).where(
-                WorkspaceAllowedModelRecord.workspace_id == workspace_id
-            )
+def has_indexed_documents(db: Session, workspace_id: uuid.UUID) -> bool:
+    """Whether any of the Workspace's documents carry vectors, which pin its embedding
+    model (ADR 0005). The files module owns the chunks; this only reads them, by SQL."""
+    return bool(
+        db.scalar(
+            sa.text(
+                "SELECT EXISTS (SELECT 1 FROM document_chunks "
+                "WHERE workspace_id = :w AND embedding_model_id IS NOT NULL)"
+            ),
+            {"w": workspace_id},
         )
     )
 
 
-def allowed_model_ids(db: Session, workspace_id: uuid.UUID) -> set[uuid.UUID]:
-    """The one check for which models a Workspace may use: Allowed Models (every registered
-    model unless narrowed) combined with the internal-only flag, which drops every
-    external model whatever the list says."""
-    listed = _listed_model_ids(db, workspace_id)
-    query = sa.select(ModelRecord.id).join(
-        ProviderRecord, ProviderRecord.id == ModelRecord.provider_id
+def enabled_models(db: Session, role: str) -> list[ApprovedModel]:
+    """The models an admin enabled for ``role`` that passed "Test connection"."""
+    rows = db.execute(
+        sa.select(ModelRecord, ProviderRecord)
+        .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
+        .where(sa.literal(role) == sa.any_(ModelRecord.roles), ModelRecord.test_ok.is_(True))
+        .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
     )
-    if load_settings(db, workspace_id).internal_only:
-        query = query.where(ProviderRecord.is_internal.is_(True))
-    if listed:
-        query = query.where(ModelRecord.id.in_(listed))
-    return set(db.scalars(query))
+    return [ApprovedModel(m.id, m.name, p.name, p.is_internal) for m, p in rows]
 
 
-def model_is_listed(db: Session, workspace_id: uuid.UUID, model_id: uuid.UUID) -> bool:
-    """False only when an admin narrowed the Workspace's Allowed Models and ``model_id`` is
-    not among them. The internal-only flag is enforced separately, when a call is made."""
-    listed = _listed_model_ids(db, workspace_id)
-    return not listed or model_id in listed
-
-
-def _installation_agent(db: Session) -> uuid.UUID | None:
-    return db.scalar(sa.select(SettingsRecord.agent_model_id).where(SettingsRecord.id == 1))
-
-
-def _installation_light(db: Session) -> uuid.UUID | None:
-    return db.scalar(sa.select(SettingsRecord.light_model_id).where(SettingsRecord.id == 1))
+def _internal_agent_available(db: Session) -> bool:
+    return any(m.internal for m in enabled_models(db, "agent"))
 
 
 def _invalid(message: str, field: str, code: str) -> ApiError:
     return ApiError(422, code, message, {"field": field})
 
 
-def _installation_embedding(db: Session) -> uuid.UUID | None:
-    return db.scalar(sa.select(SettingsRecord.embedding_model_id).where(SettingsRecord.id == 1))
+@dataclass(frozen=True)
+class _Fields:
+    """The request fields errors name: creation and the settings form differ."""
+
+    agent: str
+    default_agent: str
+    light: str
+    default_light: str
+    embedding: str = "embedding_model_id"
+
+
+CREATE_FIELDS = _Fields("agent_model_id", "agent_model_id", "light_model_id", "light_model_id")
+UPDATE_FIELDS = _Fields(
+    "agent_model_ids", "default_agent_model_id", "light_model_ids", "default_light_model_id"
+)
+
+
+def _check_role(
+    db: Session, role: str, ids: tuple[uuid.UUID, ...], field: str, *, internal_only: bool
+) -> list[ApprovedModel]:
+    """Refuse a model not enabled (and tested) for ``role``, or an external one for an
+    internal-only Workspace. Returns what this Workspace may choose for the role."""
+    enabled = {m.id: m for m in enabled_models(db, role)}
+    for model_id in ids:
+        if model_id not in enabled:
+            raise _invalid(
+                f"That model is not enabled for the {role} role.", field, "invalid_model_role"
+            )
+        if internal_only and not enabled[model_id].internal:
+            raise _invalid(
+                "An internal-only Workspace uses only models on internal providers.",
+                field,
+                "model_not_allowed",
+            )
+    return [m for m in enabled.values() if m.internal or not internal_only]
+
+
+def _default(ids: tuple[uuid.UUID, ...], default: uuid.UUID | None, field: str) -> uuid.UUID | None:
+    if default is None and len(ids) == 1:
+        return ids[0]
+    if (ids and default not in ids) or (not ids and default is not None):
+        raise _invalid(
+            "Mark one of the chosen models as the default.", field, "invalid_default_model"
+        )
+    return default
+
+
+def validated_models(
+    db: Session,
+    *,
+    internal_only: bool,
+    agent: list[uuid.UUID],
+    default_agent: uuid.UUID | None,
+    light: list[uuid.UUID],
+    default_light: uuid.UUID | None,
+    embedding: uuid.UUID | None,
+    fields: _Fields,
+    embedding_required: bool,
+) -> WorkspaceModels:
+    """The one check for Workspace Models: every model enabled for its role and tested,
+    internal-only respected, one default agent model (required whenever the Workspace may
+    choose one) and one default light model when any light model is chosen."""
+    if internal_only and enabled_models(db, "agent") and not _internal_agent_available(db):
+        raise _invalid(
+            "An internal-only Workspace needs an agent model on an internal provider.",
+            "internal_only",
+            "no_internal_model",
+        )
+    agent_ids, light_ids = tuple(dict.fromkeys(agent)), tuple(dict.fromkeys(light))
+    offered_agent = _check_role(db, "agent", agent_ids, fields.agent, internal_only=internal_only)
+    if not agent_ids and offered_agent:
+        raise _invalid("Choose the default agent model.", fields.agent, "agent_model_required")
+    _check_role(db, "light", light_ids, fields.light, internal_only=internal_only)
+    offered_embedding = _check_role(
+        db,
+        "embedding",
+        (embedding,) if embedding is not None else (),
+        fields.embedding,
+        internal_only=internal_only,
+    )
+    if embedding_required and embedding is None and offered_embedding:
+        raise _invalid("Choose the embedding model.", fields.embedding, "embedding_model_required")
+    return WorkspaceModels(
+        agent=agent_ids,
+        default_agent=_default(agent_ids, default_agent, fields.default_agent),
+        light=light_ids,
+        default_light=_default(light_ids, default_light, fields.default_light),
+        embedding=embedding,
+    )
+
+
+def _store_models(db: Session, workspace_id: uuid.UUID, models: WorkspaceModels) -> None:
+    db.execute(
+        sa.delete(WorkspaceModelRecord).where(WorkspaceModelRecord.workspace_id == workspace_id)
+    )
+    rows = [
+        *((m, "agent", m == models.default_agent) for m in models.agent),
+        *((m, "light", m == models.default_light) for m in models.light),
+        *([(models.embedding, "embedding", True)] if models.embedding is not None else []),
+    ]
+    db.add_all(
+        WorkspaceModelRecord(workspace_id=workspace_id, model_id=m, role=role, is_default=d)
+        for m, role, d in rows
+    )
+    db.flush()
 
 
 def new_workspace_settings(
     db: Session, workspace_id: uuid.UUID, at: datetime
 ) -> WorkspaceAiSettingsRecord:
     """The settings a new Workspace starts with. Decided here, in code, not by a database
-    default: internal-only when the installation's agent model is internal, otherwise not
-    (the Workspace then shows a banner); the installation's embedding model, which the
-    Workspace keeps even if the installation's later changes (ADR 0005)."""
-    agent = _installation_agent(db)
+    default: internal-only when the installation has a tested internal agent model,
+    otherwise not (the Workspace then shows a banner)."""
     return WorkspaceAiSettingsRecord(
         workspace_id=workspace_id,
-        internal_only=agent is not None and model_is_internal(db, agent),
+        internal_only=_internal_agent_available(db),
         data_sharing_level=DataSharingLevel.METADATA.value,
-        agent_model_id=None,
-        light_model_id=None,
-        embedding_model_id=None,
         updated_at=at,
     )
-
-
-def _pin_default_embedding(db: Session, record: WorkspaceAiSettingsRecord) -> None:
-    """Pin the installation's embedding model, unless the Workspace's one allowed-models
-    check (internal-only included) refuses it: then the Workspace has none."""
-    db.flush()
-    default = _installation_embedding(db)
-    if default is not None and default in allowed_model_ids(db, record.workspace_id):
-        record.embedding_model_id = default
 
 
 def on_workspace_created(
     db: Session,
     workspace_id: uuid.UUID,
     at: datetime,
+    *,
     embedding_model_id: uuid.UUID | None = None,
+    agent_model_id: uuid.UUID | None = None,
+    light_model_id: uuid.UUID | None = None,
 ) -> None:
     """The ``WorkspaceCreatedHook`` the composition root sets: gives the new Workspace its
-    AI settings in the transaction that creates it. A chosen embedding model must be a
-    tested embedding model that passes the Workspace's one allowed-models check; it is
-    fixed from then on."""
+    AI settings and Workspace Models in the transaction that creates it. The default agent
+    model is required, and so is the embedding model, unless there is none the Workspace
+    could choose; the light model is optional. A refused model fails the creation."""
     record = new_workspace_settings(db, workspace_id, at)
     db.add(record)
-    _pin_default_embedding(db, record)
-    if embedding_model_id is not None:
-        model = db.get(ModelRecord, embedding_model_id)
-        if model is None or "embedding" not in model.roles or model.test_ok is not True:
-            raise _invalid(
-                "That model is not a tested embedding model.",
-                "embedding_model_id",
-                "invalid_model_role",
-            )
-        if embedding_model_id not in allowed_model_ids(db, workspace_id):
-            raise _invalid(
-                "That model is not in the Workspace's Allowed Models.",
-                "embedding_model_id",
-                "model_not_allowed",
-            )
-        record.embedding_model_id = embedding_model_id
+    db.flush()
+    models = validated_models(
+        db,
+        internal_only=record.internal_only,
+        agent=[agent_model_id] if agent_model_id else [],
+        default_agent=agent_model_id,
+        light=[light_model_id] if light_model_id else [],
+        default_light=light_model_id,
+        embedding=embedding_model_id,
+        fields=CREATE_FIELDS,
+        embedding_required=True,
+    )
+    _store_models(db, workspace_id, models)
 
 
-@dataclass(frozen=True)
-class EmbeddingChoices:
-    models: list[ApprovedModel]
-    """Tested embedding models a new Workspace may be created with."""
-    default_model_id: uuid.UUID | None
-    """The installation's embedding model: the pre-selection."""
-
-
-def embedding_choices(engine: sa.Engine) -> EmbeddingChoices:
-    """What the "New workspace" form offers. A new Workspace starts internal-only when the
-    installation's agent model is internal, so then only internal models are offered."""
+def new_workspace_choices(engine: sa.Engine) -> NewWorkspaceChoices:
+    """What the "New workspace" form offers for each role. A new Workspace starts
+    internal-only when the installation has an internal agent model, so then only
+    internal models are offered."""
     with Session(engine) as db:
-        agent = _installation_agent(db)
-        internal_only = agent is not None and model_is_internal(db, agent)
-        rows = db.execute(
-            sa.select(ModelRecord, ProviderRecord)
-            .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
-            .where(sa.literal("embedding") == sa.any_(ModelRecord.roles))
-            .where(ModelRecord.test_ok.is_(True))
-            .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
+        internal_only = _internal_agent_available(db)
+        return NewWorkspaceChoices(
+            internal_only,
+            {
+                role: [m for m in enabled_models(db, role) if m.internal or not internal_only]
+                for role in ROLES
+            },
         )
-        models = [
-            ApprovedModel(m.id, m.name, p.name, p.is_internal)
-            for m, p in rows
-            if p.is_internal or not internal_only
-        ]
-        default = _installation_embedding(db)
-        return EmbeddingChoices(models, default if default in {m.id for m in models} else None)
 
 
 class WorkspaceAiService:
@@ -314,15 +425,15 @@ class WorkspaceAiService:
         return self.settings(workspace_id).policy
 
     def agent_model_id(self, workspace_id: uuid.UUID) -> uuid.UUID | None:
-        """The model that answers by default: the Workspace's own agent model, else the
-        installation's. Authorizes nothing: callers have."""
+        """The model that answers by default: the Workspace's default agent model.
+        Authorizes nothing: callers have."""
         with Session(self._engine) as db:
-            return load_settings(db, workspace_id).agent_model_id or _installation_agent(db)
+            return default_model_id(db, workspace_id, "agent")
 
     def check_chat_model(self, workspace_id: uuid.UUID, model_id: uuid.UUID) -> None:
-        """A model a member may pick for a message: a tested chat model (never an embedding
-        model) that the Workspace may use, i.e. in its Allowed Models and, if it is
-        internal-only, internal. 422 ``invalid_model_role`` / ``model_not_allowed``."""
+        """A model a member may pick for a message: a tested chat model that the Workspace
+        may use, i.e. internal when it is internal-only. 422 ``invalid_model_role`` /
+        ``model_not_allowed``."""
         with Session(self._engine) as db:
             model = db.get(ModelRecord, model_id)
             if (
@@ -331,9 +442,10 @@ class WorkspaceAiService:
                 or model.test_ok is not True
             ):
                 raise _invalid("That is not a chat model.", "model_id", "invalid_model_role")
-            if model_id not in allowed_model_ids(db, workspace_id):
+            internal_only = load_settings(db, workspace_id).internal_only
+            if internal_only and not model_is_internal(db, model_id):
                 raise _invalid(
-                    "That model is not in the Workspace's Allowed Models.",
+                    "An internal-only Workspace uses only models on internal providers.",
                     "model_id",
                     "model_not_allowed",
                 )
@@ -360,7 +472,7 @@ class WorkspaceAiService:
         """The settings and what an owner may choose from, for any member."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            return self._view(db, load_settings(db, workspace_id))
+            return self._view(db, workspace_id)
 
     def update(
         self,
@@ -369,15 +481,15 @@ class WorkspaceAiService:
         *,
         internal_only: bool,
         data_sharing_level: DataSharingLevel,
-        agent_model_id: uuid.UUID | None,
-        light_model_id: uuid.UUID | None = None,
+        agent_model_ids: list[uuid.UUID] | None = None,
+        default_agent_model_id: uuid.UUID | None = None,
+        light_model_ids: list[uuid.UUID] | None = None,
+        default_light_model_id: uuid.UUID | None = None,
         embedding_model_id: uuid.UUID | None = None,
     ) -> WorkspaceAiView:
-        """Owners only. The agent model must be an approved agent model and the light model
-        a tested chat model, both within the Workspace's Allowed Models; an internal-only
-        Workspace must end up with an internal agent model (422 ``no_internal_model``). The
-        embedding model is fixed at creation (ADR 0005): naming a different one is refused
-        with 422 ``embedding_model_fixed``; leaving it out is fine."""
+        """Owners only, while the Workspace is active. Replaces the settings and the
+        Workspace Models (``validated_models``). The embedding model may change only while
+        the Workspace has no indexed documents (ADR 0005): 422 ``embedding_model_fixed``."""
         self._workspaces.authorize(user, Action.CHANGE_AI_SETTINGS, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = db.scalars(
@@ -389,56 +501,31 @@ class WorkspaceAiService:
             if record is None:
                 record = new_workspace_settings(db, workspace_id, now)
                 db.add(record)
-                _pin_default_embedding(db, record)
-            approved = {m.id for m in self._approved(db)}
-            if agent_model_id is not None and agent_model_id in approved - allowed_model_ids(
-                db, workspace_id
-            ):
+                db.flush()
+            current = load_settings(db, workspace_id).models
+            models = validated_models(
+                db,
+                internal_only=internal_only,
+                agent=agent_model_ids or [],
+                default_agent=default_agent_model_id,
+                light=light_model_ids or [],
+                default_light=default_light_model_id,
+                embedding=embedding_model_id,
+                fields=UPDATE_FIELDS,
+                embedding_required=False,
+            )
+            if models.embedding != current.embedding and has_indexed_documents(db, workspace_id):
                 raise _invalid(
-                    "That model is not in the Workspace's Allowed Models.",
-                    "agent_model_id",
-                    "model_not_allowed",
-                )
-            if agent_model_id is not None and agent_model_id not in approved:
-                raise _invalid(
-                    "That model is not an approved agent model.",
-                    "agent_model_id",
-                    "invalid_model_role",
-                )
-            if light_model_id is not None:
-                light = db.get(ModelRecord, light_model_id)
-                if light is None or "light" not in light.roles or light.test_ok is not True:
-                    raise _invalid(
-                        "That model is not an approved chat model.",
-                        "light_model_id",
-                        "invalid_model_role",
-                    )
-                if light_model_id not in allowed_model_ids(db, workspace_id):
-                    raise _invalid(
-                        "That model is not in the Workspace's Allowed Models.",
-                        "light_model_id",
-                        "model_not_allowed",
-                    )
-            if embedding_model_id is not None and embedding_model_id != record.embedding_model_id:
-                raise _invalid(
-                    "The Workspace's embedding model is fixed when it is created.",
+                    "The Workspace has indexed documents, so its embedding model is fixed.",
                     "embedding_model_id",
                     "embedding_model_fixed",
                 )
-            effective = agent_model_id or _installation_agent(db)
-            if internal_only and effective is not None and not model_is_internal(db, effective):
-                raise _invalid(
-                    "An internal-only Workspace needs an agent model on an internal provider.",
-                    "internal_only",
-                    "no_internal_model",
-                )
-            old = _audited(record)
+            old = _audited(record, current)
             record.internal_only = internal_only
             record.data_sharing_level = data_sharing_level.value
-            record.agent_model_id = agent_model_id
-            record.light_model_id = light_model_id
             record.updated_at = now
-            new = _audited(record)
+            _store_models(db, workspace_id, models)
+            new = _audited(record, models)
             changed = sorted(k for k in new if new[k] != old[k])
             if changed:
                 record_audit(
@@ -461,127 +548,38 @@ class WorkspaceAiService:
                     details={"changed": changed},
                     at=now,
                 )
-            db.flush()
-            return self._view(db, load_settings(db, workspace_id))
+            return self._view(db, workspace_id)
 
-    def _view(self, db: Session, settings: WorkspaceAiSettings) -> WorkspaceAiView:
-        agent = _installation_agent(db)
-        internal_available = agent is not None and model_is_internal(db, agent)
-        allowed = allowed_model_ids(db, settings.workspace_id)
-        installation_light = _installation_light(db)
-        named = {
-            i
-            for i in (
-                agent,
-                installation_light,
-                settings.agent_model_id,
-                settings.light_model_id,
-                settings.embedding_model_id,
-            )
-            if i is not None
-        }
-        names = {
-            model_id: name
-            for model_id, name in db.execute(
-                sa.select(ModelRecord.id, ModelRecord.name).where(ModelRecord.id.in_(named))
-            )
-        }
+    @staticmethod
+    def _view(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiView:
+        settings = load_settings(db, workspace_id)
+        internal_available = _internal_agent_available(db)
+        chosen: dict[str, list[ChosenModel]] = {role: [] for role in ROLES}
+        for w, m, p in _model_rows(db, workspace_id):
+            chosen[w.role].append(ChosenModel(m.id, m.name, p.name, p.is_internal, w.is_default))
         return WorkspaceAiView(
             settings=settings,
-            approved_models=[m for m in self._approved(db) if m.id in allowed],
-            light_models=[m for m in self._chat_models(db) if m.id in allowed],
-            installation_agent_model_id=agent,
-            installation_light_model_id=installation_light,
-            embedding_model_name=(
-                names.get(settings.embedding_model_id) if settings.embedding_model_id else None
-            ),
-            model_names=names,
+            chosen=chosen,
+            choices={role: enabled_models(db, role) for role in ROLES},
+            embedding_locked=has_indexed_documents(db, workspace_id),
             internal_agent_available=internal_available,
             banner=not settings.internal_only and not internal_available,
         )
 
-    def allowed_models(self, workspace_id: uuid.UUID) -> AllowedModels:
-        """The explicit list and every registered model with whether the Workspace may use
-        it. Authorizes nothing: the admin API has."""
-        with Session(self._engine) as db:
-            return self._allowed_view(db, workspace_id)
 
-    def set_allowed_models(
-        self, user: User, workspace_id: uuid.UUID, model_ids: list[uuid.UUID]
-    ) -> AllowedModels:
-        """Replace the list (empty: every registered model), audited. The admin API
-        authorizes. 422 ``invalid_model`` for an id that is not registered."""
-        wanted = set(model_ids)
-        with Session(self._engine) as db, db.begin():
-            known = set(db.scalars(sa.select(ModelRecord.id).where(ModelRecord.id.in_(wanted))))
-            if known != wanted:
-                raise _invalid("Choose registered models.", "model_ids", "invalid_model")
-            old = _listed_model_ids(db, workspace_id)
-            db.execute(
-                sa.delete(WorkspaceAllowedModelRecord).where(
-                    WorkspaceAllowedModelRecord.workspace_id == workspace_id
-                )
-            )
-            db.add_all(
-                WorkspaceAllowedModelRecord(workspace_id=workspace_id, model_id=m) for m in wanted
-            )
-            db.flush()
-            if old != wanted:
-                record_audit(
-                    db,
-                    workspace_id=workspace_id,
-                    actor_id=user.id,
-                    entity_type="workspace_allowed_models",
-                    entity_id=workspace_id,
-                    old={"model_ids": sorted(map(str, old))},
-                    new={"model_ids": sorted(map(str, wanted))},
-                    at=self._clock(),
-                )
-            return self._allowed_view(db, workspace_id)
+def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict[str, object]:
+    def ids(values: tuple[uuid.UUID, ...]) -> list[str]:
+        return sorted(map(str, values))
 
-    @staticmethod
-    def _allowed_view(db: Session, workspace_id: uuid.UUID) -> AllowedModels:
-        allowed = allowed_model_ids(db, workspace_id)
-        rows = db.execute(
-            sa.select(ModelRecord, ProviderRecord)
-            .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
-            .where(sa.func.cardinality(ModelRecord.roles) > 0)  # no role: offered nowhere
-            .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
-        )
-        return AllowedModels(
-            model_ids=sorted(_listed_model_ids(db, workspace_id), key=str),
-            models=[
-                AllowedModelChoice(m.id, m.name, p.name, p.is_internal, m.id in allowed)
-                for m, p in rows
-            ],
-        )
+    def one(value: uuid.UUID | None) -> str | None:
+        return str(value) if value else None
 
-    @staticmethod
-    def _chat_models(db: Session) -> list[ApprovedModel]:
-        rows = db.execute(
-            sa.select(ModelRecord, ProviderRecord)
-            .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
-            .where(sa.literal("light") == sa.any_(ModelRecord.roles))
-            .where(ModelRecord.test_ok.is_(True))
-            .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
-        )
-        return [ApprovedModel(m.id, m.name, p.name, p.is_internal) for m, p in rows]
-
-    @staticmethod
-    def _approved(db: Session) -> list[ApprovedModel]:
-        rows = db.execute(
-            sa.select(ModelRecord, ProviderRecord)
-            .join(ProviderRecord, ProviderRecord.id == ModelRecord.provider_id)
-            .where(sa.literal("agent") == sa.any_(ModelRecord.roles), ModelRecord.test_ok.is_(True))
-            .order_by(sa.func.lower(ProviderRecord.name), sa.func.lower(ModelRecord.name))
-        )
-        return [ApprovedModel(m.id, m.name, p.name, p.is_internal) for m, p in rows]
-
-
-def _audited(record: WorkspaceAiSettingsRecord) -> dict[str, object]:
     return {
         "internal_only": record.internal_only,
         "data_sharing_level": record.data_sharing_level,
-        "agent_model_id": str(record.agent_model_id) if record.agent_model_id else None,
-        "light_model_id": str(record.light_model_id) if record.light_model_id else None,
+        "agent_model_ids": ids(models.agent),
+        "default_agent_model_id": one(models.default_agent),
+        "light_model_ids": ids(models.light),
+        "default_light_model_id": one(models.default_light),
+        "embedding_model_id": one(models.embedding),
     }

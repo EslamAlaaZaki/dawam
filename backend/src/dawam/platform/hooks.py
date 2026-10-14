@@ -60,12 +60,15 @@ class WorkspaceCreatedHook(Protocol):
         db: Session,
         workspace_id: uuid.UUID,
         at: datetime,
+        *,
         embedding_model_id: uuid.UUID | None = None,
+        agent_model_id: uuid.UUID | None = None,
+        light_model_id: uuid.UUID | None = None,
     ) -> None:
         """Called inside the transaction that creates the Workspace (after its row and its
-        owner exist), so what the hook adds is kept only if the Workspace is.
-        ``embedding_model_id`` is the creator's choice of embedding model (``None``: the
-        installation's); a hook that refuses it fails the creation."""
+        owner exist), so what the hook adds is kept only if the Workspace is. The model ids
+        are the creator's choice of embedding, default agent and light model; a hook that
+        refuses them fails the creation."""
         ...
 
 

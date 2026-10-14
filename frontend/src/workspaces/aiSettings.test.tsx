@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
@@ -28,7 +28,15 @@ const ADA: Me = {
 const BIG = "aaaaaaaa-0000-4000-8000-000000000001";
 const SMALL = "aaaaaaaa-0000-4000-8000-000000000002";
 const EMBED = "aaaaaaaa-0000-4000-8000-000000000003";
-const EMBED_LESS = { internal: false, provider_name: "Cloud" };
+const LOCAL = "aaaaaaaa-0000-4000-8000-000000000004";
+
+function choice(id: string, name: string, internal = false) {
+  return { id, name, provider_name: internal ? "Local" : "Cloud", internal };
+}
+
+function chosen(id: string, name: string, isDefault: boolean) {
+  return { ...choice(id, name), is_default: isDefault };
+}
 
 function workspace(role: WorkspaceRole): Workspace {
   return {
@@ -50,47 +58,43 @@ function workspace(role: WorkspaceRole): Workspace {
   };
 }
 
-/** The installation uses "Big" for the agent and "Small" for light tasks. */
+/** The Workspace uses Big (default) and Small as agent models, Small for light tasks. */
 function settings(
-  own: { agent?: string; light?: string } = {},
+  over: Partial<WorkspaceAiSettings> = {},
 ): WorkspaceAiSettings {
-  const name = (id: string) => (id === BIG ? "Big" : "Small");
-  const agent = own.agent ?? BIG;
-  const light = own.light ?? SMALL;
   return {
     internal_only: false,
     data_sharing_level: "metadata",
-    agent_model_id: own.agent ?? null,
-    light_model_id: own.light ?? null,
-    embedding_model_id: EMBED,
-    embedding_model_name: "Embed-1",
-    effective_agent_model_id: agent,
-    effective_agent_model_name: name(agent),
-    effective_light_model_id: light,
-    effective_light_model_name: name(light),
-    approved_models: [
-      { id: BIG, name: "Big", ...EMBED_LESS },
-      { id: SMALL, name: "Small", ...EMBED_LESS },
-    ],
-    light_models: [
-      { id: BIG, name: "Big", ...EMBED_LESS },
-      { id: SMALL, name: "Small", ...EMBED_LESS },
-    ],
-    internal_agent_available: false,
+    agent_models: [chosen(BIG, "Big", true), chosen(SMALL, "Small", false)],
+    light_models: [chosen(SMALL, "Small", true)],
+    embedding_model: chosen(EMBED, "Embed-1", true),
+    embedding_locked: false,
+    choices: {
+      agent: [
+        choice(BIG, "Big"),
+        choice(LOCAL, "Local", true),
+        choice(SMALL, "Small"),
+      ],
+      light: [choice(SMALL, "Small")],
+      embedding: [choice(EMBED, "Embed-1")],
+    },
+    internal_agent_available: true,
     banner: false,
+    ...over,
   };
 }
 
 function backend(
   role: WorkspaceRole,
   handle: (r: ApiRequest) => Response | undefined,
+  status: Workspace["status"] = "active",
 ) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
       case "GET /api/v1/me":
         return json(ADA);
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
-        return json(workspace(role));
+        return json({ ...workspace(role), status });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
         return json({
           source_analysis: [],
@@ -114,62 +118,54 @@ beforeEach(() => {
 afterEach(() => clearCookie());
 
 describe("the Workspace AI settings card", () => {
-  it("shows the effective model for each role, read-only for non-owners", async () => {
+  it("shows the Workspace Models read-only to non-owners", async () => {
     renderApp(
       backend("viewer", (r) =>
-        r.method === "GET" && r.path === AI
-          ? json(settings({ light: BIG }))
-          : undefined,
-      ),
-      PATH,
-    );
-
-    await openSettings("AI");
-    const card = await screen.findByRole("region", { name: "AI settings" });
-    expect(card).toHaveTextContent("Agent modelBig (installation default)");
-    expect(card).toHaveTextContent("Light modelBig");
-    expect(card).toHaveTextContent(
-      "Embedding modelEmbed-1 (fixed at creation)",
-    );
-    expect(card).not.toHaveTextContent("Light modelBig (installation default)");
-    expect(
-      within(card).queryByRole("button", { name: "Save" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows the embedding model read-only, for owners too", async () => {
-    renderApp(
-      backend("owner", (r) =>
         r.method === "GET" && r.path === AI ? json(settings()) : undefined,
       ),
       PATH,
     );
 
     await openSettings("AI");
-    const card = await screen.findByRole("form", { name: "AI settings" });
-    expect(card).toHaveTextContent(
-      "Embedding modelEmbed-1 (fixed at creation)",
-    );
+    const card = await screen.findByRole("region", { name: "AI settings" });
+    expect(card).toHaveTextContent("Agent modelsBig (default), Small");
+    expect(card).toHaveTextContent("Light modelsSmall (default)");
+    expect(card).toHaveTextContent("Embedding modelEmbed-1");
+    expect(card).toHaveTextContent("Only owners can choose the models.");
     expect(
-      within(card).queryByLabelText("Embedding model"),
+      within(card).queryByRole("button", { name: "Save" }),
     ).not.toBeInTheDocument();
   });
 
-  it("lets an owner choose the light model and clear the agent model", async () => {
-    let current = settings({ agent: BIG });
+  it("is read-only in an archived Workspace, for owners too", async () => {
+    renderApp(
+      backend(
+        "owner",
+        (r) =>
+          r.method === "GET" && r.path === AI ? json(settings()) : undefined,
+        "archived",
+      ),
+      PATH,
+    );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("region", { name: "AI settings" });
+    expect(card).toHaveTextContent("archived");
+    expect(within(card).queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("lets an owner choose agent and light models with a default each, and the embedding model", async () => {
+    let current = settings();
     const requests = renderApp(
       backend("owner", (r) => {
         if (r.path !== AI) {
           return undefined;
         }
         if (r.method === "PUT") {
-          const body = r.body as {
-            agent_model_id: string | null;
-            light_model_id: string | null;
-          };
           current = settings({
-            agent: body.agent_model_id ?? undefined,
-            light: body.light_model_id ?? undefined,
+            agent_models: [chosen(SMALL, "Small", true)],
+            light_models: [],
+            embedding_model: null,
           });
         }
         return json(current);
@@ -179,25 +175,79 @@ describe("the Workspace AI settings card", () => {
 
     await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
-    fireEvent.change(within(card).getByLabelText("Agent model"), {
+    const agents = within(card).getByRole("group", { name: "Agent models" });
+    expect(
+      within(agents).getByRole("radio", { name: "Default agent model: Big" }),
+    ).toBeChecked();
+    fireEvent.click(
+      within(agents).getByRole("radio", { name: "Default agent model: Small" }),
+    );
+    fireEvent.click(within(agents).getByRole("checkbox", { name: /^Big/ }));
+    const lights = within(card).getByRole("group", { name: "Light models" });
+    fireEvent.click(within(lights).getByRole("checkbox", { name: /^Small/ }));
+    expect(lights).toHaveTextContent("light tasks use the default agent model");
+    fireEvent.change(within(card).getByLabelText("Embedding model"), {
       target: { value: "" },
-    });
-    fireEvent.change(within(card).getByLabelText("Light model"), {
-      target: { value: BIG },
     });
     fireEvent.click(within(card).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
-    const put = requests.find((r) => r.method === "PUT");
-    expect(put?.body).toMatchObject({
-      agent_model_id: null,
-      light_model_id: BIG,
+    expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
+      internal_only: false,
+      data_sharing_level: "metadata",
+      agent_model_ids: [SMALL],
+      default_agent_model_id: SMALL,
+      light_model_ids: [],
+      default_light_model_id: null,
+      embedding_model_id: null,
     });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("form", { name: "AI settings" }),
-      ).toHaveTextContent("Agent modelBig (installation default)"),
+  });
+
+  it("offers an internal-only Workspace internal models only", async () => {
+    renderApp(
+      backend("owner", (r) =>
+        r.method === "GET" && r.path === AI
+          ? json(
+              settings({
+                internal_only: true,
+                agent_models: [
+                  { ...chosen(LOCAL, "Local", true), internal: true },
+                ],
+                light_models: [],
+              }),
+            )
+          : undefined,
+      ),
+      PATH,
     );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    const agents = within(card).getByRole("group", { name: "Agent models" });
+    expect(
+      within(agents)
+        .getAllByRole("checkbox")
+        .map((c) => c.parentElement?.textContent),
+    ).toEqual(["Local (Local)"]);
+    expect(card).toHaveTextContent("only internal models are offered");
+  });
+
+  it("keeps the embedding model fixed once documents are indexed", async () => {
+    renderApp(
+      backend("owner", (r) =>
+        r.method === "GET" && r.path === AI
+          ? json(settings({ embedding_locked: true }))
+          : undefined,
+      ),
+      PATH,
+    );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    const picker = within(card).getByLabelText("Embedding model");
+    expect(picker).toBeDisabled();
+    expect(picker).toHaveValue(EMBED);
+    expect(card).toHaveTextContent("this Workspace has indexed documents");
   });
 
   it("shows why a choice was refused", async () => {
@@ -210,7 +260,7 @@ describe("the Workspace AI settings card", () => {
           ? apiError(
               422,
               "model_not_allowed",
-              "That model is not in the Workspace's Allowed Models.",
+              "An internal-only Workspace uses only models on internal providers.",
             )
           : json(settings());
       }),
@@ -219,31 +269,10 @@ describe("the Workspace AI settings card", () => {
 
     await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
-    fireEvent.change(within(card).getByLabelText("Light model"), {
-      target: { value: BIG },
-    });
     fireEvent.click(within(card).getByRole("button", { name: "Save" }));
 
     expect(
-      await within(card).findByText(/not in the Workspace's Allowed Models/),
+      await within(card).findByText(/only models on internal providers/),
     ).toBeInTheDocument();
-  });
-
-  it("keeps a saved model that is no longer allowed selectable", async () => {
-    const stale = { ...settings({ light: BIG }), light_models: [] };
-    renderApp(
-      backend("owner", (r) =>
-        r.method === "GET" && r.path === AI ? json(stale) : undefined,
-      ),
-      PATH,
-    );
-
-    await openSettings("AI");
-    const card = await screen.findByRole("form", { name: "AI settings" });
-    const light = within(card).getByLabelText(
-      "Light model",
-    ) as HTMLSelectElement;
-    expect(light.value).toBe(BIG);
-    expect(light).toHaveTextContent("Big (no longer allowed)");
   });
 });

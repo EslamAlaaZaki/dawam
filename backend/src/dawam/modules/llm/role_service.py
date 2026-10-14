@@ -2,8 +2,9 @@
 
 Authorization is the caller's job (the router restricts the admin endpoints to admins);
 the service trusts its caller. Every model call made for a feature goes through
-``gateway_for_role``: the returned ``MeteredGateway`` checks the installation's and the
-Workspace's monthly budgets before each call and records the tokens the call used.
+``gateway_for_role``, which resolves the model from the Workspace's Workspace Models: the
+returned ``MeteredGateway`` checks the installation's and the Workspace's monthly budgets
+before each call and records the tokens the call used.
 """
 
 from __future__ import annotations
@@ -34,7 +35,6 @@ from .gateway import (
     _message_text,
     estimate_tokens,
 )
-from .internal import reindex
 from .service import ProviderService
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
@@ -43,21 +43,9 @@ from .tables import (
     UsageRecord,
     WorkspaceBudgetRecord,
 )
-from .workspace_ai import load_settings, model_is_internal, model_is_listed
+from .workspace_ai import default_model_id, load_settings, model_is_internal
 
 MAX_BUDGET = 10**15
-
-
-@dataclass(frozen=True)
-class RoleAssignments:
-    agent_model_id: uuid.UUID | None
-    light_model_id: uuid.UUID | None
-    embedding_model_id: uuid.UUID | None
-    reindex_needed: bool
-    """True after the embedding model or its vector dimension changed: documents must be
-    indexed again (the re-index job comes with document search)."""
-    reindex_reason: str | None
-    reindex_flagged_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -249,110 +237,30 @@ class RoleService:
         self._providers = providers
         self._clock = clock
 
-    # -- roles -----------------------------------------------------------------------
-
-    def assignments(self) -> RoleAssignments:
-        with Session(self._engine) as db:
-            return _assignments(self._settings(db))
-
-    def assign_roles(
-        self,
-        *,
-        agent_model_id: uuid.UUID,
-        light_model_id: uuid.UUID | None,
-        embedding_model_id: uuid.UUID | None,
-    ) -> RoleAssignments:
-        """Replace the role assignments. The agent role is required; every model must be
-        registered and have passed "Test connection"; chat roles take chat models and
-        the embedding role an embedding model. Switching the embedding model flags that
-        re-indexing is needed."""
-        with Session(self._engine) as db, db.begin():
-            settings = self._settings(db, lock=True)
-            for role, model_id in (
-                ("agent", agent_model_id),
-                ("light", light_model_id),
-                ("embedding", embedding_model_id),
-            ):
-                if model_id is not None:
-                    self._check_assignable(db, role, model_id)
-            now = self._clock()
-            settings.agent_model_id = agent_model_id
-            settings.light_model_id = light_model_id
-            dimension = None
-            if embedding_model_id is not None:
-                chosen = db.get(ModelRecord, embedding_model_id)
-                if chosen is None:
-                    raise _invalid("That model is not registered.", "embedding_model_id")
-                dimension = chosen.embedding_dimension
-            reindex.note_assigned(settings, embedding_model_id, dimension, now)
-            settings.updated_at = now
-            return _assignments(settings)
-
-    def mark_reindexed(self) -> None:
-        """The re-index job finished: the flag is cleared (for document search)."""
-        with Session(self._engine) as db, db.begin():
-            settings = self._settings(db, lock=True)
-            settings.reindex_needed = False
-            settings.reindex_reason = None
-            settings.reindex_flagged_at = None
-
     # -- using a role ----------------------------------------------------------------
 
-    def model_for_role(self, role: str, *, light_allowed: bool = True) -> tuple[uuid.UUID, str]:
-        """The model that serves ``role`` and the role it is metered under. ``light``
-        falls back to the agent model when none is assigned or ``light_allowed`` is
-        false (e.g. the Workspace is internal-only and the light model is external)."""
-        with Session(self._engine) as db:
-            settings = self._settings(db)
-            model_id = {
-                "agent": settings.agent_model_id,
-                "light": settings.light_model_id,
-                "embedding": settings.embedding_model_id,
-            }.get(role)
-            if role == "light" and (model_id is None or not light_allowed):
-                role, model_id = "agent", settings.agent_model_id
-            if model_id is None:
-                raise ApiError(
-                    409,
-                    "model_role_unassigned",
-                    f"No model is assigned to the {role} role. An admin sets it in the "
-                    "AI settings.",
-                    {"role": role},
-                )
-            return model_id, role
-
     def gateway_for_role(
-        self,
-        role: str,
-        *,
-        workspace_id: uuid.UUID | None = None,
-        user_id: uuid.UUID | None = None,
-        light_allowed: bool = True,
+        self, role: str, *, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> MeteredGateway:
-        """The gateway a feature calls for ``role``. With a Workspace, its settings apply:
-        its own agent and light models (when it chose them), and for an internal-only Workspace the
-        ``light`` role falls back to the agent model unless the light model is internal.
-        Whatever the role, an external model is refused when the call is made."""
-        override: uuid.UUID | None = None
-        light_override: uuid.UUID | None = None
-        if workspace_id is not None:
-            with Session(self._engine) as db:
-                workspace = load_settings(db, workspace_id)
-                override = workspace.agent_model_id
-                if role == "light":
-                    light_override = workspace.light_model_id
-                    light = light_override or self._settings(db).light_model_id
-                    if workspace.internal_only:
-                        light_allowed = (
-                            light_allowed and light is not None and model_is_internal(db, light)
-                        )
-        if light_override is not None and light_allowed:
-            return self.metered_gateway(
-                light_override, "light", workspace_id=workspace_id, user_id=user_id
+        """The gateway a feature calls for ``role``, resolved from the Workspace's
+        Workspace Models: ``agent`` its default agent model, ``light`` its default light
+        model (else, metered as ``agent``, its default agent model) and ``embedding`` its
+        embedding model. Every call is made for a Workspace; nothing falls back to an
+        installation-wide model. 409 ``model_role_unassigned`` when the Workspace has none.
+        Whatever the role, an external model is refused for an internal-only Workspace when
+        the call is made."""
+        with Session(self._engine) as db:
+            model_id = default_model_id(db, workspace_id, role)
+            if role == "light" and model_id is None:
+                role, model_id = "agent", default_model_id(db, workspace_id, "agent")
+        if model_id is None:
+            raise ApiError(
+                409,
+                "model_role_unassigned",
+                f"This Workspace has no {role} model. An owner chooses it in the "
+                "Workspace's AI settings.",
+                {"role": role},
             )
-        model_id, role = self.model_for_role(role, light_allowed=light_allowed)
-        if role == "agent" and override is not None:
-            model_id = override
         return self.metered_gateway(model_id, role, workspace_id=workspace_id, user_id=user_id)
 
     def metered_gateway(
@@ -367,18 +275,6 @@ class RoleService:
         internal-only Workspace its calls are refused when the model's provider is external."""
         with Session(self._engine) as db:
             name = db.scalar(sa.select(ModelRecord.name).where(ModelRecord.id == model_id))
-            if (
-                workspace_id is not None
-                and role != "embedding"
-                and not model_is_listed(db, workspace_id, model_id)
-            ):
-                raise ApiError(
-                    409,
-                    "model_not_allowed",
-                    "This model is not in the Workspace's Allowed Models. An admin can "
-                    "change them.",
-                    {"role": role, "model": name or ""},
-                )
             refuse = (
                 workspace_id is not None
                 and load_settings(db, workspace_id).internal_only
@@ -516,28 +412,13 @@ class RoleService:
         if record is None:
             db.execute(
                 sa.text(
-                    "INSERT INTO llm_settings (id, reindex_needed, updated_at) "
-                    "VALUES (1, false, :now) ON CONFLICT (id) DO NOTHING"
+                    "INSERT INTO llm_settings (id, updated_at) "
+                    "VALUES (1, :now) ON CONFLICT (id) DO NOTHING"
                 ),
                 {"now": self._clock()},
             )
             record = db.scalars(query.with_for_update() if lock else query).one()
         return record
-
-    @staticmethod
-    def _check_assignable(db: Session, role: str, model_id: uuid.UUID) -> None:
-        model = db.get(ModelRecord, model_id)
-        if model is None:
-            raise _invalid("That model is not registered.", f"{role}_model_id")
-        if role not in model.roles:
-            raise _invalid(f"That model does not have the {role} role.", f"{role}_model_id")
-        if model.test_ok is not True:
-            raise _invalid(
-                'Run "Test connection" on the model first: only a model that passed can '
-                "be assigned.",
-                f"{role}_model_id",
-                "model_not_tested",
-            )
 
     @staticmethod
     def _used(db: Session, start: datetime, end: datetime, workspace_id: uuid.UUID | None) -> int:
@@ -588,15 +469,4 @@ def _totals_query() -> sa.Select[Any]:
         sa.func.coalesce(sa.func.sum(UsageRecord.completion_tokens), 0).label("completion"),
         sa.func.count(UsageRecord.id).label("calls"),
         sa.func.count(UsageRecord.id).filter(UsageRecord.estimated).label("estimated"),
-    )
-
-
-def _assignments(settings: SettingsRecord) -> RoleAssignments:
-    return RoleAssignments(
-        agent_model_id=settings.agent_model_id,
-        light_model_id=settings.light_model_id,
-        embedding_model_id=settings.embedding_model_id,
-        reindex_needed=settings.reindex_needed,
-        reindex_reason=settings.reindex_reason,
-        reindex_flagged_at=settings.reindex_flagged_at,
     )

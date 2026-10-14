@@ -2465,9 +2465,10 @@ export interface paths {
         put?: never;
         /**
          * Create Workspace
-         * @description Create a Workspace; you become its owner. 422 `invalid_model_role` for a model that is
-         *     not a tested embedding model; 422 `model_not_allowed` for one the internal-only setting
-         *     refuses.
+         * @description Create a Workspace with its Workspace Models; you become its owner. 422
+         *     `invalid_model_role` for a model not enabled (and tested) for its role; 422
+         *     `model_not_allowed` for an external model when the Workspace starts internal-only; 422
+         *     `agent_model_required` / `embedding_model_required` when one could be chosen but is not.
          */
         post: operations["createWorkspace"];
         delete?: never;
@@ -3680,8 +3681,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Model
-         * @description Remove an unused model (admins only). 409 `model_in_use` when a role or a Workspace
-         *     still uses it: remove it with `POST /models/{id}/removal` and a replacement.
+         * @description Remove an unused model (admins only). 409 `model_in_use` when a Workspace still uses
+         *     it: remove it with `POST /models/{id}/removal` and a replacement.
          */
         delete: operations["deleteLlmModel"];
         options?: never;
@@ -3702,7 +3703,7 @@ export interface paths {
          * @description Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
          *     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
          *     provider's error when the model cannot embed. 409 `model_role_in_use` when a role being
-         *     removed is the installation's default or a Workspace's own choice.
+         *     removed is one of a Workspace's models.
          */
         put: operations["setLlmModelRoles"];
         post?: never;
@@ -3743,8 +3744,8 @@ export interface paths {
         put?: never;
         /**
          * Remove Model In Use
-         * @description Remove a model with one replacement per role it fills, applied to the installation
-         *     and every affected Workspace atomically (admins only). 422 `replacement_required`,
+         * @description Remove a model with one replacement per role it fills, applied to every affected
+         *     Workspace atomically (admins only). 422 `replacement_required`,
          *     409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
          *     (naming the Workspaces whose documents are indexed with it).
          */
@@ -3792,32 +3793,6 @@ export interface paths {
          */
         get: operations["getLlmSetup"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/llm/roles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Roles
-         * @description Which model fills each role, and whether re-indexing is needed (admins only).
-         */
-        get: operations["getLlmRoles"];
-        /**
-         * Set Roles
-         * @description Assign models to the roles (admins only). The agent role is required; every model
-         *     must be registered and have passed "Test connection". Switching the embedding model
-         *     sets `reindex_needed`. 422 `invalid_model_role` or `model_not_tested`.
-         */
-        put: operations["setLlmRoles"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3912,32 +3887,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/llm/workspaces/{workspace_id}/allowed-models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Allowed Models
-         * @description A Workspace's Allowed Models and every registered model with whether it may use it
-         *     (admins only).
-         */
-        get: operations["getAllowedModels"];
-        /**
-         * Set Allowed Models
-         * @description Replace a Workspace's Allowed Models (admins only; audited). An empty list allows
-         *     every registered model. 422 `invalid_model` for an id that is not registered.
-         */
-        put: operations["setAllowedModels"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
         parameters: {
             query?: never;
@@ -3952,11 +3901,14 @@ export interface paths {
         get: operations["getWorkspaceAiSettings"];
         /**
          * Set Ai Settings
-         * @description Replace the settings (owners only; audited). 422 `invalid_model_role` for a model
-         *     that is not an approved agent model (or a light model that is not a tested chat model);
-         *     422 `model_not_allowed` for a model outside the Workspace's Allowed Models;
-         *     422 `embedding_model_fixed` for a different embedding model (it cannot change);
-         *     422 `no_internal_model` when internal-only has no internal agent model to use.
+         * @description Replace the settings and the Workspace Models (owners of an active Workspace; audited);
+         *     model fields left out keep their current value.
+         *     422 `invalid_model_role` for a model not enabled (and tested) for its role;
+         *     422 `model_not_allowed` for an external model in an internal-only Workspace;
+         *     422 `no_internal_model` when internal-only has no internal agent model to use;
+         *     422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the
+         *     default is not one of the chosen models; 422 `embedding_model_fixed` for a different
+         *     embedding model once documents are indexed.
          */
         put: operations["setWorkspaceAiSettings"];
         post?: never;
@@ -3966,7 +3918,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/ai/embedding-models": {
+    "/api/v1/ai/new-workspace-models": {
         parameters: {
             query?: never;
             header?: never;
@@ -3974,11 +3926,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Embedding Models
-         * @description The embedding models the "New workspace" form offers, and the installation's default
-         *     (any signed-in user). A Workspace keeps its choice for good.
+         * List New Workspace Models
+         * @description The models the "New workspace" form offers for each role (any signed-in user).
          */
-        get: operations["listEmbeddingModels"];
+        get: operations["listNewWorkspaceModels"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4451,46 +4402,6 @@ export interface components {
              */
             items: components["schemas"]["AiEvaluation"][];
         };
-        /** AllowedModelChoice */
-        AllowedModelChoice: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Provider Name */
-            provider_name: string;
-            /** Internal */
-            internal: boolean;
-            /**
-             * Allowed
-             * @description The Workspace may use it: listed (or nothing is listed) and, when the Workspace is internal-only, internal.
-             */
-            allowed: boolean;
-        };
-        /** AllowedModels */
-        AllowedModels: {
-            /**
-             * Model Ids
-             * @description The admin's list of allowed model ids; empty: every registered model.
-             */
-            model_ids: string[];
-            /**
-             * Models
-             * @description Every registered model.
-             */
-            models: components["schemas"]["AllowedModelChoice"][];
-        };
-        /** AllowedModelsRequest */
-        AllowedModelsRequest: {
-            /**
-             * Model Ids
-             * @description Registered model ids; empty: every registered model is allowed.
-             */
-            model_ids: string[];
-        };
         /** ApplyResult */
         ApplyResult: {
             change_set: components["schemas"]["ChangeSetDetail"];
@@ -4514,23 +4425,6 @@ export interface components {
              * @description Whoever approves a Layer must not be its last editor.
              */
             require_distinct_approver: boolean;
-        };
-        /** ApprovedAgentModel */
-        ApprovedAgentModel: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Provider Name */
-            provider_name: string;
-            /**
-             * Internal
-             * @description True when the provider is inside your infrastructure.
-             */
-            internal: boolean;
         };
         /** AuditEntry */
         AuditEntry: {
@@ -5570,9 +5464,19 @@ export interface components {
             domain: string;
             /**
              * Embedding Model Id
-             * @description The Workspace's embedding model, fixed from now on: a tested embedding model that passes the internal-only check. Null: the installation's.
+             * @description The Workspace's embedding model: a model enabled for the embedding role that passes the internal-only check. Null only when there is none to choose.
              */
             embedding_model_id?: string | null;
+            /**
+             * Agent Model Id
+             * @description The Workspace's default agent model: a model enabled for the agent role that passes the internal-only check. Null only when there is none to choose.
+             */
+            agent_model_id?: string | null;
+            /**
+             * Light Model Id
+             * @description The Workspace's default light model; optional.
+             */
+            light_model_id?: string | null;
         };
         /** CustomPiiRule */
         CustomPiiRule: {
@@ -6076,19 +5980,6 @@ export interface components {
             defaults: {
                 [key: string]: string | number | boolean | null;
             };
-        };
-        /** EmbeddingChoicesOut */
-        EmbeddingChoicesOut: {
-            /**
-             * Models
-             * @description Tested embedding models a new Workspace may be created with.
-             */
-            models: components["schemas"]["ApprovedAgentModel"][];
-            /**
-             * Default Model Id
-             * @description The installation's embedding model: pre-select it.
-             */
-            default_model_id: string | null;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -7039,7 +6930,7 @@ export interface components {
             embedding_model_id?: string | null;
             /**
              * Workspace Replacements
-             * @description Per-Workspace replacements where the one above is not allowed.
+             * @description Per-Workspace replacements where the one above is not allowed (an internal-only Workspace takes only internal models).
              */
             workspace_replacements?: components["schemas"]["LlmWorkspaceReplacement"][];
         };
@@ -7075,11 +6966,9 @@ export interface components {
             in_use: boolean;
             /**
              * Roles
-             * @description Every role the model fills, anywhere.
+             * @description Every role the model fills, in any Workspace.
              */
             roles: ("agent" | "light" | "embedding")[];
-            /** Installation Roles */
-            installation_roles: ("agent" | "light" | "embedding")[];
             /** Workspaces */
             workspaces: components["schemas"]["LlmModelUsageWorkspace"][];
             /**
@@ -7196,42 +7085,6 @@ export interface components {
              * @default 60
              */
             timeout_seconds: number;
-        };
-        /** LlmRoles */
-        LlmRoles: {
-            /**
-             * Agent Model Id
-             * @description Required for AI to work; null only until an admin assigns one.
-             */
-            agent_model_id: string | null;
-            /**
-             * Light Model Id
-             * @description Null: light tasks (titles, short summaries) use the agent model.
-             */
-            light_model_id: string | null;
-            /** Embedding Model Id */
-            embedding_model_id: string | null;
-            /**
-             * Reindex Needed
-             * @description True after the embedding model or its vector dimension changed: documents must be indexed again.
-             */
-            reindex_needed: boolean;
-            /** Reindex Reason */
-            reindex_reason: ("embedding_model_changed" | "embedding_dimension_changed") | null;
-            /** Reindex Flagged At */
-            reindex_flagged_at: string | null;
-        };
-        /** LlmRolesRequest */
-        LlmRolesRequest: {
-            /**
-             * Agent Model Id
-             * Format: uuid
-             */
-            agent_model_id: string;
-            /** Light Model Id */
-            light_model_id?: string | null;
-            /** Embedding Model Id */
-            embedding_model_id?: string | null;
         };
         /** LlmSetupStatus */
         LlmSetupStatus: {
@@ -7631,6 +7484,32 @@ export interface components {
              */
             model: string | null;
         };
+        /** ModelChoice */
+        ModelChoice: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider Name */
+            provider_name: string;
+            /**
+             * Internal
+             * @description True when the provider is inside your infrastructure.
+             */
+            internal: boolean;
+        };
+        /** ModelChoices */
+        ModelChoices: {
+            /** Agent */
+            agent: components["schemas"]["ModelChoice"][];
+            /** Light */
+            light: components["schemas"]["ModelChoice"][];
+            /** Embedding */
+            embedding: components["schemas"]["ModelChoice"][];
+        };
         /** MoveLayerRequest */
         MoveLayerRequest: {
             /**
@@ -7690,6 +7569,16 @@ export interface components {
              * @description The prefix, or the case style, the name should follow.
              */
             expected: string;
+        };
+        /** NewWorkspaceModels */
+        NewWorkspaceModels: {
+            /**
+             * Internal Only
+             * @description A new Workspace starts internal-only, so only internal models are offered.
+             */
+            internal_only: boolean;
+            /** @description Per role, the models a new Workspace may be created with. No embedding model to offer: the Workspace is created without one and document search matches text only until an owner sets it. */
+            choices: components["schemas"]["ModelChoices"];
         };
         /** NodeLineage */
         NodeLineage: {
@@ -10334,49 +10223,27 @@ export interface components {
             /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
             data_sharing_level: components["schemas"]["DataSharingLevel"];
             /**
-             * Agent Model Id
-             * @description The Workspace's own agent model; null: the installation's.
+             * Agent Models
+             * @description The Workspace's agent models; the default answers unless a message names another.
              */
-            agent_model_id: string | null;
-            /**
-             * Light Model Id
-             * @description The Workspace's own light model; null: the installation's.
-             */
-            light_model_id: string | null;
-            /**
-             * Embedding Model Id
-             * @description The Workspace's embedding model, chosen at creation and fixed (read-only); null: none was registered then.
-             */
-            embedding_model_id: string | null;
-            /** Embedding Model Name */
-            embedding_model_name: string | null;
-            /**
-             * Effective Agent Model Id
-             * @description The agent model in use: the Workspace's, else the installation's.
-             */
-            effective_agent_model_id: string | null;
-            /** Effective Agent Model Name */
-            effective_agent_model_name: string | null;
-            /**
-             * Effective Light Model Id
-             * @description The light model in use: the Workspace's, else the installation's; null: light tasks use the agent model.
-             */
-            effective_light_model_id: string | null;
-            /** Effective Light Model Name */
-            effective_light_model_name: string | null;
+            agent_models: components["schemas"]["WorkspaceModel"][];
             /**
              * Light Models
-             * @description The chat models an owner may choose as the light model.
+             * @description The Workspace's light models; none: light tasks use the default agent model.
              */
-            light_models: components["schemas"]["ApprovedAgentModel"][];
+            light_models: components["schemas"]["WorkspaceModel"][];
+            /** @description The Workspace's embedding model; null: document search matches text only. */
+            embedding_model: components["schemas"]["WorkspaceModel"] | null;
             /**
-             * Approved Models
-             * @description The admin-approved agent models an owner may choose from.
+             * Embedding Locked
+             * @description The Workspace has indexed documents, so its embedding model is fixed.
              */
-            approved_models: components["schemas"]["ApprovedAgentModel"][];
+            embedding_locked: boolean;
+            /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
+            choices: components["schemas"]["ModelChoices"];
             /**
              * Internal Agent Available
-             * @description The installation has an agent model on an internal provider.
+             * @description The installation has a tested agent model on an internal provider.
              */
             internal_agent_available: boolean;
             /**
@@ -10385,24 +10252,37 @@ export interface components {
              */
             banner: boolean;
         };
-        /** WorkspaceAiSettingsRequest */
+        /**
+         * WorkspaceAiSettingsRequest
+         * @description Model fields left out keep their current value.
+         */
         WorkspaceAiSettingsRequest: {
             /** Internal Only */
             internal_only: boolean;
             data_sharing_level: components["schemas"]["DataSharingLevel"];
             /**
-             * Agent Model Id
-             * @description An approved agent model; null: use the installation's.
+             * Agent Model Ids
+             * @description Models enabled for the agent role; required when there is any to choose.
              */
-            agent_model_id?: string | null;
+            agent_model_ids?: string[];
             /**
-             * Light Model Id
-             * @description A tested chat model; null: use the installation's.
+             * Default Agent Model Id
+             * @description One of `agent_model_ids`; optional when there is only one.
              */
-            light_model_id?: string | null;
+            default_agent_model_id?: string | null;
+            /**
+             * Light Model Ids
+             * @description Models enabled for the light role; optional.
+             */
+            light_model_ids?: string[];
+            /**
+             * Default Light Model Id
+             * @description One of `light_model_ids`; optional when there is only one.
+             */
+            default_light_model_id?: string | null;
             /**
              * Embedding Model Id
-             * @description Must be left out or equal the Workspace's current embedding model: it is fixed at creation.
+             * @description A model enabled for the embedding role; changes only while the Workspace has no indexed documents.
              */
             embedding_model_id?: string | null;
         };
@@ -10467,6 +10347,25 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** WorkspaceModel */
+        WorkspaceModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider Name */
+            provider_name: string;
+            /**
+             * Internal
+             * @description True when the provider is inside your infrastructure.
+             */
+            internal: boolean;
+            /** Is Default */
+            is_default: boolean;
         };
         /** WorkspaceOwner */
         WorkspaceOwner: {
@@ -19364,86 +19263,6 @@ export interface operations {
             };
         };
     };
-    getLlmRoles: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LlmRoles"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    setLlmRoles: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LlmRolesRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LlmRoles"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     getLlmBudgets: {
         parameters: {
             query?: never;
@@ -19647,90 +19466,6 @@ export interface operations {
             };
         };
     };
-    getAllowedModels: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AllowedModels"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    setAllowedModels: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AllowedModelsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AllowedModels"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     getWorkspaceAiSettings: {
         parameters: {
             query?: never;
@@ -19815,7 +19550,7 @@ export interface operations {
             };
         };
     };
-    listEmbeddingModels: {
+    listNewWorkspaceModels: {
         parameters: {
             query?: never;
             header?: never;
@@ -19830,7 +19565,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmbeddingChoicesOut"];
+                    "application/json": components["schemas"]["NewWorkspaceModels"];
                 };
             };
             /** @description Validation error */

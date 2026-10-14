@@ -341,11 +341,12 @@ export function AssistantPanel({
   // The server decides: the starter, or an Owner or Editor in a shared conversation.
   const canPost = current?.can_post ?? true;
   const running = draft !== null;
-  // The picker starts on the conversation's last pick, else the Workspace's agent model.
-  const models = ai.data?.light_models ?? [];
+  // The picker offers the Workspace's agent models and starts on the conversation's last
+  // pick, else the Workspace's default agent model.
+  const models = ai.data?.agent_models ?? [];
+  const fallback = models.find((m) => m.is_default);
   const remembered = models.find((m) => m.id === current?.model_id)?.id;
-  const modelId =
-    picked ?? remembered ?? ai.data?.effective_agent_model_id ?? "";
+  const modelId = picked ?? remembered ?? fallback?.id ?? "";
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
@@ -637,7 +638,7 @@ export function AssistantPanel({
                 >
                   {!models.some((m) => m.id === modelId) && (
                     <option value={modelId}>
-                      {ai.data?.effective_agent_model_name ?? "Default"}
+                      {fallback?.name ?? "Default"}
                     </option>
                   )}
                   {models.map((m) => (
