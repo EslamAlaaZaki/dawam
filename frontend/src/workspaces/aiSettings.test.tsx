@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Me } from "../api/queries";
 import type { WorkspaceAiSettings } from "../api/workspaceAi";
 import type { Workspace, WorkspaceRole } from "../api/workspaces";
+import { openSettings } from "../test/settingsDialog";
 import {
   apiError,
   json,
@@ -123,6 +124,7 @@ describe("the Workspace AI settings card", () => {
       PATH,
     );
 
+    await openSettings("AI");
     const card = await screen.findByRole("region", { name: "AI settings" });
     expect(card).toHaveTextContent("Agent modelBig (installation default)");
     expect(card).toHaveTextContent("Light modelBig");
@@ -143,6 +145,7 @@ describe("the Workspace AI settings card", () => {
       PATH,
     );
 
+    await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
     expect(card).toHaveTextContent(
       "Embedding modelEmbed-1 (fixed at creation)",
@@ -174,6 +177,7 @@ describe("the Workspace AI settings card", () => {
       PATH,
     );
 
+    await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
     fireEvent.change(within(card).getByLabelText("Agent model"), {
       target: { value: "" },
@@ -213,6 +217,7 @@ describe("the Workspace AI settings card", () => {
       PATH,
     );
 
+    await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
     fireEvent.change(within(card).getByLabelText("Light model"), {
       target: { value: BIG },
@@ -233,6 +238,7 @@ describe("the Workspace AI settings card", () => {
       PATH,
     );
 
+    await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
     const light = within(card).getByLabelText(
       "Light model",
