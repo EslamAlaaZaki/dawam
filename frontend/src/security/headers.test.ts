@@ -143,6 +143,7 @@ describe("the proxy's matcher", () => {
       "/_next/static/chunks/a.js",
       "/_next/image",
       "/favicon.ico",
+      "/icon.svg",
       "/api/v1/version",
     ]) {
       expect(matches(path), path).toBe(false);

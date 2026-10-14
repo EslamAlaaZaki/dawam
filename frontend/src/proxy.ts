@@ -36,7 +36,7 @@ export const config = {
   // literal: Next.js reads it at build.
   matcher: [
     {
-      source: "/((?!api/|_next/static|_next/image|favicon.ico).*)",
+      source: "/((?!api/|_next/static|_next/image|favicon.ico|icon.svg).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
