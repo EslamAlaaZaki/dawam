@@ -104,9 +104,13 @@ _Avoid_: Metric, measure (a measure is a DW Schema column)
 A thread of messages between members and the AI assistant inside a Workspace. Private to the member who started it until they share it with the Workspace; in a shared one, Owners and Editors may post and Viewers only read.
 _Avoid_: Chat, thread, session
 
-**Allowed Models**:
-The models a Workspace may use, set by an admin per Workspace (all registered models unless narrowed). The Workspace's own model choices and every per-message pick in a Conversation come from this list.
-_Avoid_: Approved list, model whitelist
+**Model Role**:
+What a registered model may be used for: `agent`, `light` or `embedding`. An admin enables any combination per model; a model with no role cannot be used anywhere.
+_Avoid_: Model type, capability
+
+**Workspace Models**:
+The models a Workspace uses, chosen by its owner from the models enabled for each Model Role: one embedding model, and one or more agent and light models with one of each marked as the Workspace's default. Every per-message pick in a Conversation comes from the Workspace's agent models.
+_Avoid_: Allowed Models (the former admin-set list it replaces), approved list
 
 ### Changing things
 

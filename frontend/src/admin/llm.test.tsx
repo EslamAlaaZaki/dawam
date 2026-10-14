@@ -314,9 +314,7 @@ describe("language models page", () => {
     fireEvent.change(within(dialog).getByLabelText("Model name"), {
       target: { value: "llama" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Role"), {
-      target: { value: "light" },
-    });
+    expect(within(dialog).queryByLabelText("Role")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Add model" }));
 
     await waitFor(() =>
@@ -324,11 +322,10 @@ describe("language models page", () => {
     );
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       name: "llama",
-      roles: ["light"],
     });
   });
 
-  it("edits a model", async () => {
+  it("edits only a model's context window", async () => {
     const requests = renderApp(
       providersApi([PROVIDER], (r) =>
         r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${MODEL.id}`
@@ -341,6 +338,7 @@ describe("language models page", () => {
     const row = await screen.findByRole("row", { name: "Model qwen3" });
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit model" });
+    expect(within(dialog).queryByLabelText("Model name")).not.toBeInTheDocument();
     fireEvent.change(
       within(dialog).getByLabelText(
         "Context window in tokens (empty: ask the server)",
@@ -353,8 +351,6 @@ describe("language models page", () => {
       expect(requests.some((r) => r.method === "PUT")).toBe(true),
     );
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
-      name: "qwen3",
-      roles: ["agent"],
       context_window: 32768,
     });
   });

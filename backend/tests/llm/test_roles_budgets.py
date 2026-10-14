@@ -19,15 +19,21 @@ BASE = "/api/v1/admin/llm"
 ASK = [Message("user", "Hi")]
 
 
+def add_model(client, provider, name, roles=("agent",)) -> dict:
+    """Register a model (no role), then set its roles in the roles table."""
+    model = client.post(f"{BASE}/providers/{provider['id']}/models", json={"name": name}).json()
+    response = client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": list(roles)})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def register(client, name, roles=("agent",), tested=True, provider=None) -> dict:
     if provider is None:
         provider = client.post(
             f"{BASE}/providers",
             json={"name": f"P-{name}", "base_url": "http://llm.test/v1", "internal": True},
         ).json()
-    model = client.post(
-        f"{BASE}/providers/{provider['id']}/models", json={"name": name, "roles": list(roles)}
-    ).json()
+    model = add_model(client, provider, name, roles)
     if tested:
         assert client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
     return model
@@ -79,7 +85,7 @@ def test_roles_are_empty_until_an_admin_assigns_them(admin_client):
 
 def test_an_admin_assigns_models_to_the_three_roles(admin_client, fake_llm):
     agent = register(admin_client, "big")
-    light = register(admin_client, "small")
+    light = register(admin_client, "small", roles=("agent", "light"))
     embedding = register(admin_client, "embed", roles=("embedding",))
 
     response = assign(admin_client, agent, light, embedding)
@@ -91,7 +97,7 @@ def test_an_admin_assigns_models_to_the_three_roles(admin_client, fake_llm):
 
 
 def test_the_agent_role_is_required(admin_client, fake_llm):
-    light = register(admin_client, "small")
+    light = register(admin_client, "small", roles=("agent", "light"))
 
     response = admin_client.put(f"{BASE}/roles", json={"light_model_id": light["id"]})
 
@@ -133,7 +139,7 @@ def test_light_tasks_use_the_agent_model_when_no_light_model_is_assigned(
 def test_light_tasks_use_the_light_model_unless_it_is_not_allowed(
     admin_client, role_service, setup, fake_llm
 ):
-    light = register(admin_client, "small")
+    light = register(admin_client, "small", roles=("agent", "light"))
     assert assign(admin_client, setup, light).status_code == 200
 
     list(role_service.gateway_for_role("light").chat(ASK))

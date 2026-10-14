@@ -3632,7 +3632,8 @@ export interface paths {
         put?: never;
         /**
          * Add Model
-         * @description Register a model of the provider (admins only). 409 `model_exists`.
+         * @description Register a model of the provider with no role (admins only): its roles are set in
+         *     the roles table. 409 `model_exists`.
          */
         post: operations["addLlmModel"];
         delete?: never;
@@ -3651,8 +3652,7 @@ export interface paths {
         get?: never;
         /**
          * Update Model
-         * @description Replace a model's name, roles and context window (admins only). A new name or
-         *     roles drop its test result.
+         * @description Change a model's context window (admins only); nothing else about it is editable.
          */
         put: operations["updateLlmModel"];
         post?: never;
@@ -3662,6 +3662,29 @@ export interface paths {
          *     still uses it: remove it with `POST /models/{id}/removal` and a replacement.
          */
         delete: operations["deleteLlmModel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/models/{model_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Model Roles
+         * @description Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
+         *     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
+         *     provider's error when the model cannot embed. 409 `model_role_in_use` when a role being
+         *     removed is the installation's default or a Workspace's own choice.
+         */
+        put: operations["setLlmModelRoles"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6993,13 +7016,24 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Roles
-             * @description `agent`, `light`, or `embedding` (on its own).
-             */
-            roles: ("agent" | "light" | "embedding")[];
-            /**
              * Context Window
              * @description Tokens. Leave out to take the server's figure when it reports one.
+             */
+            context_window?: number | null;
+        };
+        /** LlmModelRolesRequest */
+        LlmModelRolesRequest: {
+            /**
+             * Roles
+             * @description Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere.
+             */
+            roles: ("agent" | "light" | "embedding")[];
+        };
+        /** LlmModelUpdateRequest */
+        LlmModelUpdateRequest: {
+            /**
+             * Context Window
+             * @description Tokens. Null: take the server's figure on the next test.
              */
             context_window?: number | null;
         };
@@ -18963,7 +18997,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LlmModelRequest"];
+                "application/json": components["schemas"]["LlmModelUpdateRequest"];
             };
         };
         responses: {
@@ -19013,6 +19047,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmModelRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelRolesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModel"];
+                };
             };
             /** @description Validation error */
             422: {

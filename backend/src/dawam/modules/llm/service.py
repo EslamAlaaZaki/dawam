@@ -65,7 +65,7 @@ class Model:
     @property
     def limited(self) -> bool:
         """Tested and without native tool calling: shown as "limited" (spec §6.18)."""
-        return self.test_ok is True and self.tool_calling is False and "embedding" not in self.roles
+        return self.test_ok is True and self.tool_calling is False
 
 
 @dataclass(frozen=True)
@@ -97,8 +97,10 @@ class ProviderInput:
 
 @dataclass(frozen=True)
 class ModelInput:
+    """What an admin types for a model. Roles are not part of it: they are decided
+    separately, in the roles table (``ProviderService.set_model_roles``)."""
+
     name: str
-    roles: Sequence[str]
     context_window: int | None = None
     """The admin's own figure; the test fills it from the server's metadata if left out."""
 
@@ -147,12 +149,7 @@ def _clean_roles(roles: Sequence[str]) -> list[str]:
     unknown = [role for role in roles if role not in ROLES]
     if unknown:
         raise _invalid(f"Unknown role {unknown[0]!r}. Roles: {', '.join(ROLES)}.", "roles")
-    cleaned = [role for role in ROLES if role in roles]
-    if not cleaned:
-        raise _invalid("Give the model at least one role.", "roles")
-    if "embedding" in cleaned and len(cleaned) > 1:
-        raise _invalid("An embedding model cannot also chat: register it on its own.", "roles")
-    return cleaned
+    return [role for role in ROLES if role in roles]
 
 
 def _clean_window(value: int | None) -> int | None:
@@ -297,7 +294,7 @@ class ProviderService:
     # -- models ----------------------------------------------------------------------
 
     def add_model(self, provider_id: uuid.UUID, data: ModelInput) -> Model:
-        name, roles = self._clean_model(data)
+        name = self._clean_name(data)
         now = self._clock()
         with Session(self._engine) as db:
             self._load_provider(db, provider_id)
@@ -305,7 +302,7 @@ class ProviderService:
                 id=uuid.uuid4(),
                 provider_id=provider_id,
                 name=name,
-                roles=roles,
+                roles=[],
                 context_window=_clean_window(data.context_window),
                 created_at=now,
                 updated_at=now,
@@ -316,18 +313,62 @@ class ProviderService:
             return _model_view(record)
 
     def update_model(self, model_id: uuid.UUID, data: ModelInput) -> Model:
-        """Replace the model's name, roles and context window. A new name drops its test
-        result."""
-        name, roles = self._clean_model(data)
-        with Session(self._engine) as db:
+        """Change the model's context window; nothing else about a registered model
+        changes (its roles have their own call)."""
+        window = _clean_window(data.context_window)
+        with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)
-            if record.name != name or record.roles != roles:
-                _reset_test(record)
-            record.name = name
-            record.roles = roles
-            record.context_window = _clean_window(data.context_window)
+            record.context_window = window
             record.updated_at = self._clock()
-            self._commit(db, "model_exists", "This provider already has a model with that name.")
+            return _model_view(record)
+
+    def get_model(self, model_id: uuid.UUID) -> Model:
+        with Session(self._engine) as db:
+            return _model_view(self._load_model(db, model_id))
+
+    def set_model_roles(self, model_id: uuid.UUID, roles: Sequence[str]) -> Model:
+        """Replace the roles the model fills: any combination, or none (then it is
+        offered nowhere). Ticking ``embedding`` runs an embedding test and stores the
+        vector dimension; when the model cannot embed, 422 ``embedding_test_failed``
+        carries the provider's error and the roles stay as they were. The chat
+        capabilities and ``test_ok`` change only through "Test connection". The probe
+        talks to the provider outside any database transaction."""
+        wanted = _clean_roles(roles)
+        gateway: Gateway | None = None
+        tested_provider_state: tuple[str, str | None] = ("", None)
+        with Session(self._engine) as db:
+            model = self._load_model(db, model_id)
+            provider = self._load_provider(db, model.provider_id)
+            if "embedding" in wanted and "embedding" not in model.roles:
+                gateway = self._gateway(provider, model.name)
+                tested_provider_state = (provider.base_url, provider.secret_encrypted)
+        dimension: int | None = None
+        if gateway is not None:
+            result = probe(gateway, chat=False, embedding=True)
+            if not result.ok:
+                raise ApiError(
+                    422,
+                    "embedding_test_failed",
+                    f"The embedding test failed: {result.error}",
+                    {"field": "roles", "error_code": result.error_code},
+                )
+            dimension = result.capabilities.embedding_dimension
+        with Session(self._engine) as db, db.begin():
+            record = self._load_model(db, model_id, lock=True)
+            if gateway is not None:
+                provider = self._load_provider(db, record.provider_id)
+                if (provider.base_url, provider.secret_encrypted) != tested_provider_state:
+                    raise ApiError(
+                        409, "model_changed", "The provider changed meanwhile: try again."
+                    )
+                record.embedding_dimension = dimension
+                settings = db.get(SettingsRecord, 1)
+                if settings is not None:
+                    reindex.note_tested(settings, model_id, dimension, self._clock())
+            elif "embedding" not in wanted:
+                record.embedding_dimension = None
+            record.roles = wanted
+            record.updated_at = self._clock()
             return _model_view(record)
 
     def delete_model(self, model_id: uuid.UUID) -> None:
@@ -346,7 +387,7 @@ class ProviderService:
             gateway = self._gateway(provider, name)
         result: ProbeResult = probe(
             gateway,
-            chat="embedding" not in roles,
+            chat=roles != ["embedding"],
             embedding="embedding" in roles,
             context_window=window,
         )
@@ -466,11 +507,8 @@ class ProviderService:
         )
 
     @staticmethod
-    def _clean_model(data: ModelInput) -> tuple[str, list[str]]:
-        return (
-            _text(data.name, "name", "model name", MODEL_NAME_MAX_LENGTH),
-            _clean_roles(data.roles),
-        )
+    def _clean_name(data: ModelInput) -> str:
+        return _text(data.name, "name", "model name", MODEL_NAME_MAX_LENGTH)
 
     @staticmethod
     def _commit(db: Session, code: str, message: str) -> None:

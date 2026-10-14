@@ -38,12 +38,18 @@ def add_provider(client, **overrides) -> dict:
 
 
 def add_model(client, provider, name="qwen3", roles=("agent",), **extra) -> dict:
+    """Register a model (no role), then give it ``roles`` in the roles table."""
     response = client.post(
-        f"{BASE}/providers/{provider['id']}/models",
-        json={"name": name, "roles": list(roles), **extra},
+        f"{BASE}/providers/{provider['id']}/models", json={"name": name, **extra}
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    assert response.json()["roles"] == []
+    model = response.json()
+    if roles:
+        response = client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": list(roles)})
+        assert response.status_code == 200, response.text
+        model = response.json()
+    return model
 
 
 def code(response) -> str:
@@ -176,37 +182,94 @@ def test_bad_provider_settings_are_rejected(admin_client, overrides):
     assert response.status_code == 422
 
 
-def test_models_are_added_edited_and_removed(admin_client):
+def test_models_are_added_with_no_role_edited_for_the_window_only_and_removed(admin_client):
     provider = add_provider(admin_client)
-    model = add_model(admin_client, provider, roles=("agent",), context_window=8192)
-    assert model["test_ok"] is None and model["context_window"] == 8192
+    model = add_model(admin_client, provider, roles=(), context_window=8192)
+    assert model["roles"] == [] and model["test_ok"] is None and model["context_window"] == 8192
 
-    edited = admin_client.put(
-        f"{BASE}/models/{model['id']}", json={"name": "qwen3-14b", "roles": ["agent", "light"]}
-    )
+    edited = admin_client.put(f"{BASE}/models/{model['id']}", json={"context_window": 4096})
     assert edited.status_code == 200, edited.text
-    assert edited.json()["roles"] == ["agent", "light"] and edited.json()["context_window"] is None
+    assert edited.json()["context_window"] == 4096 and edited.json()["name"] == "qwen3"
     listed = admin_client.get(f"{BASE}/providers/{provider['id']}").json()["models"]
-    assert [m["name"] for m in listed] == ["qwen3-14b"]
+    assert [m["name"] for m in listed] == ["qwen3"]
 
     assert admin_client.delete(f"{BASE}/models/{model['id']}").status_code == 204
     assert admin_client.get(f"{BASE}/providers/{provider['id']}").json()["models"] == []
 
 
-def test_model_names_are_unique_per_provider_and_roles_are_checked(admin_client):
+def test_model_names_are_unique_per_provider(admin_client):
     provider = add_provider(admin_client)
     add_model(admin_client, provider, name="qwen3")
 
     duplicate = admin_client.post(
-        f"{BASE}/providers/{provider['id']}/models", json={"name": "qwen3", "roles": ["light"]}
-    )
-    both = admin_client.post(
-        f"{BASE}/providers/{provider['id']}/models",
-        json={"name": "bge", "roles": ["agent", "embedding"]},
+        f"{BASE}/providers/{provider['id']}/models", json={"name": "qwen3"}
     )
 
     assert duplicate.status_code == 409 and code(duplicate) == "model_exists"
-    assert both.status_code == 422 and code(both) == "invalid_llm_config"
+
+
+def test_any_combination_of_roles_is_saved_including_all_three(admin_client, fake_llm):
+    fake_llm.dimension = 1024
+    model = add_model(admin_client, add_provider(admin_client), roles=())
+
+    everything = admin_client.put(
+        f"{BASE}/models/{model['id']}/roles", json={"roles": ["embedding", "agent", "light"]}
+    )
+
+    assert everything.status_code == 200, everything.text
+    assert everything.json()["roles"] == ["agent", "light", "embedding"]
+    assert everything.json()["embedding_dimension"] == 1024
+    none = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": []})
+    assert none.json()["roles"] == [] and none.json()["embedding_dimension"] is None
+    unknown = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["boss"]})
+    assert unknown.status_code == 422
+
+
+def test_ticking_embedding_refuses_with_the_providers_error_when_the_model_cannot_embed(
+    admin_client, fake_llm
+):
+    model = add_model(admin_client, add_provider(admin_client), roles=("agent",))
+    fake_llm.script(LlmError("bad_request", "This model does not embed."))
+
+    refused = admin_client.put(
+        f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent", "embedding"]}
+    )
+
+    assert refused.status_code == 422 and code(refused) == "embedding_test_failed"
+    assert "This model does not embed." in refused.json()["error"]["message"]
+    kept = admin_client.get(f"{BASE}/providers/{model['provider_id']}").json()["models"][0]
+    assert kept["roles"] == ["agent"] and kept["embedding_dimension"] is None
+
+
+def test_unticking_a_role_in_use_is_refused_until_it_is_free(admin_client, fake_llm):
+    provider = add_provider(admin_client)
+    model = add_model(admin_client, provider, roles=("agent", "light"))
+    assert admin_client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
+    assert admin_client.put(
+        f"{BASE}/roles", json={"agent_model_id": model["id"], "light_model_id": model["id"]}
+    ).is_success
+
+    refused = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
+    assert refused.status_code == 409 and code(refused) == "model_role_in_use"
+    assert refused.json()["error"]["details"]["roles"] == ["light"]
+    assert admin_client.put(f"{BASE}/roles", json={"agent_model_id": model["id"]}).is_success
+
+    freed = admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
+    assert freed.status_code == 200 and freed.json()["roles"] == ["agent"]
+
+
+def test_a_model_with_no_role_cannot_be_assigned_and_does_not_count_for_setup(
+    admin_client, fake_llm
+):
+    model = add_model(admin_client, add_provider(admin_client), roles=())
+    assert admin_client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
+
+    assigned = admin_client.put(f"{BASE}/roles", json={"agent_model_id": model["id"]})
+
+    assert assigned.status_code == 422 and code(assigned) == "invalid_model_role"
+    assert admin_client.get(f"{BASE}/setup").json()["complete"] is False
+    admin_client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": ["agent"]})
+    assert admin_client.get(f"{BASE}/setup").json()["complete"] is True
 
 
 def test_deleting_a_provider_removes_its_models(admin_client):

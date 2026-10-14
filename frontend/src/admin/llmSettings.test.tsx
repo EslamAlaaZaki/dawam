@@ -49,6 +49,8 @@ function model(
   };
 }
 
+const HINT = "Dedicated embedding models usually give better document search";
+
 const BIG = model("5d3a8b1e-0000-4000-8000-0000000000a1", "big");
 const UNTESTED = model("5d3a8b1e-0000-4000-8000-0000000000a2", "fresh", {
   test_ok: null,
@@ -166,6 +168,75 @@ describe("AI roles, budgets and usage page", () => {
     expect(
       within(embedding).getByRole("option", { name: "Local / embed" }),
     ).toBeInTheDocument();
+  });
+
+  it("lists every model with provider, internal flag, last test and role checkboxes", async () => {
+    renderApp(api(), "/admin/llm/settings");
+
+    const big = await screen.findByRole("row", { name: "Roles of big" });
+    expect(big).toHaveTextContent("Local");
+    expect(big).toHaveTextContent("Internal");
+    expect(big).toHaveTextContent("Passed");
+    expect(within(big).getByLabelText("Agent role of big")).toBeChecked();
+    expect(within(big).getByLabelText("Light role of big")).not.toBeChecked();
+    expect(screen.getByRole("row", { name: "Roles of fresh" })).toHaveTextContent(
+      "Not tested",
+    );
+  });
+
+  it("saves any combination of roles for a model, and hints about embedding", async () => {
+    const saved: LlmModel = { ...BIG, roles: ["agent", "light", "embedding"] };
+    const requests = renderApp(
+      api({}, (r) =>
+        r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
+          ? json(saved)
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const row = await screen.findByRole("row", { name: "Roles of big" });
+    expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByLabelText("Light role of big"));
+    fireEvent.click(within(row).getByLabelText("Embedding role of big"));
+    expect(screen.getByText(HINT)).toBeInTheDocument();
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Save roles of big" }),
+    );
+
+    await waitFor(() =>
+      expect(requests.some((r) => r.path.endsWith("/roles") && r.method === "PUT" && r.path.includes("models"))).toBe(true),
+    );
+    expect(requests.find((r) => r.path.includes("/models/"))?.body).toEqual({
+      roles: ["agent", "light", "embedding"],
+    });
+  });
+
+  it("shows the refusal when a role cannot be saved", async () => {
+    renderApp(
+      api({}, (r) =>
+        r.method === "PUT" && r.path.includes("/models/")
+          ? json(
+              {
+                error: {
+                  code: "embedding_test_failed",
+                  message: "The embedding test failed: no embeddings here.",
+                },
+              },
+              422,
+            )
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const row = await screen.findByRole("row", { name: "Roles of big" });
+    fireEvent.click(within(row).getByLabelText("Embedding role of big"));
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Save roles of big" }),
+    );
+
+    expect(await within(row).findByText(/no embeddings here/)).toBeInTheDocument();
   });
 
   it("saves the roles", async () => {

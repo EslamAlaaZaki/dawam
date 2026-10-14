@@ -529,9 +529,8 @@ class RoleService:
         model = db.get(ModelRecord, model_id)
         if model is None:
             raise _invalid("That model is not registered.", f"{role}_model_id")
-        if (role == "embedding") != ("embedding" in model.roles):
-            kind = "an embedding" if role == "embedding" else "a chat"
-            raise _invalid(f"The {role} role needs {kind} model.", f"{role}_model_id")
+        if role not in model.roles:
+            raise _invalid(f"That model does not have the {role} role.", f"{role}_model_id")
         if model.test_ok is not True:
             raise _invalid(
                 'Run "Test connection" on the model first: only a model that passed can '
