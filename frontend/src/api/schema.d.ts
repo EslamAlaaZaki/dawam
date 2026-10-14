@@ -3681,8 +3681,9 @@ export interface paths {
         post?: never;
         /**
          * Delete Model
-         * @description Remove an unused model (admins only). 409 `model_in_use` when a Workspace still uses
-         *     it: remove it with `POST /models/{id}/removal` and a replacement.
+         * @description Remove an unused model (admins only; Workspaces holding it only as a non-default extra
+         *     simply lose it). 409 `model_in_use` when a Workspace depends on it:
+         *     remove it with `POST /models/{id}/removal` and a replacement.
          */
         delete: operations["deleteLlmModel"];
         options?: never;
@@ -3702,8 +3703,10 @@ export interface paths {
          * Set Model Roles
          * @description Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
          *     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
-         *     provider's error when the model cannot embed. 409 `model_role_in_use` when a role being
-         *     removed is one of a Workspace's models.
+         *     provider's error when the model cannot embed. Unticking a role needs a replacement in each
+         *     Workspace where the model is the default or only model for it: 409 `replacement_required`
+         *     lists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other
+         *     Workspaces just lose it.
          */
         put: operations["setLlmModelRoles"];
         post?: never;
@@ -3744,9 +3747,9 @@ export interface paths {
         put?: never;
         /**
          * Remove Model In Use
-         * @description Remove a model with one replacement per role it fills, applied to every affected
-         *     Workspace atomically (admins only). 422 `replacement_required`,
-         *     409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
+         * @description Remove a model with a replacement per Workspace and role where it is the default or
+         *     only model, applied atomically (admins only). 409 `replacement_required` and
+         *     `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`
          *     (naming the Workspaces whose documents are indexed with it).
          */
         post: operations["removeLlmModel"];
@@ -6920,17 +6923,8 @@ export interface components {
         /** LlmModelRemoval */
         LlmModelRemoval: {
             /**
-             * Agent Model Id
-             * @description Replacement for the agent role, when the model fills it.
-             */
-            agent_model_id?: string | null;
-            /** Light Model Id */
-            light_model_id?: string | null;
-            /** Embedding Model Id */
-            embedding_model_id?: string | null;
-            /**
              * Workspace Replacements
-             * @description Per-Workspace replacements where the one above is not allowed (an internal-only Workspace takes only internal models).
+             * @description Per Workspace and role, the replacement where the model is the Workspace's default or only model for it (an internal-only Workspace takes only internal models).
              */
             workspace_replacements?: components["schemas"]["LlmWorkspaceReplacement"][];
         };
@@ -6951,6 +6945,11 @@ export interface components {
              * @description Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere.
              */
             roles: ("agent" | "light" | "embedding")[];
+            /**
+             * Workspace Replacements
+             * @description Per Workspace and role, the replacement for a role being unticked where the model is the Workspace's default or only model for it.
+             */
+            workspace_replacements?: components["schemas"]["LlmWorkspaceReplacement"][];
         };
         /** LlmModelUpdateRequest */
         LlmModelUpdateRequest: {
@@ -6988,9 +6987,15 @@ export interface components {
             name: string;
             /**
              * Roles
-             * @description The roles the model fills in this Workspace.
+             * @description The roles in this Workspace that need a replacement.
              */
             roles: ("agent" | "light" | "embedding")[];
+            /**
+             * Internal Only
+             * @description Only internal models are accepted.
+             * @default false
+             */
+            internal_only: boolean;
         };
         /** LlmProvider */
         LlmProvider: {

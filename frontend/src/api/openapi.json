@@ -13673,7 +13673,7 @@
           "llm"
         ],
         "summary": "Delete Model",
-        "description": "Remove an unused model (admins only). 409 `model_in_use` when a Workspace still uses\nit: remove it with `POST /models/{id}/removal` and a replacement.",
+        "description": "Remove an unused model (admins only; Workspaces holding it only as a non-default extra\nsimply lose it). 409 `model_in_use` when a Workspace depends on it:\nremove it with `POST /models/{id}/removal` and a replacement.",
         "operationId": "deleteLlmModel",
         "parameters": [
           {
@@ -13720,7 +13720,7 @@
           "llm"
         ],
         "summary": "Set Model Roles",
-        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. 409 `model_role_in_use` when a role being\nremoved is one of a Workspace's models.",
+        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. Unticking a role needs a replacement in each\nWorkspace where the model is the default or only model for it: 409 `replacement_required`\nlists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other\nWorkspaces just lose it.",
         "operationId": "setLlmModelRoles",
         "parameters": [
           {
@@ -13838,7 +13838,7 @@
           "llm"
         ],
         "summary": "Remove Model In Use",
-        "description": "Remove a model with one replacement per role it fills, applied to every affected\nWorkspace atomically (admins only). 422 `replacement_required`,\n409 `replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`\n(naming the Workspaces whose documents are indexed with it).",
+        "description": "Remove a model with a replacement per Workspace and role where it is the default or\nonly model, applied atomically (admins only). 409 `replacement_required` and\n`replacement_not_allowed` (naming the Workspaces), 409 `embedding_model_indexed`\n(naming the Workspaces whose documents are indexed with it).",
         "operationId": "removeLlmModel",
         "parameters": [
           {
@@ -21367,50 +21367,13 @@
       },
       "LlmModelRemoval": {
         "properties": {
-          "agent_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Model Id",
-            "description": "Replacement for the agent role, when the model fills it."
-          },
-          "light_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Light Model Id"
-          },
-          "embedding_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Model Id"
-          },
           "workspace_replacements": {
             "items": {
               "$ref": "#/components/schemas/LlmWorkspaceReplacement"
             },
             "type": "array",
             "title": "Workspace Replacements",
-            "description": "Per-Workspace replacements where the one above is not allowed (an internal-only Workspace takes only internal models)."
+            "description": "Per Workspace and role, the replacement where the model is the Workspace's default or only model for it (an internal-only Workspace takes only internal models)."
           }
         },
         "type": "object",
@@ -21458,6 +21421,14 @@
             "maxItems": 3,
             "title": "Roles",
             "description": "Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere."
+          },
+          "workspace_replacements": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceReplacement"
+            },
+            "type": "array",
+            "title": "Workspace Replacements",
+            "description": "Per Workspace and role, the replacement for a role being unticked where the model is the Workspace's default or only model for it."
           }
         },
         "type": "object",
@@ -21551,7 +21522,13 @@
             },
             "type": "array",
             "title": "Roles",
-            "description": "The roles the model fills in this Workspace."
+            "description": "The roles in this Workspace that need a replacement."
+          },
+          "internal_only": {
+            "type": "boolean",
+            "title": "Internal Only",
+            "description": "Only internal models are accepted.",
+            "default": false
           }
         },
         "type": "object",

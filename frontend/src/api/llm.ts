@@ -160,10 +160,13 @@ export function useSetLlmModelRoles(modelId: string) {
   const client = useApiClient();
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: async (roles: LlmModelRole[]) => {
+    mutationFn: async (body: {
+      roles: LlmModelRole[];
+      workspace_replacements?: LlmModelRemoval["workspace_replacements"];
+    }) => {
       const { data, error, response } = await client.PUT(
         "/api/v1/admin/llm/models/{model_id}/roles",
-        { params: { path: { model_id: modelId } }, body: { roles } },
+        { params: { path: { model_id: modelId } }, body },
       );
       if (error) {
         throw new ApiError(response.status, error.error);

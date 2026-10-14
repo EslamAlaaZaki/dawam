@@ -567,10 +567,30 @@ describe("language models page", () => {
 
   describe("removing a model in use", () => {
     const REMOVAL = `/api/v1/admin/llm/models/${MODEL.id}/removal`;
+    const WS = "7c1d0000-0000-4000-8000-000000000001";
+    const EXTERNAL: LlmProvider = {
+      ...PROVIDER,
+      id: "5d3a8b1e-0000-4000-8000-000000000009",
+      name: "Cloud",
+      internal: false,
+      models: [
+        {
+          ...SPARE,
+          id: "5d3a8b1e-0000-4000-8000-0000000000c1",
+          name: "cloud-model",
+        },
+      ],
+    };
+    const needing = (internal_only = false) => ({
+      id: WS,
+      name: "Narrow",
+      roles: ["agent" as const],
+      internal_only,
+    });
     const inUse = (extra: Partial<LlmModelUsage> = {}): LlmModelUsage => ({
       in_use: true,
       roles: ["agent"],
-      workspaces: [],
+      workspaces: [needing()],
       indexed_workspaces: [],
       ...extra,
     });
@@ -579,11 +599,14 @@ describe("language models page", () => {
       removal?: (r: ApiRequest) => Response,
     ) => {
       const requests = renderApp(
-        providersApi([{ ...PROVIDER, models: [MODEL, SPARE] }], (r) => {
-          if (r.path === `/api/v1/admin/llm/models/${MODEL.id}/usage`)
-            return json(usage);
-          return r.path === REMOVAL && removal ? removal(r) : undefined;
-        }),
+        providersApi(
+          [{ ...PROVIDER, models: [MODEL, SPARE] }, EXTERNAL],
+          (r) => {
+            if (r.path === `/api/v1/admin/llm/models/${MODEL.id}/usage`)
+              return json(usage);
+            return r.path === REMOVAL && removal ? removal(r) : undefined;
+          },
+        ),
         "/admin/llm",
       );
       fireEvent.click(
@@ -595,79 +618,64 @@ describe("language models page", () => {
       };
     };
 
-    it("asks for a replacement per role and sends it", async () => {
+    it("asks for a replacement per affected Workspace and role and sends it", async () => {
       const { requests, dialog } = await open(inUse(), () => noContent());
       const confirm = await within(dialog).findByRole("button", {
         name: "Remove model",
       });
-      await within(dialog).findByLabelText("Replace as Agent model");
+      const pick = await within(dialog).findByLabelText("Narrow: Agent model");
       expect(confirm).toBeDisabled();
 
-      fireEvent.change(
-        within(dialog).getByLabelText("Replace as Agent model"),
-        {
-          target: { value: SPARE.id },
-        },
-      );
+      fireEvent.change(pick, { target: { value: SPARE.id } });
       fireEvent.click(confirm);
 
       await waitFor(() =>
         expect(requests.some((r) => r.path === REMOVAL)).toBe(true),
       );
-      expect(requests.find((r) => r.path === REMOVAL)?.body).toMatchObject({
-        agent_model_id: SPARE.id,
-        workspace_replacements: [],
+      expect(requests.find((r) => r.path === REMOVAL)?.body).toEqual({
+        workspace_replacements: [{ workspace_id: WS, agent_model_id: SPARE.id }],
       });
       expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     });
 
-    it("asks for another model for the Workspaces the replacement is not allowed in", async () => {
-      const ws = "7c1d0000-0000-4000-8000-000000000001";
-      let first = true;
-      const { requests, dialog } = await open(inUse(), () => {
-        if (!first) return noContent();
-        first = false;
-        return json(
-          {
-            error: {
-              code: "replacement_not_allowed",
-              message: "not allowed",
-              details: {
-                workspaces: [{ id: ws, name: "Narrow", roles: ["agent"] }],
-              },
-            },
-          },
-          409,
-        );
-      });
-      fireEvent.change(
-        await within(dialog).findByLabelText("Replace as Agent model"),
-        {
-          target: { value: SPARE.id },
-        },
-      );
-      fireEvent.click(
-        within(dialog).getByRole("button", { name: "Remove model" }),
+    it("offers an internal-only Workspace only internal models", async () => {
+      const { dialog } = await open(
+        inUse({ workspaces: [needing(true)] }),
       );
 
-      const own = await within(dialog).findByLabelText("Narrow: Agent model");
+      const pick = await within(dialog).findByLabelText("Narrow: Agent model");
       expect(
-        within(dialog).getByRole("button", { name: "Remove model" }),
-      ).toBeDisabled();
-      fireEvent.change(own, { target: { value: SPARE.id } });
-      fireEvent.click(
-        within(dialog).getByRole("button", { name: "Remove model" }),
+        within(pick)
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["Choose a model", "spare"]);
+    });
+
+    it("offers any tested model with the role to other Workspaces, the removed one never", async () => {
+      const { dialog } = await open(inUse());
+
+      const pick = await within(dialog).findByLabelText("Narrow: Agent model");
+      expect(
+        within(pick)
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["Choose a model", "spare", "cloud-model"]);
+    });
+
+    it("removes at once when no Workspace depends on it", async () => {
+      const { requests, dialog } = await open(
+        inUse({ in_use: false, workspaces: [] }),
+        () => noContent(),
       );
 
+      const confirm = await within(dialog).findByRole("button", {
+        name: "Remove model",
+      });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+      fireEvent.click(confirm);
       await waitFor(() =>
-        expect(requests.filter((r) => r.path === REMOVAL)).toHaveLength(2),
-      );
-      expect(requests.filter((r) => r.path === REMOVAL)[1]?.body).toMatchObject(
-        {
-          workspace_replacements: [
-            { workspace_id: ws, agent_model_id: SPARE.id },
-          ],
-        },
+        expect(requests.some((r) => r.method === "DELETE")).toBe(true),
       );
     });
 
@@ -680,6 +688,7 @@ describe("language models page", () => {
               id: "7c1d0000-0000-4000-8000-000000000001",
               name: "Finance",
               roles: [],
+              internal_only: false,
             },
           ],
         }),

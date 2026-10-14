@@ -58,6 +58,22 @@ const EMBED = model("5d3a8b1e-0000-4000-8000-0000000000a3", "embed", {
   roles: ["embedding"],
 });
 
+const OTHER = model("5d3a8b1e-0000-4000-8000-0000000000a4", "other");
+const CLOUD = model("5d3a8b1e-0000-4000-8000-0000000000b1", "cloud");
+
+const EXTERNAL: LlmProvider = {
+  id: "5d3a8b1e-0000-4000-8000-000000000009",
+  name: "Cloud",
+  adapter: "openai_compatible",
+  base_url: "https://api.example.com/v1",
+  has_api_key: true,
+  internal: false,
+  timeout_seconds: 60,
+  models: [CLOUD],
+  created_at: "2026-01-05T09:00:00Z",
+  updated_at: "2026-01-05T09:00:00Z",
+};
+
 const PROVIDER: LlmProvider = {
   id: "5d3a8b1e-0000-4000-8000-000000000001",
   name: "Local",
@@ -66,7 +82,7 @@ const PROVIDER: LlmProvider = {
   has_api_key: false,
   internal: true,
   timeout_seconds: 60,
-  models: [BIG, UNTESTED, EMBED],
+  models: [BIG, UNTESTED, EMBED, OTHER],
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
 };
@@ -118,7 +134,7 @@ function api(extra?: (r: ApiRequest) => Response | undefined) {
   return (r: ApiRequest) => {
     if (r.path === "/api/v1/me") return json(ROOT);
     if (r.path === "/api/v1/admin/llm/providers")
-      return json({ items: [PROVIDER] });
+      return json({ items: [PROVIDER, EXTERNAL] });
     if (r.path === "/api/v1/admin/llm/budgets") return json(BUDGETS);
     if (r.path === "/api/v1/admin/llm/usage") return json(USAGE);
     if (r.path === "/api/v1/admin/workspaces") {
@@ -216,6 +232,92 @@ describe("AI roles, budgets and usage page", () => {
     );
 
     expect(await within(row).findByText(/no embeddings here/)).toBeInTheDocument();
+  });
+
+  describe("unticking a role a Workspace depends on", () => {
+    const ROLES = `/api/v1/admin/llm/models/${BIG.id}/roles`;
+    const conflict = (internalOnly: boolean) =>
+      json(
+        {
+          error: {
+            code: "replacement_required",
+            message: "Choose a replacement.",
+            details: {
+              workspaces: [
+                {
+                  id: WORKSPACE,
+                  name: "Core",
+                  roles: ["agent"],
+                  internal_only: internalOnly,
+                },
+              ],
+            },
+          },
+        },
+        409,
+      );
+    const untick = async (internalOnly: boolean) => {
+      let first = true;
+      const requests = renderApp(
+        api((r) => {
+          if (r.method !== "PUT" || r.path !== ROLES) return undefined;
+          if (!first) return json({ ...BIG, roles: [] });
+          first = false;
+          return conflict(internalOnly);
+        }),
+        "/admin/llm/settings",
+      );
+      const row = await screen.findByRole("row", { name: "Roles of big" });
+      fireEvent.click(within(row).getByLabelText("Agent role of big"));
+      fireEvent.click(
+        within(row).getByRole("button", { name: "Save roles of big" }),
+      );
+      return {
+        requests,
+        dialog: await screen.findByRole("dialog", { name: "Replace big?" }),
+      };
+    };
+    const optionNames = (select: HTMLElement) =>
+      within(select)
+        .getAllByRole("option")
+        .map((o) => o.textContent);
+
+    it("asks for a replacement per Workspace and role, then saves with it", async () => {
+      const { requests, dialog } = await untick(false);
+      const pick = within(dialog).getByLabelText("Core: Agent model");
+      const confirm = within(dialog).getByRole("button", {
+        name: "Replace and save roles",
+      });
+
+      expect(optionNames(pick)).toEqual(["Choose a model", "other", "cloud"]);
+      expect(confirm).toBeDisabled();
+      fireEvent.change(pick, { target: { value: OTHER.id } });
+      fireEvent.click(confirm);
+
+      await waitFor(() =>
+        expect(requests.filter((r) => r.path === ROLES)).toHaveLength(2),
+      );
+      expect(requests.filter((r) => r.path === ROLES)[1]?.body).toEqual({
+        roles: [],
+        workspace_replacements: [
+          { workspace_id: WORKSPACE, agent_model_id: OTHER.id },
+        ],
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Replace big?" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it("offers an internal-only Workspace only internal models", async () => {
+      const { dialog } = await untick(true);
+
+      expect(
+        optionNames(within(dialog).getByLabelText("Core: Agent model")),
+      ).toEqual(["Choose a model", "other"]);
+      expect(dialog).toHaveTextContent("internal models only");
+    });
   });
 
   it("sets the installation budget and a Workspace budget", async () => {

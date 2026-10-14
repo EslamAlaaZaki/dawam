@@ -41,6 +41,11 @@ import {
   labelClasses,
   h3Classes,
 } from "./parts";
+import {
+  ReplacementDialog,
+  neededWorkspaces,
+  type Candidate,
+} from "./ReplacementDialog";
 
 /** Model roles, monthly token budgets and AI usage (admins only). */
 export function LlmSettingsPage() {
@@ -115,7 +120,12 @@ function ModelRolesSection() {
               </TableRow>
             )}
             {rows.map(({ model, provider }) => (
-              <ModelRoleRow key={model.id} model={model} provider={provider} />
+              <ModelRoleRow
+                key={model.id}
+                model={model}
+                provider={provider}
+                candidates={rows}
+              />
             ))}
           </TableBody>
         </Table>
@@ -127,11 +137,19 @@ function ModelRolesSection() {
 function ModelRoleRow({
   model,
   provider,
+  candidates,
 }: {
   model: LlmModel;
   provider: LlmProvider;
+  candidates: Candidate[];
 }) {
   const save = useSetLlmModelRoles(model.id);
+  const [asking, setAsking] = useState(false);
+  const needed = neededWorkspaces(save.error);
+  const saved = () => {
+    setAsking(false);
+    toast.success(`Roles of ${model.name} saved.`);
+  };
   const [roles, setRoles] = useState<LlmModelRole[]>(model.roles);
   const changed =
     ROLE_COLUMNS.some(({ role }) => roles.includes(role) !== model.roles.includes(role));
@@ -157,7 +175,9 @@ function ModelRoleRow({
             {EMBEDDING_HINT}
           </div>
         )}
-        {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+        {save.isError && !asking && (
+          <ErrorText>{save.error.message}</ErrorText>
+        )}
       </TableCell>
       <TableCell>
         {provider.name}{" "}
@@ -185,13 +205,43 @@ function ModelRoleRow({
           size="sm"
           disabled={!changed || save.isPending}
           onClick={() =>
-            save.mutate(roles, {
-              onSuccess: () => toast.success(`Roles of ${model.name} saved.`),
-            })
+            save.mutate(
+              { roles },
+              {
+                onSuccess: saved,
+                onError: (error) =>
+                  setAsking(neededWorkspaces(error).length > 0),
+              },
+            )
           }
         >
           Save roles of {model.name}
         </Button>
+        <ReplacementDialog
+          open={asking}
+          onOpenChange={(next) => {
+            setAsking(next);
+            if (!next) save.reset();
+          }}
+          title={`Replace ${model.name}?`}
+          description="Some Workspaces depend on this model for a role you are removing. Choose what replaces it for each; it is dropped from the others."
+          confirmLabel="Replace and save roles"
+          workspaces={needed}
+          candidates={candidates}
+          excludeId={model.id}
+          pending={save.isPending}
+          error={save.error}
+          onConfirm={(workspace_replacements) =>
+            save.mutate(
+              { roles, workspace_replacements },
+              {
+                onSuccess: saved,
+                onError: (error) =>
+                  setAsking(neededWorkspaces(error).length > 0),
+              },
+            )
+          }
+        />
       </TableCell>
     </TableRow>
   );
