@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { openSettings } from "../test/settingsDialog";
 import { createApiClient } from "../api/client";
 import { Toaster } from "../components/ui/sonner";
 import { ApiClientContext } from "../api/context";
@@ -570,6 +571,7 @@ describe("a Workspace's page", () => {
     const backend = fakeBackend({ workspaces: [RETAIL] });
     renderApp(backend, `/workspaces/${RETAIL.id}`);
 
+    await openSettings();
     expect(await screen.findByLabelText("Name")).toHaveValue("Retail DW");
     fill("Name", "Retail warehouse");
     fill("Business domain", "Banking");
@@ -577,7 +579,10 @@ describe("a Workspace's page", () => {
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "Retail warehouse" }),
+      await screen.findByRole("heading", {
+        name: "Retail warehouse",
+        hidden: true,
+      }),
     ).toBeInTheDocument();
     expect(backend.requests.find((r) => r.method === "PATCH")).toMatchObject({
       path: `/api/v1/workspaces/${RETAIL.id}`,
@@ -594,6 +599,7 @@ describe("a Workspace's page", () => {
   it("tells an owner someone else changed the Workspace first, and reloads it", async () => {
     const backend = fakeBackend({ workspaces: [RETAIL] });
     renderApp(backend, `/workspaces/${RETAIL.id}`);
+    await openSettings();
     await screen.findByLabelText("Name");
     backend.editElsewhere(RETAIL.id, { name: "Renamed elsewhere" });
 
@@ -634,6 +640,10 @@ describe("a Workspace's page", () => {
       await screen.findByRole("heading", { name: "Retail DW" }),
     ).toBeInTheDocument();
     expect(screen.getByText(`Your role: ${label}`)).toBeInTheDocument();
+    const dialog = await openSettings();
+    expect(
+      within(dialog).queryByRole("tab", { name: "Archive & delete" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("The retail bank's warehouse")).toBeInTheDocument();
     expect(screen.getByText("Retail banking")).toBeInTheDocument();
     expect(
@@ -643,6 +653,31 @@ describe("a Workspace's page", () => {
     expect(
       screen.queryByRole("button", { name: "Save" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the settings panels off the page, behind a button beside Assistant", async () => {
+    const archivable = {
+      ...RETAIL,
+      permissions: [...PERMISSIONS.owner, "workspace.archive"],
+    } as Workspace;
+    renderApp(
+      fakeBackend({ workspaces: [archivable] }),
+      `/workspaces/${RETAIL.id}`,
+    );
+
+    await screen.findByRole("button", { name: "Workspace settings" });
+    expect(screen.getByRole("button", { name: "Assistant" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI settings")).not.toBeInTheDocument();
+    expect(screen.queryByText("Archive and delete")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Members" })).toBeInTheDocument();
+
+    const dialog = await openSettings();
+    expect(within(dialog).getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Details",
+      "AI",
+      "Archive & delete",
+    ]);
   });
 
   it("shows a not-found page for a Workspace the API does not show the user", async () => {

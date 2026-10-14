@@ -1,48 +1,38 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import {
   ROLE_LABELS,
-  allows,
-  useUpdateWorkspace,
   useWorkspace,
-  type Workspace,
 } from "../api/workspaces";
 import { Button } from "../components/ui/button";
-import { toast } from "../components/ui/sonner";
 import {
-  Actions,
-  DetailList,
   EmptyState,
   ErrorText,
-  Hint,
   Panel,
-  formCardClasses,
   h3Classes,
 } from "./parts";
 import { Loading } from "../shell/Loading";
-import { DetailsFields, readDetails } from "./DetailsFields";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { AssistantPanel } from "./AssistantPanel";
 import { FailedChecksPanel, type AssistantRequest } from "./FailedChecksPanel";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { DeletedObjectsPanel } from "./DeletedObjectsPanel";
-import { LifecyclePanel } from "./LifecyclePanel";
 import { LineagePanel } from "./LineagePanel";
 import { KpiCatalog } from "./KpiPanels";
 import { useWorkspaceFolders } from "./useWorkspaceFolders";
 import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
-import { AiSettingsPanel } from "./AiSettingsPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
+import { WorkspaceSettingsDialog } from "./WorkspaceSettingsDialog";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
 /**
@@ -157,6 +147,10 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             <Sparkles aria-hidden />
             Assistant
           </Button>
+          <WorkspaceSettingsDialog
+            workspace={workspace.data}
+            reload={() => workspace.refetch()}
+          />
         </header>
         {workspace.data.status === "archived" && (
           <p
@@ -177,13 +171,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             </ErrorText>
           ) : folder.id === "" ? (
             <>
-              <WorkspaceDetails
-                workspace={workspace.data}
-                reload={() => workspace.refetch()}
-              />
               <MembersPanel workspace={workspace.data} />
-              <AiSettingsPanel workspace={workspace.data} />
-              <LifecyclePanel workspace={workspace.data} />
               <DeletedObjectsPanel workspace={workspace.data} />
             </>
           ) : folder.id === "dw" || folder.id === "dw/setup" ? (
@@ -305,95 +293,5 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
         )}
       </aside>
     </>
-  );
-}
-
-function WorkspaceDetails({
-  workspace,
-  reload,
-}: {
-  workspace: Workspace;
-  reload: () => void;
-}) {
-  const update = useUpdateWorkspace(workspace.id);
-
-  if (!allows(workspace, "workspace.edit")) {
-    return (
-      <Panel aria-labelledby="details-title">
-        <h3 id="details-title" className={h3Classes}>
-          Details
-        </h3>
-        <DetailList>
-          <dt>Description</dt>
-          <dd>{workspace.description || "—"}</dd>
-          <dt>Business domain</dt>
-          <dd>{workspace.domain || "—"}</dd>
-        </DetailList>
-        <Hint>
-          {workspace.status === "archived"
-            ? "This Workspace is archived, so its details cannot be edited."
-            : "Only owners can edit these details."}
-        </Hint>
-      </Panel>
-    );
-  }
-
-  const conflict =
-    update.error instanceof ApiError && update.error.status === 409;
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    // The form remounts on the new version, so a callback on mutate() would be dropped.
-    update
-      .mutateAsync({
-        version: workspace.version,
-        ...readDetails(event.currentTarget),
-      })
-      .then(
-        () => toast.success("Saved."),
-        () => {},
-      );
-  }
-
-  return (
-    // A new version (saved, or reloaded) refills the inputs.
-    <form
-      key={workspace.version}
-      className={formCardClasses}
-      onSubmit={onSubmit}
-      aria-labelledby="details-title"
-    >
-      <h3 id="details-title" className={h3Classes}>
-        Details
-      </h3>
-      <DetailsFields initial={workspace} />
-      {conflict ? (
-        <div
-          className="flex flex-col items-start gap-2 text-red-11"
-          role="alert"
-        >
-          <p>
-            Someone else changed this Workspace since you opened it. Reload it
-            to see their changes, then edit again.
-          </p>
-          <Button
-            type="button"
-            onClick={() => {
-              update.reset();
-              reload();
-            }}
-          >
-            Reload
-          </Button>
-        </div>
-      ) : (
-        update.isError && <ErrorText>{update.error.message}</ErrorText>
-      )}
-      <Actions>
-        <Button type="submit" variant="primary" disabled={update.isPending}>
-          Save
-        </Button>
-      </Actions>
-    </form>
   );
 }

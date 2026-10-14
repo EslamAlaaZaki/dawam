@@ -1,8 +1,9 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
 import type { Workspace } from "../api/workspaces";
+import { openSettings } from "../test/settingsDialog";
 import { currentLocation } from "../test/navigation";
 import {
   CSRF_TOKEN,
@@ -108,9 +109,10 @@ describe("archiving a Workspace", () => {
   it("lets an owner archive it, after which it says it is read-only", async () => {
     const requests = renderApp(backend({ archived: false }), PATH);
 
+    await openSettings("Archive & delete");
     fireEvent.click(await screen.findByRole("button", { name: "Archive Workspace" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("archived and read-only");
+    expect(await screen.findByRole("status", { hidden: true })).toHaveTextContent("archived and read-only");
     expect(requests.find((r) => r.method === "POST" && r.path === `${API}/archive`)).toMatchObject(
       { csrf: CSRF_TOKEN },
     );
@@ -122,6 +124,7 @@ describe("archiving a Workspace", () => {
 
   it("lets an owner unarchive it", async () => {
     renderApp(backend({ archived: true }), PATH);
+    await openSettings("Archive & delete");
 
     fireEvent.click(await screen.findByRole("button", { name: "Unarchive Workspace" }));
 
@@ -131,6 +134,7 @@ describe("archiving a Workspace", () => {
 
   it("offers Fix impacts once unarchived, to those who review Change Sets", async () => {
     const requests = renderApp(backend({ archived: true }), PATH);
+    await openSettings("Archive & delete");
 
     fireEvent.click(await screen.findByRole("button", { name: "Unarchive Workspace" }));
     fireEvent.click(await screen.findByRole("button", { name: "Fix impacts" }));
@@ -145,6 +149,7 @@ describe("archiving a Workspace", () => {
 
   it("does not offer Fix impacts before unarchiving", async () => {
     renderApp(backend({ archived: true }), PATH);
+    await openSettings("Archive & delete");
 
     await screen.findByRole("button", { name: "Unarchive Workspace" });
     expect(screen.queryByRole("button", { name: "Fix impacts" })).not.toBeInTheDocument();
@@ -154,7 +159,9 @@ describe("archiving a Workspace", () => {
     renderApp(backend({ archived: false, permissions: ["workspace.view"] }), PATH);
 
     await screen.findByRole("heading", { name: "Retail DW" });
+    const dialog = await openSettings();
 
+    expect(within(dialog).queryByRole("tab", { name: "Archive & delete" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /rchive Workspace/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("form", { name: "Delete Workspace" })).not.toBeInTheDocument();
   });
@@ -163,6 +170,7 @@ describe("archiving a Workspace", () => {
 describe("deleting a Workspace", () => {
   it("needs the name typed, then deletes it and goes home", async () => {
     const requests = renderApp(backend({ archived: false }), PATH);
+    await openSettings("Archive & delete");
     const form = await screen.findByRole("form", { name: "Delete Workspace" });
     const submit = screen.getByRole("button", { name: "Delete Workspace" });
     expect(submit).toBeDisabled();
