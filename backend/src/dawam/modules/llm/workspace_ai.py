@@ -549,7 +549,8 @@ class WorkspaceAiService:
         internal_available = _internal_agent_available(db)
         chosen: dict[str, list[ChosenModel]] = {role: [] for role in ROLES}
         for w, m, p in _model_rows(db, workspace_id):
-            chosen[w.role].append(ChosenModel(
+            chosen[w.role].append(
+                ChosenModel(
                     m.id,
                     m.name,
                     p.name,

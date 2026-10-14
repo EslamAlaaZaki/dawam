@@ -816,9 +816,7 @@ def test_without_a_pick_the_last_one_is_used_else_the_workspace_default_agent_mo
     assert detail["conversation"]["model_id"] == other["id"]
 
 
-def test_history_still_names_a_model_that_left_the_workspace(
-    roles, model, fake_llm, admin_client
-):
+def test_history_still_names_a_model_that_left_the_workspace(roles, model, fake_llm, admin_client):
     other = register(admin_client, "other")
     owner = roles.client("owner")
     workspace_agents(owner, roles, model, other)
