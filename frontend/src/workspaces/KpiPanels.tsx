@@ -213,14 +213,17 @@ export function KpiCatalog({
         </Badge>
       ),
     },
-    { header: "Unit", cell: (kpi) => kpi.unit || "—" },
+    { header: "Unit", cell: (kpi) => <span className="tabular-nums">{kpi.unit || "—"}</span> },
     { header: "Owner", cell: (kpi) => kpi.owner || "—" },
-    { header: "Refresh", cell: (kpi) => kpi.refresh_frequency || "—" },
+    {
+      header: "Refresh",
+      cell: (kpi) => <span className="tabular-nums">{kpi.refresh_frequency || "—"}</span>,
+    },
   ];
 
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3">
         <h3 id="folder-title" className={h3Classes}>
           {title}
         </h3>
@@ -302,7 +305,7 @@ function KpiViewButton({ kpi }: { kpi: Kpi }) {
             <DialogDescription>KPI details</DialogDescription>
           </DialogHeader>
           <AiRationale kpi={kpi} />
-          <DetailList>
+          <DetailList className="gap-y-3 rounded-lg border border-border bg-surface p-4 text-sm">
             <dt>Status</dt>
             <dd>
               <Badge variant={STATUS_VARIANTS[kpi.status]} dot>
@@ -316,7 +319,9 @@ function KpiViewButton({ kpi }: { kpi: Kpi }) {
             <dt>Formula SQL</dt>
             <dd>
               {kpi.formula_sql ? (
-                <code className={monoClasses}>{kpi.formula_sql}</code>
+                <code className={`${monoClasses} block whitespace-pre-wrap rounded-md border border-border bg-surface-raised p-2`}>
+                  {kpi.formula_sql}
+                </code>
               ) : (
                 "—"
               )}
@@ -330,7 +335,9 @@ function KpiViewButton({ kpi }: { kpi: Kpi }) {
             <dt>Refresh frequency</dt>
             <dd>{kpi.refresh_frequency || "—"}</dd>
             <dt>Targets</dt>
-            <dd>{kpi.targets.length ? targetsToText(kpi.targets) : "—"}</dd>
+            <dd className="whitespace-pre-line tabular-nums">
+              {kpi.targets.length ? targetsToText(kpi.targets) : "—"}
+            </dd>
           </DetailList>
           <DialogFooter>
             <DialogClose asChild>
@@ -417,7 +424,7 @@ function KpiActions({
         <Button size="sm" onClick={() => setEditing(true)}>
           Edit
         </Button>
-        <Button size="sm" className="text-red-11" onClick={() => setDeleting(true)}>
+        <Button size="sm" className="text-danger-strong" onClick={() => setDeleting(true)}>
           Delete
         </Button>
       </div>
