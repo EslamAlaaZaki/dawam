@@ -122,8 +122,8 @@ function LineageView({
   }
   return (
     <>
-      <p className="text-sand-11">
-        Lineage of <strong className="text-sand-12">{lineage.data.start.label}</strong> (
+      <p className="text-muted-foreground">
+        Lineage of <strong className="text-foreground">{lineage.data.start.label}</strong> (
         {LAYER_LABELS[lineage.data.start.layer]}): {shown.nodes.length} nodes,{" "}
         {shown.edges.length} edges.
       </p>
@@ -146,11 +146,11 @@ function LineageView({
       {selectedNode && (
         <aside
           aria-label="Selected node"
-          className="flex flex-col gap-2.5 rounded-lg border border-sand-5 bg-sand-2 p-4"
+          className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface p-4"
         >
           <h4 className={h4Classes}>
             {selectedNode.label}{" "}
-            <small className="font-normal text-sand-11">
+            <small className="font-normal text-muted-foreground">
               ({LAYER_LABELS[selectedNode.layer]})
             </small>
           </h4>
@@ -210,7 +210,7 @@ function EdgeList({ edges, byId }: { edges: LineageEdge[]; byId: Map<string, Lin
   }
   return (
     <details className="text-sm">
-      <summary className="cursor-pointer font-medium text-sand-11 hover:text-sand-12">
+      <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
         Edges as a list
       </summary>
       <ul aria-label="Lineage edges" className="mt-2 flex flex-col gap-1 font-mono text-mono">
@@ -241,7 +241,7 @@ function ImpactPanel({ workspaceId, node }: { workspaceId: string; node: string 
   return (
     <section
       aria-label="Impact report"
-      className="flex flex-col gap-3 rounded-lg border border-sand-5 bg-sand-2 p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4"
     >
       <h4 className={h4Classes}>Impact of {start.label}</h4>
       {columns.length + tables.length + kpis.length === 0 ? (
@@ -258,7 +258,7 @@ function ImpactPanel({ workspaceId, node }: { workspaceId: string; node: string 
                 {items.map((n) => (
                   <li key={n.id}>
                     {n.label}{" "}
-                    <small className="text-sand-11">({LAYER_LABELS[n.layer]})</small>
+                    <small className="text-muted-foreground">({LAYER_LABELS[n.layer]})</small>
                   </li>
                 ))}
               </ul>
@@ -284,8 +284,8 @@ function StartPicker({
   const table = useDwTable(workspaceId, tableId);
 
   return (
-    <fieldset className="m-0 flex min-w-0 flex-wrap items-end gap-3 rounded-lg border border-sand-5 p-3">
-      <legend className="px-1 text-sm font-semibold text-sand-11">Start from</legend>
+    <fieldset className="m-0 flex min-w-0 flex-wrap items-end gap-3 rounded-lg border border-border p-3">
+      <legend className="px-1 text-sm font-semibold text-muted-foreground">Start from</legend>
       <label className={labelClasses}>
         KPI
         <NativeSelect

@@ -38,7 +38,7 @@ export function StarPanel({ workspaceId, layer }: { workspaceId: string; layer: 
         <h4 id="star-title" className={h4Classes}>Star diagram</h4>
         <StarDiagram tables={model.tables} pii={pii} />
         {/* The canvas is a picture: the same relationships, readable. */}
-        <ul aria-label="Relationships" className="text-sm text-sand-11">
+        <ul aria-label="Relationships" className="font-mono text-mono text-muted-foreground">
           {links.map((l) => (
             <li key={l.id}>
               {l.from.name} → {l.to.name} ({l.label})
@@ -46,7 +46,7 @@ export function StarPanel({ workspaceId, layer }: { workspaceId: string; layer: 
           ))}
         </ul>
         {(marked.length > 0 || influenced.length > 0) && (
-          <ul aria-label="PII in the model" className="text-sm text-sand-11">
+          <ul aria-label="PII in the model" className="font-mono text-mono text-muted-foreground">
             {marked.map(({ t, c }) => (
               <li key={c.id}>
                 {t.name}.{c.name} ({piiMarkLabel(pii.get(c.id)!)})
