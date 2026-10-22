@@ -129,7 +129,7 @@ export function SourceSchemaPanel({
       {snapshots.isSuccess && snapshots.data.length > 0 && (
         <ul
           aria-label="Snapshots"
-          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-2`}
+          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-2 [&_li]:text-sm [&_li]:tabular-nums`}
         >
           {snapshots.data.map((snapshot) => (
             <li key={snapshot.id}>

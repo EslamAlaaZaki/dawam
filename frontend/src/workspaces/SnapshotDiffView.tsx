@@ -25,7 +25,7 @@ function Fields({ fields }: { fields: FieldChange[] }) {
   return (
     <>
       {fields.map((f) => (
-        <span key={f.field} className={monoClasses}>
+        <span key={f.field} className={`${monoClasses} text-muted-foreground`}>
           {" "}
           {f.field}: {f.before ?? "none"} to {f.after ?? "none"};
         </span>
@@ -95,7 +95,7 @@ export function SnapshotDiffView({
       {diff.data != null && !empty && (
         <ul
           aria-label="Differences"
-          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-1.5`}
+          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-2`}
         >
           {diff.data.db_schemas.map((s) => (
             <li key={s.id}>
@@ -111,7 +111,7 @@ export function SnapshotDiffView({
               {t.columns.length > 0 && (
                 <ul
                   aria-label={`Columns of ${t.name}`}
-                  className="mt-1.5 ml-4 flex flex-col gap-1 border-l border-sand-5 pl-3 [&_li]:px-0 [&_li]:py-0"
+                  className="mt-1.5 ml-4 flex flex-col gap-1 border-l border-border pl-3 [&_li]:px-0 [&_li]:py-0"
                 >
                   {t.columns.map((c) => (
                     <li key={c.id}>
