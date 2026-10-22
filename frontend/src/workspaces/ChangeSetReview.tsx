@@ -68,11 +68,13 @@ function Diff({ item }: { item: ChangeSetItem }) {
           <code className="font-mono text-mono text-subtle-foreground">{field}</code>
           <div className="grid gap-1.5 font-mono text-mono [overflow-wrap:anywhere] sm:grid-cols-2">
             <div className="min-w-0 rounded-md border border-border bg-danger-subtle px-2 py-1">
+              <span className="block font-sans text-xs text-subtle-foreground">When proposed</span>
               {item.base_values && field in item.base_values && (
                 <del className="text-danger-strong">{show(item.base_values[field])}</del>
               )}
             </div>
             <div className="min-w-0 rounded-md border border-border bg-success-subtle px-2 py-1">
+              <span className="block font-sans text-xs text-subtle-foreground">New</span>
               <ins className="text-success-strong no-underline">{show(item.payload[field])}</ins>
             </div>
           </div>

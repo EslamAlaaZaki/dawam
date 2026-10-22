@@ -23,6 +23,7 @@ import {
   checkLabelClasses,
   fieldsetClasses,
   h3Classes,
+  h4Classes,
   labelClasses,
 } from "./parts";
 import { Loading } from "../shell/Loading";
@@ -168,6 +169,9 @@ function SetupForm({
         {!canChangePlatform && (
           <Hint>Only owners can change the platform after setup.</Hint>
         )}
+        <h4 className={`${h4Classes} border-t border-border pt-4`}>
+          Schema names
+        </h4>
         {LAYERS.map((layer) => (
           <label key={layer} className={labelClasses}>
             Schema or dataset name: {layer}
@@ -179,7 +183,10 @@ function SetupForm({
             />
           </label>
         ))}
-        <label className={`${labelClasses} border-t border-border pt-4`}>
+        <h4 className={`${h4Classes} border-t border-border pt-4`}>
+          Naming rules
+        </h4>
+        <label className={labelClasses}>
           Identifier case
           <NativeSelect
             name="case_style"
@@ -213,7 +220,10 @@ function SetupForm({
             defaultValue={rules?.bridge_prefix ?? "bridge_"}
           />
         </label>
-        <label className={`${labelClasses} border-t border-border pt-4`}>
+        <h4 className={`${h4Classes} border-t border-border pt-4`}>
+          Date dimension
+        </h4>
+        <label className={labelClasses}>
           Date dimension: first year
           <Input
             name="start_year"
