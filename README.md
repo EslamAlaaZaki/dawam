@@ -12,7 +12,7 @@ design decision traceable to the real source schema and an AI assistant at each 
 ![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-informational)
 
 [Quick start](#quick-start) · [Use cases](#use-cases) · [Features](#features) ·
-[Deployment](deploy/README.md) · [Documentation](#documentation) ·
+[AI providers](#ai-providers) · [Deployment](deploy/README.md) · [Documentation](#documentation) ·
 [Contributing](CONTRIBUTING.md)
 
 </div>
@@ -79,6 +79,28 @@ Across all stages:
 - **Security built in.** Credentials encrypted with AES-256-GCM, database-backed sessions,
   CSRF protection, account lockout and rate limiting, a strict Content-Security-Policy, and
   a security event log. Details are in [`docs/reference.md`](docs/reference.md).
+
+## AI providers
+
+Add a provider in **Admin > LLM providers** and pick its **Type**:
+
+| Type | Covers | Base URL | API key field | Model name | Embeddings |
+|------|--------|----------|---------------|------------|------------|
+| **OpenAI-compatible** (`openai_compatible`) | OpenAI, OpenRouter, Groq, Together, Mistral, DeepSeek, vLLM, SGLang, Ollama, LM Studio, llama.cpp server, and any server with `/v1/chat/completions` | e.g. `https://api.openai.com/v1`, `http://ollama:11434/v1` | Optional (local servers often need none) | Picked from the live `/v1/models` list | Yes, via `/v1/embeddings` |
+| **Anthropic (Claude)** (`anthropic`) | Claude through the Anthropic API | `https://api.anthropic.com/v1` | Anthropic API key | Picked from the live list | No |
+| **Azure OpenAI** (`azure_openai`) | Azure OpenAI deployments | Resource endpoint `https://<res>.openai.azure.com`, optionally with `?api-version=...` | Azure key, or `entra:<tenant_id>:<client_id>:<client_secret>` for Entra ID | Deployment name, typed in | Yes, with an embedding deployment |
+| **Google Gemini (API or Vertex AI)** (`gemini`) | Gemini API (Google AI Studio keys) and Vertex AI | Gemini API: `https://generativelanguage.googleapis.com/v1beta`; Vertex AI: `https://<region>-aiplatform.googleapis.com/v1/projects/<P>/locations/<L>/publishers/google` | AI Studio API key, or a service account's whole JSON key | Picked from the live list (Gemini API); typed in (Vertex AI) | Yes (Gemini API) |
+| **AWS Bedrock** (`bedrock`) | Models on Bedrock (Converse API) | Regional runtime endpoint, e.g. `https://bedrock-runtime.us-east-1.amazonaws.com` | `<access key id>:<secret>[:<session token>]`, optionally followed by `;role=<role ARN>` | Picked from the foundation-model and inference-profile list; you enter the context window | No |
+
+- **Where it runs.** Mark cloud services **External** and only self-hosted servers
+  **Internal**: internal-only Workspaces accept internal providers only.
+- **Document search needs an embedding model.** If your agent model's provider can't
+  embed (Anthropic, Bedrock), add a second provider for the Embedding role, such as
+  OpenAI, Gemini or a local Ollama embedding model.
+- **More providers** can ship as separate Python packages through the
+  `dawam.llm_providers` entry point, without changing the core.
+
+[`docs/install.md`](docs/install.md) has tested recipes for local LLM servers.
 
 ## Architecture
 
