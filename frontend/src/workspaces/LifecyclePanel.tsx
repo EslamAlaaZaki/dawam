@@ -98,7 +98,7 @@ function DeleteWorkspace({ workspace }: { workspace: Workspace }) {
 
   return (
     <form
-      className="flex max-w-xl flex-col gap-3.5 border-t border-sand-4 pt-4"
+      className="flex max-w-xl flex-col gap-3.5 border-t border-border pt-4"
       onSubmit={onSubmit}
       aria-label="Delete Workspace"
     >
@@ -117,7 +117,7 @@ function DeleteWorkspace({ workspace }: { workspace: Workspace }) {
       <Actions>
         <Button
           type="submit"
-          className="text-red-11"
+          variant="destructive"
           disabled={typed !== workspace.name || remove.isPending}
         >
           Delete Workspace
