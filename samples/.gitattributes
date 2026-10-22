@@ -1,0 +1,4 @@
+# Built documents are binary; keep git from touching them.
+*.docx binary
+*.xlsx binary
+*.pdf binary
