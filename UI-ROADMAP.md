@@ -178,10 +178,10 @@ These 8 steps are what the tickets should cover. Each prompt also works on its o
 
 ```
 Follow DESIGN.md sections 2 to 4. UI only.
-- Add the color tokens to globals.css as shadcn variables (light theme), plus our extra tokens
+- Add the color tokens to globals.css as shadcn variables (light and dark, values in §2), plus our extra tokens
   (surface, border-strong, subtle-foreground, primary-subtle, success/warning/danger/info with
   -subtle, ai-from/ai-to/ai-subtle), and expose them as Tailwind classes.
-- Load Inter and JetBrains Mono with next/font in app/layout.tsx as font-sans and font-mono.
+- Keep Geist Sans and Geist Mono (already loaded) as font-sans and font-mono.
 Don't change any pages.
 ```
 **Done when:** the app works as before, with the new font and colors.
@@ -191,9 +191,8 @@ Don't change any pages.
 ```
 Use the frontend-design skill. Follow DESIGN.md section 6. UI only.
 Restyle the existing workspace layout:
-- Sidebar: DAWAM logo, then the existing links grouped under headings
-  (Overview / Sources / Understand / Design / Govern, then Assistant with ✦), lucide icons,
-  active state with primary-subtle. Don't add or remove links.
+- Sidebar: DAWAM logo, Workspace switcher, then the existing folder tree restyled (lucide
+  icons, active node with primary-subtle). Same nodes, order and ?folder= URLs; don't regroup.
 - Slim top bar with breadcrumbs and the existing controls.
 - Restyle the admin sidebar the same way, with an "Admin" label.
 Keep all routes, links and behavior the same.
@@ -235,15 +234,11 @@ badges). Use tabs only to organise information the page already shows. Don't add
 
 ### Step 6: AI assistant signature look
 
-Add the components first (shadcn-based, made for Next.js; used only for their look):
-
-```bash
-npx ai-elements@latest add conversation message prompt-input reasoning tool shimmer code-block
-```
+Vercel AI Elements is a visual reference only: don't install it, add no dependencies.
 
 ```
 Use the frontend-design skill. Follow DESIGN.md section 9. UI only.
-Restyle the existing AI assistant at <file path> using the AI Elements components we just added:
+Restyle the existing AI assistant at <file path> using our own shadcn parts and the existing react-markdown renderer:
 - Header with ✦ and a 1px gradient border (ai-gradient).
 - Assistant messages on the left with ✦ and ai-subtle tint, user messages on the right.
 - Clean markdown, SQL in code blocks, shimmer on the existing loading state.

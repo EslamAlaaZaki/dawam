@@ -29,11 +29,35 @@ This redesign changes **how things look and are arranged, never what the app doe
 - More than one accent color
 - Heavy shadows, thick borders, bubbly rounded cards
 - Emoji in the UI
-- Raw hex values or arbitrary Tailwind values (`p-[13px]`) in components: use tokens
+- Raw hex values or arbitrary Tailwind values (`p-[13px]`) in components: use tokens. The only exception is layout math that has no scale equivalent (`max-h-[calc(100%-2rem)]`, `w-[min(680px,55vw)]`). Colors, spacing, radius and font size are never arbitrary.
 
 ## 2. Color tokens
 
-Light theme only for now. Implement as CSS variables in the shadcn/ui theme format (`globals.css`), converting hex to the format the project uses (oklch or hsl).
+Light and dark themes. The app already has a theme switch in the user menu (light / dark / system, via next-themes); it keeps working exactly as it does today. Implement as CSS variables in `src/app/theme.css` (the project's shadcn/ui theme file), with the light values on `:root` and the dark values on `.dark`. `contrast.test.ts` pins the text and UI pairs in both themes.
+
+Dark values (light values are in the tables below):
+
+| Token | Dark |
+|---|---|
+| `--background` | `#0B0B0F` |
+| `--surface` | `#111116` |
+| `--surface-raised` | `#17171D` |
+| `--muted` | `#1C1C23` |
+| `--border` | `#25252D` |
+| `--border-strong` | `#34343D` |
+| `--foreground` | `#EDEDF0` |
+| `--muted-foreground` | `#A1A1AA` |
+| `--subtle-foreground` | `#8B8B95` |
+| `--primary` | `#8B8BF5` |
+| `--primary-foreground` | `#0B0B0F` |
+| `--primary-subtle` | `#1E1E3A` |
+| `--success` | `#4ADE80` |
+| `--warning` | `#FBBF24` |
+| `--danger` | `#F87171` |
+| `--info` | `#38BDF8` |
+| `--ai-subtle` | `#1A1630` |
+
+`--ai-from` and `--ai-to` are the same in both themes.
 
 ### Neutrals
 
@@ -91,8 +115,8 @@ Each semantic color also has a `-subtle` background (about 10% tint) for badges.
 
 ## 3. Typography
 
-- **UI font:** Inter, loaded with `next/font`. Fallback `system-ui, sans-serif`.
-- **Mono font:** JetBrains Mono, for every table name, column name, data type, SQL snippet and ID.
+- **UI font:** Geist Sans, loaded through the `geist` package (already installed, self-hosted via next/font). Fallback `system-ui, sans-serif`.
+- **Mono font:** Geist Mono, for every table name, column name, data type, SQL snippet and ID.
 - Tabular numerals (`tabular-nums`) for numbers in tables, KPIs and counts.
 
 | Style | Size / line height | Weight | Use |
@@ -124,21 +148,16 @@ Only weights 400, 500, 600. Sentence case everywhere ("Add source", not "Add Sou
 ## 6. Layout
 
 ### App shell (restyle the existing one)
-- **Left sidebar (240px):** DAWAM logo on top, then the existing workspace links grouped under headings:
-  - Overview
-  - **Sources:** sources / connections, snapshots
-  - **Understand:** schema, ER diagram, data quality
-  - **Design:** model, mappings, lineage
-  - **Govern:** change sets, docs, KPIs, members
-  - Assistant (with the ✦ mark)
-- Group only links that already exist; don't add pages.
-- **Top bar (48px):** breadcrumbs on the left; existing controls (user menu, notifications if they exist) on the right.
+- **Left sidebar (240px; below 1024px it is the existing drawer, unchanged):** DAWAM logo on top, then the Workspace switcher, then the Workspace's **folder tree** (`src/workspaces/folders.ts`): Systems → one folder per Source System (Connection | Schema Import, Source Schema, ER diagram, Profiling, PII, Documents, KPIs, Outputs) and Data Warehouse → KPIs, Staging / Core / Mart (Model, Mappings, Evaluation), Lineage, Score, Files.
+  - The tree is the navigation. Its nodes, their order, which nodes appear when, and the `?folder=` URLs stay exactly as they are. **Don't regroup it** into fixed sections or replace it with links: only restyle it (lucide icons, indentation, active node with `--primary-subtle`).
+  - The assistant's entry point gets the ✦ mark.
+- **Top bar (48px):** a plain-text location trail on the left, built only from labels that already exist (e.g. Workspace › Data Warehouse › Core › Model, or Admin › Users). It isn't clickable and doesn't look clickable: no underline, no hover state, no pointer. Parent levels in `--subtle-foreground`, the current level in `--foreground`. The existing controls (Jobs, notifications, user menu) sit on the right.
 - **Admin** pages keep their own sidebar with a visible "Admin" label.
 
 ### Page patterns
 | Pattern | Used by |
 |---|---|
-| Overview (header, stat cards, lists) | Workspace page, workspaces list, KPIs |
+| Overview (header, stat cards, lists) | Workspace overview (root folder: header, stage progress as a stepper, Members, Deleted objects; no stat cards, they would need new data), workspaces list, KPIs |
 | Explorer (list or tree on the left, details on the right) | Schema, model |
 | Table page (header + one table) | Sources, snapshots, mappings, members, all admin lists |
 | Split view (before / after) | Change set review, snapshot diffs |
@@ -163,6 +182,8 @@ Only weights 400, 500, 600. Sentence case everywhere ("Add source", not "Add Sou
 - Long names truncate with ellipsis and show the full name in a tooltip.
 - Status values shown as colored badges (section 2), never as plain text.
 
+- **Diagrams** (ER, lineage, star, bus matrix): re-color nodes, edges and tags with tokens (the data-tag colors in section 2) and put identifiers in mono. Layout, sizing and interaction stay exactly as they are.
+
 ## 9. AI assistant: the signature look
 
 Restyle the existing assistant where it lives today. Same features, new look.
@@ -176,23 +197,23 @@ Restyle the existing assistant where it lives today. Same features, new look.
 **Message display:**
 - Markdown rendered cleanly: headings, lists, tables
 - SQL and code in styled code blocks
-- If the API already sends reasoning or tool-call steps, show them as a collapsible reasoning block and small step cards; if not, skip them
+- Tool calls stay hidden, as they are today (the API sends them, but the assistant deliberately doesn't show them). Restyle only what is shown now: job cards, the can-write warning and the stop/limit hints. No reasoning block or step cards.
 - Change sets the assistant already creates are shown as a styled card linking to the existing review page
 - User and assistant messages clearly different (assistant: left with ✦ and tint; user: right, neutral)
 - Prompt input restyled as one clean box with the existing send button
 
-**Component source:** Vercel AI Elements (shadcn-based): Conversation, Message, Prompt Input, Reasoning, Tool, Shimmer, Code Block. Used only for their look; keep the existing data flow and API.
+**Component source:** our own shadcn/ui parts plus the existing `react-markdown` + `remark-gfm` renderer. Vercel AI Elements (Conversation, Message, Prompt Input, Reasoning, Tool, Shimmer, Code Block) is a **visual reference only**: don't install it, and add no new dependencies. Keep the existing data flow and API.
 
 ## 10. States
 
 - **Empty states:** use `EmptyState` wherever a page already shows an empty message.
-- **Loading:** restyle existing loading indicators as skeletons that match the layout.
+- **Loading:** the shared `Loading` is restyled once. A panel may replace it with a skeleton shaped like its layout, as long as the existing "Loading…" label stays (screen-reader-only is fine).
 - **Errors:** restyle existing error messages: what happened, then what to do.
 - Don't add new states the page doesn't have today.
 
 ## 11. Copy
 
-- Sentence case, verbs first on buttons ("Add source", "Approve changes").
+- Sentence case, verbs first on buttons ("Add Source System", "Approve changes"). Glossary terms from `CONTEXT.md` (Workspace, Source System, Source Schema, Layer, Snapshot, …) keep their capitals; sentence case applies to the other words.
 - No "please", no "successfully", no exclamation marks.
 - Only rewrite labels for case and clarity; don't change what they mean.
 
@@ -208,5 +229,5 @@ Restyle the existing assistant where it lives today. Same features, new look.
 - [ ] Looks only changed; behavior, routes, APIs and data are the same
 - [ ] Uses tokens from this file (no raw hex, no arbitrary values)
 - [ ] Uses shadcn/ui primitives
-- [ ] Works at 1280px and 768px widths
+- [ ] Works at 1280px and 768px widths (at 768px: the drawer works and the page doesn't scroll sideways)
 - [ ] Changes only the files the task needs
