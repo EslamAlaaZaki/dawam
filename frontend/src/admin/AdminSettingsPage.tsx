@@ -8,12 +8,17 @@ import {
   type AdminSettings,
 } from "../api/admin";
 import { useMe } from "../api/queries";
-import { SettingsCard } from "../components/entity/SettingsCard";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
 import { Loading } from "../shell/Loading";
-import { ErrorText, PageHead, labelClasses } from "./parts";
+import {
+  ErrorText,
+  PageHead,
+  formCardClasses,
+  h3Classes,
+  labelClasses,
+} from "./parts";
 
 /** Installation-wide settings; only admins can read or change them (the API enforces it). */
 export function AdminSettingsPage() {
@@ -26,7 +31,7 @@ export function AdminSettingsPage() {
   let content;
   if (!isAdmin) {
     content = (
-      <p className="text-sand-11">Only admins can change these settings.</p>
+      <p className="text-muted-foreground">Only admins can change these settings.</p>
     );
   } else if (settings.isPending) {
     content = <Loading />;
@@ -47,7 +52,7 @@ export function AdminSettingsPage() {
     );
   }
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex flex-col gap-6">
       <PageHead
         title="Admin settings"
         description="Settings for the whole DAWAM server."
@@ -84,20 +89,18 @@ function RegistrationForm({
 
   return (
     <form onSubmit={onSubmit} aria-label="Self-registration">
-      <SettingsCard
-        title="Self-registration"
-        description="Who can create an account without an invitation."
-        footer={
-          <Button type="submit" variant="primary" disabled={update.isPending}>
-            Save settings
-          </Button>
-        }
-      >
+      <section aria-label="Self-registration" className={formCardClasses}>
+        <div>
+          <h3 className={h3Classes}>Self-registration</h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Who can create an account without an invitation.
+          </p>
+        </div>
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
             name="enabled"
             type="checkbox"
-            className="size-4 accent-[var(--accent-solid)]"
+            className="size-4 accent-primary"
             defaultChecked={registration.enabled}
           />
           Allow self-registration
@@ -111,13 +114,18 @@ function RegistrationForm({
             placeholder="example.com"
           />
         </label>
-        <p className="text-sm text-sand-11">
+        <p className="text-sm text-muted-foreground">
           One domain per line. Leave it empty to let any email address sign up.
           A domain matches exactly: list subdomains (e.g. eng.example.com) on
           their own lines.
         </p>
         {update.isError && <ErrorText>{update.error.message}</ErrorText>}
-      </SettingsCard>
+        <div className="flex items-center gap-2">
+          <Button type="submit" variant="primary" disabled={update.isPending}>
+            Save settings
+          </Button>
+        </div>
+      </section>
     </form>
   );
 }

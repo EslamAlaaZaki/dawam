@@ -11,12 +11,18 @@ import {
   type SmtpSettingsInput,
 } from "../api/mail";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
-import { SettingsCard } from "../components/entity/SettingsCard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import {
+  ErrorText,
+  NativeSelect,
+  PageHead,
+  formCardClasses,
+  h3Classes,
+  labelClasses,
+} from "./parts";
 
 const SECURITY_OPTIONS: {
   value: SmtpSettingsInput["security"];
@@ -40,7 +46,7 @@ export function SmtpSettingsPage() {
     );
   }
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex flex-col gap-6">
       <PageHead
         title="Email settings"
         description={
@@ -88,25 +94,16 @@ function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
 
   return (
     <form onSubmit={onSubmit} aria-label="SMTP settings">
-      <SettingsCard
-        title="SMTP server"
-        description="DAWAM sends its email through this server."
-        footer={
-          <>
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              Save
-            </Button>
-            {saved && (
-              <Button type="button" onClick={() => setTurningOff(true)}>
-                Turn SMTP off
-              </Button>
-            )}
-          </>
-        }
-      >
+      <section aria-label="SMTP server" className={formCardClasses}>
+        <div>
+          <h3 className={h3Classes}>SMTP server</h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            DAWAM sends its email through this server.
+          </p>
+        </div>
       <label className={labelClasses}>
         SMTP host
-        <Input name="host" defaultValue={saved?.host ?? ""} required />
+        <Input name="host" className="font-mono" defaultValue={saved?.host ?? ""} required />
       </label>
       <label className={labelClasses}>
         Port
@@ -161,7 +158,17 @@ function SmtpForm({ saved }: { saved: SmtpSettings | null }) {
         />
       </label>
       {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      </SettingsCard>
+        <div className="flex items-center gap-2">
+          <Button type="submit" variant="primary" disabled={save.isPending}>
+            Save
+          </Button>
+          {saved && (
+            <Button type="button" onClick={() => setTurningOff(true)}>
+              Turn SMTP off
+            </Button>
+          )}
+        </div>
+      </section>
       <ConfirmDialog
         open={turningOff}
         onOpenChange={(next) => {
@@ -192,14 +199,8 @@ function TestEmail() {
 
   return (
     <form onSubmit={onSubmit} aria-label="Test email">
-      <SettingsCard
-        title="Send a test email"
-        footer={
-          <Button type="submit" disabled={send.isPending}>
-            Send test email
-          </Button>
-        }
-      >
+      <section aria-label="Send a test email" className={formCardClasses}>
+        <h3 className={h3Classes}>Send a test email</h3>
       <label className={labelClasses}>
         Recipient (empty: your own address)
         <Input
@@ -210,7 +211,12 @@ function TestEmail() {
         />
       </label>
       {send.isError && <ErrorText>{send.error.message}</ErrorText>}
-      </SettingsCard>
+        <div className="flex items-center gap-2">
+          <Button type="submit" disabled={send.isPending}>
+            Send test email
+          </Button>
+        </div>
+      </section>
     </form>
   );
 }
