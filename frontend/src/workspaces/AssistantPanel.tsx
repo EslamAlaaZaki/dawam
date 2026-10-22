@@ -49,6 +49,7 @@ import {
   NativeSelect,
   checkLabelClasses,
   h3Classes,
+  monoClasses,
 } from "./parts";
 
 /** Wide enough to show the Conversation list beside the chat rather than as a drawer. */
@@ -83,7 +84,7 @@ function JobProgress({
   const current = job.data;
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-sand-5 bg-sand-1 p-2.5 text-sm"
+      className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm"
       role="status"
       aria-label={`Job: ${title}`}
     >
@@ -95,7 +96,7 @@ function JobProgress({
             max={100}
             value={current.progress}
             aria-label="Job progress"
-            className="h-1.5 w-24 accent-[var(--accent-solid)]"
+            className="h-1.5 w-24 accent-primary"
           />
           {isActive(current) && (
             <Button
@@ -107,11 +108,11 @@ function JobProgress({
             </Button>
           )}
           {current.error && (
-            <p className="w-full text-red-11">{current.error}</p>
+            <p className="w-full text-danger-strong">{current.error}</p>
           )}
         </>
       ) : (
-        <span className="text-sand-11">starting</span>
+        <span className="text-muted-foreground">starting</span>
       )}
     </div>
   );
@@ -161,7 +162,7 @@ function ToolNotes({
       {canWrite(tools) && (
         <p
           role="alert"
-          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2 text-sm text-sand-12"
+          className="rounded-md border border-warning/40 bg-warning-subtle px-3 py-2 text-sm text-foreground"
         >
           Warning: the database user of this Connection can change data. The
           assistant only runs read-only SELECT queries, but an owner should give
@@ -185,14 +186,22 @@ function FailureNote({ run }: { run: Run }) {
   );
 }
 
+/** A small card for a reply's stop and limit hints. */
+const noteClasses =
+  "rounded-md border border-border bg-surface-raised px-3 py-2 text-xs";
+
 /** How a run ended, when that is worth saying. */
 function RunNotes({ run, workspaceId }: { run: Run; workspaceId: string }) {
   return (
     <>
       <ToolNotes tools={run.tool_calls} workspaceId={workspaceId} />
-      {run.status === "cancelled" && <Hint>Stopped.</Hint>}
+      {run.status === "cancelled" && (
+        <Hint className={noteClasses}>Stopped.</Hint>
+      )}
       {run.status === "tool_limit" && (
-        <Hint>Stopped using tools: the limit for one request was reached.</Hint>
+        <Hint className={noteClasses}>
+          Stopped using tools: the limit for one request was reached.
+        </Hint>
       )}
       <FailureNote run={run} />
     </>
@@ -227,21 +236,40 @@ function Bubble({
   children: ReactNode;
 }) {
   const name = email ?? "DAWAM";
+  const assistant = email === null;
   return (
     <li
-      aria-label={email === null ? "Reply from DAWAM" : `Message from ${email}`}
+      aria-label={assistant ? "Reply from DAWAM" : `Message from ${email}`}
       aria-busy={busy || undefined}
-      className="flex gap-2.5"
+      className={cn("flex gap-2.5", !assistant && "flex-row-reverse pl-10")}
     >
       <Avatar email={email} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="flex items-baseline gap-2">
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-1",
+          assistant ? "flex-1" : "items-end",
+        )}
+      >
+        <p
+          className={cn(
+            "flex max-w-full items-baseline gap-2",
+            !assistant && "flex-row-reverse",
+          )}
+        >
+          {assistant && (
+            <span aria-hidden className="self-center text-xs text-ai-from">
+              ✦
+            </span>
+          )}
           <span className="truncate text-sm font-semibold">{name}</span>
           <MessageTime at={at} />
           {model && (
             <span
               aria-label="Answered by"
-              className="truncate text-xs text-sand-11"
+              className={cn(
+                "truncate text-xs text-subtle-foreground",
+                monoClasses,
+              )}
             >
               {model}
             </span>
@@ -249,10 +277,10 @@ function Bubble({
         </p>
         <div
           className={cn(
-            "flex flex-col gap-2 rounded-lg border px-3 py-2",
-            email === null
-              ? "border-sand-4 bg-sand-2"
-              : "border-jade-4 bg-jade-2 whitespace-pre-wrap",
+            "flex max-w-full flex-col gap-2 rounded-lg border px-3.5 py-2.5",
+            assistant
+              ? "border-border bg-ai-subtle"
+              : "border-border bg-muted whitespace-pre-wrap",
           )}
         >
           {children}
@@ -296,7 +324,7 @@ function Turn({
 }
 
 const conversationClasses =
-  "flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm text-sand-12 hover:bg-sand-3 aria-[current=true]:bg-sand-3 aria-[current=true]:font-semibold disabled:opacity-60";
+  "flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors duration-120 hover:bg-muted aria-[current=true]:bg-muted aria-[current=true]:font-semibold disabled:opacity-60";
 
 /**
  * The chat of a Workspace (spec §6.16): the thread with the input pinned at the bottom, and
@@ -496,12 +524,18 @@ export function AssistantPanel({
   return (
     <section className="relative flex h-full" aria-labelledby="assistant-title">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+        <div className="flex items-center gap-2 px-4 py-2.5">
+          <span
+            aria-hidden
+            className="flex size-6 shrink-0 items-center justify-center rounded-md bg-ai-gradient text-xs text-white"
+          >
+            ✦
+          </span>
           <h3 id="assistant-title" className={h3Classes}>
             Assistant
           </h3>
           {current && (
-            <span className="min-w-0 truncate text-sm text-sand-11">
+            <span className="min-w-0 truncate text-sm text-muted-foreground">
               {current.title}
             </span>
           )}
@@ -532,6 +566,8 @@ export function AssistantPanel({
             </Button>
           )}
         </div>
+        {/* The assistant's signature: a 1px gradient rule under its header. */}
+        <div aria-hidden className="h-px shrink-0 bg-ai-gradient" />
         <div
           ref={thread}
           className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3"
@@ -569,7 +605,15 @@ export function AssistantPanel({
                   {draft.text ? (
                     <Markdown>{draft.text}</Markdown>
                   ) : (
-                    <Hint>Thinking…</Hint>
+                    <div className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="size-2 animate-pulse rounded-full bg-ai-gradient motion-reduce:animate-none"
+                      />
+                      <Hint className="animate-pulse motion-reduce:animate-none">
+                        Thinking…
+                      </Hint>
+                    </div>
                   )}
                   <ToolNotes tools={draft.tools} workspaceId={workspace.id} />
                 </Bubble>
@@ -598,7 +642,10 @@ export function AssistantPanel({
           {refusal && <ErrorText>{refusal}</ErrorText>}
         </div>
         {canAsk && !archived && (
-          <form onSubmit={onSubmit} className="border-t border-line px-4 py-3">
+          <form
+            onSubmit={onSubmit}
+            className="border-t border-border bg-surface px-4 py-3"
+          >
             <div className="relative">
               <Textarea
                 ref={input}
@@ -622,7 +669,7 @@ export function AssistantPanel({
                 rows={1}
                 maxLength={8000}
                 className={cn(
-                  "max-h-48 min-h-10 resize-none pr-11",
+                  "max-h-48 min-h-11 resize-none rounded-lg bg-surface-raised py-2.5 pr-11",
                   models.length > 0 && "pr-52",
                 )}
               />
@@ -669,7 +716,7 @@ export function AssistantPanel({
                 </Button>
               )}
             </div>
-            <p className="mt-1 text-xs text-sand-11">
+            <p className="mt-1.5 text-xs text-subtle-foreground">
               {canPost
                 ? "Enter to send, Shift+Enter for a new line."
                 : "Viewers can only read this shared conversation."}
@@ -696,7 +743,7 @@ export function AssistantPanel({
                 closeList();
               }
             }}
-            className="absolute inset-y-0 right-0 z-20 flex w-60 max-w-[85%] flex-col border-l border-line bg-sand-1 shadow-lg lg:static lg:z-auto lg:w-56 lg:shadow-none"
+            className="absolute inset-y-0 right-0 z-20 flex w-60 max-w-[85%] flex-col border-l border-border bg-surface shadow-lg lg:static lg:z-auto lg:w-56 lg:shadow-none"
           >
             {canAsk && !archived && (
               <div className="p-3">
@@ -735,7 +782,7 @@ export function AssistantPanel({
                   >
                     <span className="min-w-0 truncate">{c.title}</span>
                     {!c.mine && (
-                      <span className="shrink-0 text-xs text-sand-11">
+                      <span className="shrink-0 text-xs text-subtle-foreground">
                         (shared)
                       </span>
                     )}

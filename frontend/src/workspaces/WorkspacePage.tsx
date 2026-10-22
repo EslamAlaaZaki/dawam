@@ -312,7 +312,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             setAssistantOpen(false);
           }
         }}
-        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l outline-none border-line bg-sand-1 shadow-lg lg:w-[min(680px,55vw)] lg:shadow-none"
+        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l border-border bg-background shadow-lg outline-none lg:w-[min(680px,55vw)] lg:shadow-none"
       >
         {assistantUsed && (
           <div className="h-full">
