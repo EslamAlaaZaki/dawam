@@ -23,11 +23,12 @@ import { ApiStatus } from "./ApiStatus";
 import { Wordmark } from "../components/Wordmark";
 import {
   WorkspaceSidebar,
+  useWorkspaceTrail,
   workspaceIdOf,
 } from "../workspaces/WorkspaceSidebar";
 
 const linkClasses =
-  "flex items-center gap-2 rounded-md px-2 py-[5px] whitespace-nowrap text-sand-11 hover:bg-sand-3 hover:text-sand-12 aria-[current=page]:bg-sand-4 aria-[current=page]:font-medium aria-[current=page]:text-sand-12 [&_svg]:size-4 [&_svg]:shrink-0";
+  "flex h-8 items-center gap-2 rounded-md px-2 whitespace-nowrap text-muted-foreground transition-colors duration-120 outline-primary hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 aria-[current=page]:bg-primary-subtle aria-[current=page]:font-medium aria-[current=page]:text-foreground [&_svg]:size-4 [&_svg]:shrink-0 aria-[current=page]:[&_svg]:text-primary";
 
 function NavLink({
   href,
@@ -52,12 +53,63 @@ function NavLink({
   );
 }
 
+const labelClasses =
+  "px-2 pt-4 pb-1 text-2xs font-medium tracking-wider text-subtle-foreground uppercase";
+
 function Label({ children }: { children: string }) {
+  return <p className={labelClasses}>{children}</p>;
+}
+
+/** Labels joined by "›": parents subtle, the last (current) level in the foreground. */
+function Trail({ labels }: { labels: string[] }) {
+  const parents = labels.slice(0, -1);
   return (
-    <p className="px-2 pt-3.5 pb-1 text-2xs font-medium tracking-[0.06em] text-sand-11 uppercase">
-      {children}
+    <p className="flex min-w-0 items-center gap-1.5 text-sm whitespace-nowrap text-subtle-foreground">
+      {parents.map((label, index) => (
+        // Below 640px only the current level shows.
+        <span key={index} className="hidden min-w-0 items-center gap-1.5 sm:flex">
+          <span className="max-w-40 truncate">{label}</span>
+          <span aria-hidden>›</span>
+        </span>
+      ))}
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {labels.at(-1)}
+      </span>
     </p>
   );
+}
+
+function WorkspaceTrail({ workspaceId }: { workspaceId: string }) {
+  const labels = useWorkspaceTrail(workspaceId);
+  return labels.length > 0 ? <Trail labels={labels} /> : null;
+}
+
+/**
+ * The top bar's location trail: plain text built from labels the navigation already
+ * shows (a Workspace's folder path, Admin and the page). It is not a link.
+ */
+export function LocationTrail() {
+  const me = useMe();
+  const pathname = usePathname();
+  const workspaceId = workspaceIdOf(pathname);
+  if (workspaceId) {
+    return <WorkspaceTrail workspaceId={workspaceId} />;
+  }
+  const admin =
+    me.data?.system_role === "admin" && !me.data.must_change_password;
+  if (admin && pathname.startsWith("/admin")) {
+    const page = ADMIN_GROUPS.flatMap((group) => group.links)
+      .filter(
+        (link) =>
+          pathname === link.href || pathname.startsWith(`${link.href}/`),
+      )
+      .sort((a, b) => b.href.length - a.href.length)[0];
+    return <Trail labels={page ? ["Admin", page.name] : ["Admin"]} />;
+  }
+  if (WORKSPACE_LIST_PATHS.has(pathname)) {
+    return <Trail labels={["Workspaces"]} />;
+  }
+  return null;
 }
 
 /** The Workspaces list is current on the home page. */
@@ -123,7 +175,7 @@ export function SidebarNav() {
         aria-label="DAWAM home"
         className="rounded-md outline-offset-2 focus-visible:outline-2"
       >
-        <Wordmark className="px-2 pt-1 pb-3" />
+        <Wordmark className="h-8 px-2 mb-2" />
       </Link>
       {workspaceId ? (
         // The tree reads the `folder` search parameter, which wants a Suspense boundary.
@@ -138,6 +190,10 @@ export function SidebarNav() {
             </NavLink>
           </nav>
           <nav aria-label="Administration" className="flex flex-col gap-0.5">
+            <p className="flex items-center gap-2 px-2 pt-4 text-sm font-semibold text-foreground">
+              <ShieldCheck aria-hidden className="size-4 text-subtle-foreground" />
+              Admin
+            </p>
             {ADMIN_GROUPS.map((group) => (
               <Fragment key={group.label}>
                 <Label>{group.label}</Label>
@@ -175,7 +231,7 @@ export function SidebarNav() {
           )}
         </>
       )}
-      <p className="mt-auto flex items-center p-2 text-xs text-sand-11">
+      <p className="mt-auto flex items-center border-t border-border px-2 pt-3 pb-1 text-xs text-subtle-foreground">
         <ApiStatus dot />
       </p>
     </>

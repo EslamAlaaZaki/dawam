@@ -67,7 +67,7 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
           {running > 0 && (
             <span
               aria-hidden
-              className="absolute -top-px -right-px grid min-w-4 place-items-center rounded-full bg-accent-solid px-1 text-2xs leading-4 font-semibold text-on-accent"
+              className="absolute -top-px -end-px grid min-w-4 place-items-center rounded-full bg-primary px-1 text-2xs leading-4 font-semibold text-primary-foreground tabular-nums ring-2 ring-background"
             >
               {running}
             </span>
@@ -85,7 +85,7 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
           <ErrorText>Could not load the jobs: {jobs.error.message}</ErrorText>
         )}
         {jobs.isSuccess && jobs.data.items.length === 0 && (
-          <p className="text-sand-11">No background jobs yet.</p>
+          <p className="text-muted-foreground">No background jobs yet.</p>
         )}
         {jobs.isSuccess && jobs.data.items.length > 0 && (
           <ul className="flex flex-col">
@@ -93,11 +93,11 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
               <li
                 key={job.id}
                 aria-label={job.title}
-                className="flex flex-col gap-1.5 border-b border-sand-4 py-2 first:pt-0 last:border-b-0 last:pb-0"
+                className="flex flex-col gap-1.5 border-b border-border py-2 first:pt-0 last:border-b-0 last:pb-0"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="font-medium">{job.title}</span>
-                  <span className="text-sm text-sand-11">
+                  <span className="text-sm text-muted-foreground">
                     {STATUS_LABELS[job.status]}
                   </span>
                 </div>
@@ -105,7 +105,7 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
                   max={100}
                   value={job.progress}
                   aria-label={`${job.title} progress`}
-                  className="w-full accent-accent-solid"
+                  className="w-full accent-primary"
                 >
                   {job.progress}%
                 </progress>
@@ -116,10 +116,10 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
                 )}
                 {job.log && (
                   <details>
-                    <summary className="cursor-pointer text-sm text-sand-11">
+                    <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
                       Log
                     </summary>
-                    <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-sand-3 p-2 text-xs whitespace-pre-wrap">
+                    <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">
                       {job.log}
                     </pre>
                   </details>

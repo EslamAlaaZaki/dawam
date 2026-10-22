@@ -36,7 +36,7 @@ export function NotificationBell() {
           {unread > 0 && (
             <span
               aria-hidden
-              className="absolute top-[7px] right-2 size-[7px] rounded-full bg-red-11 ring-2 ring-sand-1"
+              className="absolute top-1.5 end-1.5 size-2 rounded-full bg-danger ring-2 ring-background"
             />
           )}
         </Button>
@@ -48,20 +48,20 @@ export function NotificationBell() {
         role="region"
       >
         {items.length === 0 ? (
-          <p className="text-sand-11">You have no unread notifications.</p>
+          <p className="text-muted-foreground">You have no unread notifications.</p>
         ) : (
           <>
             <ul className="mb-2 flex flex-col">
               {items.map((notification) => (
                 <li
                   key={notification.id}
-                  className="flex items-start justify-between gap-3 border-b border-sand-4 py-2 first:pt-0"
+                  className="flex items-start justify-between gap-3 border-b border-border py-2 first:pt-0 last:border-b-0"
                 >
                   <span>
                     {notification.workspace_id ? (
                       <Link
                         href={`/workspaces/${notification.workspace_id}`}
-                        className="text-jade-11 underline decoration-jade-7 underline-offset-2"
+                        className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
                       >
                         {notification.message}
                       </Link>

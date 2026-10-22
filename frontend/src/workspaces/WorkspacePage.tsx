@@ -1,6 +1,5 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
@@ -150,7 +149,12 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               setAssistantOpen((open) => !open);
             }}
           >
-            <Sparkles aria-hidden />
+            <span
+              aria-hidden
+              className="bg-ai-gradient bg-clip-text text-transparent"
+            >
+              ✦
+            </span>
             Assistant
           </Button>
           <WorkspaceSettingsDialog
