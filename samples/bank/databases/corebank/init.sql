@@ -208,8 +208,9 @@ JOIN customers c ON c.customer_id = CASE WHEN m <= 1200 THEN m ELSE 1 + (m * 7) 
 
 UPDATE accounts SET status = 'closed', closed_on = least(opened_on + 300, date '2025-12-01')
 WHERE account_id % 29 = 0;
+-- Only accounts opened before 2023 can be dormant by 2025-12-31 (24 months for YTH).
 UPDATE accounts SET status = 'dormant'
-WHERE account_id % 11 = 0 AND status = 'active'
+WHERE account_id % 11 = 0 AND status = 'active' AND opened_on < date '2023-01-01'
   AND account_type_code IN ('CUR', 'SAV', 'PAY', 'YTH');
 UPDATE accounts SET current_balance = CASE
     WHEN status = 'closed' THEN 0
@@ -246,8 +247,8 @@ SELECT t,
            WHEN 'WDL' THEN CASE WHEN t % 3 = 0 THEN 'branch' ELSE 'atm' END
            ELSE CASE WHEN t % 4 = 0 THEN 'online' ELSE 'mobile' END
        END,
-       date '2025-01-01' + (t * 7) % 365,
-       (date '2025-01-01' + (t * 7) % 365) + make_interval(secs => (t * 7919) % 86400),
+       d.day,
+       d.day + make_interval(secs => (t * 7919) % 86400),
        CASE k.code
            WHEN 'FEE' THEN 10 + (t % 5) * 10
            WHEN 'SAL' THEN 4000 + (t * 7919) % 26000
@@ -273,15 +274,25 @@ CROSS JOIN LATERAL (
     END AS code
 ) AS k
 JOIN (
-    SELECT account_id, row_number() OVER (ORDER BY account_id) AS rn, count(*) OVER () AS total
+    SELECT account_id, opened_on,
+           row_number() OVER (ORDER BY account_id) AS rn, count(*) OVER () AS total
     FROM accounts
     WHERE status = 'active' AND account_type_code IN ('CUR', 'SAV', 'PAY', 'YTH')
-) AS a ON a.rn = 1 + (t * 7919) % a.total;
+) AS a ON a.rn = 1 + (t * 7919) % a.total
+-- Never before the account was opened.
+CROSS JOIN LATERAL (
+    SELECT greatest(a.opened_on, date '2025-01-01' + (t * 7) % 365) AS day
+) AS d;
 
 UPDATE accounts a SET last_activity_date = x.last_date
 FROM (SELECT account_id, max(transaction_date) AS last_date FROM transactions GROUP BY account_id) AS x
 WHERE x.account_id = a.account_id;
-UPDATE accounts SET last_activity_date = date '2024-09-30' - (account_id * 7) % 600
+-- Dormant: the last activity is older than the dormancy period (12 months, 24 for YTH),
+-- and not before the account was opened.
+UPDATE accounts SET last_activity_date = greatest(opened_on, CASE
+    WHEN account_type_code = 'YTH' THEN date '2023-11-30' - (account_id * 7) % 300
+    ELSE date '2024-11-30' - (account_id * 7) % 600
+END)
 WHERE status = 'dormant';
 UPDATE accounts SET last_activity_date = closed_on WHERE status = 'closed';
 

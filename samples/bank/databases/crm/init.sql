@@ -197,7 +197,8 @@ CREATE TABLE campaign_responses (
     CONSTRAINT campaign_responses_campaign_fk FOREIGN KEY (campaign_id) REFERENCES campaigns (campaign_id)
 ) COMMENT = 'One row per tracked reaction of a contact to a campaign.';
 
--- 2500 responses to the ten campaigns that have run, from contacts with marketing consent.
+-- 2500 responses to the ten campaigns that have run (from 2025-01-05), from contacts with
+-- marketing consent that existed before 2025.
 INSERT INTO campaign_responses
 SELECT s.n,
        c.campaign_id,
@@ -217,7 +218,7 @@ JOIN campaigns c ON c.campaign_id = 1 + (s.n * 13) % 10
 JOIN (
     SELECT contact_id, ROW_NUMBER() OVER (ORDER BY contact_id) AS rn, COUNT(*) OVER () AS total
     FROM contacts
-    WHERE marketing_consent = 1
+    WHERE marketing_consent = 1 AND created_at < '2025-01-01'
 ) AS k ON k.rn = 1 + (s.n * 7919) % k.total
 WHERE s.n <= 2500;
 
@@ -236,7 +237,7 @@ CREATE TABLE complaints (
 -- 600 complaints opened in 2025, by customers only.
 INSERT INTO complaints
 SELECT x.n, x.contact_id, x.category_code, x.channel, x.priority, x.opened_on,
-       IF(x.status IN ('resolved', 'closed'), x.opened_on + INTERVAL ((x.n * 7) % 9) DAY, NULL),
+       IF(x.status IN ('resolved', 'closed'), LEAST(x.opened_on + INTERVAL ((x.n * 7) % 9) DAY, DATE('2025-12-31')), NULL),
        x.status
 FROM (
     SELECT s.n,

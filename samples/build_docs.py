@@ -144,7 +144,7 @@ def build_docx(blocks: list[Block], out: Path) -> None:
             table = doc.add_table(rows=0, cols=len(block.rows[0]), style="Table Grid")
             for index, row in enumerate(block.rows):
                 cells = table.add_row().cells
-                for cell, text in zip(cells, row):
+                for cell, text in zip(cells, row, strict=True):
                     paragraph = cell.paragraphs[0]
                     _runs(paragraph, f"**{plain(text)}**" if index == 0 else text)
     props = doc.core_properties
@@ -170,10 +170,10 @@ def build_xlsx(blocks: list[Block], out: Path) -> None:
             widths = [0] * len(block.rows[0])
             for row in block.rows:
                 sheet.append([plain(cell) for cell in row])
-                widths = [max(w, len(plain(c))) for w, c in zip(widths, row)]
+                widths = [max(w, len(plain(c))) for w, c in zip(widths, row, strict=True)]
             for cell in sheet[1]:
                 cell.font = Font(bold=True)
-            for column, width in zip(sheet.columns, widths):
+            for column, width in zip(sheet.columns, widths, strict=True):
                 letter = column[0].column_letter
                 sheet.column_dimensions[letter].width = min(max(width, 8) + 2, 80)
                 for cell in column:
@@ -202,7 +202,8 @@ def _latin1(text: str, source: Path) -> str:
     try:
         text.encode("latin-1")
     except UnicodeEncodeError as exc:
-        raise SystemExit(f"{source.name}: the PDF's built-in font is Latin-1 only: {exc}")
+        message = f"{source.name}: the PDF's built-in font is Latin-1 only: {exc}"
+        raise SystemExit(message) from None
     return text
 
 
@@ -266,6 +267,7 @@ def _fix_zip(path: Path) -> None:
             info = zipfile.ZipInfo(name, date_time=_ZIP_DATE)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
+            info.create_system = 3  # Unix, whatever the building OS
             target.writestr(info, data)
 
 

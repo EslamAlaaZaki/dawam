@@ -49,7 +49,7 @@ DAWAM runs in Docker, so `localhost` would point at DAWAM's own container. `host
 
 ## A model
 
-The AI steps (descriptions, KPI suggestions, Core and Mart generation, mappings, evaluation, document questions) need a model. Configure any real model with an API key, or a local one, under **Admin > LLM** before creating the Workspace; see [`docs/install.md`](../../docs/install.md).
+The AI steps (descriptions, KPI suggestions, Core and Mart generation, mappings, evaluation, document questions) need a model. Configure any real model with an API key, or a local one, under **AI > Language models** in the admin sidebar before creating the Workspace; see [`docs/install.md`](../../docs/install.md).
 
 ## Demo script
 
@@ -67,7 +67,9 @@ async function api(method, path, body) {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return res.status === 204 ? null : res.json();
+  const data = res.status === 204 ? null : await res.json();
+  if (!res.ok) throw new Error(`${res.status}: ${JSON.stringify(data)}`);
+  return data;
 }
 ```
 
@@ -76,7 +78,7 @@ async function api(method, path, body) {
 2. **What the AI may see (API).** A new Workspace lets the AI see metadata only. For the document questions and profile-aware suggestions below, an owner raises it to documents (there is no button for it yet):
 
    ```js
-   const ai = await api("GET", "/ai-settings");
+   var ai = await api("GET", "/ai-settings");
    await api("PUT", "/ai-settings", {
      internal_only: ai.internal_only,
      data_sharing_level: "documents",
@@ -112,9 +114,8 @@ async function api(method, path, body) {
 9. **PII review (API).** Name rules flagged the obvious columns at extraction. Run the value scan on every table of the open system, then list the review queue:
 
    ```js
-   const schema = await api("GET", `/systems/${sys}/schema`);
-   const tableIds = schema.tables.filter((t) => t.kind === "table").map((t) => t.id);
-   await api("POST", `/systems/${sys}/pii-scans`, { table_ids: tableIds });
+   var tables = (await api("GET", `/systems/${sys}/schema`)).tables.filter((t) => t.kind === "table");
+   await api("POST", `/systems/${sys}/pii-scans`, { table_ids: tables.map((t) => t.id) });
    (await api("GET", `/systems/${sys}/pii-findings?status=suggested`)).items;
    ```
 
@@ -128,10 +129,13 @@ async function api(method, path, body) {
 
 10. **Descriptions and classification (Assistant).** Ask: "Propose descriptions and a master, transactional or reference classification for every Core Banking table and column", then the same for CRM, and accept the Change Sets. *Point out:* `customers`, `accounts` and `contacts` are master data, `transactions`, `campaign_responses` and `complaints` transactional, and the code tables reference data; nothing changes until you accept.
 
-11. **Documents (UI, API and Assistant).** In each system's **Documents** folder, use **Upload a document**: `SAD-CoreBanking.docx`, `data-dictionary.xlsx`, `operations-runbook.pdf` and `glossary.md` under Core Banking, `SAD-CRM.docx` under CRM. The **Text** column shows the text was extracted. To link a document to a table (there is no button yet), take `fileId` from the file list and `tableId` from the schema call above:
+11. **Documents (UI, API and Assistant).** In each system's **Documents** folder, use **Upload a document**: `SAD-CoreBanking.docx`, `data-dictionary.xlsx`, `operations-runbook.pdf` and `glossary.md` under Core Banking, `SAD-CRM.docx` under CRM. The **Text** column shows the text was extracted. To link a document to a table (there is no button yet), with Core Banking's folder open:
 
     ```js
-    (await api("GET", `/systems/${sys}/files`));
+    var files = (await api("GET", `/systems/${sys}/files`)).items;
+    var tables = (await api("GET", `/systems/${sys}/schema`)).tables;
+    var fileId = files.find((f) => f.name === "SAD-CoreBanking.docx").id;
+    var tableId = tables.find((t) => t.name === "accounts").id;
     await api("POST", `/files/${fileId}/object-links`, { object_type: "table", object_id: tableId });
     ```
 
