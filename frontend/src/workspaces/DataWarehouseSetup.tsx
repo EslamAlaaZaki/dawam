@@ -22,11 +22,13 @@ import {
   checkClasses,
   checkLabelClasses,
   fieldsetClasses,
-  formCardClasses,
   h3Classes,
   labelClasses,
 } from "./parts";
 import { Loading } from "../shell/Loading";
+
+/** A settings section inside the dialog: the dialog is the card, so no border of its own. */
+const dialogFormClasses = "flex max-w-xl flex-col gap-4";
 
 const WEEKDAYS = [
   "monday",
@@ -134,7 +136,7 @@ function SetupForm({
   const dates = warehouse.date_dimension;
   return (
     <form
-      className={formCardClasses}
+      className={dialogFormClasses}
       onSubmit={onSubmit}
       aria-labelledby="dw-setup-title"
     >
@@ -148,7 +150,7 @@ function SetupForm({
         </Hint>
       )}
       {!canEdit && <Hint>Only editors and owners can change the setup.</Hint>}
-      <fieldset disabled={!canEdit} className={fieldsetClasses}>
+      <fieldset disabled={!canEdit} className={`${fieldsetClasses} gap-4`}>
         <label className={labelClasses}>
           Target platform
           <NativeSelect
@@ -170,13 +172,14 @@ function SetupForm({
           <label key={layer} className={labelClasses}>
             Schema or dataset name: {layer}
             <Input
+              className="font-mono text-mono"
               name={layer}
               required
               defaultValue={layers?.[layer] ?? layer}
             />
           </label>
         ))}
-        <label className={labelClasses}>
+        <label className={`${labelClasses} border-t border-border pt-4`}>
           Identifier case
           <NativeSelect
             name="case_style"
@@ -189,6 +192,7 @@ function SetupForm({
         <label className={labelClasses}>
           Dimension prefix
           <Input
+            className="font-mono text-mono"
             name="dimension_prefix"
             defaultValue={rules?.dimension_prefix ?? "dim_"}
           />
@@ -196,6 +200,7 @@ function SetupForm({
         <label className={labelClasses}>
           Fact prefix
           <Input
+            className="font-mono text-mono"
             name="fact_prefix"
             defaultValue={rules?.fact_prefix ?? "fact_"}
           />
@@ -203,11 +208,12 @@ function SetupForm({
         <label className={labelClasses}>
           Bridge prefix
           <Input
+            className="font-mono text-mono"
             name="bridge_prefix"
             defaultValue={rules?.bridge_prefix ?? "bridge_"}
           />
         </label>
-        <label className={labelClasses}>
+        <label className={`${labelClasses} border-t border-border pt-4`}>
           Date dimension: first year
           <Input
             name="start_year"

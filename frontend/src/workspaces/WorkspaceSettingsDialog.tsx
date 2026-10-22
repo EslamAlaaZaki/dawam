@@ -29,12 +29,14 @@ import {
   ErrorText,
   Hint,
   Panel,
-  formCardClasses,
   h3Classes,
 } from "./parts";
 
+/** A settings section inside the dialog: the dialog is the card, so no border of its own. */
+const dialogFormClasses = "flex max-w-xl flex-col gap-4";
+
 const tabClasses =
-  "justify-start whitespace-nowrap rounded-md border-b-0 px-3 py-1.5 text-left md:w-full data-[state=active]:bg-sand-3";
+  "justify-start whitespace-nowrap rounded-md border-b-0 px-3 py-1.5 text-left md:w-full data-[state=active]:bg-primary-subtle data-[state=active]:text-primary";
 
 /**
  * The Workspace's settings: Details, AI settings and Archive & delete, in a dialog with
@@ -121,7 +123,7 @@ function WorkspaceDetails({
 
   if (!allows(workspace, "workspace.edit")) {
     return (
-      <Panel aria-labelledby="details-title">
+      <Panel aria-labelledby="details-title" className="border-0 p-0">
         <h3 id="details-title" className={h3Classes}>
           Details
         </h3>
@@ -161,7 +163,7 @@ function WorkspaceDetails({
     // A new version (saved, or reloaded) refills the inputs.
     <form
       key={workspace.version}
-      className={formCardClasses}
+      className={dialogFormClasses}
       onSubmit={onSubmit}
       aria-labelledby="details-title"
     >
@@ -171,7 +173,7 @@ function WorkspaceDetails({
       <DetailsFields initial={workspace} />
       {conflict ? (
         <div
-          className="flex flex-col items-start gap-2 text-red-11"
+          className="flex flex-col items-start gap-2 text-danger-strong"
           role="alert"
         >
           <p>
