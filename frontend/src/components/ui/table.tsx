@@ -25,7 +25,7 @@ function TableFooter({ className, ...props }: ComponentProps<"tfoot">) {
   return (
     <tfoot
       data-slot="table-footer"
-      className={cn("border-t border-line text-mono text-sand-11", className)}
+      className={cn("border-t border-border text-mono text-muted-foreground", className)}
       {...props}
     />
   );
@@ -40,7 +40,7 @@ function TableHead({ className, ...props }: ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "sticky top-0 border-b border-line bg-sand-2 px-3 py-[7px] text-left text-xs font-medium whitespace-nowrap text-sand-11",
+        "sticky top-0 border-b border-border bg-surface px-3 py-2 text-left text-xs font-medium whitespace-nowrap text-muted-foreground",
         className,
       )}
       {...props}
@@ -53,7 +53,7 @@ function TableCell({ className, ...props }: ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "border-b border-sand-4 px-3 py-[7px] align-middle whitespace-nowrap group-hover/row:bg-sand-2",
+        "border-b border-border px-3 py-2.5 align-middle whitespace-nowrap group-hover/row:bg-muted",
         className,
       )}
       {...props}
@@ -62,7 +62,7 @@ function TableCell({ className, ...props }: ComponentProps<"td">) {
 }
 
 function TableCaption({ className, ...props }: ComponentProps<"caption">) {
-  return <caption data-slot="table-caption" className={cn("mt-2 text-sm text-sand-11", className)} {...props} />;
+  return <caption data-slot="table-caption" className={cn("mt-2 text-sm text-muted-foreground", className)} {...props} />;
 }
 
 export { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow };

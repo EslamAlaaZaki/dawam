@@ -94,7 +94,7 @@ function blend(fg: string, bg: string, alpha: number): string {
 }
 
 describe("text drawn with an opacity", () => {
-  // The toast description is `text-sand-1/80` on the inverted `bg-sand-12`.
+  // The toast description is `text-background/80` on the inverted `bg-foreground`.
   for (const [name, theme] of Object.entries(themes)) {
     it(`the toast description keeps 4.5:1 in ${name}`, () => {
       const bg = resolve(theme, "sand-12");
@@ -118,6 +118,6 @@ describe("text drawn with an opacity", () => {
       }
     };
     walk(join(__dirname, ".."));
-    expect(found).toEqual(["sonner.tsx: text-sand-1/80"]);
+    expect(found).toEqual(["sonner.tsx: text-background/80"]);
   });
 });

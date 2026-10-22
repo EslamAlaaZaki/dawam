@@ -8,7 +8,7 @@ import { cn } from "../../lib/utils";
 import { popInClasses, surfaceClasses } from "./surface";
 
 const itemClasses =
-  "relative flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-60 data-[highlighted]:bg-sand-3 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-sand-11";
+  "relative flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-60 data-[highlighted]:bg-muted [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground";
 
 function DropdownMenu(props: ComponentProps<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
@@ -58,7 +58,7 @@ function DropdownMenuItem({
       data-variant={variant}
       className={cn(
         itemClasses,
-        "data-[variant=danger]:text-red-11 data-[variant=danger]:[&_svg]:text-red-11",
+        "data-[variant=danger]:text-danger-strong data-[variant=danger]:[&_svg]:text-danger-strong",
         className,
       )}
       {...props}
@@ -112,7 +112,7 @@ function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof Dropdo
   return (
     <DropdownMenuPrimitive.Label
       data-slot="dropdown-menu-label"
-      className={cn("px-2 py-1.5 text-xs font-medium text-sand-11", className)}
+      className={cn("px-2 py-1.5 text-xs font-medium text-muted-foreground", className)}
       {...props}
     />
   );
@@ -125,7 +125,7 @@ function DropdownMenuSeparator({
   return (
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-sand-5", className)}
+      className={cn("-mx-1 my-1 h-px bg-border", className)}
       {...props}
     />
   );
@@ -139,7 +139,7 @@ function DropdownMenuSubTrigger({
   return (
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
-      className={cn(itemClasses, "data-[state=open]:bg-sand-3", className)}
+      className={cn(itemClasses, "data-[state=open]:bg-muted", className)}
       {...props}
     >
       {children}

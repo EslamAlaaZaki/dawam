@@ -35,7 +35,7 @@ function DialogContent({
         className={cn(
           surfaceClasses,
           popInClasses,
-          "fixed top-1/2 left-1/2 z-20 flex max-h-[calc(100%-2rem)] w-[min(440px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-3.5 overflow-y-auto rounded-xl px-[18px] pt-4 pb-[18px]",
+          "fixed top-1/2 left-1/2 z-20 flex max-h-[calc(100%-2rem)] w-[min(440px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-3.5 overflow-y-auto rounded-xl px-5 pt-4 pb-5",
           className,
         )}
         {...props}
@@ -43,7 +43,7 @@ function DialogContent({
         {children}
         <DialogPrimitive.Close
           data-slot="dialog-close"
-          className="absolute top-3 right-3 grid size-7 place-items-center rounded-md text-sand-11 hover:bg-sand-3 hover:text-sand-12"
+          className="absolute top-3 right-3 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <X className="size-4" aria-hidden />
           <span className="sr-only">Close</span>
@@ -82,7 +82,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-sand-11", className)}
+      className={cn("text-muted-foreground", className)}
       {...props}
     />
   );

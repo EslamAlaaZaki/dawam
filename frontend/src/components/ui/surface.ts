@@ -3,7 +3,7 @@
  * a portal outside `.dawam-ui`, so they set the redesign's text style themselves.
  */
 export const surfaceClasses =
-  "border border-sand-5 bg-sand-1 font-sans text-base/[1.45] text-sand-12 shadow-overlay antialiased";
+  "border border-border bg-surface-raised font-sans text-base/[1.45] text-foreground shadow-overlay antialiased";
 
 /** Fade and zoom in and out (tw-animate-css), keyed on Radix's open state. */
 export const popInClasses =

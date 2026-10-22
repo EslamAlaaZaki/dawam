@@ -4,17 +4,23 @@ import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/utils";
 
-/** The prototype's pills: a status or a kind, with an optional dot (`dot`). */
+/** A status, a kind or a data tag (strong text on a subtle tint), with an optional dot (`dot`). */
 const badgeVariants = cva(
-  "inline-flex h-5 items-center gap-[5px] rounded-pill px-[7px] text-xs font-medium whitespace-nowrap [&_svg]:size-3",
+  "inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-xs font-medium whitespace-nowrap [&_svg]:size-3",
   {
     variants: {
       variant: {
-        neutral: "bg-sand-3 text-sand-11",
-        success: "bg-grass-3 text-grass-11",
-        warning: "bg-amber-3 text-pill-warning-fg",
-        danger: "bg-red-3 text-red-11",
-        accent: "bg-jade-3 text-pill-accent-fg",
+        neutral: "bg-muted text-muted-foreground",
+        success: "bg-success-subtle text-success-strong",
+        warning: "bg-warning-subtle text-warning-strong",
+        danger: "bg-danger-subtle text-danger-strong",
+        info: "bg-info-subtle text-info-strong",
+        accent: "bg-primary-subtle text-primary",
+        pk: "bg-primary-subtle text-tag-pk",
+        fk: "bg-info-subtle text-tag-fk",
+        pii: "bg-danger-subtle text-tag-pii",
+        dq: "bg-warning-subtle text-tag-dq",
+        mapped: "bg-success-subtle text-tag-mapped",
       },
     },
     defaultVariants: { variant: "neutral" },

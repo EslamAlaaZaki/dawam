@@ -14,7 +14,7 @@ function TabsList({ className, ...props }: ComponentProps<typeof TabsPrimitive.L
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"
-      className={cn("flex gap-4 border-b border-line px-4", className)}
+      className={cn("flex gap-4 border-b border-border px-4", className)}
       {...props}
     />
   );
@@ -25,7 +25,7 @@ function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsPrimitiv
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "-mb-px border-b-2 border-transparent py-2.5 font-medium text-sand-11 hover:text-sand-12 disabled:pointer-events-none disabled:opacity-60 data-[state=active]:border-sand-12 data-[state=active]:text-sand-12",
+        "-mb-px border-b-2 border-transparent py-2.5 font-medium text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-60 data-[state=active]:border-primary data-[state=active]:text-foreground",
         className,
       )}
       {...props}
