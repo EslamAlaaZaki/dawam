@@ -185,6 +185,7 @@ Only `DAWAM_ENCRYPTION_KEY` is required.
 | [`docs/spec.md`](docs/spec.md) | The full product specification (large; search it by heading) |
 | [`CONTEXT.md`](CONTEXT.md) | The domain glossary: Workspace, Source System, Snapshot, Change Set… |
 | [`docs/adr/`](docs/adr/) | Architecture decision records |
+| [`samples/bank/README.md`](samples/bank/README.md) | A ready-to-run bank demo (Core Banking on PostgreSQL, CRM on MySQL, documents, KPIs) with a step-by-step demo script |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, conventions, tests and the pull request process |
 
 The API is documented live at `/api/v1/docs`, and its OpenAPI spec is at
