@@ -130,15 +130,15 @@ INSERT INTO carriers VALUES
     ('JT', 'J&T Express', 4, 1);
 
 CREATE TABLE customers (
-    customer_id   INT PRIMARY KEY,
-    loyalty_no    VARCHAR(9),
-    full_name     VARCHAR(150) NOT NULL,
-    email         VARCHAR(150) NOT NULL,
-    mobile_number VARCHAR(10) NOT NULL,
-    city          VARCHAR(50) NOT NULL,
-    address_line  VARCHAR(150) NOT NULL,
-    postal_code   VARCHAR(5) NOT NULL,
-    registered_on DATE NOT NULL,
+    customer_id      INT PRIMARY KEY,
+    loyalty_no       VARCHAR(9),
+    full_name        VARCHAR(150) NOT NULL,
+    email            VARCHAR(150) NOT NULL,
+    mobile_number    VARCHAR(10) NOT NULL,
+    city             VARCHAR(50) NOT NULL,
+    address_line     VARCHAR(150) NOT NULL,
+    postal_code      VARCHAR(5) NOT NULL,
+    registered_on    DATE NOT NULL,
     marketing_opt_in TINYINT(1) NOT NULL,
     KEY customers_loyalty_no_idx (loyalty_no)
 ) COMMENT = 'Registered online shoppers. Those who are loyalty members carry their POS loyalty number.';
