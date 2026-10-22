@@ -125,7 +125,7 @@ async function api(method, path, body) {
    await api("POST", `/systems/${sys}/pii-findings/${id}/confirm`);   // or .../dismiss
    ```
 
-   *Point out:* national IDs, IBANs, `+966` and `05` mobile numbers, emails, names and dates of birth are found with their category and the share of sampled rows that matched, and CRM's vaguely named `contacts.id_number` is caught by its values alone. Sampled values are never stored, and the ER diagram marks tables with protected columns.
+   *Point out:* national IDs, IBANs, `+966` and `05` mobile numbers, emails and dates of birth are found with their category and the share of sampled rows that matched, names are flagged by column name, and CRM's vaguely named `contacts.id_number` is caught by its values alone. Sampled values are never stored, and the ER diagram marks tables with protected columns.
 
 10. **Descriptions and classification (Assistant).** Ask: "Propose descriptions and a master, transactional or reference classification for every Core Banking table and column", then the same for CRM, and accept the Change Sets. *Point out:* `customers`, `accounts` and `contacts` are master data, `transactions`, `campaign_responses` and `complaints` transactional, and the code tables reference data; nothing changes until you accept.
 
