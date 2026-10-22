@@ -25,11 +25,12 @@ import {
   EntityTable,
   type EntityColumn,
 } from "../components/entity/EntityTable";
+import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import { ErrorText, NativeSelect, labelClasses } from "./parts";
 import {
   ROLE_LABELS,
   ReplacementDialog,
@@ -52,9 +53,11 @@ const MODEL_COLUMNS: EntityColumn<ModelRow>[] = [
     header: "Model",
     cell: ({ model }) => (
       <>
-        <strong>{model.name}</strong>
+        <span className="font-mono font-medium text-foreground">
+          {model.name}
+        </span>
         {model.limited && (
-          <div className="text-sm text-sand-11">
+          <div className="text-sm text-muted-foreground">
             Limited: no native tool calling
           </div>
         )}
@@ -98,12 +101,12 @@ const PROVIDER_COLUMNS: EntityColumn<LlmProvider>[] = [
   },
   {
     header: "Base URL",
-    className: "text-sand-11",
+    className: "font-mono text-muted-foreground",
     cell: (provider) => provider.base_url,
   },
   {
     header: "Details",
-    className: "text-sand-11",
+    className: "text-muted-foreground",
     cell: (provider) =>
       `API key ${provider.has_api_key ? "saved" : "not set"} · timeout ${provider.timeout_seconds} s`,
   },
@@ -119,7 +122,7 @@ function TestResult({ model }: { model: LlmModel }) {
   }
   if (model.test_ok) {
     return (
-      <p className="text-sm text-sand-11">
+      <p className="text-sm text-muted-foreground">
         Tool calling: {yesNo(model.tool_calling)} · streaming:{" "}
         {yesNo(model.streaming)} · JSON schema: {yesNo(model.json_schema)} ·
         context window: {model.context_window ?? "unknown"}
@@ -128,7 +131,7 @@ function TestResult({ model }: { model: LlmModel }) {
       </p>
     );
   }
-  return <p className="text-sm text-sand-11">Not tested yet.</p>;
+  return <p className="text-sm text-muted-foreground">Not tested yet.</p>;
 }
 
 export function LlmProvidersPage() {
@@ -143,7 +146,7 @@ export function LlmProvidersPage() {
 
   return (
     <section className="flex flex-col gap-5">
-      <PageHead
+      <PageHeader
         title="Language models"
         description="The providers and models that DAWAM AI features run on."
         actions={
@@ -166,21 +169,19 @@ export function LlmProvidersPage() {
       {setup.data?.complete && !setup.data.has_internal_agent_model && (
         <p
           role="status"
-          className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5"
+          className="rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2.5 text-warning-strong"
         >
           No internal agent model is registered: new Workspaces will default to
           not internal-only.
         </p>
       )}
-      <h3 className="text-md font-semibold tracking-[-0.005em]">Models</h3>
+      <h3 className="text-md font-semibold text-foreground">Models</h3>
       <EntityTable
         rows={models}
         rowKey={({ model }) => model.id}
         rowLabel={({ model }) => `Model ${model.name}`}
         columns={MODEL_COLUMNS}
-        actions={(row) => (
-          <ModelActions row={row} models={models} />
-        )}
+        actions={(row) => <ModelActions row={row} models={models} />}
         isPending={providers.isPending}
         error={providers.error}
         loadErrorPrefix="Could not load the providers:"
@@ -189,9 +190,7 @@ export function LlmProvidersPage() {
       />
       {providers.isSuccess && (
         <>
-          <h3 className="text-md font-semibold tracking-[-0.005em]">
-            Providers
-          </h3>
+          <h3 className="text-md font-semibold text-foreground">Providers</h3>
           <EntityTable
             rows={list}
             rowKey={(provider) => provider.id}
