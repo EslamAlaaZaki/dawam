@@ -16,11 +16,14 @@ export function Loading({
   return (
     <p
       className={cn(
-        "dawam-ui flex items-center gap-2 text-sm text-sand-11",
+        "dawam-ui flex items-center gap-2 text-sm text-muted-foreground",
         className ?? "p-6",
       )}
     >
-      <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden />
+      <Loader2
+        className="size-4 text-subtle-foreground motion-safe:animate-spin"
+        aria-hidden
+      />
       {label}
     </p>
   );

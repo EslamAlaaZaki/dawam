@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 
+export { EmptyState } from "../components/EmptyState";
 import { fieldClasses } from "../components/ui/input";
 import { cn } from "../lib/utils";
 
@@ -16,12 +17,12 @@ export function PageHead({
   return (
     <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
       <div>
-        <h2 className="text-2xl font-semibold tracking-[-0.01em] text-balance">
+        <h2 className="text-2xl font-semibold tracking-tight text-balance">
           {title}
         </h2>
-        <p className="mt-0.5 text-sand-11">{description}</p>
+        <p className="mt-0.5 text-muted-foreground">{description}</p>
       </div>
-      {actions && <div className="ml-auto flex flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="ms-auto flex flex-wrap gap-2">{actions}</div>}
     </div>
   );
 }
@@ -48,10 +49,10 @@ export function TableCard({
   footer?: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-sand-5 bg-sand-1">
+    <div className="overflow-hidden rounded-pill border border-border bg-surface-raised">
       {children}
       {footer && (
-        <div className="flex flex-wrap justify-between gap-2 border-t border-sand-4 px-3 py-2 text-xs text-sand-11">
+        <div className="flex flex-wrap justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
           {footer}
         </div>
       )}
@@ -61,27 +62,14 @@ export function TableCard({
 
 /** A card of fields: the panel's form, one control per row. */
 export const formCardClasses =
-  "flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5";
+  "flex max-w-xl flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5";
 
 /** Headings inside a panel; the reset leaves them unstyled. */
-export const h3Classes = "text-md font-semibold tracking-[-0.005em]";
-
-/** What a list shows when it has nothing yet. */
-export function EmptyState({ className, ...props }: ComponentProps<"p">) {
-  return (
-    <p
-      className={cn(
-        "max-w-xl rounded-lg border border-dashed border-sand-8 px-4 py-3 text-sand-11",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+export const h3Classes = "text-md font-semibold tracking-tight";
 
 export function ErrorText({ children }: { children: ReactNode }) {
   return (
-    <p className="text-sm text-red-11" role="alert">
+    <p className="text-sm text-danger-strong" role="alert">
       {children}
     </p>
   );
