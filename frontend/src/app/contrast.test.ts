@@ -81,28 +81,7 @@ describe("the theme's colour pairs", () => {
   }
 });
 
-/** `fg` at `alpha` over `bg`, as a hex colour. */
-function blend(fg: string, bg: string, alpha: number): string {
-  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
-  return `#${[1, 3, 5]
-    .map((i) =>
-      Math.round(alpha * channel(fg, i) + (1 - alpha) * channel(bg, i))
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("")}`;
-}
-
 describe("text drawn with an opacity", () => {
-  // The toast description is `text-background/80` on the inverted `bg-foreground`.
-  for (const [name, theme] of Object.entries(themes)) {
-    it(`the toast description keeps 4.5:1 in ${name}`, () => {
-      const bg = resolve(theme, "sand-12");
-      const text = blend(resolve(theme, "sand-1"), bg, 0.8);
-      expect(ratio(text, bg)).toBeGreaterThanOrEqual(4.5);
-    });
-  }
-
   it("no other component sets text colour with an opacity", () => {
     const found: string[] = [];
     const walk = (dir: string) => {

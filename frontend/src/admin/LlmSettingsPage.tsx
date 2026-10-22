@@ -202,7 +202,7 @@ function ModelRoleRow({
           <input
             type="checkbox"
             aria-label={`${label} role of ${model.name}`}
-            className="size-4 accent-[var(--accent-solid)]"
+            className="size-4 accent-primary"
             checked={roles.includes(role)}
             onChange={(event) => toggle(role, event.target.checked)}
           />
