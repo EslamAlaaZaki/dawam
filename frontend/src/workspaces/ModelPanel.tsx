@@ -59,7 +59,7 @@ import {
 
 /** A form below the table detail: a hairline above, the controls stacked. */
 const subFormClasses =
-  "flex max-w-xl flex-col gap-3.5 border-t border-sand-4 pt-4";
+  "flex max-w-xl flex-col gap-3.5 border-t border-border pt-4";
 
 const LAYER_LABELS: Record<DwLayer, string> = {
   staging: "Staging",
@@ -154,75 +154,98 @@ export function ModelPanel({
       <h3 id="folder-title" className={h3Classes}>
         {label} model
       </h3>
-      {tables.data.length === 0 ? (
-        <EmptyState>
-          No tables in the {label} Layer yet.
-          {layer === "staging" &&
-            " Staging Tables are created from the Source Schema."}
-        </EmptyState>
-      ) : (
-        <TableCard
-          footer={
-            <span>
-              {tables.data.length}{" "}
-              {tables.data.length === 1 ? "table" : "tables"}
-            </span>
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Name</TableHead>
-                <TableHead scope="col">Kind</TableHead>
-                <TableHead scope="col">Grain / history</TableHead>
-                <TableHead scope="col">Columns</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tables.data.map((table) => (
-                <TableRow key={table.id}>
-                  <TableCell>
-                    <button
-                      type="button"
-                      className={linkButtonClasses}
-                      aria-current={table.id === openId ? "true" : undefined}
-                      onClick={() => setOpenId(table.id)}
+      <div
+        className={
+          openId
+            ? "grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
+            : "flex flex-col gap-4"
+        }
+      >
+        <div className="flex min-w-0 flex-col gap-4">
+          {tables.data.length === 0 ? (
+            <EmptyState>
+              No tables in the {label} Layer yet.
+              {layer === "staging" &&
+                " Staging Tables are created from the Source Schema."}
+            </EmptyState>
+          ) : (
+            <TableCard
+              footer={
+                <span>
+                  {tables.data.length}{" "}
+                  {tables.data.length === 1 ? "table" : "tables"}
+                </span>
+              }
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Name</TableHead>
+                    <TableHead scope="col">Kind</TableHead>
+                    <TableHead scope="col">Grain / history</TableHead>
+                    <TableHead scope="col">Columns</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tables.data.map((table) => (
+                    <TableRow
+                      key={table.id}
+                      className={
+                        table.id === openId ? "bg-primary-subtle" : undefined
+                      }
                     >
-                      {table.name}
-                    </button>
-                    {table.naming_violation_count > 0 && (
-                      <Badge variant="warning" role="status" className="ml-2">
-                        Naming: {table.naming_violation_count} to fix
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge>{KIND_LABELS[table.kind] ?? table.kind}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sand-11">
-                    {tableDetail(table)}
-                  </TableCell>
-                  <TableCell>{table.column_count}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableCard>
-      )}
-      {layer !== "staging" && (
-        <StarPanel workspaceId={workspace.id} layer={layer} />
-      )}
-      {openId && (
-        <TableDetails
-          // Another table starts with fresh forms.
-          key={openId}
-          workspace={workspace}
-          tableId={openId}
-          references={references}
-          editable={editable}
-          onClose={() => setOpenId(null)}
-        />
-      )}
+                      <TableCell>
+                        <button
+                          type="button"
+                          className={linkButtonClasses}
+                          aria-current={
+                            table.id === openId ? "true" : undefined
+                          }
+                          onClick={() => setOpenId(table.id)}
+                        >
+                          {table.name}
+                        </button>
+                        {table.naming_violation_count > 0 && (
+                          <Badge
+                            variant="warning"
+                            role="status"
+                            className="ml-2"
+                          >
+                            Naming: {table.naming_violation_count} to fix
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge>{KIND_LABELS[table.kind] ?? table.kind}</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {tableDetail(table)}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {table.column_count}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableCard>
+          )}
+          {layer !== "staging" && (
+            <StarPanel workspaceId={workspace.id} layer={layer} />
+          )}
+        </div>
+        {openId && (
+          <TableDetails
+            // Another table starts with fresh forms.
+            key={openId}
+            workspace={workspace}
+            tableId={openId}
+            references={references}
+            editable={editable}
+            onClose={() => setOpenId(null)}
+          />
+        )}
+      </div>
       {editable ? (
         <AddTableForm
           workspaceId={workspace.id}
@@ -388,10 +411,10 @@ function TableDetails({
       aria-label={`Table ${t.name}`}
       className="min-w-0 gap-0 overflow-hidden p-0"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-sand-5 px-4 py-3">
-        <h4 className="font-mono text-md/[1.3] font-semibold">{t.name}</h4>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
+        <h4 className="font-mono text-md font-semibold">{t.name}</h4>
         <Badge variant="accent">{KIND_LABELS[t.kind] ?? t.kind}</Badge>
-        <span className="text-sm text-sand-11">
+        <span className="text-sm text-muted-foreground">
           {LAYER_LABELS[t.layer]} Layer
         </span>
         <div className="ml-auto flex gap-1.5">
@@ -400,18 +423,18 @@ function TableDetails({
           </Button>
         </div>
       </div>
-      <div className="flex gap-4 border-b border-line px-4">
-        <span className="-mb-px border-b-2 border-sand-12 py-2.5 font-medium text-sand-12">
+      <div className="flex gap-4 border-b border-border px-4">
+        <span className="-mb-px border-b-2 border-primary py-2.5 font-medium text-foreground">
           Columns
         </span>
         {t.layer !== "staging" && (
           <button
             type="button"
             aria-expanded={showMappings}
-            className={`-mb-px cursor-pointer border-b-2 py-2.5 font-medium hover:text-sand-12 ${
+            className={`-mb-px cursor-pointer border-b-2 py-2.5 font-medium hover:text-foreground ${
               showMappings
-                ? "border-sand-12 text-sand-12"
-                : "border-transparent text-sand-11"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground"
             }`}
             onClick={() => setShowMappings((open) => !open)}
           >
@@ -421,7 +444,10 @@ function TableDetails({
       </div>
       <div className="flex flex-col gap-4 p-4">
         {t.naming_violations.length > 0 && (
-          <ul aria-label="Naming violations" className="text-sm text-red-11">
+          <ul
+            aria-label="Naming violations"
+            className="text-sm text-danger-strong"
+          >
             {t.naming_violations.map((v) => (
               <li key={v.code}>{v.message}</li>
             ))}
@@ -481,12 +507,20 @@ function TableDetails({
                       </Badge>
                     ))}
                   </TableCell>
-                  <TableCell className={`${monoClasses} text-sand-11`}>
+                  <TableCell className={`${monoClasses} text-muted-foreground`}>
                     {typeText(column.data_type)}
                     {column.is_nullable ? "" : " not null"}
                   </TableCell>
-                  <TableCell>{ROLE_LABELS[column.role]}</TableCell>
-                  <TableCell className="text-sand-11">
+                  <TableCell>
+                    {column.role === "sk" || column.role === "nk" ? (
+                      <Badge variant="pk">{ROLE_LABELS[column.role]}</Badge>
+                    ) : column.role === "fk" ? (
+                      <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
+                    ) : (
+                      ROLE_LABELS[column.role]
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
                     {[
                       column.additivity && ADDITIVITY_LABELS[column.additivity],
                       column.references_table_id &&
@@ -679,7 +713,7 @@ function EditTableForm({
       {conflict ? (
         <div
           role="alert"
-          className="flex flex-col items-start gap-2 text-sm text-red-11"
+          className="flex flex-col items-start gap-2 text-sm text-danger-strong"
         >
           <p>
             Someone else changed this table since you opened it. Reload it to
