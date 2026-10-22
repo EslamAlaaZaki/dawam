@@ -101,9 +101,9 @@ function ModelRolesSection() {
     provider.models.map((model) => ({ model, provider })),
   );
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5">
       <h3 className={h3Classes}>Model roles</h3>
-      <p className="text-sm text-sand-11">
+      <p className="text-sm text-muted-foreground">
         A model with no role is offered nowhere. Add models on the Language
         models page.
       </p>
@@ -178,9 +178,9 @@ function ModelRoleRow({
   return (
     <TableRow aria-label={`Roles of ${model.name}`}>
       <TableCell className="whitespace-normal">
-        <strong>{model.name}</strong>
+        <strong className="font-mono font-medium">{model.name}</strong>
         {mixed && (
-          <div role="note" className="text-sm text-sand-11">
+          <div role="note" className="text-sm text-muted-foreground">
             {EMBEDDING_HINT}
           </div>
         )}
@@ -194,7 +194,7 @@ function ModelRoleRow({
           {provider.internal ? "Internal" : "External"}
         </Badge>
       </TableCell>
-      <TableCell className="whitespace-normal text-sand-11">
+      <TableCell className="whitespace-normal text-muted-foreground">
         {testSummary(model)}
       </TableCell>
       {ROLE_COLUMNS.map(({ role, label }) => (
@@ -258,7 +258,7 @@ function ModelRoleRow({
 
 function BudgetsSection() {
   return (
-    <div className="flex flex-col items-start gap-3.5">
+    <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5 items-start">
       <h3 className={h3Classes}>Monthly token budgets</h3>
       <Dialog>
         <DialogTrigger asChild>
@@ -340,14 +340,14 @@ function BudgetsPanel() {
       {budgets.data.workspaces.length > 0 && (
         <ul
           aria-label="Workspace budgets"
-          className="flex max-w-xl flex-col divide-y divide-sand-4 rounded-xl border border-sand-5 bg-sand-1"
+          className="flex max-w-xl flex-col divide-y divide-border rounded-pill border border-border bg-surface-raised"
         >
           {budgets.data.workspaces.map((budget) => (
             <li
               key={budget.workspace_id}
               className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
             >
-              <span>
+              <span className="tabular-nums">
                 {budget.workspace_name ?? budget.workspace_id}:{" "}
                 {budget.monthly_token_budget.toLocaleString("en")} tokens
               </span>
@@ -415,7 +415,7 @@ function UsageSection() {
   const [month, setMonth] = useState("");
   const usage = useLlmUsage(month || undefined);
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5">
       <h3 className={h3Classes}>Usage</h3>
       <label className={`${labelClasses} w-48`}>
         Month
@@ -429,7 +429,7 @@ function UsageSection() {
       {usage.isError && <ErrorText>Could not load the usage.</ErrorText>}
       {usage.data && (
         <>
-          <p className="text-sand-11">
+          <p className="text-muted-foreground">
             {usage.data.month}:{" "}
             {usage.data.totals.total_tokens.toLocaleString("en")} tokens in{" "}
             {usage.data.totals.calls} calls
@@ -452,7 +452,7 @@ function UsageSection() {
                     <TableCell>
                       {row.workspace_name ?? "No Workspace"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="tabular-nums">
                       {row.totals.total_tokens.toLocaleString("en")}
                     </TableCell>
                     <TableCell>{row.totals.calls}</TableCell>
@@ -479,7 +479,7 @@ function UsageSection() {
                     <TableCell>
                       {row.display_name ?? row.email ?? "System"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="tabular-nums">
                       {row.totals.total_tokens.toLocaleString("en")}
                     </TableCell>
                     <TableCell>{row.totals.calls}</TableCell>

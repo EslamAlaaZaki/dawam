@@ -1,6 +1,6 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { Info } from "lucide-react";
 
 import { useLlmSetup } from "../api/llm";
 
@@ -13,15 +13,15 @@ export function LlmSetupBanner() {
   return (
     <div
       role="alert"
-      className="dawam-ui mx-6 mt-5 flex items-start gap-2.5 rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sand-12"
+      className="dawam-ui mx-6 mt-5 flex items-start gap-2.5 rounded-pill border border-info/30 bg-info-subtle px-3 py-2.5 text-foreground"
     >
-      <TriangleAlert
+      <Info
         aria-hidden
-        className="mt-0.5 size-4 shrink-0 text-pill-warning-fg"
+        className="mt-0.5 size-4 shrink-0 text-info-strong"
       />
       <p>
         AI setup is incomplete: register an agent model and test it under{" "}
-        <a href="/admin/llm" className="font-medium underline">
+        <a href="/admin/llm" className="font-medium text-primary underline underline-offset-2">
           Language models
         </a>
         .
