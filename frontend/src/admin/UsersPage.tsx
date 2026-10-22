@@ -20,7 +20,8 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { ErrorText, NativeSelect, PageHead, labelClasses } from "./parts";
+import { PageHeader } from "../components/PageHeader";
+import { ErrorText, NativeSelect, labelClasses } from "./parts";
 
 const ROLES = { admin: "Admin", user: "User" } as const;
 
@@ -45,7 +46,7 @@ const USER_COLUMNS: EntityColumn<AdminUser>[] = [
       user.system_role === "admin" ? (
         <Badge variant="accent">{ROLES.admin}</Badge>
       ) : (
-        <span className="text-sand-11">{ROLES.user}</span>
+        <span className="text-muted-foreground">{ROLES.user}</span>
       ),
   },
   {
@@ -67,7 +68,7 @@ const USER_COLUMNS: EntityColumn<AdminUser>[] = [
   },
   {
     header: "Last sign-in",
-    className: "text-sand-11",
+    className: "text-muted-foreground",
     cell: (user) => when(user.last_login_at),
   },
 ];
@@ -99,7 +100,7 @@ export function UsersPage() {
 
   return (
     <section className="flex flex-col gap-5">
-      <PageHead
+      <PageHeader
         title="Users"
         description="Everyone who can sign in to this DAWAM server."
         actions={
@@ -230,11 +231,11 @@ function UserActions({ user }: { user: AdminUser }) {
       </div>
       {problem && !deactivating && <ErrorText>{problem.message}</ErrorText>}
       {reset.data?.delivery === "link_for_admin" && (
-        <p className="mt-1.5 text-sm text-sand-11">
+        <p className="mt-1.5 text-sm text-muted-foreground">
           Sessions ended. The reset link could not be emailed: share it from{" "}
           <Link
             href="/admin/email/links"
-            className="font-medium text-sand-12 underline"
+            className="font-medium text-foreground underline"
           >
             Links to share
           </Link>
@@ -390,7 +391,7 @@ function CreateUserDialog({
         Temporary password
         <Input name="temporary_password" type="text" autoComplete="off" required />
       </label>
-      <p className="text-sm text-sand-11">
+      <p className="text-sm text-muted-foreground">
         At least 10 characters, and not a common password. Give it to the user through a
         channel you trust; they must replace it when they first sign in.
       </p>

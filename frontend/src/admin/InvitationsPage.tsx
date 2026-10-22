@@ -16,7 +16,8 @@ import { EntityTable, type EntityColumn } from "../components/entity/EntityTable
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { PageHead, labelClasses } from "./parts";
+import { PageHeader } from "../components/PageHeader";
+import { labelClasses } from "./parts";
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -25,8 +26,8 @@ function when(iso: string): string {
 const INVITATION_COLUMNS: EntityColumn<PendingInvitation>[] = [
   { header: "Email", cell: (invitation) => invitation.email },
   { header: "Invited by", cell: (invitation) => invitation.invited_by.display_name },
-  { header: "Sent", className: "text-sand-11", cell: (invitation) => when(invitation.created_at) },
-  { header: "Expires", className: "text-sand-11", cell: (invitation) => when(invitation.expires_at) },
+  { header: "Sent", className: "text-muted-foreground", cell: (invitation) => when(invitation.created_at) },
+  { header: "Expires", className: "text-muted-foreground", cell: (invitation) => when(invitation.expires_at) },
 ];
 
 /** Invite people by email, and see and revoke the invitations still pending (stories 10, 15). */
@@ -43,15 +44,15 @@ export function InvitationsPage() {
 
   return (
     <section className="flex flex-col gap-5">
-      <PageHead
+      <PageHeader
         title="Invitations"
         description="An invitation lets someone join while self-registration is off: they get a link, valid 7 days, to choose a display name and password."
         actions={inviteButton}
       />
       {unsent && (
-        <p className="text-sm text-sand-11">
+        <p className="text-sm text-muted-foreground">
           The invitation for {unsent} could not be emailed: copy its link from{" "}
-          <Link href="/admin/email/links" className="font-medium text-sand-12 underline">
+          <Link href="/admin/email/links" className="font-medium text-foreground underline">
             Links to share
           </Link>{" "}
           and pass it on.

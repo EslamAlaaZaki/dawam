@@ -19,7 +19,8 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { NativeSelect, PageHead, labelClasses } from "./parts";
+import { PageHeader } from "../components/PageHeader";
+import { NativeSelect, labelClasses } from "./parts";
 
 function day(iso: string): string {
   return new Date(iso).toLocaleDateString();
@@ -55,12 +56,12 @@ const WORKSPACE_COLUMNS: EntityColumn<AdminWorkspace>[] = [
   { header: "Members", cell: (workspace) => workspace.member_count },
   {
     header: "Created",
-    className: "text-sand-11",
+    className: "text-muted-foreground",
     cell: (workspace) => day(workspace.created_at),
   },
   {
     header: "Updated",
-    className: "text-sand-11",
+    className: "text-muted-foreground",
     cell: (workspace) => day(workspace.updated_at),
   },
 ];
@@ -75,7 +76,7 @@ export function WorkspacesPage() {
 
   return (
     <section className="flex flex-col gap-5">
-      <PageHead
+      <PageHeader
         title="Workspaces"
         description="Every Workspace's name, owners and size. Never its content."
       />
@@ -121,7 +122,7 @@ function WorkspaceActions({ workspace }: { workspace: AdminWorkspace }) {
         {archived && (
           <Button
             size="sm"
-            className="text-red-11"
+            className="text-danger-strong"
             onClick={() => setDeleting(true)}
           >
             Delete
