@@ -125,7 +125,7 @@ async function api(method, path, body) {
    await api("POST", `/systems/${sys}/pii-findings/${id}/confirm`);   // or .../dismiss
    ```
 
-   *Point out:* `+966` and `05` mobile numbers, emails, names and dates of birth are found with their category and the share of sampled rows that matched, while genders (POS) and delivery addresses and postal codes (E-commerce) are flagged by their column names alone. Sampled values are never stored, and the ER diagram marks tables with protected columns.
+   *Point out:* `+966` and `05` mobile numbers, emails and dates of birth are found with their category and the share of sampled rows that matched, while names, genders (POS) and delivery addresses and postal codes (E-commerce) are flagged by their column names alone. Sampled values are never stored, and the ER diagram marks tables with protected columns.
 
 10. **Descriptions and classification (Assistant).** Ask: "Propose descriptions and a master, transactional or reference classification for every POS table and column", then the same for E-commerce, and accept the Change Sets. *Point out:* `products`, `loyalty_customers` and `customers` are master data, `sales_receipts`, `receipt_lines`, `orders`, `order_items`, `payments` and `shipments` transactional, and `categories` and `carriers` reference data; nothing changes until you accept.
 
