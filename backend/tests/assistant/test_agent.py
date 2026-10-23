@@ -140,6 +140,17 @@ def test_the_system_prompt_and_history_go_first_and_tools_are_offered():
     assert [t.name for t in sent.tools] == ["lookup"] and sent.stream is True
 
 
+def test_the_prompt_prefix_is_identical_across_the_calls_of_one_run():
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(call(1),)), Reply(tool_calls=(call(2),)), Reply(text="done")
+    )
+
+    run(adapter)
+
+    prefixes = {(c.messages[0], repr(c.tools)) for c in adapter.calls}
+    assert len(adapter.calls) == 3 and len(prefixes) == 1
+
+
 def test_tool_calls_are_capped_and_the_model_then_answers_without_tools():
     adapter = FakeAdapter().script(
         Reply(tool_calls=(call(1),)),

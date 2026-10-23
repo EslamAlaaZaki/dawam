@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Any, Literal, Protocol
 
 from dawam.modules.llm import (
@@ -143,6 +144,14 @@ class _Run:
         )
 
 
+def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
+    """``counter`` (the gateway's real count) remembered per text, so a long conversation
+    is counted once per message, not once per model call; none: the chars/4 estimate."""
+    if counter is None:
+        return estimate_tokens
+    return lru_cache(maxsize=2048)(counter)
+
+
 def run_agent(
     gateway: ChatGateway,
     tools: ToolSet,
@@ -159,11 +168,13 @@ def run_agent(
     capabilities = gateway.capabilities()
     window = capabilities.context_window
     stream = capabilities.streaming is not False
+    count = _cached_counter(getattr(gateway, "count_tokens", None))
     prompted = capabilities.tool_calling is False  # limited mode: tools are described in text
     messages = [Message("system", system), *history]
     protect_from = len(history)  # the member's latest message
     limit_hit = False
-    specs = {spec.name: spec for spec in tools.specs()}
+    all_specs = list(tools.specs())  # one snapshot: the tool list stays identical per call
+    specs = {spec.name: spec for spec in all_specs}
     known_tools = set(specs)
     retries = 0
     last_poll = timer()
@@ -173,17 +184,19 @@ def run_agent(
                 yield run.finish("cancelled")
                 return
             under_cap = len(run.calls) < max_tool_calls
-            offered = tools.specs() if under_cap else ()
+            offered = all_specs if under_cap else ()
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
             extra = tools_prompt(offered) if prompted and offered else ""
-            reserved = estimate_tokens(extra) if extra else schema_tokens(offered)
+            reserved = count(extra) if extra else schema_tokens(() if prompted else offered, count)
             budget = prompt_budget(window)
-            if budget is not None and estimate_tokens(system) + reserved > budget:
+            if budget is not None and count(system) + reserved > budget:
                 yield run.finish("failed", "context_window_too_small", TOO_SMALL_MESSAGE)
                 return
-            sent = fit_messages(messages, window, protect_from=protect_from, reserved=reserved)
+            sent = fit_messages(
+                messages, window, protect_from=protect_from, count=count, reserved=reserved
+            )
             if extra:
                 head = sent[0]
                 sent[0] = replace(head, content=head.content + "\n\n" + extra)

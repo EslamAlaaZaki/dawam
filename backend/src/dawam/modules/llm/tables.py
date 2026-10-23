@@ -154,3 +154,6 @@ class UsageRecord(Base):
     completion_tokens: Mapped[int]
     estimated: Mapped[bool]
     """True when DAWAM counted (roughly) because the provider reported nothing."""
+    cache_read_tokens: Mapped[int] = mapped_column(server_default="0")
+    """Part of ``prompt_tokens`` served from the provider's prompt cache (budgets count it)."""
+    cache_write_tokens: Mapped[int] = mapped_column(server_default="0")

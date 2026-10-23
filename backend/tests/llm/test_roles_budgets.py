@@ -188,6 +188,28 @@ def test_an_exhausted_installation_budget_refuses_the_next_call_with_a_clear_err
     assert len(fake_llm.calls) == 4 + 1  # the test-connection probe's four, then one call
 
 
+def test_cached_input_is_recorded_separately_and_still_counts_against_the_budget(
+    admin_client, role_service, setup, fake_llm, app
+):
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from dawam.modules.llm.tables import UsageRecord
+
+    admin_client.put(f"{BASE}/budgets/installation", json={"monthly_token_budget": 100})
+    fake_llm.script(
+        Reply(text="x", usage=Usage(95, 5, cache_read_tokens=80, cache_write_tokens=10))
+    )
+    list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
+
+    with Session(app.state.engine) as db:
+        row = db.scalars(select(UsageRecord)).one()
+    assert (row.prompt_tokens, row.cache_read_tokens, row.cache_write_tokens) == (95, 80, 10)
+    with pytest.raises(Exception) as caught:
+        list(role_service.gateway_for_role("agent", workspace_id=setup).chat(ASK))
+    assert caught.value.code == "token_budget_exhausted"
+
+
 def test_a_workspace_budget_stops_that_workspace_only(
     admin_client, role_service, setup, fake_llm, roles: RoleClients
 ):
