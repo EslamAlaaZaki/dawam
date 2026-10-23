@@ -14188,6 +14188,200 @@
         }
       }
     },
+    "/api/v1/admin/llm/budgets/installation/cost": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Installation Cost Budget",
+        "description": "Set the installation's monthly budget in currency (admins only), beside its token\nbudget: whichever is reached first stops AI calls (429 `cost_budget_exhausted` for\nthis one). Cost comes from the model price table, so models without a price, or\npriced in another currency, don't count.",
+        "operationId": "setLlmInstallationCostBudget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmCostBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Installation Cost Budget",
+        "description": "Remove the installation's currency budget (admins only).",
+        "operationId": "clearLlmInstallationCostBudget",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Workspace Cost Budget",
+        "description": "Set a Workspace's own monthly budget in currency (admins only). 404 `workspace_not_found`.",
+        "operationId": "setLlmWorkspaceCostBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmCostBudgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Workspace Cost Budget",
+        "description": "Remove a Workspace's own currency budget (admins only).",
+        "operationId": "clearLlmWorkspaceCostBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/usage": {
       "get": {
         "tags": [
@@ -21996,12 +22190,32 @@
             },
             "type": "array",
             "title": "Workspaces"
+          },
+          "installation_monthly_cost_budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmCostBudget"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: unlimited."
+          },
+          "workspace_cost_budgets": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceCostBudget"
+            },
+            "type": "array",
+            "title": "Workspace Cost Budgets"
           }
         },
         "type": "object",
         "required": [
           "installation_monthly_token_budget",
-          "workspaces"
+          "workspaces",
+          "installation_monthly_cost_budget",
+          "workspace_cost_budgets"
         ],
         "title": "LlmBudgets"
       },
@@ -22045,6 +22259,54 @@
           "amount"
         ],
         "title": "LlmCostAmount"
+      },
+      "LlmCostBudget": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "LlmCostBudget"
+      },
+      "LlmCostBudgetRequest": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "description": "ISO 4217 code, e.g. `USD`."
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount",
+            "description": "Per calendar month (UTC). Only calls priced in `currency` count."
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "LlmCostBudgetRequest"
       },
       "LlmListedModel": {
         "properties": {
@@ -22934,6 +23196,37 @@
           "monthly_token_budget"
         ],
         "title": "LlmWorkspaceBudgetRequest"
+      },
+      "LlmWorkspaceCostBudget": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name",
+            "description": "Null if the Workspace no longer exists."
+          },
+          "budget": {
+            "$ref": "#/components/schemas/LlmCostBudget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "budget"
+        ],
+        "title": "LlmWorkspaceCostBudget"
       },
       "LlmWorkspaceReplacement": {
         "properties": {

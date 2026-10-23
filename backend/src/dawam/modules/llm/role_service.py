@@ -45,10 +45,12 @@ from .tables import (
     SettingsRecord,
     UsageRecord,
     WorkspaceBudgetRecord,
+    WorkspaceCostBudgetRecord,
 )
 from .workspace_ai import default_model_id, load_settings, model_is_internal
 
 MAX_BUDGET = 10**15
+MAX_COST_BUDGET = Decimal(10**9)
 
 
 @dataclass(frozen=True)
@@ -58,9 +60,25 @@ class WorkspaceBudget:
 
 
 @dataclass(frozen=True)
+class CostBudget:
+    """A monthly budget in currency; only calls priced in ``currency`` count against it."""
+
+    currency: str
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class WorkspaceCostBudget:
+    workspace_id: uuid.UUID
+    budget: CostBudget
+
+
+@dataclass(frozen=True)
 class Budgets:
     installation: int | None
     workspaces: list[WorkspaceBudget]
+    installation_cost: CostBudget | None = None
+    workspace_costs: list[WorkspaceCostBudget] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -158,6 +176,22 @@ def _budget_exhausted(scope: str, budget: int, used: int) -> ApiError:
     )
 
 
+def _cost_budget_exhausted(scope: str, budget: CostBudget, used: Decimal) -> ApiError:
+    what = "installation's" if scope == "installation" else "Workspace's"
+    return ApiError(
+        429,
+        "cost_budget_exhausted",
+        f"The {what} monthly AI budget of {budget.amount:f} {budget.currency} is used up. "
+        "Everything else keeps working; ask an admin to raise the budget or wait for next month.",
+        {
+            "scope": scope,
+            "currency": budget.currency,
+            "budget": f"{budget.amount:f}",
+            "used": f"{used:f}",
+        },
+    )
+
+
 def _invalid(message: str, field: str, code: str = "invalid_model_role") -> ApiError:
     return ApiError(422, code, message, {"field": field})
 
@@ -170,6 +204,21 @@ def _check_budget(value: int | None) -> int | None:
             "invalid_budget",
         )
     return value
+
+
+def _installation_cost_budget(settings: SettingsRecord) -> CostBudget | None:
+    if settings.monthly_cost_budget is None or settings.cost_budget_currency is None:
+        return None
+    return CostBudget(settings.cost_budget_currency, settings.monthly_cost_budget)
+
+
+def _check_cost_budget(budget: CostBudget) -> None:
+    if not Decimal(0) <= budget.amount <= MAX_COST_BUDGET:
+        raise _invalid(
+            "The budget must be zero or a positive amount.",
+            "amount",
+            "invalid_budget",
+        )
 
 
 class MeteredGateway:
@@ -350,9 +399,22 @@ class RoleService:
             rows = db.scalars(
                 sa.select(WorkspaceBudgetRecord).order_by(WorkspaceBudgetRecord.workspace_id)
             )
+            settings = self._settings(db)
+            costs = db.scalars(
+                sa.select(WorkspaceCostBudgetRecord).order_by(
+                    WorkspaceCostBudgetRecord.workspace_id
+                )
+            )
             return Budgets(
-                installation=self._settings(db).monthly_token_budget,
+                installation=settings.monthly_token_budget,
                 workspaces=[WorkspaceBudget(r.workspace_id, r.monthly_token_budget) for r in rows],
+                installation_cost=_installation_cost_budget(settings),
+                workspace_costs=[
+                    WorkspaceCostBudget(
+                        r.workspace_id, CostBudget(r.currency, r.monthly_cost_budget)
+                    )
+                    for r in costs
+                ],
             )
 
     def set_installation_budget(self, tokens: int | None) -> None:
@@ -388,13 +450,44 @@ class RoleService:
                 )
             )
 
+    def set_installation_cost_budget(self, budget: CostBudget | None) -> None:
+        """Monthly currency budget for the whole installation; ``None`` removes it."""
+        if budget is not None:
+            _check_cost_budget(budget)
+        with Session(self._engine) as db, db.begin():
+            settings = self._settings(db, lock=True)
+            settings.monthly_cost_budget = budget.amount if budget else None
+            settings.cost_budget_currency = budget.currency if budget else None
+            settings.updated_at = self._clock()
+
+    def set_workspace_cost_budget(self, workspace_id: uuid.UUID, budget: CostBudget) -> None:
+        _check_cost_budget(budget)
+        with Session(self._engine) as db, db.begin():
+            record = db.get(WorkspaceCostBudgetRecord, workspace_id)
+            if record is None:
+                record = WorkspaceCostBudgetRecord(workspace_id=workspace_id)
+                db.add(record)
+            record.monthly_cost_budget = budget.amount
+            record.currency = budget.currency
+            record.updated_at = self._clock()
+
+    def clear_workspace_cost_budget(self, workspace_id: uuid.UUID) -> None:
+        with Session(self._engine) as db, db.begin():
+            db.execute(
+                sa.delete(WorkspaceCostBudgetRecord).where(
+                    WorkspaceCostBudgetRecord.workspace_id == workspace_id
+                )
+            )
+
     def ensure_within_budget(self, workspace_id: uuid.UUID | None) -> None:
-        """Raise 429 ``token_budget_exhausted`` when this month's usage has reached the
-        installation's budget or the Workspace's. Checked before every model call.
-        Soft by design (no locking): in-flight calls may overshoot a budget."""
+        """Raise 429 ``token_budget_exhausted`` (or ``cost_budget_exhausted`` for a budget
+        in currency) when this month's usage has reached the installation's budget or the
+        Workspace's: whichever is reached first stops AI use. Checked before every model
+        call. Soft by design (no locking): in-flight calls may overshoot a budget."""
         start, end = parse_month(self._clock().strftime("%Y-%m"))
         with Session(self._engine) as db:
-            installation = self._settings(db).monthly_token_budget
+            settings = self._settings(db)
+            installation = settings.monthly_token_budget
             if installation is not None:
                 used = self._used(db, start, end, None)
                 if used >= installation:
@@ -409,6 +502,37 @@ class RoleService:
                     used = self._used(db, start, end, workspace_id)
                     if used >= budget:
                         raise _budget_exhausted("workspace", budget, used)
+            self._ensure_within_cost_budgets(db, settings, workspace_id, start, end)
+
+    def _ensure_within_cost_budgets(
+        self,
+        db: Session,
+        settings: SettingsRecord,
+        workspace_id: uuid.UUID | None,
+        start: datetime,
+        end: datetime,
+    ) -> None:
+        in_month = (UsageRecord.created_at >= start) & (UsageRecord.created_at < end)
+        installation = _installation_cost_budget(settings)
+        if installation is not None:
+            used = self._spent(db, in_month, installation.currency)
+            if used >= installation.amount:
+                raise _cost_budget_exhausted("installation", installation, used)
+        if workspace_id is not None:
+            record = db.get(WorkspaceCostBudgetRecord, workspace_id)
+            if record is not None:
+                budget = CostBudget(record.currency, record.monthly_cost_budget)
+                used = self._spent(
+                    db, in_month & (UsageRecord.workspace_id == workspace_id), budget.currency
+                )
+                if used >= budget.amount:
+                    raise _cost_budget_exhausted("workspace", budget, used)
+
+    @classmethod
+    def _spent(cls, db: Session, where: sa.ColumnElement[bool], currency: str) -> Decimal:
+        """What the matching calls cost in ``currency`` (calls priced otherwise, or not at
+        all, don't count)."""
+        return cls._costs(db, where, None).get(0, Cost()).amounts.get(currency, Decimal(0))
 
     # -- usage -----------------------------------------------------------------------
 
