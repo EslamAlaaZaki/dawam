@@ -4068,6 +4068,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/runs/{run_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rate Answer
+         * @description Rate an answer up or down, with an optional comment. Rating again replaces your
+         *     rating (one per member and answer). Any member who can read the conversation; 404 for
+         *     an unknown run, 409 `workspace_archived`.
+         */
+        put: operations["rateAssistantAnswer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/assistant/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Feedback
+         * @description Members' ratings of answers with the question, answer and tools, newest first
+         *     (Workspace Owners and admins; 403 otherwise).
+         */
+        get: operations["listAssistantFeedback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/assistant/feedback/eval-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Eval Candidates
+         * @description The rated answers as eval-case candidates to review and add to the eval suite
+         *     (Workspace Owners and admins). Only thumbs-down by default; `rating` picks the other.
+         */
+        get: operations["exportAssistantEvalCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
         parameters: {
             query?: never;
@@ -4201,7 +4265,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "assistant.view_feedback" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -6039,6 +6103,42 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** EvalCaseCandidate */
+        EvalCaseCandidate: {
+            /**
+             * Id
+             * @description `feedback-<run id>`: stable across exports.
+             */
+            id: string;
+            /**
+             * Input
+             * @description The question the member asked.
+             */
+            input: string;
+            /** Observed Answer */
+            observed_answer: string;
+            /**
+             * Expected Tools
+             * @description The tools the run called.
+             */
+            expected_tools: string[];
+            /**
+             * Label
+             * @description Down: a failure to turn into a regression case; up: a keeper.
+             * @enum {string}
+             */
+            label: "up" | "down";
+            /**
+             * Note
+             * @description The member's comment.
+             */
+            note: string | null;
+        };
+        /** EvalCaseCandidates */
+        EvalCaseCandidates: {
+            /** Cases */
+            cases: components["schemas"]["EvalCaseCandidate"][];
+        };
         /** ExtractionStarted */
         ExtractionStarted: {
             /**
@@ -6097,6 +6197,80 @@ export interface components {
              * @description An app path to the object at fault.
              */
             link: string;
+        };
+        /** FeedbackItemOut */
+        FeedbackItemOut: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Member Email */
+            member_email: string | null;
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /** Comment */
+            comment: string | null;
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+            /**
+             * Tools
+             * @description Names of the tools the run called.
+             */
+            tools: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FeedbackList */
+        FeedbackList: {
+            /** Items */
+            items: components["schemas"]["FeedbackItemOut"][];
+        };
+        /** FeedbackOut */
+        FeedbackOut: {
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /** Comment */
+            comment: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FeedbackRequest */
+        FeedbackRequest: {
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /**
+             * Comment
+             * @description Optional: what was good or wrong about the answer.
+             */
+            comment?: string | null;
         };
         /** FieldChange */
         FieldChange: {
@@ -6758,6 +6932,20 @@ export interface components {
             scored: boolean;
             /** Table Count */
             table_count: number;
+        };
+        /** LightFeature */
+        LightFeature: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Enabled
+             * @description On: the Workspace has a light model to run it.
+             */
+            enabled: boolean;
         };
         /** LineageEdge */
         LineageEdge: {
@@ -8401,6 +8589,8 @@ export interface components {
              * @description The reason to show the member.
              */
             error_message: string | null;
+            /** @description Your own rating of the run's answer, if you gave one. */
+            feedback?: components["schemas"]["FeedbackOut"] | null;
         };
         /** SaveColumnMappingRequest */
         SaveColumnMappingRequest: {
@@ -10337,9 +10527,14 @@ export interface components {
             agent_models: components["schemas"]["WorkspaceModel"][];
             /**
              * Light Models
-             * @description The Workspace's light models; none: light tasks use the default agent model.
+             * @description The Workspace's light models; none: the light-role features are off.
              */
             light_models: components["schemas"]["WorkspaceModel"][];
+            /**
+             * Light Features
+             * @description Each feature that uses the light role, and whether it is on.
+             */
+            light_features: components["schemas"]["LightFeature"][];
             /** @description The Workspace's embedding model; null: document search matches text only. */
             embedding_model: components["schemas"]["WorkspaceModel"] | null;
             /**
@@ -20052,6 +20247,136 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rateAssistantAnswer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAssistantFeedback: {
+        parameters: {
+            query?: {
+                rating?: ("up" | "down") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    exportAssistantEvalCandidates: {
+        parameters: {
+            query?: {
+                rating?: ("up" | "down") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalCaseCandidates"];
+                };
             };
             /** @description Validation error */
             422: {

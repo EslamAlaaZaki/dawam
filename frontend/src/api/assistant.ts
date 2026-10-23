@@ -10,6 +10,7 @@ export type Conversation = components["schemas"]["ConversationOut"];
 export type ConversationDetail = components["schemas"]["ConversationDetailOut"];
 export type ChatMessage = components["schemas"]["MessageOut"];
 export type Run = components["schemas"]["RunOut"];
+export type Feedback = components["schemas"]["FeedbackOut"];
 export type ToolCall = components["schemas"]["ToolCallOut"];
 export type PageContext = components["schemas"]["PageContextIn"];
 
@@ -37,15 +38,26 @@ export function useConversations(workspaceId: string) {
   });
 }
 
-export function useConversation(workspaceId: string, conversationId: string | null) {
+export function useConversation(
+  workspaceId: string,
+  conversationId: string | null,
+) {
   const client = useApiClient();
   return useQuery({
     queryKey: conversationKey(workspaceId, conversationId ?? ""),
     enabled: conversationId !== null,
     queryFn: async () => {
-      const { data, error, response } = await client.GET(`${ROOT}/{conversation_id}`, {
-        params: { path: { workspace_id: workspaceId, conversation_id: conversationId ?? "" } },
-      });
+      const { data, error, response } = await client.GET(
+        `${ROOT}/{conversation_id}`,
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              conversation_id: conversationId ?? "",
+            },
+          },
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -68,26 +80,43 @@ export function useCreateConversation(workspaceId: string) {
       }
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: conversationsKey(workspaceId) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: conversationsKey(workspaceId),
+      }),
   });
 }
 
 /** Share a conversation with the Workspace's members, or stop sharing it. */
-export function useShareConversation(workspaceId: string, conversationId: string) {
+export function useShareConversation(
+  workspaceId: string,
+  conversationId: string,
+) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (shared: boolean) => {
-      const { data, error, response } = await client.PATCH(`${ROOT}/{conversation_id}`, {
-        params: { path: { workspace_id: workspaceId, conversation_id: conversationId } },
-        body: { shared_with_workspace: shared },
-      });
+      const { data, error, response } = await client.PATCH(
+        `${ROOT}/{conversation_id}`,
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
+            },
+          },
+          body: { shared_with_workspace: shared },
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: conversationsKey(workspaceId) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: conversationsKey(workspaceId),
+      }),
   });
 }
 
@@ -95,13 +124,56 @@ export function useStopResponse(workspaceId: string) {
   const client = useApiClient();
   return useMutation({
     mutationFn: async (conversationId: string) => {
-      const { error, response } = await client.POST(`${ROOT}/{conversation_id}/stop`, {
-        params: { path: { workspace_id: workspaceId, conversation_id: conversationId } },
-      });
+      const { error, response } = await client.POST(
+        `${ROOT}/{conversation_id}/stop`,
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
+            },
+          },
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
     },
+  });
+}
+
+/** Rate an answer up or down with an optional comment; rating again replaces the rating. */
+export function useRateAnswer(workspaceId: string, conversationId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      runId: string;
+      rating: "up" | "down";
+      comment: string | null;
+    }) => {
+      const { data, error, response } = await client.PUT(
+        `${ROOT}/{conversation_id}/runs/{run_id}/feedback`,
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
+              run_id: input.runId,
+            },
+          },
+          body: { rating: input.rating, comment: input.comment },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: conversationKey(workspaceId, conversationId),
+      }),
   });
 }
 
@@ -170,20 +242,33 @@ export function useSendMessage(workspaceId: string) {
       modelId?: string;
       onEvent: (event: AnswerEvent) => void;
     }) => {
-      const { error, response } = await client.POST(`${ROOT}/{conversation_id}/messages`, {
-        params: { path: { workspace_id: workspaceId, conversation_id: input.conversationId } },
-        body: {
-          content: input.content,
-          context: input.context ?? null,
-          model_id: input.modelId ?? null,
+      const { error, response } = await client.POST(
+        `${ROOT}/{conversation_id}/messages`,
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              conversation_id: input.conversationId,
+            },
+          },
+          body: {
+            content: input.content,
+            context: input.context ?? null,
+            model_id: input.modelId ?? null,
+          },
+          parseAs: "stream",
         },
-        parseAs: "stream",
-      });
+      );
       if (error || !response.body) {
-        const body = error as { error: components["schemas"]["ErrorBody"] } | undefined;
+        const body = error as
+          { error: components["schemas"]["ErrorBody"] } | undefined;
         throw new ApiError(
           response.status,
-          body?.error ?? { code: "no_stream", message: "The assistant did not answer.", details: {} },
+          body?.error ?? {
+            code: "no_stream",
+            message: "The assistant did not answer.",
+            details: {},
+          },
         );
       }
       const reader = response.body.getReader();

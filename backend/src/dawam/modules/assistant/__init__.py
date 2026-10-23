@@ -18,9 +18,13 @@ Public interface. Other modules import only what is re-exported here:
   ``build_assistant_service`` assembles the service for both the API and the worker.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/assistant/conversations``,
   ``GET|PATCH .../conversations/{conversation_id}``, ``POST .../conversations/{id}/messages``
-  (answers over Server-Sent Events) and ``POST .../conversations/{id}/stop``.
+  (answers over Server-Sent Events), ``POST .../conversations/{id}/stop``,
+  ``PUT .../conversations/{id}/runs/{run_id}/feedback`` (a member's up/down rating and
+  comment on an answer) and, for Owners and admins, ``GET .../feedback`` and
+  ``GET .../feedback/eval-candidates``.
 
-Owns the ``assistant_conversations``, ``assistant_messages`` and ``assistant_runs`` tables.
+Owns the ``assistant_conversations``, ``assistant_messages``, ``assistant_runs`` and
+``assistant_run_feedback`` tables.
 Imports ``auth``, ``workspaces``, ``jobs``, ``llm``, ``files``, ``kpis``, ``changesets``,
 ``notifications``, ``sources`` and ``warehouse``.
 """
@@ -35,6 +39,8 @@ from .service import (
     Completed,
     Conversation,
     ConversationDetail,
+    FeedbackItem,
+    FeedbackView,
     PageContext,
     RunView,
     Sender,
@@ -52,6 +58,8 @@ __all__ = [
     "Completed",
     "Conversation",
     "ConversationDetail",
+    "FeedbackItem",
+    "FeedbackView",
     "PageContext",
     "RunView",
     "Sender",

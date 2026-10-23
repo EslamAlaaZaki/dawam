@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.tracing import tracing
 
 from .gateway import (
     Capabilities,
@@ -220,21 +221,25 @@ class MeteredGateway:
         self._ensure_allowed()
         produced: list[str] = []
         reported: Usage | None = None
-        try:
-            for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
-                if isinstance(event, TextDelta):
-                    produced.append(event.text)
-                elif isinstance(event, ToolCallEvent):
-                    produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
-                elif isinstance(event, Done):
-                    reported = event.usage
-                yield event
-        finally:
-            # Errors and abandoned streams count too: estimate what was sent and received.
-            if reported is None:
-                prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
-                reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
-            self._record(reported)
+        with tracing().model_call(self._model_name, self._role) as span:
+            try:
+                for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
+                    if isinstance(event, TextDelta):
+                        produced.append(event.text)
+                    elif isinstance(event, ToolCallEvent):
+                        produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
+                    elif isinstance(event, Done):
+                        reported = event.usage
+                    yield event
+            finally:
+                # Errors and abandoned streams count too: estimate what was sent and received.
+                if reported is None:
+                    prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
+                    reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
+                self._record(reported)
+                span.usage(reported.prompt_tokens, reported.completion_tokens)
+                if tracing().capture_content:
+                    span.content("\n".join(_message_text(m) for m in messages), "".join(produced))
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Like ``Gateway.embed``; embeddings report no usage, so the tokens are estimated."""
@@ -298,6 +303,18 @@ class RoleService:
                 {"role": role},
             )
         return self.metered_gateway(model_id, role, workspace_id=workspace_id, user_id=user_id)
+
+    def light_gateway(
+        self, *, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> MeteredGateway | None:
+        """The gateway of a light-role feature, or ``None`` when the Workspace has no light
+        model: such a feature is then off. Unlike ``gateway_for_role("light")`` it never
+        falls back to the agent model."""
+        with Session(self._engine) as db:
+            model_id = default_model_id(db, workspace_id, "light")
+        if model_id is None:
+            return None
+        return self.metered_gateway(model_id, "light", workspace_id=workspace_id, user_id=user_id)
 
     def metered_gateway(
         self,
