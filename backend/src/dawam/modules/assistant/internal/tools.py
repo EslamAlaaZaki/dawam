@@ -397,12 +397,8 @@ class _ChangeItem(BaseModel):
         "`is_sensitive` (boolean); tables also `classification` (master, transactional, "
         "reference, log, landing) and `scd_hint` (text).",
     )
-    label: str = Field(
-        default="", max_length=200, description="E.g. `core.customers`."
-    )
-    depends_on: list[str] = Field(
-        default_factory=list, description="Keys of earlier items."
-    )
+    label: str = Field(default="", max_length=200, description="E.g. `core.customers`.")
+    depends_on: list[str] = Field(default_factory=list, description="Keys of earlier items.")
 
 
 class _RelationshipDecision(BaseModel):
@@ -1507,10 +1503,10 @@ GENERATION_NOTE = (
     "a Core fact's foreign key a `lookup` with the staging natural-key columns (and the "
     "as-of date for an SCD2 dimension). A column's `data_type.type` is one of smallint, "
     "integer, bigint, decimal, float, double, boolean, char, string, text, binary, date, "
-    "time, timestamp, timestamptz, uuid, json. Add Mart facts or aggregates for the KPIs; Mart tables "
-    "reference Core conformed dimensions. Keep every existing table or column you still want "
-    "by giving its `handle` (a new name is a rename); leave the handle out only for something "
-    "new. Never propose anything in `deleted_by_users`. Follow the naming rules."
+    "time, timestamp, timestamptz, uuid, json. Add Mart facts or aggregates for the KPIs; Mart "
+    "tables reference Core conformed dimensions. Keep every existing table or column you still "
+    "want by giving its `handle` (a new name is a rename); leave the handle out only for "
+    "something new. Never propose anything in `deleted_by_users`. Follow the naming rules."
 )
 
 
