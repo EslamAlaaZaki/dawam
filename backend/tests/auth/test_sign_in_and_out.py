@@ -289,5 +289,8 @@ def test_signing_in_again_replaces_the_previous_session(
 
     assert anonymous_client.cookies[SESSION_COOKIE] != first_token
     assert len(auth_service.sessions_of(grace.id)) == 1
+    # Cleared first: set() would add a second cookie beside the jar's, and which one
+    # the test client sends first differs between Starlette versions.
+    anonymous_client.cookies.clear()
     anonymous_client.cookies.set(SESSION_COOKIE, first_token)
     assert anonymous_client.get("/api/v1/me").status_code == 401
