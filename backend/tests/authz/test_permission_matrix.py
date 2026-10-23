@@ -384,6 +384,32 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/installation/cost",
+        "set the installation's currency budget (roadmap 27.5)",
+        admin_only(),
+        json=lambda roles: {"amount": "10", "currency": "USD"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/budgets/installation/cost",
+        "remove the installation's currency budget (roadmap 27.5)",
+        admin_only(),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost",
+        "set a Workspace's currency budget (roadmap 27.5)",
+        admin_only(),
+        json=lambda roles: {"amount": "10", "currency": "USD"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost",
+        "remove a Workspace's currency budget (roadmap 27.5)",
+        admin_only(),
+    ),
+    Row(
         "GET",
         "/api/v1/admin/llm/usage",
         "AI usage per Workspace and user (story 162)",
@@ -438,6 +464,8 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row("GET", "/api/v1/admin/security-events", "review security events", admin_only()),
+    Row("GET", "/api/v1/admin/assistant/runs", "browse assistant runs", admin_only()),
+    Row("GET", "/api/v1/admin/assistant/runs/{run_id}", "open an assistant run", admin_only()),
     # Every Workspace's metadata, and the orphan rescue (§4.3, stories 21, 22).
     Row(
         "GET",

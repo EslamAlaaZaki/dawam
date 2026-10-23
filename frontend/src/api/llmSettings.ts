@@ -92,6 +92,70 @@ export function useClearWorkspaceBudget() {
   });
 }
 
+export interface CostBudgetInput {
+  currency: string;
+  amount: string;
+}
+
+/** `null` removes the installation's currency budget. */
+export function useSetInstallationCostBudget() {
+  const client = useApiClient();
+  const refresh = useBudgetRefresh();
+  return useMutation({
+    mutationFn: async (budget: CostBudgetInput | null) => {
+      const { error, response } = budget
+        ? await client.PUT("/api/v1/admin/llm/budgets/installation/cost", {
+            body: budget,
+          })
+        : await client.DELETE("/api/v1/admin/llm/budgets/installation/cost");
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
+export function useSetWorkspaceCostBudget() {
+  const client = useApiClient();
+  const refresh = useBudgetRefresh();
+  return useMutation({
+    mutationFn: async (input: {
+      workspaceId: string;
+      budget: CostBudgetInput;
+    }) => {
+      const { error, response } = await client.PUT(
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost",
+        {
+          params: { path: { workspace_id: input.workspaceId } },
+          body: input.budget,
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
+export function useClearWorkspaceCostBudget() {
+  const client = useApiClient();
+  const refresh = useBudgetRefresh();
+  return useMutation({
+    mutationFn: async (workspaceId: string) => {
+      const { error, response } = await client.DELETE(
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost",
+        { params: { path: { workspace_id: workspaceId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
 export type LlmModelPrice = components["schemas"]["LlmModelPrice"];
 export type LlmCost = components["schemas"]["LlmCost"];
 

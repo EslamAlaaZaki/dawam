@@ -15,12 +15,15 @@ import {
   formatCost,
   useClearLlmModelPrice,
   useClearWorkspaceBudget,
+  useClearWorkspaceCostBudget,
   useLlmBudgets,
   useLlmModelPrices,
   useLlmUsage,
   useSetInstallationBudget,
+  useSetInstallationCostBudget,
   useSetLlmModelPrice,
   useSetWorkspaceBudget,
+  useSetWorkspaceCostBudget,
   type LlmBudgets,
 } from "../api/llmSettings";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
@@ -267,7 +270,7 @@ function ModelRoleRow({
 function BudgetsSection() {
   return (
     <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5 items-start">
-      <h3 className={h3Classes}>Monthly token budgets</h3>
+      <h3 className={h3Classes}>Monthly budgets</h3>
       <Dialog>
         <DialogTrigger asChild>
           <Button>
@@ -279,7 +282,8 @@ function BudgetsSection() {
           <DialogHeader>
             <DialogTitle>Budget settings</DialogTitle>
             <DialogDescription>
-              Monthly token budgets for the installation and per Workspace.
+              Monthly token and currency budgets for the installation and per
+              Workspace. Whichever is reached first stops AI use.
             </DialogDescription>
           </DialogHeader>
           <BudgetsPanel />
@@ -295,6 +299,9 @@ function BudgetsPanel() {
   const setInstallation = useSetInstallationBudget();
   const setWorkspace = useSetWorkspaceBudget();
   const clear = useClearWorkspaceBudget();
+  const setInstallationCost = useSetInstallationCostBudget();
+  const setWorkspaceCost = useSetWorkspaceCostBudget();
+  const clearCost = useClearWorkspaceCostBudget();
   const [removing, setRemoving] = useState<
     LlmBudgets["workspaces"][number] | null
   >(null);
@@ -322,8 +329,40 @@ function BudgetsPanel() {
     });
   }
 
+  function onInstallationCost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const amount = String(data.get("amount") ?? "").trim();
+    setInstallationCost.mutate(
+      amount
+        ? {
+            currency: String(data.get("currency")).trim().toUpperCase(),
+            amount,
+          }
+        : null,
+    );
+  }
+
+  function onWorkspaceCost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setWorkspaceCost.mutate({
+      workspaceId: String(data.get("workspace")),
+      budget: {
+        currency: String(data.get("currency")).trim().toUpperCase(),
+        amount: String(data.get("amount")).trim(),
+      },
+    });
+  }
+
+  const installationCost = budgets.data.installation_monthly_cost_budget;
   const choices = workspaces.data?.pages.flatMap((page) => page.items) ?? [];
-  const failure = setInstallation.error ?? setWorkspace.error;
+  const failure =
+    setInstallation.error ??
+    setWorkspace.error ??
+    setInstallationCost.error ??
+    setWorkspaceCost.error ??
+    clearCost.error;
   return (
     <div className="flex flex-col gap-3.5">
       <form onSubmit={onInstallation} aria-label="Installation budget">
@@ -397,6 +436,101 @@ function BudgetsPanel() {
           <label className={labelClasses}>
             Tokens per month
             <Input name="tokens" type="number" min={0} required />
+          </label>
+        </SettingsCard>
+      </form>
+      <form
+        onSubmit={onInstallationCost}
+        aria-label="Installation currency budget"
+      >
+        <SettingsCard
+          title="Installation currency budget"
+          description="Only calls on models priced in this currency count. Empty amount: unlimited."
+          footer={
+            <Button type="submit" disabled={setInstallationCost.isPending}>
+              Save installation currency budget
+            </Button>
+          }
+        >
+          <label className={labelClasses}>
+            Currency (ISO code)
+            <Input
+              name="currency"
+              required
+              maxLength={3}
+              key={`c-${installationCost?.currency ?? "none"}`}
+              defaultValue={installationCost?.currency ?? "USD"}
+            />
+          </label>
+          <label className={labelClasses}>
+            Amount per month
+            <Input
+              name="amount"
+              type="number"
+              min={0}
+              step="any"
+              key={`a-${installationCost?.amount ?? "none"}`}
+              defaultValue={
+                installationCost ? Number(installationCost.amount) : ""
+              }
+            />
+          </label>
+        </SettingsCard>
+      </form>
+      {budgets.data.workspace_cost_budgets.length > 0 && (
+        <ul
+          aria-label="Workspace currency budgets"
+          className="flex max-w-xl flex-col divide-y divide-border rounded-pill border border-border bg-surface-raised"
+        >
+          {budgets.data.workspace_cost_budgets.map((row) => (
+            <li
+              key={row.workspace_id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span className="tabular-nums">
+                {row.workspace_name ?? row.workspace_id}:{" "}
+                {Number(row.budget.amount)} {row.budget.currency}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                disabled={clearCost.isPending}
+                onClick={() => clearCost.mutate(row.workspace_id)}
+              >
+                Remove currency budget for{" "}
+                {row.workspace_name ?? row.workspace_id}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={onWorkspaceCost} aria-label="Workspace currency budget">
+        <SettingsCard
+          title="Workspace currency budget"
+          footer={
+            <Button type="submit" disabled={setWorkspaceCost.isPending}>
+              Set Workspace currency budget
+            </Button>
+          }
+        >
+          <label className={labelClasses}>
+            Workspace
+            <NativeSelect name="workspace" required defaultValue="">
+              <option value="">Choose a Workspace</option>
+              {choices.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className={labelClasses}>
+            Currency (ISO code)
+            <Input name="currency" required maxLength={3} defaultValue="USD" />
+          </label>
+          <label className={labelClasses}>
+            Amount per month
+            <Input name="amount" type="number" min={0} step="any" required />
           </label>
         </SettingsCard>
       </form>

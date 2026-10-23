@@ -65,8 +65,10 @@ from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, fake_
 from .internal.fake import FakeAdapter, Reply
 from .role_service import (
     MeteredGateway,
+    ModelPrice,
     RoleService,
     UsageReport,
+    call_cost,
 )
 from .service import (
     Model,
@@ -111,6 +113,7 @@ __all__ = [
     "MeteredGateway",
     "Model",
     "ModelInput",
+    "ModelPrice",
     "OllamaContext",
     "Provider",
     "ProviderInput",
@@ -128,6 +131,7 @@ __all__ = [
     "WorkspaceAiSettings",
     "WorkspaceAiView",
     "adapter_for",
+    "call_cost",
     "fake_adapter_factory",
     "on_workspace_created",
     "router",
