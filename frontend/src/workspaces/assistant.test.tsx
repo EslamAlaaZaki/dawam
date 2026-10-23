@@ -83,6 +83,7 @@ function sse(frames: string[]): Response {
   });
 }
 
+const RUN_ID = "77777777-7777-4777-8777-777777777777";
 const JOB_ID = "99999999-9999-4999-8999-999999999999";
 const TOOL = {
   name: "get_object",
@@ -97,6 +98,7 @@ interface Options {
   detail?: ConversationDetail;
   answer?: () => Response | Promise<Response>;
   stopped?: () => void;
+  rated?: (body: unknown) => Response;
   job?: Record<string, unknown>;
   ai?: Record<string, unknown>;
 }
@@ -132,6 +134,8 @@ function backend(options: Options = {}) {
         return options.answer?.();
       case `GET /api/v1/jobs/${JOB_ID}`:
         return json(options.job);
+      case `PUT ${ASSISTANT}/${CONVERSATION_ID}/runs/${RUN_ID}/feedback`:
+        return options.rated?.(r.body);
       case `POST ${ASSISTANT}/${CONVERSATION_ID}/stop`:
         options.stopped?.();
         return noContent();
@@ -515,6 +519,119 @@ describe("the assistant's chat panel", () => {
         csrf: CSRF_TOKEN,
       }),
     );
+  });
+});
+
+describe("feedback on answers", () => {
+  function answered(feedback: Run["feedback"] = null): ConversationDetail {
+    return {
+      conversation: NEW_CONVERSATION,
+      messages: [
+        {
+          id: "m1",
+          role: "user",
+          content: "What is Net Revenue?",
+          created_at: "2026-01-05T10:00:00Z",
+          run: run({ id: RUN_ID, feedback }),
+          sender: ADA_SENDER,
+          model: null,
+        },
+        {
+          id: "m2",
+          role: "assistant",
+          content: "A KPI.",
+          created_at: "2026-01-05T10:00:05Z",
+          run: null,
+          sender: null,
+          model: null,
+        },
+      ],
+    };
+  }
+
+  it("rates an answer, then adds a comment to the same rating", async () => {
+    const rated = vi.fn((body: unknown) =>
+      json({ ...(body as object), updated_at: "2026-01-05T10:01:00Z" }),
+    );
+    const requests = renderApp(
+      backend({
+        conversations: [NEW_CONVERSATION],
+        detail: answered(),
+        rated,
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bad answer" }));
+    await waitFor(() =>
+      expect(rated).toHaveBeenCalledWith({ rating: "down", comment: null }),
+    );
+    expect(requests.find((r) => r.method === "PUT")?.csrf).toBe(CSRF_TOKEN);
+  });
+
+  it("shows the saved rating and lets the member change it and its comment", async () => {
+    const rated = vi.fn((body: unknown) =>
+      json({ ...(body as object), updated_at: "2026-01-05T10:02:00Z" }),
+    );
+    renderApp(
+      backend({
+        conversations: [NEW_CONVERSATION],
+        detail: answered({
+          rating: "down",
+          comment: "Too vague",
+          updated_at: "2026-01-05T10:01:00Z",
+        }),
+        rated,
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    expect(
+      await screen.findByRole("button", { name: "Bad answer" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Good answer" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Good answer" }));
+    await waitFor(() =>
+      expect(rated).toHaveBeenLastCalledWith({
+        rating: "up",
+        comment: "Too vague",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit comment" }));
+    fireEvent.change(screen.getByLabelText("Comment on this answer"), {
+      target: { value: "Clear now" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+    await waitFor(() =>
+      expect(rated).toHaveBeenLastCalledWith({
+        rating: "down",
+        comment: "Clear now",
+      }),
+    );
+  });
+
+  it("does not offer ratings in an archived Workspace", async () => {
+    renderApp(
+      backend({
+        status: "archived",
+        conversations: [NEW_CONVERSATION],
+        detail: answered(),
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await screen.findByText("A KPI.");
+    expect(
+      screen.queryByRole("button", { name: "Good answer" }),
+    ).not.toBeInTheDocument();
   });
 });
 

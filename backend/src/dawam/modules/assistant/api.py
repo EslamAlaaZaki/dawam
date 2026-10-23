@@ -11,7 +11,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
@@ -28,12 +28,14 @@ from .service import (
     Completed,
     Conversation,
     ConversationDetail,
+    FeedbackItem,
+    FeedbackView,
     PageContext,
     RunView,
     Started,
     StreamEvent,
 )
-from .tables import MESSAGE_MAX_LENGTH, TITLE_MAX_LENGTH
+from .tables import FEEDBACK_COMMENT_MAX_LENGTH, MESSAGE_MAX_LENGTH, TITLE_MAX_LENGTH
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/assistant", tags=["assistant"])
 
@@ -92,6 +94,12 @@ class ToolCallOut(BaseModel):
     )
 
 
+class FeedbackOut(BaseModel):
+    rating: Literal["up", "down"]
+    comment: str | None
+    updated_at: datetime
+
+
 class RunOut(BaseModel):
     id: uuid.UUID
     status: str = Field(
@@ -104,6 +112,48 @@ class RunOut(BaseModel):
     duration_ms: int
     error_code: str | None = Field(description="Why the run failed, e.g. `token_budget_exhausted`.")
     error_message: str | None = Field(description="The reason to show the member.")
+    feedback: FeedbackOut | None = Field(
+        default=None, description="Your own rating of the run's answer, if you gave one."
+    )
+
+
+class FeedbackRequest(BaseModel):
+    rating: Literal["up", "down"]
+    comment: Annotated[
+        str | None, StringConstraints(strip_whitespace=True, max_length=FEEDBACK_COMMENT_MAX_LENGTH)
+    ] = Field(default=None, description="Optional: what was good or wrong about the answer.")
+
+
+class FeedbackItemOut(BaseModel):
+    run_id: uuid.UUID
+    conversation_id: uuid.UUID
+    member_email: str | None
+    rating: Literal["up", "down"]
+    comment: str | None
+    question: str
+    answer: str
+    tools: list[str] = Field(description="Names of the tools the run called.")
+    created_at: datetime
+    updated_at: datetime
+
+
+class FeedbackList(BaseModel):
+    items: list[FeedbackItemOut]
+
+
+class EvalCaseCandidate(BaseModel):
+    id: str = Field(description="`feedback-<run id>`: stable across exports.")
+    input: str = Field(description="The question the member asked.")
+    observed_answer: str
+    expected_tools: list[str] = Field(description="The tools the run called.")
+    label: Literal["up", "down"] = Field(
+        description="Down: a failure to turn into a regression case; up: a keeper."
+    )
+    note: str | None = Field(description="The member's comment.")
+
+
+class EvalCaseCandidates(BaseModel):
+    cases: list[EvalCaseCandidate]
 
 
 class SenderOut(BaseModel):
@@ -202,7 +252,16 @@ def _run(view: RunView) -> RunOut:
         duration_ms=view.duration_ms,
         error_code=view.error_code,
         error_message=view.error_message,
+        feedback=_feedback(view.feedback) if view.feedback else None,
     )
+
+
+def _feedback(view: FeedbackView) -> FeedbackOut:
+    return FeedbackOut(rating=view.rating, comment=view.comment, updated_at=view.updated_at)
+
+
+def _feedback_item(view: FeedbackItem) -> FeedbackItemOut:
+    return FeedbackItemOut(**view.__dict__)
 
 
 def _message(view: ChatMessage) -> MessageOut:
@@ -370,3 +429,61 @@ def stop_response(
     """Stop the conversation's running response; what was written so far is kept."""
     service.stop(user, workspace_id, conversation_id)
     return Response(status_code=204)
+
+
+@router.put(
+    "/conversations/{conversation_id}/runs/{run_id}/feedback",
+    operation_id="rateAssistantAnswer",
+)
+def rate_answer(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    run_id: uuid.UUID,
+    body: FeedbackRequest,
+    user: CurrentUser,
+    service: AssistantServiceDep,
+) -> FeedbackOut:
+    """Rate an answer up or down, with an optional comment. Rating again replaces your
+    rating (one per member and answer). Any member who can read the conversation; 404 for
+    an unknown run, 409 `workspace_archived`."""
+    return _feedback(
+        service.rate_answer(user, workspace_id, conversation_id, run_id, body.rating, body.comment)
+    )
+
+
+@router.get("/feedback", operation_id="listAssistantFeedback")
+def list_feedback(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    service: AssistantServiceDep,
+    rating: Literal["up", "down"] | None = None,
+) -> FeedbackList:
+    """Members' ratings of answers with the question, answer and tools, newest first
+    (Workspace Owners and admins; 403 otherwise)."""
+    return FeedbackList(
+        items=[_feedback_item(i) for i in service.list_feedback(user, workspace_id, rating=rating)]
+    )
+
+
+@router.get("/feedback/eval-candidates", operation_id="exportAssistantEvalCandidates")
+def export_eval_candidates(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    service: AssistantServiceDep,
+    rating: Literal["up", "down"] | None = "down",
+) -> EvalCaseCandidates:
+    """The rated answers as eval-case candidates to review and add to the eval suite
+    (Workspace Owners and admins). Only thumbs-down by default; `rating` picks the other."""
+    return EvalCaseCandidates(
+        cases=[
+            EvalCaseCandidate(
+                id=f"feedback-{i.run_id}",
+                input=i.question,
+                observed_answer=i.answer,
+                expected_tools=i.tools,
+                label=i.rating,
+                note=i.comment,
+            )
+            for i in service.list_feedback(user, workspace_id, rating=rating)
+        ]
+    )

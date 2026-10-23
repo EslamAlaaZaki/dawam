@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from dawam.modules.auth import User
 from dawam.modules.jobs import JobCancelledError, JobContext
@@ -42,10 +42,12 @@ from .internal.prompt import JOB_PROMPT, SYSTEM_PROMPT, prompt_version, quote_da
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
+    FEEDBACK_COMMENT_MAX_LENGTH,
     MESSAGE_MAX_LENGTH,
     TITLE_MAX_LENGTH,
     ConversationRecord,
     MessageRecord,
+    RunFeedbackRecord,
     RunRecord,
 )
 
@@ -93,6 +95,31 @@ class ToolCallView:
 
 
 @dataclass(frozen=True)
+class FeedbackView:
+    """A member's rating of an answer."""
+
+    rating: Literal["up", "down"]
+    comment: str | None
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class FeedbackItem:
+    """One member's rating of one answer, with what was asked and answered (for admins)."""
+
+    run_id: uuid.UUID
+    conversation_id: uuid.UUID
+    member_email: str | None
+    rating: Literal["up", "down"]
+    comment: str | None
+    question: str
+    answer: str
+    tools: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class RunView:
     id: uuid.UUID
     status: str
@@ -102,6 +129,8 @@ class RunView:
     duration_ms: int
     error_code: str | None
     error_message: str | None
+    feedback: FeedbackView | None = None
+    """The caller's own rating of this run's answer."""
 
 
 @dataclass(frozen=True)
@@ -163,7 +192,7 @@ def _not_found() -> ApiError:
     return ApiError(404, "not_found", "That conversation does not exist.")
 
 
-def _run_view(record: RunRecord) -> RunView:
+def _run_view(record: RunRecord, feedback: FeedbackView | None = None) -> RunView:
     return RunView(
         id=record.id,
         status=record.status,
@@ -176,6 +205,7 @@ def _run_view(record: RunRecord) -> RunView:
         duration_ms=record.duration_ms,
         error_code=record.error_code,
         error_message=record.error_message,
+        feedback=feedback,
     )
 
 
@@ -265,8 +295,21 @@ class AssistantService:
                     .order_by(MessageRecord.position)
                 )
             )
+            rated = {
+                f.run_id: FeedbackView(
+                    "up" if f.rating == "up" else "down", f.comment, f.updated_at
+                )
+                for f in db.scalars(
+                    sa.select(RunFeedbackRecord)
+                    .join(RunRecord, RunRecord.id == RunFeedbackRecord.run_id)
+                    .where(
+                        RunRecord.conversation_id == conversation_id,
+                        RunFeedbackRecord.user_id == user.id,
+                    )
+                )
+            }
             runs = {
-                r.user_message_id: _run_view(r)
+                r.user_message_id: _run_view(r, rated.get(r.id))
                 for r in db.scalars(
                     sa.select(RunRecord).where(RunRecord.conversation_id == conversation_id)
                 )
@@ -408,6 +451,91 @@ class AssistantService:
                 .where(RunRecord.conversation_id == conversation_id, RunRecord.status == "running")
                 .values(cancel_requested=True)
             )
+
+    # -- feedback --------------------------------------------------------------------
+
+    def rate_answer(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        rating: Literal["up", "down"],
+        comment: str | None,
+    ) -> FeedbackView:
+        """Rate (or change the rating of) the answer of a run in a conversation the member
+        can read: one rating per member and run. 404 for an unknown run or one with no
+        answer, 422 ``invalid_feedback`` for a bad rating or too long a comment."""
+        self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        comment = (comment or "").strip() or None
+        if rating not in ("up", "down") or (
+            comment is not None and len(comment) > FEEDBACK_COMMENT_MAX_LENGTH
+        ):
+            raise ApiError(
+                422,
+                "invalid_feedback",
+                f"Rate up or down, with a comment of at most {FEEDBACK_COMMENT_MAX_LENGTH} "
+                "characters.",
+            )
+        now = self._clock()
+        with Session(self._engine) as db, db.begin():
+            self._load(db, user, workspace_id, conversation_id)
+            run = db.get(RunRecord, run_id)
+            if run is None or run.conversation_id != conversation_id or not run.answer_message_id:
+                raise ApiError(404, "not_found", "That answer does not exist.")
+            record = db.scalars(
+                sa.select(RunFeedbackRecord).where(
+                    RunFeedbackRecord.run_id == run_id, RunFeedbackRecord.user_id == user.id
+                )
+            ).first()
+            if record is None:
+                record = RunFeedbackRecord(
+                    id=uuid.uuid4(), run_id=run_id, user_id=user.id, created_at=now
+                )
+                db.add(record)
+            record.rating = rating
+            record.comment = comment
+            record.updated_at = now
+            return FeedbackView(rating, comment, now)
+
+    def list_feedback(
+        self, user: User, workspace_id: uuid.UUID, *, rating: str | None = None
+    ) -> list[FeedbackItem]:
+        """Every member's ratings of the Workspace's answers, newest first, with the
+        question, the answer and the tools used (Owners and admins; 403 otherwise)."""
+        self._workspaces.authorize(user, Action.VIEW_AI_FEEDBACK, workspace_id)
+        answer = aliased(MessageRecord)
+        question = aliased(MessageRecord)
+        query = (
+            sa.select(RunFeedbackRecord, RunRecord, question.content, answer.content)
+            .join(RunRecord, RunRecord.id == RunFeedbackRecord.run_id)
+            .join(ConversationRecord, ConversationRecord.id == RunRecord.conversation_id)
+            .join(question, question.id == RunRecord.user_message_id)
+            .join(answer, answer.id == RunRecord.answer_message_id)
+            .where(ConversationRecord.workspace_id == workspace_id)
+            .order_by(RunFeedbackRecord.updated_at.desc(), RunFeedbackRecord.id)
+            .limit(LIST_LIMIT)
+        )
+        if rating is not None:
+            query = query.where(RunFeedbackRecord.rating == rating)
+        with Session(self._engine) as db:
+            rows = db.execute(query).all()
+        senders = self._senders({f.user_id for f, *_ in rows})
+        return [
+            FeedbackItem(
+                run_id=run.id,
+                conversation_id=run.conversation_id,
+                member_email=senders[f.user_id].email if f.user_id in senders else None,
+                rating="up" if f.rating == "up" else "down",
+                comment=f.comment,
+                question=q,
+                answer=a,
+                tools=[c["name"] for c in run.tool_calls],
+                created_at=f.created_at,
+                updated_at=f.updated_at,
+            )
+            for f, run, q, a in rows
+        ]
 
     # -- long tasks as jobs ------------------------------------------------------------
 

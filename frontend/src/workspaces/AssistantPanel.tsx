@@ -6,6 +6,8 @@ import {
   PanelRightOpen,
   Plus,
   Square,
+  ThumbsDown,
+  ThumbsUp,
   X,
 } from "lucide-react";
 import {
@@ -21,6 +23,7 @@ import {
   useConversation,
   useConversations,
   useCreateConversation,
+  useRateAnswer,
   useSendMessage,
   useShareConversation,
   useStopResponse,
@@ -290,15 +293,119 @@ function Bubble({
   );
 }
 
+/**
+ * Thumbs up/down and an optional comment on an answer. The member rates once and can
+ * change the rating or the comment later; the rating is saved on the run.
+ */
+function AnswerFeedback({
+  run,
+  workspaceId,
+  conversationId,
+}: {
+  run: Run;
+  workspaceId: string;
+  conversationId: string;
+}) {
+  const rate = useRateAnswer(workspaceId, conversationId);
+  const saved = run.feedback ?? null;
+  const [commenting, setCommenting] = useState(false);
+  const [comment, setComment] = useState(saved?.comment ?? "");
+
+  const send = (rating: "up" | "down", text: string) =>
+    rate.mutate(
+      { runId: run.id, rating, comment: text.trim() || null },
+      { onSuccess: () => setCommenting(false) },
+    );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        role="group"
+        aria-label="Rate this answer"
+        className="flex items-center gap-1"
+      >
+        {(["up", "down"] as const).map((rating) => {
+          const Icon = rating === "up" ? ThumbsUp : ThumbsDown;
+          return (
+            <Button
+              key={rating}
+              variant="ghost"
+              size="icon"
+              aria-label={rating === "up" ? "Good answer" : "Bad answer"}
+              aria-pressed={saved?.rating === rating}
+              disabled={rate.isPending}
+              className={cn(
+                saved?.rating === rating && "bg-muted text-foreground",
+              )}
+              onClick={() => send(rating, saved?.comment ?? "")}
+            >
+              <Icon aria-hidden />
+            </Button>
+          );
+        })}
+        {saved && !commenting && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setComment(saved.comment ?? "");
+              setCommenting(true);
+            }}
+          >
+            {saved.comment ? "Edit comment" : "Add a comment"}
+          </Button>
+        )}
+      </div>
+      {saved && commenting && (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            send(saved.rating, comment);
+          }}
+        >
+          <Textarea
+            aria-label="Comment on this answer"
+            value={comment}
+            maxLength={1000}
+            rows={2}
+            onChange={(event) => setComment(event.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={rate.isPending}>
+              Save comment
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setCommenting(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+      {rate.error instanceof ApiError && (
+        <ErrorText>{rate.error.message}</ErrorText>
+      )}
+    </div>
+  );
+}
+
 /** A member's message and the assistant's reply to it. */
 function Turn({
   message,
   answer,
   workspaceId,
+  conversationId,
+  canRate,
 }: {
   message: ChatMessage;
   answer: ChatMessage | undefined;
   workspaceId: string;
+  conversationId: string;
+  canRate: boolean;
 }) {
   const run = message.run;
   return (
@@ -317,6 +424,13 @@ function Turn({
         >
           {answer && <Markdown>{answer.content}</Markdown>}
           {run && <RunNotes run={run} workspaceId={workspaceId} />}
+          {answer && run && canRate && (
+            <AnswerFeedback
+              run={run}
+              workspaceId={workspaceId}
+              conversationId={conversationId}
+            />
+          )}
         </Bubble>
       )}
     </>
@@ -593,6 +707,8 @@ export function AssistantPanel({
                 key={message.id}
                 message={message}
                 workspaceId={workspace.id}
+                conversationId={selected ?? ""}
+                canRate={!archived}
                 answer={answer?.role === "assistant" ? answer : undefined}
               />
             ))}

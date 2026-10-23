@@ -15,6 +15,7 @@ from dawam.platform.db import Base
 TITLE_MAX_LENGTH = 200
 MESSAGE_MAX_LENGTH = 8000
 ERROR_MAX_LENGTH = 1000
+FEEDBACK_COMMENT_MAX_LENGTH = 1000
 
 
 class ConversationRecord(Base):
@@ -105,3 +106,23 @@ class RunRecord(Base):
     error_message: Mapped[str | None] = mapped_column(sa.String(ERROR_MAX_LENGTH))
     started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+
+
+class RunFeedbackRecord(Base):
+    """A member's rating of the answer of one run: one per member and run, changeable."""
+
+    __tablename__ = "assistant_run_feedback"
+    __table_args__ = (
+        sa.CheckConstraint("rating IN ('up', 'down')", name="rating"),
+        sa.UniqueConstraint("run_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("assistant_runs.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"))
+    rating: Mapped[str] = mapped_column(sa.String(8))
+    comment: Mapped[str | None] = mapped_column(sa.String(FEEDBACK_COMMENT_MAX_LENGTH))
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
