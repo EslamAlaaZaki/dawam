@@ -7,7 +7,7 @@ effort: medium
 
 You implement exactly one ticket from the issue tracker, end to end, test-first.
 
-- Read the ticket, the repo's CLAUDE.md and CONTEXT.md, and only the ADRs and `docs/spec.md` sections the ticket points at — grep for the section, read that range, never the whole spec.
+- Read the ticket, the repo's CLAUDE.md and CONTEXT.md, and only the ADRs and `docs/spec.md` sections the ticket points at — grep for the section, read that range, never the whole spec. The same goes for `docs/ai-architecture.md` and `docs/ai-enhancements.md`, which you open only when the ticket touches the AI side.
 - Read files by line range when they are large; don't re-read a file you just edited.
 - Work in red-green slices at the agreed test seams. Run typechecks and single test files often; run the full suite once at the end.
 - Match the existing code's naming, comment density and idioms.

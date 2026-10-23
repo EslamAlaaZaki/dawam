@@ -17,7 +17,7 @@ For each ticket:
 
 Save tokens:
 - Subagents return short reports, never file dumps.
-- Implementers read only the `docs/spec.md` sections the ticket cites.
+- Implementers read only the `docs/spec.md` sections the ticket cites, and `docs/ai-architecture.md` / `docs/ai-enhancements.md` sections only when the ticket touches the AI side.
 - Skip docker-compose and browser end-to-end runs unless the ticket touches infra or the frontend flow; CI covers the rest.
 
 Stop and ask only for genuine product decisions, or for tickets labelled `needs-info` or `needs-triage`.
@@ -33,6 +33,27 @@ Tickets for the UI redesign (`DESIGN.md`) change steps 2 and 5 above:
 - The implementer commits straight to `feature/ui-redesign`, with commit messages like `ui: <short description> (#N)`. No ticket branches and no PRs. Nothing is ever pushed to, merged into or opened as a PR against `main`.
 - The ticket is visual-only, so no new tests. It's done when `npm run lint`, `npm test` and `npm run build` pass in `frontend/` without changing any test. The exceptions are `contrast.test.ts` and `tokens.test.ts` (palette ticket only) and tests that only assert class names or colors. If a role or text test fails, fix the UI, not the test.
 - The review subagent still runs. CI runs on push. The maintainer closes the issue by hand.
+
+## AI enhancements exception
+
+AI enhancement tickets (label `ai`, from `docs/ai-enhancements.md`) change step 5 above.
+
+| Feature | Label | Feature branch | Epics |
+|---|---|---|---|
+| AI Foundations | `feature:ai-foundations` | `feature/ai-foundations` | 20 Context budget & token cost, 27 Observability & evals |
+| AI RAG | `feature:ai-rag` | `feature/ai-rag` | 21 Document ingestion, 22 Chunking & indexing, 23 Retrieval quality, 24 RAG admin settings |
+| AI Safety & Platform | `feature:ai-safety-platform` | `feature/ai-safety-platform` | 28 Safety, governance & platform |
+| AI Agent | `feature:ai-agent` | `feature/ai-agent` | 25 Agent tools, 26 Agent runtime & orchestration, 29 Agent memory |
+
+- Work the features one at a time, in the table's order, unless the maintainer asks otherwise. Create a feature branch from `main` only when its work starts, after the previous feature has merged into `main`.
+- Each issue's header names its Feature, Feature branch and Target branch. Cut the ticket branch from the target branch, open a PR into it, wait for CI to pass, then merge with a merge commit. Never commit directly to a feature branch, and never open a ticket PR into `main` (leftovers below are the only exception).
+- "Closes #N" doesn't fire on PRs into non-default branches. Right after merging a ticket PR into its feature branch, close the issue by hand with a comment linking the PR.
+- Each feature has a "Merge `feature/ai-X` into main" issue (`ready-for-human`), blocked by its epics' docs tickets. Blockers that cross features point at that merge issue; blockers within a feature point at the ticket.
+- When the merge issue unblocks, sync `main` into the feature branch with a "Sync main into feature/ai-X" PR (CI must pass, merge commit), then open the feature → `main` PR. The maintainer reviews and merges it.
+- If `main` changes while a feature branch is open, sync it the same way before continuing. The ruleset blocks direct pushes, so syncing always goes through a PR.
+- Leftover nice-to-have or backlog tickets after their feature has merged: change only "Target branch" to `main` (keep the Feature, the Feature branch line and the feature label), and run each as a single-ticket PR into `main` that also updates `docs/ai-architecture.md` and `docs/ai-enhancements.md`.
+- Tickets that write or amend an ADR: label the PR `ready-for-human` and wait for the maintainer's review before merging, even though the ruleset allows 0 approvals.
+- A ruleset on `feature/ai-**` requires a PR (0 approvals, merge commits only, no force pushes) and every CI check. CI runs on every PR and on pushes to `main` and `feature/**`.
 
 ## Grilling: clear the backlog first
 
