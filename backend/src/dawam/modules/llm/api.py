@@ -512,9 +512,6 @@ def auth_users(request: Request) -> AuthService:
 AuthUsersDep = Annotated[AuthService, Depends(auth_users)]
 
 
-COST_BUDGET_MAX = MAX_COST_BUDGET
-
-
 class LlmWorkspaceBudget(BaseModel):
     workspace_id: uuid.UUID
     workspace_name: str | None = Field(description="Null if the Workspace no longer exists.")
@@ -543,7 +540,7 @@ class LlmCostBudgetRequest(BaseModel):
     currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code, e.g. `USD`.")
     amount: Decimal = Field(
         ge=0,
-        le=COST_BUDGET_MAX,
+        le=MAX_COST_BUDGET,
         description="Per calendar month (UTC). Only calls priced in `currency` count.",
     )
 
