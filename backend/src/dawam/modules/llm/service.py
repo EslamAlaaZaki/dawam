@@ -197,6 +197,17 @@ def context_warnings(roles: Sequence[str], window: int | None) -> tuple[str, ...
     return ()
 
 
+def _window_too_small(window: int, field: str) -> ApiError:
+    return ApiError(
+        422,
+        "context_window_too_small",
+        f"This model's context window is {window:,} tokens. The agent role needs at least "
+        f"{_k(AGENT_MIN_CONTEXT)} ({AGENT_MIN_CONTEXT:,}) tokens: pick a larger model, "
+        "or correct the window if it is wrong.",
+        {"field": field, "context_window": window},
+    )
+
+
 def _model_view(record: ModelRecord) -> Model:
     return Model(
         id=record.id,
@@ -383,6 +394,8 @@ class ProviderService:
         window = _clean_window(data.context_window)
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)
+            if "agent" in record.roles and window is not None and window < AGENT_MIN_CONTEXT:
+                raise _window_too_small(window, "context_window")
             record.context_window = window
             record.updated_at = self._clock()
             return _model_view(record)
@@ -435,14 +448,7 @@ class ProviderService:
                 and record.context_window is not None
                 and record.context_window < AGENT_MIN_CONTEXT
             ):
-                raise ApiError(
-                    422,
-                    "context_window_too_small",
-                    f"This model's context window is {record.context_window:,} tokens. The "
-                    f"agent role needs at least {_k(AGENT_MIN_CONTEXT)} ({AGENT_MIN_CONTEXT:,}) "
-                    "tokens: pick a larger model, or correct the window if it is wrong.",
-                    {"field": "roles", "context_window": record.context_window},
-                )
+                raise _window_too_small(record.context_window, "roles")
             record.roles = wanted
             record.updated_at = self._clock()
             return _model_view(record)

@@ -21,6 +21,17 @@ def test_a_model_with_a_known_window_below_32k_is_refused_the_agent_role(admin_c
     assert light.status_code == 200 and light.json()["warnings"] == []
 
 
+def test_lowering_the_window_below_32k_of_an_agent_model_is_refused(admin_client):
+    model = add_model(admin_client, add_provider(admin_client), context_window=65536)
+
+    refused = admin_client.put(f"{BASE}/models/{model['id']}", json={"context_window": 8192})
+
+    assert refused.status_code == 422 and code(refused) == "context_window_too_small"
+    assert "8,192" in refused.json()["error"]["message"]
+    kept = admin_client.put(f"{BASE}/models/{model['id']}", json={"context_window": 32768})
+    assert kept.status_code == 200 and kept.json()["context_window"] == 32768
+
+
 def test_a_model_with_a_window_of_32k_or_more_takes_the_agent_role_without_warnings(admin_client):
     model = add_model(admin_client, add_provider(admin_client), roles=(), context_window=32768)
 
