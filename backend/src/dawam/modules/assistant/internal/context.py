@@ -9,10 +9,11 @@ are estimates (about four characters per token); with an unknown window nothing 
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import replace
 
-from dawam.modules.llm import Message
+from dawam.modules.llm import Message, ToolSpec
 
 CHARS_PER_TOKEN = 4
 PROMPT_SHARE = 0.75
@@ -28,6 +29,17 @@ _TOOL_SOURCE = '<data source="tool:'
 
 def estimate_tokens(text: str) -> int:
     return max(1, len(text) // CHARS_PER_TOKEN) if text else 0
+
+
+def schema_tokens(specs: Sequence[ToolSpec]) -> int:
+    """Estimated tokens the native tool schemas take when sent next to the messages."""
+    return estimate_tokens(
+        "".join(json.dumps([s.name, s.description, s.parameters]) for s in specs)
+    )
+
+
+def prompt_budget(window: int | None) -> int | None:
+    return None if window is None else int(window * PROMPT_SHARE)
 
 
 def _tokens(message: Message) -> int:
@@ -53,17 +65,19 @@ def _is_tool_result(message: Message) -> bool:
 
 
 def fit_messages(
-    messages: Sequence[Message], window: int | None, *, protect_from: int
+    messages: Sequence[Message], window: int | None, *, protect_from: int, reserved: int = 0
 ) -> list[Message]:
     """``messages`` (the system message first) trimmed to fit ``window``.
 
     ``protect_from`` is the index of the member's latest message: everything before it
     (after the system message) is history that may be dropped, everything from it on is kept.
+    ``reserved`` is the estimated tokens of tool schemas sent beside the messages; they come
+    off the prompt budget.
     """
     result = list(messages)
     if window is None:
         return result
-    budget = int(window * PROMPT_SHARE)
+    budget = int(window * PROMPT_SHARE) - reserved
     used = sum(_tokens(m) for m in result)
     if used <= budget:
         return result

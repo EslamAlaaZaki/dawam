@@ -33,7 +33,13 @@ from dawam.modules.llm import (
 )
 from dawam.platform.errors import ApiError
 
-from .context import fit_messages, shorten_result
+from .context import (
+    estimate_tokens,
+    fit_messages,
+    prompt_budget,
+    schema_tokens,
+    shorten_result,
+)
 from .prompt import quote_data
 from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
 
@@ -95,6 +101,12 @@ class ToolCallRecord:
 @dataclass(frozen=True)
 class Text:
     text: str
+
+
+TOO_SMALL_MESSAGE = (
+    "The model's context window is too small for the assistant: its instructions and tools "
+    "alone do not fit. Choose a model with a larger window."
+)
 
 
 @dataclass(frozen=True)
@@ -165,10 +177,16 @@ def run_agent(
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
-            sent = fit_messages(messages, window, protect_from=protect_from)
-            if prompted and offered:
+            extra = tools_prompt(offered) if prompted and offered else ""
+            reserved = estimate_tokens(extra) if extra else schema_tokens(offered)
+            budget = prompt_budget(window)
+            if budget is not None and estimate_tokens(system) + reserved > budget:
+                yield run.finish("failed", "context_window_too_small", TOO_SMALL_MESSAGE)
+                return
+            sent = fit_messages(messages, window, protect_from=protect_from, reserved=reserved)
+            if extra:
                 head = sent[0]
-                sent[0] = replace(head, content=head.content + "\n\n" + tools_prompt(offered))
+                sent[0] = replace(head, content=head.content + "\n\n" + extra)
             with closing(gateway.chat(sent, () if prompted else offered, stream)) as events:
                 for event in events:
                     # Reading the stop flag is a query: while text streams, not on every delta.
