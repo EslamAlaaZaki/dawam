@@ -4183,6 +4183,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/assistant/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Assistant runs across all Workspaces, newest first, at most 100 (admins only). A
+         *     time without a time zone is UTC.
+         */
+        get: operations["listAssistantRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/assistant/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description One run with its step timeline (model calls, tool calls, errors), redacted prompt and
+         *     answer, prompt version and every member's feedback (admins only); 404 if unknown.
+         */
+        get: operations["getAssistantRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
         parameters: {
             query?: never;
@@ -4316,7 +4358,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "assistant.view_feedback" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "assistant.view_feedback" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.view_assistant_runs" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -8648,6 +8690,48 @@ export interface components {
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
         };
+        /** RunCostOut */
+        RunCostOut: {
+            /** Amount */
+            amount: string;
+            /**
+             * Currency
+             * @description ISO 4217 code of the model's price.
+             */
+            currency: string;
+        };
+        /** RunDetailOut */
+        RunDetailOut: {
+            run: components["schemas"]["RunSummaryOut"];
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Timeline
+             * @description The run's stored steps, in order.
+             */
+            timeline: components["schemas"]["RunStepOut"][];
+            /** Feedback */
+            feedback: components["schemas"]["RunFeedbackOut"][];
+        };
+        /** RunFeedbackOut */
+        RunFeedbackOut: {
+            /** Member Email */
+            member_email: string | null;
+            /** Rating */
+            rating: string;
+            /** Comment */
+            comment: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RunListOut */
+        RunListOut: {
+            /** Items */
+            items: components["schemas"]["RunSummaryOut"][];
+        };
         /** RunOut */
         RunOut: {
             /**
@@ -8680,6 +8764,99 @@ export interface components {
             error_message: string | null;
             /** @description Your own rating of the run's answer, if you gave one. */
             feedback?: components["schemas"]["FeedbackOut"] | null;
+        };
+        /** RunStepOut */
+        RunStepOut: {
+            /**
+             * Kind
+             * @description `model` (the run's model calls, summed), `tool` (one tool call) or `error`.
+             */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Output Tokens */
+            output_tokens: number | null;
+            cost: components["schemas"]["RunCostOut"] | null;
+            /**
+             * Prompt
+             * @description The member's question as sent, redacted.
+             */
+            prompt: string | null;
+            /**
+             * Output
+             * @description The answer, redacted.
+             */
+            output: string | null;
+            /** Arguments */
+            arguments: {
+                [key: string]: unknown;
+            } | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Message */
+            error_message: string | null;
+        };
+        /** RunSummaryOut */
+        RunSummaryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string | null;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Member Id */
+            member_id: string | null;
+            /** Member Email */
+            member_email: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Prompt Version
+             * @description Id of the prompts the run was given.
+             */
+            prompt_version: string | null;
+            /** Model Name */
+            model_name: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Duration Ms */
+            duration_ms: number;
+            /** @description Null when the model has no price. */
+            cost: components["schemas"]["RunCostOut"] | null;
+            /** Tool Call Count */
+            tool_call_count: number;
+            /** Thumbs Up */
+            thumbs_up: number;
+            /** Thumbs Down */
+            thumbs_down: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** SaveColumnMappingRequest */
         SaveColumnMappingRequest: {
@@ -20625,6 +20802,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvalCaseCandidates"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAssistantRuns: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+                /** @description Only runs answering this member's questions. */
+                member_id?: string | null;
+                /** @description `running`, `completed`, `tool_limit`, `cancelled` or `failed`. */
+                status?: string | null;
+                /** @description Only runs started at or after this time. */
+                started_from?: string | null;
+                /** @description Only runs started before this time. */
+                started_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAssistantRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetailOut"];
                 };
             };
             /** @description Validation error */

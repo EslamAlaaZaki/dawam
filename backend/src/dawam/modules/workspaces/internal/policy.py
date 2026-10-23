@@ -163,6 +163,9 @@ class Action(StrEnum):
     (admins only; spec stories 14-19)."""
     VIEW_SECURITY_EVENTS = "installation.view_security_events"
     """Review the security-event log (admins only; spec story 23)."""
+    VIEW_ASSISTANT_RUNS = "installation.view_assistant_runs"
+    """Browse every Workspace's assistant runs: steps, redacted prompts, tokens, cost and
+    feedback (admins only; run explorer)."""
     MANAGE_EMAIL = "installation.manage_email"
     """Configure SMTP, send a test email and see the links DAWAM could not email
     (admins only; spec story 24, §6.1 "Without SMTP")."""
@@ -218,6 +221,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.MANAGE_EMAIL: _SystemRule(admin_only=True),
     Action.MANAGE_USERS: _SystemRule(admin_only=True),
     Action.VIEW_SECURITY_EVENTS: _SystemRule(admin_only=True),
+    Action.VIEW_ASSISTANT_RUNS: _SystemRule(admin_only=True),
     Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
     Action.EDIT_WORKSPACE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),

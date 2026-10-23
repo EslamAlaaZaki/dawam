@@ -664,6 +664,13 @@ def run_id(roles: RoleClients) -> uuid.UUID:
     resolves first, being earlier in the path), written straight into the tables (no
     model is called)."""
     owner = roles.user("owner")
+    with roles.app.state.engine.begin() as conn:
+        has_conversation = conn.execute(
+            sa.text("SELECT 1 FROM assistant_conversations WHERE workspace_id = :w LIMIT 1"),
+            {"w": roles.workspace_id},
+        ).first()
+    if has_conversation is None:  # paths without a conversation, e.g. the admin run explorer
+        conversation_id(roles)
     question, answer, run = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     now = datetime.now(UTC)
     message = sa.text(

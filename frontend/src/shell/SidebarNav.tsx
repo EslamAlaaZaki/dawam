@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Cpu,
+  ListTree,
   Folders,
   Link2,
   Mail,
@@ -151,6 +152,7 @@ const ADMIN_GROUPS: {
         icon: Wallet,
         name: "Roles, budgets & usage",
       },
+      { href: "/admin/ai-runs", icon: ListTree, name: "Assistant runs" },
     ],
   },
 ];
