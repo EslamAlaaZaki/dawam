@@ -97,6 +97,14 @@ const BUDGETS: LlmBudgets = {
       monthly_token_budget: 500,
     },
   ],
+  installation_monthly_cost_budget: null,
+  workspace_cost_budgets: [
+    {
+      workspace_id: WORKSPACE,
+      workspace_name: "Core",
+      budget: { currency: "USD", amount: "20.000000" },
+    },
+  ],
 };
 
 const TOTALS = {
@@ -425,10 +433,13 @@ describe("AI roles, budgets and usage page", () => {
       monthly_token_budget: 2000,
     });
 
-    fireEvent.change(await within(dialog).findByLabelText("Workspace"), {
+    const tokenForm = within(
+      within(dialog).getByRole("form", { name: "Workspace budget" }),
+    );
+    fireEvent.change(tokenForm.getByLabelText("Workspace"), {
       target: { value: WORKSPACE },
     });
-    fireEvent.change(within(dialog).getByLabelText("Tokens per month"), {
+    fireEvent.change(tokenForm.getByLabelText("Tokens per month"), {
       target: { value: "300" },
     });
     fireEvent.click(
@@ -440,6 +451,75 @@ describe("AI roles, budgets and usage page", () => {
           r.path.endsWith(`/budgets/workspaces/${WORKSPACE}`),
         ),
       ).toBe(true),
+    );
+  });
+
+  it("sets and removes currency budgets beside the token budgets", async () => {
+    const requests = renderApp(
+      api((r) =>
+        r.method === "PUT" || r.method === "DELETE" ? noContent() : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Budget settings" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Budget settings",
+    });
+    const installation = within(
+      await within(dialog).findByRole("form", {
+        name: "Installation currency budget",
+      }),
+    );
+    fireEvent.change(installation.getByLabelText("Currency (ISO code)"), {
+      target: { value: "eur" },
+    });
+    fireEvent.change(installation.getByLabelText("Amount per month"), {
+      target: { value: "50" },
+    });
+    fireEvent.click(
+      installation.getByRole("button", {
+        name: "Save installation currency budget",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.find((r) => r.path.endsWith("/budgets/installation/cost"))
+          ?.body,
+      ).toEqual({ currency: "EUR", amount: "50" }),
+    );
+
+    const workspace = within(
+      within(dialog).getByRole("form", { name: "Workspace currency budget" }),
+    );
+    fireEvent.change(workspace.getByLabelText("Workspace"), {
+      target: { value: WORKSPACE },
+    });
+    fireEvent.change(workspace.getByLabelText("Amount per month"), {
+      target: { value: "7.5" },
+    });
+    fireEvent.click(
+      workspace.getByRole("button", { name: "Set Workspace currency budget" }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) =>
+            r.method === "PUT" &&
+            r.path.endsWith(`/budgets/workspaces/${WORKSPACE}/cost`),
+        )?.body,
+      ).toEqual({ currency: "USD", amount: "7.5" }),
+    );
+
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Remove currency budget for Core",
+      }),
+    );
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "DELETE")).toBe(true),
     );
   });
 

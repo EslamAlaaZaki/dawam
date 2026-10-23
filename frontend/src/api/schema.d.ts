@@ -3871,6 +3871,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/budgets/installation/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Installation Cost Budget
+         * @description Set the installation's monthly budget in currency (admins only), beside its token
+         *     budget: whichever is reached first stops AI calls (429 `cost_budget_exhausted` for
+         *     this one). Cost comes from the model price table, so models without a price, or
+         *     priced in another currency, don't count.
+         */
+        put: operations["setLlmInstallationCostBudget"];
+        post?: never;
+        /**
+         * Clear Installation Cost Budget
+         * @description Remove the installation's currency budget (admins only).
+         */
+        delete: operations["clearLlmInstallationCostBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Workspace Cost Budget
+         * @description Set a Workspace's own monthly budget in currency (admins only). 404 `workspace_not_found`.
+         */
+        put: operations["setLlmWorkspaceCostBudget"];
+        post?: never;
+        /**
+         * Clear Workspace Cost Budget
+         * @description Remove a Workspace's own currency budget (admins only).
+         */
+        delete: operations["clearLlmWorkspaceCostBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/llm/usage": {
         parameters: {
             query?: never;
@@ -7060,6 +7111,10 @@ export interface components {
             installation_monthly_token_budget: number | null;
             /** Workspaces */
             workspaces: components["schemas"]["LlmWorkspaceBudget"][];
+            /** @description Null: unlimited. */
+            installation_monthly_cost_budget: components["schemas"]["LlmCostBudget"] | null;
+            /** Workspace Cost Budgets */
+            workspace_cost_budgets: components["schemas"]["LlmWorkspaceCostBudget"][];
         };
         /** LlmCost */
         LlmCost: {
@@ -7080,6 +7135,26 @@ export interface components {
             currency: string;
             /** Amount */
             amount: string;
+        };
+        /** LlmCostBudget */
+        LlmCostBudget: {
+            /** Currency */
+            currency: string;
+            /** Amount */
+            amount: string;
+        };
+        /** LlmCostBudgetRequest */
+        LlmCostBudgetRequest: {
+            /**
+             * Currency
+             * @description ISO 4217 code, e.g. `USD`.
+             */
+            currency: string;
+            /**
+             * Amount
+             * @description Per calendar month (UTC). Only calls priced in `currency` count.
+             */
+            amount: number | string;
         };
         /** LlmListedModel */
         LlmListedModel: {
@@ -7463,6 +7538,20 @@ export interface components {
         LlmWorkspaceBudgetRequest: {
             /** Monthly Token Budget */
             monthly_token_budget: number;
+        };
+        /** LlmWorkspaceCostBudget */
+        LlmWorkspaceCostBudget: {
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Workspace Name
+             * @description Null if the Workspace no longer exists.
+             */
+            workspace_name: string | null;
+            budget: components["schemas"]["LlmCostBudget"];
         };
         /** LlmWorkspaceReplacement */
         LlmWorkspaceReplacement: {
@@ -19696,6 +19785,166 @@ export interface operations {
         };
     };
     clearLlmWorkspaceBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmInstallationCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmCostBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmInstallationCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmWorkspaceCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmCostBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmWorkspaceCostBudget: {
         parameters: {
             query?: never;
             header?: never;

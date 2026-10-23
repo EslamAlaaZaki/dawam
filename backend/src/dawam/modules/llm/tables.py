@@ -70,6 +70,9 @@ class SettingsRecord(Base):
     """Always 1: there is one row."""
     monthly_token_budget: Mapped[int | None] = mapped_column(sa.BigInteger)
     """Tokens per calendar month (UTC) for the whole installation; null: unlimited."""
+    monthly_cost_budget: Mapped[Decimal | None] = mapped_column(sa.Numeric(18, 6))
+    """Currency budget per calendar month (UTC), in ``cost_budget_currency``; null: unlimited."""
+    cost_budget_currency: Mapped[str | None] = mapped_column(sa.String(3))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
@@ -82,6 +85,19 @@ class WorkspaceBudgetRecord(Base):
         sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
     )
     monthly_token_budget: Mapped[int] = mapped_column(sa.BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class WorkspaceCostBudgetRecord(Base):
+    """A Workspace's own monthly currency budget, beside its token budget."""
+
+    __tablename__ = "llm_workspace_cost_budgets"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    monthly_cost_budget: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    currency: Mapped[str] = mapped_column(sa.String(3))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 

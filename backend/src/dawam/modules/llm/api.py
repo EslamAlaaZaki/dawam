@@ -23,7 +23,15 @@ from .model_removal import (
     release_roles,
     remove_model,
 )
-from .role_service import MAX_BUDGET, Cost, ModelPrice, RoleService, UsageTotals
+from .role_service import (
+    MAX_BUDGET,
+    MAX_COST_BUDGET,
+    Cost,
+    CostBudget,
+    ModelPrice,
+    RoleService,
+    UsageTotals,
+)
 from .service import (
     API_KEY_MAX_LENGTH,
     DEFAULT_TIMEOUT_SECONDS,
@@ -504,15 +512,40 @@ def auth_users(request: Request) -> AuthService:
 AuthUsersDep = Annotated[AuthService, Depends(auth_users)]
 
 
+COST_BUDGET_MAX = MAX_COST_BUDGET
+
+
 class LlmWorkspaceBudget(BaseModel):
     workspace_id: uuid.UUID
     workspace_name: str | None = Field(description="Null if the Workspace no longer exists.")
     monthly_token_budget: int
 
 
+class LlmCostBudget(BaseModel):
+    currency: str
+    amount: Decimal
+
+
+class LlmWorkspaceCostBudget(BaseModel):
+    workspace_id: uuid.UUID
+    workspace_name: str | None = Field(description="Null if the Workspace no longer exists.")
+    budget: LlmCostBudget
+
+
 class LlmBudgets(BaseModel):
     installation_monthly_token_budget: int | None = Field(description="Null: unlimited.")
     workspaces: list[LlmWorkspaceBudget]
+    installation_monthly_cost_budget: LlmCostBudget | None = Field(description="Null: unlimited.")
+    workspace_cost_budgets: list[LlmWorkspaceCostBudget]
+
+
+class LlmCostBudgetRequest(BaseModel):
+    currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code, e.g. `USD`.")
+    amount: Decimal = Field(
+        ge=0,
+        le=COST_BUDGET_MAX,
+        description="Per calendar month (UTC). Only calls priced in `currency` count.",
+    )
 
 
 class LlmBudgetRequest(BaseModel):
@@ -597,11 +630,27 @@ def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
     )
 
 
+def _cost_budget_out(budget: CostBudget | None) -> LlmCostBudget | None:
+    return None if budget is None else LlmCostBudget(currency=budget.currency, amount=budget.amount)
+
+
 def _budgets_out(roles: RoleService, workspaces: WorkspaceService) -> LlmBudgets:
     budgets = roles.budgets()
-    names = workspaces.names_by_id(b.workspace_id for b in budgets.workspaces)
+    names = workspaces.names_by_id(
+        [b.workspace_id for b in budgets.workspaces]
+        + [b.workspace_id for b in budgets.workspace_costs]
+    )
     return LlmBudgets(
         installation_monthly_token_budget=budgets.installation,
+        installation_monthly_cost_budget=_cost_budget_out(budgets.installation_cost),
+        workspace_cost_budgets=[
+            LlmWorkspaceCostBudget(
+                workspace_id=b.workspace_id,
+                workspace_name=names.get(b.workspace_id),
+                budget=LlmCostBudget(currency=b.budget.currency, amount=b.budget.amount),
+            )
+            for b in budgets.workspace_costs
+        ],
         workspaces=[
             LlmWorkspaceBudget(
                 workspace_id=b.workspace_id,
@@ -658,6 +707,58 @@ def clear_workspace_budget(
 ) -> Response:
     """Remove a Workspace's own budget (admins only): only the installation's applies."""
     roles.clear_workspace_budget(workspace_id)
+    return Response(status_code=204)
+
+
+@router.put("/budgets/installation/cost", operation_id="setLlmInstallationCostBudget")
+def set_installation_cost_budget(
+    body: LlmCostBudgetRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> LlmBudgets:
+    """Set the installation's monthly budget in currency (admins only), beside its token
+    budget: whichever is reached first stops AI calls (429 `cost_budget_exhausted` for
+    this one). Cost comes from the model price table, so models without a price, or
+    priced in another currency, don't count."""
+    roles.set_installation_cost_budget(CostBudget(body.currency, body.amount))
+    return _budgets_out(roles, workspaces)
+
+
+@router.delete(
+    "/budgets/installation/cost", operation_id="clearLlmInstallationCostBudget", status_code=204
+)
+def clear_installation_cost_budget(_admin: LlmAdmin, roles: RoleServiceDep) -> Response:
+    """Remove the installation's currency budget (admins only)."""
+    roles.set_installation_cost_budget(None)
+    return Response(status_code=204)
+
+
+@router.put("/budgets/workspaces/{workspace_id}/cost", operation_id="setLlmWorkspaceCostBudget")
+def set_workspace_cost_budget(
+    workspace_id: uuid.UUID,
+    body: LlmCostBudgetRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> LlmBudgets:
+    """Set a Workspace's own monthly budget in currency (admins only). 404 `workspace_not_found`."""
+    if workspace_id not in workspaces.names_by_id([workspace_id]):
+        raise ApiError(404, "workspace_not_found", "Workspace not found.")
+    roles.set_workspace_cost_budget(workspace_id, CostBudget(body.currency, body.amount))
+    return _budgets_out(roles, workspaces)
+
+
+@router.delete(
+    "/budgets/workspaces/{workspace_id}/cost",
+    operation_id="clearLlmWorkspaceCostBudget",
+    status_code=204,
+)
+def clear_workspace_cost_budget(
+    workspace_id: uuid.UUID, _admin: LlmAdmin, roles: RoleServiceDep
+) -> Response:
+    """Remove a Workspace's own currency budget (admins only)."""
+    roles.clear_workspace_cost_budget(workspace_id)
     return Response(status_code=204)
 
 
