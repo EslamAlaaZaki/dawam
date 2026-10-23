@@ -335,7 +335,7 @@ ROWS: list[Row] = [
         "/api/v1/admin/llm/models/{model_id}",
         "edit a model's context window (story 155)",
         admin_only(),
-        json=lambda roles: {"context_window": 8192},
+        json=lambda roles: {"context_window": 32768},
     ),
     Row(
         "PUT",

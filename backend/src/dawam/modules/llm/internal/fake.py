@@ -22,6 +22,7 @@ from ..gateway import (
     ListingUnsupported,
     LlmError,
     Message,
+    OllamaContext,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -73,6 +74,8 @@ class FakeAdapter:
         """The provider's own token count; ``None``: this fake has no count endpoint."""
         self.models: list[str] | LlmError | None = None
         """What ``list_models`` returns (or raises); ``None``: listing unsupported."""
+        self.ollama: OllamaContext | None = None
+        """What ``ollama_context`` returns; ``None``: the fake is not an Ollama server."""
 
     def script(self, *outcomes: Reply | LlmError) -> FakeAdapter:
         self._script.extend(outcomes)
@@ -126,6 +129,9 @@ class FakeAdapter:
 
     def context_window(self, model: str) -> int | None:
         return self.window
+
+    def ollama_context(self, model: str) -> OllamaContext | None:
+        return self.ollama
 
     def count_tokens(self, model: str, text: str) -> int | None:
         return self.token_counter(text) if self.token_counter else None

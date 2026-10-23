@@ -46,6 +46,7 @@ const MODEL: LlmModel = {
   test_error_code: null,
   test_error: null,
   last_tested_at: null,
+  warnings: [],
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
 };
@@ -519,6 +520,42 @@ describe("language models page", () => {
     expect(
       requests.some((r) => r.method === "POST" && r.path.endsWith("/test")),
     ).toBe(true);
+  });
+
+  it("shows the Ollama num_ctx warning after testing the connection", async () => {
+    const warning =
+      "Ollama runs with num_ctx 4,096 and silently drops what does not fit.";
+    renderApp(
+      as(ROOT, (r) => {
+        if (r.path === "/api/v1/admin/llm/providers") {
+          return json({ items: [{ ...PROVIDER, models: [MODEL] }] });
+        }
+        if (r.path === `/api/v1/admin/llm/models/${MODEL.id}/test`) {
+          return json({ ...MODEL, test_ok: true, warnings: [warning] });
+        }
+        if (r.path === "/api/v1/admin/llm/setup") return json(INCOMPLETE);
+        return undefined;
+      }),
+      "/admin/llm",
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Test connection" }),
+    );
+
+    expect(await screen.findByText(/num_ctx 4,096/)).toBeInTheDocument();
+  });
+
+  it("lists a model's warnings under its test result", async () => {
+    const unknown: LlmModel = {
+      ...MODEL,
+      warnings: ["The context window is unknown."],
+    };
+    renderApp(providersApi([{ ...PROVIDER, models: [unknown] }]), "/admin/llm");
+
+    expect(
+      await screen.findByText("The context window is unknown."),
+    ).toBeInTheDocument();
   });
 
   it("shows why a test failed", async () => {

@@ -47,6 +47,7 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
+  WarningNote,
   labelClasses,
   h3Classes,
 } from "./parts";
@@ -187,6 +188,9 @@ function ModelRoleRow({
         {save.isError && !asking && (
           <ErrorText>{save.error.message}</ErrorText>
         )}
+        {model.warnings.map((warning) => (
+          <WarningNote key={warning}>{warning}</WarningNote>
+        ))}
       </TableCell>
       <TableCell>
         {provider.name}{" "}
