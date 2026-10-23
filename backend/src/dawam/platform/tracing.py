@@ -96,7 +96,7 @@ class Tracing:
             if self.capture_content:
                 span.set_attribute(
                     "gen_ai.tool.call.arguments",
-                    self.redacted(json.dumps(arguments, default=str)),
+                    self.redacted(json.dumps(arguments, ensure_ascii=False, default=str)),
                 )
             yield ToolSpan(span, self)
 
@@ -112,6 +112,8 @@ class Tracing:
         )
         try:
             yield span
+        except GeneratorExit:
+            raise  # an abandoned stream is not an error
         except BaseException as exc:
             span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
             raise
