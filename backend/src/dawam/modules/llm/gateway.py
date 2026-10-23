@@ -85,6 +85,10 @@ class Usage:
     completion_tokens: int
     estimated: bool = False
     """True when DAWAM counted (roughly) because the provider reported nothing."""
+    cache_read_tokens: int = 0
+    """Of ``prompt_tokens``, the part served from the provider's prompt cache."""
+    cache_write_tokens: int = 0
+    """Of ``prompt_tokens``, the part written to the provider's prompt cache."""
 
     @property
     def total_tokens(self) -> int:

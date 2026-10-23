@@ -2184,11 +2184,17 @@ class BoundTools:
 
     def specs(self) -> list[ToolSpec]:
         """Only the tools this user may use now; execution checks again regardless."""
-        return [
-            tool.spec
-            for tool in self._registry.all()
-            if self._offered(tool) and self._registry.allowed(self._ctx, self._policy, tool) is None
-        ]
+        # Sorted by name: the tool list is part of the cached prompt prefix, so it must be
+        # byte-identical from one call to the next.
+        return sorted(
+            (
+                tool.spec
+                for tool in self._registry.all()
+                if self._offered(tool)
+                and self._registry.allowed(self._ctx, self._policy, tool) is None
+            ),
+            key=lambda spec: spec.name,
+        )
 
     def _offered(self, tool: Tool) -> bool:
         return not (tool.chat_only and self._ctx.proposals is not None)

@@ -198,8 +198,18 @@ def _usage(raw: Any) -> Usage | None:
         return None
     prompt, completion = raw.get("prompt_tokens"), raw.get("completion_tokens")
     if isinstance(prompt, int) and isinstance(completion, int):
-        return Usage(prompt, completion)
+        return Usage(prompt, completion, cache_read_tokens=_cached(raw))
     return None
+
+
+def _cached(raw: dict[str, Any]) -> int:
+    """Cached input inside ``prompt_tokens``: OpenAI-style ``prompt_tokens_details`` or
+    DeepSeek's ``prompt_cache_hit_tokens``."""
+    details = raw.get("prompt_tokens_details")
+    value = details.get("cached_tokens") if isinstance(details, dict) else None
+    if not isinstance(value, int) or isinstance(value, bool):
+        value = raw.get("prompt_cache_hit_tokens")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
 def _tool_call(raw: Any) -> ToolCall:

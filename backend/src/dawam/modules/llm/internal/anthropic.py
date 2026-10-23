@@ -33,6 +33,8 @@ API_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096
 """The API requires a cap on the reply; this one fits every Claude model."""
 
+_EPHEMERAL = {"type": "ephemeral"}
+
 _FINISH_REASONS = {
     "end_turn": "stop",
     "stop_sequence": "stop",
@@ -72,13 +74,15 @@ class AnthropicAdapter:
             "messages": wire_messages,
             "stream": stream,
         }
+        # Cache the prefix: a breakpoint after the tools and one after the system prompt.
         if system:
-            body["system"] = system
+            body["system"] = [{"type": "text", "text": system, "cache_control": _EPHEMERAL}]
         if tools:
             body["tools"] = [
                 {"name": t.name, "description": t.description, "input_schema": t.parameters}
                 for t in tools
             ]
+            body["tools"][-1]["cache_control"] = _EPHEMERAL
         if json_schema is not None:
             body["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
         response = self._send("POST", "/messages", json.dumps(body).encode("utf-8"))
@@ -212,19 +216,21 @@ def _usage(raw: Any, previous: Usage | None = None) -> Usage | None:
     if not isinstance(raw, dict):
         return previous
     has_input = "input_tokens" in raw
+    write = _count(raw.get("cache_creation_input_tokens"))
+    read = _count(raw.get("cache_read_input_tokens"))
     prompt = (
-        _count(raw.get("input_tokens"))
-        + _count(raw.get("cache_creation_input_tokens"))
-        + _count(raw.get("cache_read_input_tokens"))
+        _count(raw.get("input_tokens")) + write + read
         if has_input
         else (previous.prompt_tokens if previous else None)
     )
+    if not has_input and previous:
+        read, write = previous.cache_read_tokens, previous.cache_write_tokens
     completion = raw.get("output_tokens")
     if not isinstance(completion, int) or isinstance(completion, bool):
         completion = previous.completion_tokens if previous else None
     if prompt is None or completion is None:
         return previous
-    return Usage(prompt, completion)
+    return Usage(prompt, completion, cache_read_tokens=read, cache_write_tokens=write)
 
 
 def _tool_call(block: Any, arguments: Any) -> ToolCall:
