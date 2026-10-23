@@ -27,7 +27,7 @@ def find_violations(workflows_dir: Path) -> list[str]:
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue
-            if match := PROVIDER_KEY.search(line):
+            if match := PROVIDER_KEY.search(re.sub(r"\s#.*$", "", line)):
                 hits.append(f"{path}:{number}: provider API key env var {match.group(0)}")
     return hits
 

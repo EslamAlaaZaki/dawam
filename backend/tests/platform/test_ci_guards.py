@@ -49,5 +49,17 @@ def test_real_provider_endpoint_is_refused(host: str) -> None:
         socket.create_connection((host, 443), timeout=1)
 
 
+def test_raw_socket_connect_and_gethostbyname_are_refused() -> None:
+    with socket.socket() as sock:
+        with pytest.raises(RealModelCallError):
+            sock.connect(("api.openai.com", 443))
+        with pytest.raises(RealModelCallError):
+            sock.connect_ex(("api.openai.com", 443))
+    with pytest.raises(RealModelCallError):
+        socket.gethostbyname("api.openai.com")
+    with pytest.raises(RealModelCallError):
+        socket.gethostbyname_ex("api.anthropic.com")
+
+
 def test_localhost_stays_allowed() -> None:
     assert socket.getaddrinfo("localhost", 11434)

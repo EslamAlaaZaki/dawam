@@ -37,13 +37,43 @@ def _no_real_model_calls(request: pytest.FixtureRequest, monkeypatch: pytest.Mon
     if request.node.get_closest_marker("real_model"):
         return
     real_getaddrinfo = socket.getaddrinfo
+    real_gethostbyname = socket.gethostbyname
+    real_gethostbyname_ex = socket.gethostbyname_ex
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
 
-    def guarded(host: Any, *args: Any, **kwargs: Any) -> Any:
+    def check(host: Any) -> None:
         if REAL_MODEL_HOSTS.search(_host_of(host)):
             raise RealModelCallError(
                 f"test tried to reach a real model endpoint ({_host_of(host)}); "
                 "use FakeAdapter, ReplayTransport or StubLlmServer"
             )
+
+    def address_host(address: Any) -> Any:
+        return address[0] if isinstance(address, tuple) and address else None
+
+    def getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
+        check(host)
         return real_getaddrinfo(host, *args, **kwargs)
 
-    monkeypatch.setattr(socket, "getaddrinfo", guarded)
+    def gethostbyname(host: Any) -> Any:
+        check(host)
+        return real_gethostbyname(host)
+
+    def gethostbyname_ex(host: Any) -> Any:
+        check(host)
+        return real_gethostbyname_ex(host)
+
+    def connect(self: socket.socket, address: Any) -> Any:
+        check(address_host(address))
+        return real_connect(self, address)
+
+    def connect_ex(self: socket.socket, address: Any) -> Any:
+        check(address_host(address))
+        return real_connect_ex(self, address)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    monkeypatch.setattr(socket, "gethostbyname", gethostbyname)
+    monkeypatch.setattr(socket, "gethostbyname_ex", gethostbyname_ex)
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
