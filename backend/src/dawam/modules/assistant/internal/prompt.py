@@ -7,7 +7,12 @@ data. Quoting cannot be escaped: a closing ``</data`` inside the text is defused
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from collections.abc import Iterable
+
+from dawam.modules.llm import ToolSpec
 
 SYSTEM_PROMPT = """\
 You are DAWAM's assistant, working alongside a data-warehouse analysis team inside one \
@@ -53,3 +58,15 @@ def quote_data(source: str, text: str) -> str:
     safe = _TAG.sub(lambda m: f"<\\{m.group(1)}data", text)
     label = _TAG.sub("", source).replace('"', "'").replace("<", "").replace(">", "")
     return f'<data source="{label}">\n{safe}\n</data>'
+
+
+def prompt_version(system: str, tools: Iterable[ToolSpec]) -> str:
+    """A short id of the instructions a run was given: the system prompt and the tool
+    names, descriptions and schemas. It changes whenever any of them is edited, so a run's
+    behaviour can be traced back to the prompts that produced it."""
+    digest = hashlib.sha256(system.encode())
+    for spec in sorted(tools, key=lambda t: t.name):
+        digest.update(
+            json.dumps([spec.name, spec.description, spec.parameters], sort_keys=True).encode()
+        )
+    return "p-" + digest.hexdigest()[:12]
