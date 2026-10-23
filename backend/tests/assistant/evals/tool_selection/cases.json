@@ -444,6 +444,23 @@
   }
  },
  {
+  "id": "no-tool-thanks",
+  "language": "en",
+  "question": "Thanks, that is all for now",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": null,
+   "arguments": {}
+  },
+  "recorded": {
+   "text": "Hello! How can I help with your Workspace?"
+  }
+ },
+ {
   "id": "ar-search-tables",
   "language": "ar",
   "question": "ابحث عن الجداول التي تحتوي على 'عميل' في الاسم",
@@ -741,6 +758,19 @@
    "arguments": {
     "file_id": "55555555-5555-4555-8555-555555555555"
    }
+  }
+ },
+ {
+  "id": "ar-no-tool-greeting",
+  "language": "ar",
+  "question": "مرحبا، شكرا لك",
+  "page_context": null,
+  "expected": {
+   "tool": null,
+   "arguments": {}
+  },
+  "recorded": {
+   "text": "Hello! How can I help with your Workspace?"
   }
  },
  {

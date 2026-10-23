@@ -1,8 +1,9 @@
 """The tool-selection evaluation set: shape of the data, and the runner on recorded fakes.
 
 No model is called: each case's recorded answer is replayed through the gateway by the
-scripted ``FakeAdapter``. The score is printed (run with ``-s``) per prompt version, and must
-stay at or above ``PASS_MARK`` so a prompt or tool-spec change that breaks selection shows up.
+scripted ``FakeAdapter``. The score is printed (run with ``-s``) per prompt version. The gate
+guards the case data and the runner, not prompt regressions: recordings replay whatever the
+prompt says. Measuring a prompt means running the cases against a real model.
 """
 
 from __future__ import annotations

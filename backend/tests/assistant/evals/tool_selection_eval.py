@@ -67,7 +67,10 @@ class Report:
     def argument_score(self) -> float:
         return self._rate(lambda r: r.right_arguments)
 
-    def by_language(self, language: str) -> float:
+    def by_language(self, language: str) -> float | None:
+        """``None`` when no case is in that language."""
+        if not any(r.language == language for r in self.results):
+            return None
         return self._rate(lambda r: r.right_arguments, language)
 
     def summary(self) -> str:
