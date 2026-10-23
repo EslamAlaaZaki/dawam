@@ -150,15 +150,34 @@ class Tool:
     """The data-sharing level the Workspace needs for the tool to be used at all."""
     chat_only: bool = False
     """Not offered to a job (a job does not start jobs)."""
+    compact: bool = False
+    """Drop the schema's generated titles: the tool's schema is large and sent on every call."""
 
     @property
     def spec(self) -> ToolSpec:
         schema = self.arguments.model_json_schema()
         schema.pop("title", None)
+        if self.compact:
+            _drop_titles(schema)
         return ToolSpec(self.name, self.description, schema)
 
 
 SYSTEM_ID = "The Source System's id."
+
+
+def _drop_titles(node: Any) -> None:
+    """Remove the ``title`` keyword pydantic adds to every schema, not fields named ``title``."""
+    if not isinstance(node, dict):
+        return
+    node.pop("title", None)
+    for key in ("properties", "$defs"):
+        for sub in node.get(key, {}).values():
+            _drop_titles(sub)
+    for key in ("anyOf", "oneOf", "allOf"):
+        for sub in node.get(key, []):
+            _drop_titles(sub)
+    for key in ("items", "additionalProperties"):
+        _drop_titles(node.get(key))
 
 
 class _SearchCatalog(BaseModel):
@@ -367,46 +386,38 @@ class _RunSourceQuery(BaseModel):
 
 
 class _ChangeItem(BaseModel):
-    key: str = Field(
-        min_length=1, max_length=40, description="A short name for this item, for `depends_on`."
-    )
+    key: str = Field(min_length=1, max_length=40, description="Short name, for `depends_on`.")
     object_type: Literal["source_table", "source_column"] = Field(
         description="`source_table` or `source_column`."
     )
     object_id: uuid.UUID = Field(description="The table's or column's id.")
     changes: dict[str, Any] = Field(
         min_length=1,
-        description="The fields to change and their new values. Tables and columns: "
-        "`description` (text), `tags` (list of text), `is_sensitive` (boolean). Tables only: "
-        "`classification` (master, transactional, reference, log or landing) and `scd_hint` "
-        "(text).",
+        description="Field to new value: `description` (text), `tags` (list of text), "
+        "`is_sensitive` (boolean); tables also `classification` (master, transactional, "
+        "reference, log, landing) and `scd_hint` (text).",
     )
-    label: str = Field(
-        default="", max_length=200, description="What to call the object, e.g. `core.customers`."
-    )
-    depends_on: list[str] = Field(
-        default_factory=list, description="Keys of earlier items this one needs."
-    )
+    label: str = Field(default="", max_length=200, description="E.g. `core.customers`.")
+    depends_on: list[str] = Field(default_factory=list, description="Keys of earlier items.")
 
 
 class _RelationshipDecision(BaseModel):
-    relationship_id: uuid.UUID = Field(description="The relationship's id from get_relationships.")
+    relationship_id: uuid.UUID = Field(description="From get_relationships.")
     decision: Literal["accept", "reject"]
     reason: str = Field(
         min_length=1,
         max_length=2000,
-        description="Why: the names, profiles, documents or counts that confirm or refute it.",
+        description="Why: the names, profiles, documents or counts that support it.",
     )
     evidence_queries: list[str] = Field(
         default_factory=list,
         max_length=10,
-        description="`query_ref`s of run_source_query COUNT queries made while answering this "
-        "message that support the decision; their counts are attached as evidence.",
+        description="`query_ref`s of run_source_query COUNTs that support it.",
     )
     label: str = Field(
         default="",
         max_length=200,
-        description="E.g. `sales.orders.customer_id -> sales.customers.id`.",
+        description="E.g. `a.b.col -> c.d.id`.",
     )
 
 
@@ -1490,10 +1501,12 @@ GENERATION_NOTE = (
     "unknown members itself. A dimension shared by several facts is conformed. Every fact can "
     "reference the date dimension (`references`: its handle, or `date`); never model one. Give "
     "a Core fact's foreign key a `lookup` with the staging natural-key columns (and the "
-    "as-of date for an SCD2 dimension). Add Mart facts or aggregates for the KPIs; Mart tables "
-    "reference Core conformed dimensions. Keep every existing table or column you still want "
-    "by giving its `handle` (a new name is a rename); leave the handle out only for something "
-    "new. Never propose anything in `deleted_by_users`. Follow the naming rules."
+    "as-of date for an SCD2 dimension). A column's `data_type.type` is one of smallint, "
+    "integer, bigint, decimal, float, double, boolean, char, string, text, binary, date, "
+    "time, timestamp, timestamptz, uuid, json. Add Mart facts or aggregates for the KPIs; Mart "
+    "tables reference Core conformed dimensions. Keep every existing table or column you still "
+    "want by giving its `handle` (a new name is a rename); leave the handle out only for "
+    "something new. Never propose anything in `deleted_by_users`. Follow the naming rules."
 )
 
 
@@ -1501,13 +1514,12 @@ class _GenLookup(BaseModel):
     nk_inputs: list[str] = Field(
         min_length=1,
         max_length=10,
-        description="The staging columns that hold the dimension's natural key, as "
-        "`staging_table.column`, in the order of the dimension's nk columns.",
+        description="The dimension's natural-key staging columns, as `staging_table.column`.",
     )
     as_of_input: str | None = Field(
         default=None,
         max_length=300,
-        description="For an SCD2 dimension: the staging date column, as `staging_table.column`.",
+        description="SCD2: the staging date column, as `staging_table.column`.",
     )
 
 
@@ -1517,9 +1529,7 @@ class _GenColumn(BaseModel):
         default=None, max_length=40, description="The existing column's handle, if it is one."
     )
     data_type: dict[str, Any] = Field(
-        description="`{type, length?, precision?, scale?}`; type is one of smallint, integer, "
-        "bigint, decimal, float, double, boolean, char, string, text, binary, date, time, "
-        "timestamp, timestamptz, uuid, json."
+        description="`{type, length?, precision?, scale?}`; see the note for the types."
     )
     role: Literal["sk", "nk", "fk", "measure", "attribute", "degenerate_dimension", "audit"]
     is_nullable: bool = True
@@ -1530,8 +1540,7 @@ class _GenColumn(BaseModel):
     references: str | None = Field(
         default=None,
         max_length=300,
-        description="A foreign key's dimension: its handle or name (`date` for the date "
-        "dimension).",
+        description="A foreign key's dimension: handle, name or `date`.",
     )
     role_name: str | None = Field(
         default=None, max_length=128, description="For a role-playing foreign key."
@@ -1565,15 +1574,13 @@ class _GenerateDwSchema(BaseModel):
     tables: list[_GenTable] | None = Field(
         default=None,
         max_length=300,
-        description="Leave out to read the inputs. Then the whole Core and Mart model: every "
-        "table to keep or create, with its columns.",
+        description="Leave out to read the inputs. Then the whole model.",
     )
     table: str | None = Field(
         default=None,
         max_length=300,
-        description="Regenerate only this existing Core or Mart table (its handle, or its "
-        "`layer.name`), e.g. after the member changed its mapping. Then `tables` describes "
-        "only that table, by its handle.",
+        description="Regenerate only this table (handle or `layer.name`); `tables` then holds "
+        "only it.",
     )
 
 
@@ -1669,13 +1676,12 @@ class _DraftLookup(BaseModel):
     nk_inputs: list[str] = Field(
         min_length=1,
         max_length=10,
-        description="The staging columns that hold the dimension's natural key, as "
-        "`staging_table.column`, in the order of the dimension's nk columns.",
+        description="The dimension's natural-key staging columns, as `staging_table.column`.",
     )
     as_of_input: str | None = Field(
         default=None,
         max_length=300,
-        description="For an SCD2 dimension: the date column, as `staging_table.column`.",
+        description="SCD2: the date column, as `staging_table.column`.",
     )
 
 
@@ -1707,12 +1713,12 @@ class _DraftMappings(BaseModel):
         default=None, max_length=100, description="The target tables (`name` or `layer.name`)."
     )
     layer: Literal["core", "mart"] | None = Field(
-        default=None, description="Instead of `tables`: every table of this Layer."
+        default=None, description="Instead of `tables`: all tables of this Layer."
     )
     drafts: list[_DraftTableMappings] | None = Field(
         default=None,
         max_length=10,
-        description="Leave out to read the inputs. Then the mappings of the tables read.",
+        description="Leave out to read the inputs. Then the tables' mappings.",
     )
 
 
@@ -1997,15 +2003,15 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "propose_changes",
-        "Propose descriptions (what a table or column means, including the meaning of its "
-        "codes and statuses), tags, sensitivity flags, classifications and SCD hints for a "
-        "Source System's tables and columns, and accept or reject its inferred "
-        "relationships. Nothing changes until the user accepts the proposal as a Change Set. "
-        "Never put sample values or personal data in the text.",
+        "Propose descriptions (including the meaning of codes and statuses), tags, sensitivity "
+        "flags, classifications and SCD hints for a Source System's tables and columns, and "
+        "accept or reject its inferred relationships. Nothing changes until the user accepts "
+        "the Change Set. Never put sample values or personal data in the text.",
         _ProposeChanges,
         "write",
         Action.REVIEW_CHANGE_SETS,
         _propose_changes,
+        compact=True,
     ),
     Tool(
         "get_kpi_link_candidates",
@@ -2028,24 +2034,24 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "generate_dw_schema",
         "Generate or regenerate the Data Warehouse's Core and Mart Layers (Kimball facts and "
-        "dimensions) from the staging tables, Source Schemas, KPIs and documents, as one Change "
-        "Set the member reviews. It runs as a background job; in a job, call it first without "
-        "`tables` to read the inputs, then with the whole model.",
+        "dimensions) as one Change Set the member reviews. It runs as a background job; in a "
+        "job, call it without `tables` to read the inputs, then with the whole model.",
         _GenerateDwSchema,
         "write",
         Action.EDIT_DW_SCHEMA,
         _generate_dw_schema,
+        compact=True,
     ),
     Tool(
         "draft_mappings",
-        "Draft the mappings (branches, column mappings and lookups) of Core or Mart tables "
-        "from the Layer below, as one Change Set the member reviews. Several tables run as a "
-        "background job. Call it with `tables` (or `layer`) to read the inputs, then with "
-        "`drafts`.",
+        "Draft the mappings (branches, column mappings, lookups) of Core or Mart tables as one "
+        "Change Set the member reviews. Several tables run as a background job. Call it with "
+        "`tables` or `layer` to read the inputs, then with `drafts`.",
         _DraftMappings,
         "write",
         Action.EDIT_DW_SCHEMA,
         _draft_mappings,
+        compact=True,
     ),
     Tool(
         "start_job",
