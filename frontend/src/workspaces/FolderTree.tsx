@@ -1,9 +1,70 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import {
+  ArrowRightLeft,
+  BarChart3,
+  Box,
+  Boxes,
+  ChevronDown,
+  ChevronRight,
+  ClipboardCheck,
+  Database,
+  FileCode,
+  FileOutput,
+  FileText,
+  Folder as FolderIcon,
+  Gauge,
+  GitBranch,
+  Layers,
+  Network,
+  Plug,
+  Server,
+  ShieldAlert,
+  Table2,
+  Target,
+  Warehouse,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import type { Folder } from "./folders";
+
+/** Each kind of folder's icon, by the last part of its id (a Source System by its place). */
+const ICONS: Record<string, LucideIcon> = {
+  systems: Server,
+  connection: Plug,
+  "source-schema": Table2,
+  "er-diagram": Network,
+  profiling: BarChart3,
+  pii: ShieldAlert,
+  documents: FileText,
+  kpis: Target,
+  outputs: FileOutput,
+  dw: Warehouse,
+  setup: Wrench,
+  staging: Layers,
+  core: Layers,
+  mart: Layers,
+  model: Boxes,
+  mappings: ArrowRightLeft,
+  evaluation: ClipboardCheck,
+  lineage: GitBranch,
+  score: Gauge,
+  files: FolderIcon,
+  ddl: FileCode,
+};
+
+function iconOf(id: string): LucideIcon {
+  if (id === "") {
+    return Box;
+  }
+  const parts = id.split("/");
+  if (parts[0] === "systems" && parts.length === 2) {
+    return Database;
+  }
+  return ICONS[parts.at(-1)!] ?? FolderIcon;
+}
 
 interface Row {
   folder: Folder;
@@ -156,6 +217,7 @@ export function FolderTree({
 
   function renderRow(row: Row) {
     const { folder, level } = row;
+    const Icon = iconOf(folder.id);
     const hasChildren = folder.children.length > 0;
     const open = !collapsed.has(folder.id);
     const labelId = `${prefix}-${folder.id.replaceAll("/", "-") || "root"}`;
@@ -169,7 +231,7 @@ export function FolderTree({
         aria-selected={folder.id === selected}
         aria-expanded={hasChildren ? open : undefined}
         tabIndex={folder.id === tabStop ? 0 : -1}
-        className="outline-none [&[aria-selected=true]>.folder-label]:bg-sand-4 [&[aria-selected=true]>.folder-label]:font-medium [&[aria-selected=true]>.folder-label]:text-sand-12 [&:focus-visible>.folder-label]:outline-2 [&:focus-visible>.folder-label]:outline-offset-[-2px] [&:focus-visible>.folder-label]:outline-jade-11"
+        className="outline-none [&:focus-visible>.folder-label]:outline-2 [&:focus-visible>.folder-label]:-outline-offset-2 [&:focus-visible>.folder-label]:outline-primary [&[aria-selected=true]>.folder-label]:bg-primary-subtle [&[aria-selected=true]>.folder-label]:font-medium [&[aria-selected=true]>.folder-label]:text-foreground [&[aria-selected=true]>.folder-label_.folder-icon]:text-primary"
         onFocus={(event) => {
           if (event.target === event.currentTarget) {
             setFocused(folder.id);
@@ -182,10 +244,11 @@ export function FolderTree({
         }}
       >
         <span
-          className="folder-label flex cursor-pointer items-center gap-1.5 rounded-md py-[5px] pr-2 text-sand-11 hover:bg-sand-3 hover:text-sand-12"
-          style={{ paddingLeft: `${8 + (level - 1) * 16}px` }}
+          className="folder-label flex h-7 cursor-pointer items-center gap-1.5 rounded-md pe-2 text-muted-foreground transition-colors duration-120 hover:bg-muted hover:text-foreground"
+          // Indentation: 12px a level.
+          style={{ paddingInlineStart: `${4 + (level - 1) * 12}px` }}
         >
-          <span className="flex size-4 shrink-0 items-center justify-center">
+          <span className="flex size-4 shrink-0 items-center justify-center text-subtle-foreground">
             {hasChildren && (
               <span
                 className="flex"
@@ -197,13 +260,17 @@ export function FolderTree({
                 }}
               >
                 {open ? (
-                  <ChevronDown className="size-4" />
+                  <ChevronDown className="size-3.5" />
                 ) : (
-                  <ChevronRight className="size-4" />
+                  <ChevronRight className="size-3.5" />
                 )}
               </span>
             )}
           </span>
+          <Icon
+            aria-hidden
+            className="folder-icon size-4 shrink-0 text-subtle-foreground"
+          />
           <span id={labelId} className="min-w-0 truncate">
             {folder.label}
           </span>

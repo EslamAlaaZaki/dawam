@@ -16,6 +16,7 @@ import {
 } from "../api/files";
 import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
+import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
@@ -34,7 +35,6 @@ import {
   Hint,
   TableCard,
   formCardClasses,
-  h3Classes,
   h4Classes,
   labelClasses,
   linkClasses,
@@ -133,7 +133,7 @@ function ReplaceControl({
     <span className="flex flex-col gap-1">
       <input
         type="file"
-        className="text-sm file:mr-2 file:h-[26px] file:rounded-md file:border file:border-sand-6 file:bg-sand-1 file:px-2 file:font-medium file:text-sand-12 hover:file:bg-sand-3"
+        className="text-sm file:mr-2 file:h-7 file:rounded-md file:border file:border-border-strong file:bg-surface-raised file:px-2 file:font-medium file:text-foreground hover:file:bg-muted"
         aria-label={`Replace ${file.name}`}
         onChange={(event) => {
           const chosen = event.target.files?.[0];
@@ -189,10 +189,21 @@ export function DocumentsPanel({
   }
 
   return (
-    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
-      <h3 id="folder-title" className={h3Classes}>
-        {title}
-      </h3>
+    <section aria-labelledby="folder-title" className="flex flex-col gap-5">
+      <PageHeader
+        title={<span id="folder-title">{title}</span>}
+        actions={
+          files.data && files.data.length > 0 ? (
+            <a
+              href={areaZipUrl(workspace.id, area)}
+              download
+              className={linkClasses}
+            >
+              Download all as zip
+            </a>
+          ) : undefined
+        }
+      />
       {files.isPending ? (
         <Loading className="p-0" />
       ) : files.isError ? (
@@ -227,7 +238,7 @@ export function DocumentsPanel({
                       {file.name}
                     </a>
                   </TableCell>
-                  <TableCell className={`${monoClasses} text-sand-11`}>
+                  <TableCell className={`${monoClasses} text-muted-foreground`}>
                     {file.mime}
                   </TableCell>
                   <TableCell>{formatSize(file.size)}</TableCell>
@@ -265,17 +276,6 @@ export function DocumentsPanel({
           </Table>
         </TableCard>
       )}
-      {files.data && files.data.length > 0 && (
-        <p>
-          <a
-            href={areaZipUrl(workspace.id, area)}
-            download
-            className={linkClasses}
-          >
-            Download all as zip
-          </a>
-        </p>
-      )}
       {files.data?.map(
         (file) =>
           editing === file.id && (
@@ -300,7 +300,7 @@ export function DocumentsPanel({
             <input
               type="file"
               name="file"
-              className="text-sm font-normal file:mr-2 file:h-8 file:rounded-md file:border file:border-sand-6 file:bg-sand-1 file:px-3 file:font-medium file:text-sand-12 hover:file:bg-sand-3"
+              className="text-sm font-normal file:mr-2 file:h-8 file:rounded-md file:border file:border-border-strong file:bg-surface-raised file:px-3 file:font-medium file:text-foreground hover:file:bg-muted"
               accept=".pdf,.docx,.xlsx,.md,.markdown,.txt,.sql,.yaml,.yml,.csv,.json,.png,.jpg,.jpeg,.gif,.webp"
             />
           </label>

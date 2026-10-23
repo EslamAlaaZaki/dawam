@@ -80,7 +80,7 @@ function DetailFields({
           defaultValue={initial?.code}
           readOnly={!codeEditable}
           aria-describedby="system-code-hint"
-          className={`${monoClasses} read-only:bg-sand-2 read-only:text-sand-11`}
+          className={`${monoClasses} read-only:bg-muted read-only:text-muted-foreground`}
         />
       </label>
       <Hint id="system-code-hint">
@@ -260,7 +260,7 @@ function SystemActions({
         {allows(workspace, "objects.delete") && (
           <Button
             size="sm"
-            className="text-red-11"
+            className="text-danger-strong"
             onClick={() => setDeleting(true)}
           >
             Delete

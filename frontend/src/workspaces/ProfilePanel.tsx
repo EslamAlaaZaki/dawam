@@ -75,7 +75,7 @@ export function ProfilePanel({
     <section aria-label="Profile" className="flex flex-col gap-3">
       <h5 className={h5Classes}>Profile</h5>
       {unavailable && (
-        <p role="note" className="text-sand-11">
+        <p role="note" className="text-muted-foreground">
           Profiling is unavailable: this Source System was built from a Schema
           Import and has no live Connection to read data from. An owner adds a
           Connection to enable it.
@@ -104,7 +104,7 @@ export function ProfilePanel({
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            className="size-4 accent-accent-solid"
+            className="size-4 accent-primary"
             checked={profile.data.top_n_enabled}
             disabled={topN.isPending}
             onChange={(event) => topN.mutate(event.target.checked)}
@@ -127,7 +127,7 @@ export function ProfilePanel({
       )}
       {profile.isSuccess && profile.data.profiled_at != null && (
         <>
-          <p>
+          <p className="text-sm text-muted-foreground">
             Sampled rows: {profile.data.row_count}. Profiled{" "}
             {new Date(profile.data.profiled_at).toLocaleString()}.
           </p>
@@ -136,11 +136,13 @@ export function ProfilePanel({
               <TableHeader>
                 <TableRow>
                   <TableHead>Column</TableHead>
-                  <TableHead>Null %</TableHead>
-                  <TableHead>Distinct</TableHead>
+                  <TableHead className="text-right">Null %</TableHead>
+                  <TableHead className="text-right">Distinct</TableHead>
                   <TableHead>Min</TableHead>
                   <TableHead>Max</TableHead>
-                  <TableHead>Length (avg / max)</TableHead>
+                  <TableHead className="text-right">
+                    Length (avg / max)
+                  </TableHead>
                   <TableHead>Patterns</TableHead>
                   {profile.data.top_n_enabled && (
                     <TableHead>Top values</TableHead>
@@ -152,24 +154,31 @@ export function ProfilePanel({
                   const p = column.profile;
                   return (
                     <TableRow key={column.column_id}>
-                      <TableCell className={monoClasses}>
+                      <TableCell
+                        className={`${monoClasses} max-w-64 truncate`}
+                        title={column.name}
+                      >
                         {column.name}
                         {column.is_protected && (
-                          <span className="font-sans text-sm text-sand-11">
+                          <span className="font-sans text-sm text-muted-foreground">
                             {" "}
                             (protected)
                           </span>
                         )}
                       </TableCell>
-                      <TableCell>{p ? p.null_pct.toFixed(1) : ""}</TableCell>
-                      <TableCell>{p?.distinct_count ?? ""}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {p ? p.null_pct.toFixed(1) : ""}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {p?.distinct_count ?? ""}
+                      </TableCell>
                       <TableCell className={monoClasses}>
                         {p?.min ?? ""}
                       </TableCell>
                       <TableCell className={monoClasses}>
                         {p?.max ?? ""}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right tabular-nums">
                         {p?.max_len != null
                           ? `${p.avg_len?.toFixed(1)} / ${p.max_len}`
                           : ""}

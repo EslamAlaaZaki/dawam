@@ -91,16 +91,16 @@ export function FailedChecksPanel({
           {checks.data.map((check) => (
             <li
               key={`${check.check_code}:${check.object_id}`}
-              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3.5 py-2.5"
+              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-l-2 border-warning bg-warning-subtle px-3.5 py-2.5"
             >
-              <strong>{check.title}</strong>
+              <strong className="text-warning-strong">{check.title}</strong>
               {check.severity && (
                 <Badge variant={SEVERITY_VARIANTS[check.severity]}>
                   {check.severity}
                 </Badge>
               )}{" "}
               on <span className={monoClasses}>{check.object_name}</span>:{" "}
-              <span className="min-w-0 flex-1 text-sand-11">
+              <span className="min-w-0 flex-1 text-muted-foreground">
                 {check.message}
               </span>
               {canAsk && (

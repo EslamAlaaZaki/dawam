@@ -19,11 +19,11 @@ function Toaster(props: ToasterProps) {
         unstyled: true,
         classNames: {
           toast:
-            "flex w-full items-center gap-2.5 rounded-lg bg-sand-12 px-3.5 py-2.5 text-sand-1 shadow-overlay",
+            "flex w-full items-center gap-2.5 rounded-lg bg-foreground px-3.5 py-2.5 text-background shadow-overlay",
           title: "font-medium",
-          description: "text-sand-1/80",
+          description: "text-background/80",
           actionButton:
-            "ml-auto h-[26px] shrink-0 rounded-md border border-sand-1/40 px-2 text-mono font-medium text-sand-1 hover:bg-sand-1/10",
+            "ml-auto h-7 shrink-0 rounded-md border border-background/40 px-2 text-xs font-medium text-background hover:bg-background/10",
         },
       }}
       {...props}

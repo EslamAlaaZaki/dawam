@@ -36,7 +36,7 @@ function SheetContent({
       <DialogPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "dawam-ui fixed inset-y-0 left-0 z-20 flex w-[min(280px,85vw)] flex-col overflow-y-auto border-r border-line bg-sand-2 shadow-overlay scheme-light outline-none dark:scheme-dark data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:animate-in data-[state=open]:slide-in-from-left",
+          "dawam-ui fixed inset-y-0 left-0 z-20 flex w-[min(280px,85vw)] flex-col overflow-y-auto border-r border-border bg-surface shadow-overlay scheme-light outline-none dark:scheme-dark data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:animate-in data-[state=open]:slide-in-from-left",
           className,
         )}
         {...props}

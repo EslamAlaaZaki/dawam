@@ -12,7 +12,7 @@ export function BusMatrix({ tables }: { tables: DwTable[] }) {
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border border-sand-5 bg-sand-1">
+    <div className="overflow-hidden rounded-xl border border-border bg-surface-raised">
       <Table aria-label="Bus matrix">
         <TableHeader>
           <TableRow>
@@ -27,13 +27,13 @@ export function BusMatrix({ tables }: { tables: DwTable[] }) {
         <TableBody>
           {facts.map((f) => (
             <TableRow key={f.id}>
-              <TableHead scope="row" className="static bg-transparent font-mono text-mono text-sand-12">
+              <TableHead scope="row" className="static bg-transparent font-mono text-mono text-foreground">
                 {f.name}
               </TableHead>
               {dimensions.map((d) => {
                 const r = roles(f, d);
                 return (
-                  <TableCell key={d.id} className="text-jade-11">
+                  <TableCell key={d.id} className="text-tag-mapped">
                     {r.length ? `● ${r.join(", ")}` : ""}
                   </TableCell>
                 );

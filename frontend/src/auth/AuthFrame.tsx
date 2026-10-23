@@ -21,11 +21,11 @@ export const AUTH_PATHS: ReadonlySet<string> = new Set([
  */
 export function AuthFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="dawam-ui grid min-h-screen place-items-center bg-sand-2 px-4 pt-6 pb-24 scheme-light dark:scheme-dark">
-      <div className="flex w-full max-w-[360px] flex-col gap-5">
-        <Wordmark className="justify-center text-md [&_svg]:size-[26px]" />
+    <div className="dawam-ui grid min-h-screen place-items-center bg-background px-4 pt-6 pb-24 scheme-light dark:scheme-dark">
+      <div className="flex w-full max-w-sm flex-col gap-5">
+        <Wordmark className="justify-center text-md [&_svg]:size-6" />
         <main>{children}</main>
-        <footer className="flex flex-col gap-1 text-center text-mono text-sand-11">
+        <footer className="flex flex-col gap-1 text-center text-mono text-muted-foreground">
           <p>Data Analysis &amp; Warehouse Architecture Modeler</p>
           <p>
             <ApiStatus />
@@ -52,14 +52,14 @@ export function AuthCard({
 }) {
   const body = (
     <>
-      <h1 id={titleId} className="text-xl font-semibold">
+      <h1 id={titleId} className="text-xl font-semibold text-foreground">
         {title}
       </h1>
-      {description && <p className="-mt-2.5 text-sand-11">{description}</p>}
+      {description && <p className="-mt-2.5 text-muted-foreground">{description}</p>}
       {children}
     </>
   );
-  const classes = "flex flex-col gap-4 rounded-xl border border-sand-5 bg-sand-1 p-6";
+  const classes = "flex flex-col gap-4 rounded-lg border border-border bg-surface p-6";
   return onSubmit ? (
     <form className={classes} onSubmit={onSubmit} aria-labelledby={titleId}>
       {body}
@@ -97,7 +97,7 @@ export function AuthField({
 /** A form's problem, next to the form (errors are never toasts). */
 export function AuthError({ children }: { children: ReactNode }) {
   return (
-    <p className="text-sm text-red-11" role="alert">
+    <p className="text-sm text-danger-strong" role="alert">
       {children}
     </p>
   );
@@ -113,7 +113,7 @@ export function AuthHint({
   children: ReactNode;
 }) {
   return (
-    <p id={id} className={cn("text-xs text-sand-11", className)}>
+    <p id={id} className={cn("text-xs text-muted-foreground", className)}>
       {children}
     </p>
   );
@@ -124,4 +124,4 @@ export function AuthHint({
  * from it (WCAG 1.4.1).
  */
 export const authLinkClasses =
-  "text-sm font-medium text-jade-11 underline decoration-jade-7 underline-offset-2 hover:decoration-current";
+  "text-sm font-medium text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-current";

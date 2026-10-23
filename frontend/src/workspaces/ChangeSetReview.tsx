@@ -62,14 +62,22 @@ function show(value: unknown): string {
 function Diff({ item }: { item: ChangeSetItem }) {
   const fields = Object.keys(item.payload);
   return (
-    <ul className="mt-1.5 ml-6 flex flex-col gap-0.5 text-mono [overflow-wrap:anywhere]">
+    <ul className="mt-2.5 ml-6 flex flex-col gap-2">
       {fields.map((field) => (
-        <li key={field}>
-          <code className="font-mono">{field}</code>:{" "}
-          {item.base_values && field in item.base_values && (
-            <del className="text-red-11">{show(item.base_values[field])}</del>
-          )}{" "}
-          <ins className="text-grass-11 no-underline">{show(item.payload[field])}</ins>
+        <li key={field} className="flex flex-col gap-1">
+          <code className="font-mono text-mono text-subtle-foreground">{field}</code>
+          <div className="grid gap-1.5 font-mono text-mono [overflow-wrap:anywhere] sm:grid-cols-2">
+            <div className="min-w-0 rounded-md border border-border bg-danger-subtle px-2 py-1">
+              <span className="block font-sans text-xs text-subtle-foreground">When proposed</span>
+              {item.base_values && field in item.base_values && (
+                <del className="text-danger-strong">{show(item.base_values[field])}</del>
+              )}
+            </div>
+            <div className="min-w-0 rounded-md border border-border bg-success-subtle px-2 py-1">
+              <span className="block font-sans text-xs text-subtle-foreground">New</span>
+              <ins className="text-success-strong no-underline">{show(item.payload[field])}</ins>
+            </div>
+          </div>
         </li>
       ))}
     </ul>
@@ -83,7 +91,7 @@ function Report({ result }: { result: ApplyResult }) {
   return (
     <div
       role="status"
-      className="flex flex-col gap-1.5 rounded-lg border border-sand-5 bg-sand-2 p-3 text-sm"
+      className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-3 text-sm"
     >
       {result.skipped.length > 0 && (
         <>
@@ -190,7 +198,7 @@ export function ChangeSetReview({
           {changeSet.status.replace("_", " ")}
         </Badge>
       </h4>
-      <ul className="flex flex-col divide-y divide-sand-4 rounded-lg border border-sand-5">
+      <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border">
         {items.map((item) => (
           <li key={item.id} className="px-3.5 py-2.5">
             <label className="inline-flex items-center gap-2">
@@ -233,6 +241,7 @@ export function ChangeSetReview({
         <Actions>
           <Button
             type="button"
+            variant="primary"
             size="sm"
             disabled={chosen.length === 0 || accept.isPending}
             onClick={() => decide("accept", chosen)}

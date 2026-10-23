@@ -57,8 +57,8 @@ export function StarDiagram({
     source: l.from.id,
     target: l.to.id,
     label: l.label,
-    style: { stroke: "var(--sand-11)" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "var(--sand-11)" },
+    style: { stroke: "var(--muted-foreground)" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "var(--muted-foreground)" },
   }));
 
   return (
@@ -91,7 +91,7 @@ function TableCard({ table, pii }: { table: DwTable; pii: PiiMarks }) {
     .join("; ");
   return (
     <div className="star-card">
-      <strong className="star-name">{table.name}</strong>
+      <strong className="star-name font-mono text-mono">{table.name}</strong>
       {tableLabel ? <PiiMarker label={tableLabel} /> : null}
       <small className="star-kind">
         {" "}
@@ -102,7 +102,7 @@ function TableCard({ table, pii }: { table: DwTable; pii: PiiMarks }) {
         {keyColumns(table, pii)
           .slice(0, MAX_LINES)
           .map((c) => (
-            <li key={c.id}>
+            <li key={c.id} className="font-mono text-mono">
               {c.role === "sk" ? (
                 <KeyRound aria-hidden className="star-key" />
               ) : null}

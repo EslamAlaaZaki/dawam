@@ -8,8 +8,8 @@ export function ApiStatus({ dot = false }: { dot?: boolean }) {
   const light = dot && (
     <i
       aria-hidden
-      className={`mr-2 inline-block size-[7px] rounded-full ${
-        version.isError ? "bg-red-11" : version.isPending ? "bg-sand-8" : "bg-grass-11"
+      className={`me-2 inline-block size-1.5 rounded-full ${
+        version.isError ? "bg-danger" : version.isPending ? "bg-border-strong" : "bg-success"
       }`}
     />
   );

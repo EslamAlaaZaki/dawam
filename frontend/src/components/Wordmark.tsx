@@ -5,12 +5,12 @@ export function Wordmark({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 text-sm font-bold tracking-[0.14em] text-sand-12",
+        "flex items-center gap-2 text-sm font-semibold tracking-widest text-foreground",
         className,
       )}
     >
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden className="size-[22px]">
-        <path d="M12 3 21 7.5 12 12 3 7.5Z" className="fill-accent-solid" />
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden className="size-5">
+        <path d="M12 3 21 7.5 12 12 3 7.5Z" className="fill-primary" />
         <path
           d="M3 12 12 16.5 21 12"
           stroke="currentColor"

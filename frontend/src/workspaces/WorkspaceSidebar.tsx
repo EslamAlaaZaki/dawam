@@ -9,6 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
+import { findFolder } from "./folders";
 import { FolderTree } from "./FolderTree";
 import { useWorkspaceFolders } from "./useWorkspaceFolders";
 import { Loading } from "../shell/Loading";
@@ -17,6 +18,29 @@ import { Loading } from "../shell/Loading";
 export function workspaceIdOf(pathname: string): string | null {
   const id = /^\/workspaces\/([^/]+)$/.exec(pathname)?.[1];
   return id && id !== "new" ? decodeURIComponent(id) : null;
+}
+
+/**
+ * The labels from the Workspace down to its selected folder, for the top bar's location
+ * trail (empty until the Workspace has loaded).
+ */
+export function useWorkspaceTrail(workspaceId: string): string[] {
+  const workspace = useWorkspace(workspaceId);
+  const { root, folder } = useWorkspaceFolders(
+    workspaceId,
+    workspace.data?.name ?? "",
+  );
+  if (!workspace.data) {
+    return [];
+  }
+  const parts = folder.id === "" ? [] : folder.id.split("/");
+  return [
+    root.label,
+    ...parts.map(
+      (_, index) =>
+        findFolder(root, parts.slice(0, index + 1).join("/"))?.label ?? "",
+    ),
+  ].filter(Boolean);
 }
 
 function initials(name: string): string {
@@ -48,7 +72,7 @@ function SwitcherList({ currentId }: { currentId: string }) {
             <Link
               href={`/workspaces/${workspace.id}`}
               aria-current={workspace.id === currentId ? "page" : undefined}
-              className="block truncate rounded-md px-2 py-[5px] text-sand-11 hover:bg-sand-3 hover:text-sand-12 aria-[current=page]:bg-sand-4 aria-[current=page]:font-medium aria-[current=page]:text-sand-12"
+              className="block h-8 truncate rounded-md px-2 leading-8 text-muted-foreground transition-colors duration-120 hover:bg-muted hover:text-foreground aria-[current=page]:bg-primary-subtle aria-[current=page]:font-medium aria-[current=page]:text-foreground"
             >
               {workspace.name}
             </Link>
@@ -57,7 +81,7 @@ function SwitcherList({ currentId }: { currentId: string }) {
       </ul>
       <Link
         href="/"
-        className="mt-1 block rounded-md border-t border-sand-4 px-2 pt-2 pb-1 text-sand-11 hover:text-sand-12"
+        className="mt-1 flex h-8 items-center rounded-md border-t border-border px-2 text-muted-foreground transition-colors duration-120 hover:bg-muted hover:text-foreground"
       >
         All Workspaces
       </Link>
@@ -81,24 +105,24 @@ export function WorkspaceSidebar({ workspaceId }: { workspaceId: string }) {
           <button
             type="button"
             aria-label={`Workspace: ${name || "loading"}. Switch Workspace`}
-            className="flex w-full items-center gap-2 rounded-lg border border-line bg-transparent p-2 text-left font-semibold text-sand-12 hover:bg-sand-3"
+            className="flex h-10 w-full items-center gap-2 rounded-md border border-border bg-surface-raised px-2 text-start font-medium text-foreground transition-colors duration-120 outline-primary hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 data-[state=open]:bg-muted"
           >
             <span
               aria-hidden
-              className="grid size-[22px] shrink-0 place-items-center rounded-[5px] bg-accent-solid text-2xs font-bold text-on-accent"
+              className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-2xs font-semibold text-primary-foreground"
             >
               {initials(name)}
             </span>
             <span className="min-w-0 flex-1 truncate">{name}</span>
             <ChevronsUpDown
               aria-hidden
-              className="size-4 shrink-0 text-sand-11"
+              className="size-4 shrink-0 text-subtle-foreground"
             />
           </button>
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className="w-[220px] p-1.5"
+          className="w-56 p-1"
           aria-label="Workspaces"
         >
           <SwitcherList currentId={workspaceId} />
@@ -106,7 +130,7 @@ export function WorkspaceSidebar({ workspaceId }: { workspaceId: string }) {
       </Popover>
       {workspace.data && (
         <>
-          <p className="px-2 pt-3.5 pb-1 text-2xs font-medium tracking-[0.06em] text-sand-11 uppercase">
+          <p className="px-2 pt-4 pb-1 text-2xs font-medium tracking-wider text-subtle-foreground uppercase">
             Workspace
           </p>
           <nav aria-label="Folders">

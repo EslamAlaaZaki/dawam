@@ -24,13 +24,16 @@ import {
   checkClasses,
   checkLabelClasses,
   fieldsetClasses,
-  formCardClasses,
   h3Classes,
   h4Classes,
   labelClasses,
 } from "./parts";
 
 const NONE = "";
+
+/** A settings section inside the dialog: the dialog is the card, so no border of its own. */
+const dialogFormClasses = "flex max-w-xl flex-col gap-4";
+
 
 /**
  * The Workspace's AI settings (stories 160, 161): its Workspace Models. Every member sees
@@ -45,7 +48,7 @@ export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
   if (settings.isError) {
     // Not an alert: the rest of the page works without it.
     return (
-      <Panel aria-labelledby="ai-title">
+      <Panel aria-labelledby="ai-title" className="border-0 p-0">
         <h3 id="ai-title" className={h3Classes}>
           AI settings
         </h3>
@@ -57,7 +60,7 @@ export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
     workspace.status === "active" ? (
     <OwnerForm workspaceId={workspace.id} settings={settings.data} />
   ) : (
-    <Panel aria-labelledby="ai-title">
+    <Panel aria-labelledby="ai-title" className="border-0 p-0">
       <h3 id="ai-title" className={h3Classes}>
         AI settings
       </h3>
@@ -164,7 +167,7 @@ function OwnerForm({
 
   return (
     <form
-      className={formCardClasses}
+      className={dialogFormClasses}
       onSubmit={onSubmit}
       aria-labelledby="ai-title"
     >
@@ -258,7 +261,10 @@ function RoleModels({
       {rows.map(({ model, stale }) => {
         const chosen = pick.ids.includes(model.id);
         return (
-          <div key={model.id} className="flex flex-wrap items-center gap-4">
+          <div
+            key={model.id}
+            className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-border px-3 py-2"
+          >
             <label className={checkLabelClasses}>
               <input
                 type="checkbox"

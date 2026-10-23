@@ -36,11 +36,11 @@ export function StageProgressPanel({ workspaceId }: { workspaceId: string }) {
       {progress.isSuccess && (
         <>
           {progress.data.source_analysis.length === 0 && (
-            <p className="mb-2 text-sand-11">
+            <p className="mb-2 text-muted-foreground">
               No Source Systems yet, so there is no Source Analysis to show.
             </p>
           )}
-          <ol className="m-0 flex list-none flex-wrap overflow-hidden rounded-lg border border-line bg-sand-1 p-0">
+          <ol className="m-0 flex list-none flex-wrap items-center gap-x-3 gap-y-2 rounded-pill border border-border bg-surface-raised px-4 py-3">
             {progress.data.source_analysis.map((system) => (
               <Stage
                 key={system.system_id}
@@ -67,24 +67,27 @@ function Stage({ label, status }: { label: string; status: StageStatus }) {
   return (
     <li
       aria-current={status === "in_progress" ? "step" : undefined}
-      className={`flex flex-[1_1_120px] items-center gap-2 border-r border-b border-line px-3 py-2 text-sm -mb-px last:border-r-0 ${
+      className={`flex items-center gap-2 text-sm not-first:before:h-px not-first:before:w-6 not-first:before:bg-border-strong not-first:before:content-[''] ${
         status === "in_progress"
-          ? "bg-jade-2 font-medium text-sand-12"
-          : "text-sand-11"
+          ? "font-medium text-foreground"
+          : status === "complete"
+            ? "text-foreground"
+            : "text-muted-foreground"
       }`}
     >
       <span
         aria-hidden
-        className={`grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px] ${
+        className={`grid size-4.5 shrink-0 place-items-center rounded-full border ${
           status === "complete"
-            ? "border-accent-solid bg-accent-solid text-on-accent"
+            ? "border-primary bg-primary text-primary-foreground"
             : status === "in_progress"
-              ? "border-jade-11 bg-jade-11 shadow-[inset_0_0_0_3px_var(--color-sand-1)]"
-              : "border-sand-7"
+              ? "border-primary bg-primary-subtle"
+              : "border-border-strong bg-surface-raised"
         }`}
       >
-        {status === "complete" && (
-          <Check className="size-[11px]" strokeWidth={3} />
+        {status === "complete" && <Check className="size-3" strokeWidth={3} />}
+        {status === "in_progress" && (
+          <span className="size-1.5 rounded-full bg-primary" />
         )}
       </span>
       <span className="min-w-0">{label}</span>

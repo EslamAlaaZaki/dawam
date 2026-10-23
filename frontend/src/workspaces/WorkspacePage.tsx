@@ -1,10 +1,11 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { FolderOpen, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { ROLE_LABELS, useWorkspace } from "../api/workspaces";
+import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { EmptyState, ErrorText, Hint, Panel, h3Classes } from "./parts";
 import {
@@ -131,38 +132,45 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       <div
         className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[min(680px,55vw)]" : ""}`}
       >
-        <header className="flex flex-wrap items-start gap-x-4 gap-y-2">
-          <div className="min-w-0">
-            <h2 className="text-2xl font-semibold tracking-[-0.01em] text-balance">
-              {workspace.data.name}
-            </h2>
-            <p className="mt-0.5 text-sand-11">
-              Your role: {ROLE_LABELS[workspace.data.role]}
-            </p>
-          </div>
-          <Button
-            ref={toggleRef}
-            className="ml-auto"
-            aria-expanded={assistantOpen}
-            aria-controls="assistant-panel"
-            onClick={() => {
-              setAssistantUsed(true);
-              setAssistantOpen((open) => !open);
-            }}
-          >
-            <Sparkles aria-hidden />
-            Assistant
-          </Button>
-          <WorkspaceSettingsDialog
-            workspace={workspace.data}
-            reload={() => workspace.refetch()}
-          />
-        </header>
+        <PageHeader
+          title={workspace.data.name}
+          description={`Your role: ${ROLE_LABELS[workspace.data.role]}`}
+          actions={
+            <>
+              <Button
+                ref={toggleRef}
+                aria-label="Assistant"
+                aria-expanded={assistantOpen}
+                aria-controls="assistant-panel"
+                onClick={() => {
+                  setAssistantUsed(true);
+                  setAssistantOpen((open) => !open);
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="bg-ai-gradient bg-clip-text text-transparent"
+                >
+                  ✦
+                </span>
+                Assistant
+              </Button>
+              <WorkspaceSettingsDialog
+                workspace={workspace.data}
+                reload={() => workspace.refetch()}
+              />
+            </>
+          }
+        />
         {workspace.data.status === "archived" && (
           <p
             role="status"
-            className="rounded-lg border border-amber-11/40 bg-amber-3 px-3 py-2.5 text-sm"
+            className="flex items-start gap-2 rounded-pill border border-warning/40 bg-warning-subtle px-3 py-2.5 text-sm text-foreground"
           >
+            <TriangleAlert
+              aria-hidden
+              className="mt-0.5 size-4 shrink-0 text-warning-strong"
+            />
             This Workspace is archived and read-only. Exports and reading still
             work.
           </p>
@@ -280,10 +288,17 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             />
           ) : (
             <Panel aria-labelledby="folder-title">
-              <h3 id="folder-title" className={h3Classes}>
-                {folder.label}
-              </h3>
-              <EmptyState>{folder.empty}</EmptyState>
+              <EmptyState
+                className="border-0"
+                icon={<FolderOpen />}
+                title={
+                  <h3 id="folder-title" className={h3Classes}>
+                    {folder.label}
+                  </h3>
+                }
+              >
+                {folder.empty}
+              </EmptyState>
             </Panel>
           )}
         </div>
@@ -298,7 +313,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             setAssistantOpen(false);
           }
         }}
-        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l outline-none border-line bg-sand-1 shadow-lg lg:w-[min(680px,55vw)] lg:shadow-none"
+        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l border-border bg-background shadow-lg outline-none lg:w-[min(680px,55vw)] lg:shadow-none"
       >
         {assistantUsed && (
           <div className="h-full">

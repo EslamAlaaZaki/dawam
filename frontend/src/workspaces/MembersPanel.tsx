@@ -24,6 +24,7 @@ import {
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
 import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
@@ -66,10 +67,15 @@ export function MembersPanel({ workspace }: { workspace: Workspace }) {
     },
     {
       header: "Email",
-      className: "text-sand-11",
+      className: "text-muted-foreground",
       cell: (member) => member.email,
     },
-    { header: "Role", cell: (member) => ROLE_LABELS[member.role] },
+    { header: "Role", cell: (member) => (
+        <Badge variant={member.role === "owner" ? "accent" : "neutral"}>
+          {ROLE_LABELS[member.role]}
+        </Badge>
+      ),
+    },
   ];
 
   return (

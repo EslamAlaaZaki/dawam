@@ -44,22 +44,22 @@ export function UserMenu() {
   return (
     <>
       {signOut.isError && (
-        <span role="alert" className="text-sm text-red-11">
+        <span role="alert" className="text-sm text-danger-strong">
           Could not sign out: {signOut.error.message}
         </span>
       )}
       <DropdownMenu>
-        <DropdownMenuTrigger className="ml-1 flex h-8 items-center gap-2 rounded-md pr-1.5 pl-1 text-sand-12 hover:bg-sand-3 data-[state=open]:bg-sand-3">
+        <DropdownMenuTrigger className="ms-1 flex h-8 items-center gap-2 rounded-md ps-1 pe-1.5 text-foreground transition-colors duration-120 outline-primary hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 data-[state=open]:bg-muted">
           <span
             aria-hidden
-            className="grid size-7 place-items-center rounded-full bg-jade-4 text-2xs font-semibold text-jade-12"
+            className="grid size-6 place-items-center rounded-full bg-primary-subtle text-2xs font-semibold text-primary"
           >
             {initials(me.data.display_name)}
           </span>
           <span className="hidden max-w-40 truncate text-sm font-medium sm:inline">
             {me.data.display_name}
           </span>
-          <ChevronDown className="size-3.5 text-sand-11" aria-hidden />
+          <ChevronDown className="size-3.5 text-subtle-foreground" aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-52">
           <DropdownMenuLabel>{me.data.email}</DropdownMenuLabel>

@@ -15,11 +15,11 @@ export function SettingsCard({
   return (
     <section
       aria-label={title}
-      className="flex max-w-xl flex-col gap-3.5 rounded-xl border border-sand-5 bg-sand-1 p-5"
+      className="flex max-w-xl flex-col gap-3.5 rounded-xl border border-border bg-background p-5"
     >
       <div>
         <h3 className="text-md font-semibold tracking-[-0.005em]">{title}</h3>
-        {description && <p className="mt-0.5 text-sm text-sand-11">{description}</p>}
+        {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
       </div>
       {children}
       {footer && <div className="flex items-center gap-2">{footer}</div>}

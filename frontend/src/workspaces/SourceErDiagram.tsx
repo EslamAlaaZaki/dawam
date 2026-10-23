@@ -33,8 +33,8 @@ const COLUMNS = 4;
 
 /** Declared foreign keys are solid; accepted inferred relationships are dashed. */
 const EDGE_STYLE: Record<ErEdge["kind"], React.CSSProperties> = {
-  declared: { strokeWidth: 2, stroke: "var(--sand-11)" },
-  inferred: { strokeWidth: 2, strokeDasharray: "6 4", stroke: "var(--jade-11)" },
+  declared: { strokeWidth: 2, stroke: "var(--muted-foreground)" },
+  inferred: { strokeWidth: 2, strokeDasharray: "6 4", stroke: "var(--tag-mapped)" },
 };
 
 /**
@@ -101,7 +101,7 @@ export function SourceErDiagram({
     animated: false,
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color: edge.kind === "declared" ? "var(--sand-11)" : "var(--jade-11)",
+      color: edge.kind === "declared" ? "var(--muted-foreground)" : "var(--tag-mapped)",
     },
     ariaLabel: `${edge.kind} relationship`,
   }));
@@ -173,7 +173,7 @@ export function SourceErDiagram({
           </ReactFlow>
         </div>
       )}
-      <ul aria-label="Relationships" className="text-sm text-sand-11">
+      <ul aria-label="Relationships" className="font-mono text-mono text-muted-foreground">
         {edges.map((edge) => (
           <li key={edge.id}>
             {qualified(byId.get(edge.from)!)} to {qualified(byId.get(edge.to)!)}
@@ -192,7 +192,7 @@ export function SourceErDiagram({
 function ErNode({ table }: { table: SourceTable }) {
   const protectedNames = table.columns.filter((c) => c.is_protected).map((c) => c.name);
   return (
-    <span className="inline-flex items-center">
+    <span className="inline-flex items-center font-mono text-mono">
       {qualified(table)}
       {protectedNames.length > 0 && (
         <PiiMarker

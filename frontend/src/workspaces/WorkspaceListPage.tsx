@@ -21,6 +21,7 @@ import {
   useWorkspaces,
   type Workspace,
 } from "../api/workspaces";
+import { PageHeader } from "../components/PageHeader";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
 import {
   EntityTable,
@@ -30,7 +31,6 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { PageHead } from "../admin/parts";
 import { DetailsFields, detailsFrom } from "./DetailsFields";
 import { ErrorText, Hint, NativeSelect, labelClasses } from "./parts";
 
@@ -40,16 +40,21 @@ const COLUMNS: EntityColumn<Workspace>[] = [
     cell: (workspace) => (
       <Link
         href={`/workspaces/${workspace.id}`}
-        className="font-medium text-jade-11 underline decoration-jade-7 underline-offset-2 hover:decoration-current"
+        className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover"
       >
         {workspace.name}
       </Link>
     ),
   },
-  { header: "Business domain", cell: (workspace) => workspace.domain },
+  {
+    header: "Business domain",
+    cell: (workspace) => (
+      <span className="text-muted-foreground">{workspace.domain}</span>
+    ),
+  },
   {
     header: "Your role",
-    cell: (workspace) => <Badge>{ROLE_LABELS[workspace.role]}</Badge>,
+    cell: (workspace) => <Badge variant="accent">{ROLE_LABELS[workspace.role]}</Badge>,
   },
 ];
 
@@ -66,7 +71,7 @@ export function WorkspaceListPage() {
 
   return (
     <section className="flex flex-col gap-5">
-      <PageHead
+      <PageHeader
         title="Workspaces"
         description="The Workspaces you are a member of."
         actions={createButton}
@@ -239,7 +244,7 @@ function WorkspaceActions({ workspace }: { workspace: Workspace }) {
         {allows(workspace, "workspace.delete") && (
           <Button
             size="sm"
-            className="text-red-11"
+            className="text-danger-strong"
             onClick={() => setDeleting(true)}
           >
             Delete

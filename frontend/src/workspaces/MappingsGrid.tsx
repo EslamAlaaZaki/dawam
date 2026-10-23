@@ -131,7 +131,7 @@ function MappingRow({
 
   return (
     <TableRow>
-      <TableCell className={monoClasses}>{name}</TableCell>
+      <TableCell mono>{name}</TableCell>
       {editable ? (
         <>
           <TableCell>
@@ -172,7 +172,7 @@ function MappingRow({
           <TableCell>
             <MappingState type={column.mapping_type} />
           </TableCell>
-          <TableCell className="text-sand-11">
+          <TableCell className="text-muted-foreground">
             {column.rule_text || "—"}
           </TableCell>
           <TableCell>
@@ -184,12 +184,12 @@ function MappingRow({
           </TableCell>
         </>
       )}
-      <TableCell className={`${monoClasses} text-sand-11`}>
+      <TableCell mono className="text-muted-foreground">
         {inputs.length > 0 ? inputs.join(", ") : "—"}
         {errors.map((e) => (
           <p
             key={e.code}
-            className="font-sans text-sm whitespace-normal text-red-11"
+            className="font-sans text-sm whitespace-normal text-danger-strong"
           >
             {e.message}
           </p>

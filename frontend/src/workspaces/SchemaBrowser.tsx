@@ -12,6 +12,11 @@ import type { Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -54,7 +59,7 @@ function StatusBadge({ status }: { status?: string | null }) {
     return null;
   }
   return (
-    <Badge variant="warning" className="ml-2">
+    <Badge variant="warning" className="ml-2 shrink-0">
       {STATUS_LABELS[status] ?? status}
     </Badge>
   );
@@ -70,7 +75,23 @@ function useDebounced(value: string, ms: number) {
 }
 
 /** A row of an object list: the object, then what kind it is. */
-const rowClasses = "px-3 py-1.5";
+const rowClasses = "flex min-w-0 items-center gap-1 px-3 py-1.5 hover:bg-muted";
+
+/** A long name cut with an ellipsis; the full name shows in a tooltip. */
+function Truncated({ text, className }: { text: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={`inline-block min-w-0 max-w-full truncate align-bottom ${className ?? ""}`}
+        >
+          {text}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{text}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 /**
  * Browses a Source System's Source Schema (spec story 54): Database Schemas with their
@@ -129,94 +150,107 @@ export function SchemaBrowser({
       : undefined;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className={`${labelClasses} max-w-xl`}>
-        <label htmlFor="schema-search">Search by name</label>
-        <Input
-          id="schema-search"
-          type="search"
-          value={search}
-          placeholder="A table, column, routine or Database Schema"
-          onChange={(event) => setSearch(event.target.value)}
-        />
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+      <div className="flex min-w-0 flex-col gap-4">
+        <div className={labelClasses}>
+          <label htmlFor="schema-search">Search by name</label>
+          <Input
+            id="schema-search"
+            type="search"
+            value={search}
+            placeholder="A table, column, routine or Database Schema"
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        {query !== "" && (
+          <SearchResults query={query} results={results} onOpen={open} />
+        )}
+        <ul aria-label="Database Schemas" className="flex flex-col gap-3">
+          {content.db_schemas.map((dbSchema) => (
+            <li key={dbSchema.id} className="flex flex-col gap-1.5">
+              <div className="flex min-w-0 items-center">
+                <strong
+                  className={`${monoClasses} min-w-0 truncate font-semibold`}
+                >
+                  {dbSchema.name}
+                </strong>
+                <StatusBadge status={dbSchema.status} />
+              </div>
+              <ul
+                aria-label={`Tables and views of ${dbSchema.name}`}
+                className={listCardClasses}
+              >
+                {content.tables
+                  .filter((t) => t.db_schema === dbSchema.name)
+                  .map((t) => (
+                    <li key={t.id} className={rowClasses}>
+                      <button
+                        type="button"
+                        className={`${linkButtonClasses} min-w-0 truncate`}
+                        title={t.name}
+                        onClick={() =>
+                          setSelection({ kind: "table", id: t.id })
+                        }
+                      >
+                        {t.name}
+                      </button>
+                      {t.kind === "view" && " (view)"}
+                      <StatusBadge status={t.status} />
+                    </li>
+                  ))}
+                {content.removed_tables
+                  .filter((t) => t.db_schema === dbSchema.name)
+                  .map((t) => (
+                    <li
+                      key={t.id}
+                      className={`${rowClasses} text-muted-foreground`}
+                    >
+                      <Truncated text={t.name} className={monoClasses} />
+                      {t.kind === "view" && " (view)"}
+                      <StatusBadge status={t.status} />
+                    </li>
+                  ))}
+              </ul>
+              <ul
+                aria-label={`Routines of ${dbSchema.name}`}
+                className={listCardClasses}
+              >
+                {content.routines
+                  .filter((r) => r.db_schema === dbSchema.name)
+                  .map((r) => (
+                    <li key={r.id} className={rowClasses}>
+                      <button
+                        type="button"
+                        className={`${linkButtonClasses} min-w-0 truncate`}
+                        title={`${r.name}(${r.signature})`}
+                        onClick={() =>
+                          setSelection({ kind: "routine", id: r.id })
+                        }
+                      >
+                        {r.name}({r.signature})
+                      </button>
+                      {` (${r.kind})`}
+                      <StatusBadge status={r.status} />
+                    </li>
+                  ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
       </div>
-      {query !== "" && (
-        <SearchResults query={query} results={results} onOpen={open} />
-      )}
-      <ul aria-label="Database Schemas" className="flex flex-col gap-3">
-        {content.db_schemas.map((dbSchema) => (
-          <li key={dbSchema.id} className="flex flex-col gap-1.5">
-            <div>
-              <strong className={`${monoClasses} font-semibold`}>
-                {dbSchema.name}
-              </strong>
-              <StatusBadge status={dbSchema.status} />
-            </div>
-            <ul
-              aria-label={`Tables and views of ${dbSchema.name}`}
-              className={listCardClasses}
-            >
-              {content.tables
-                .filter((t) => t.db_schema === dbSchema.name)
-                .map((t) => (
-                  <li key={t.id} className={rowClasses}>
-                    <button
-                      type="button"
-                      className={linkButtonClasses}
-                      onClick={() => setSelection({ kind: "table", id: t.id })}
-                    >
-                      {t.name}
-                    </button>
-                    {t.kind === "view" && " (view)"}
-                    <StatusBadge status={t.status} />
-                  </li>
-                ))}
-              {content.removed_tables
-                .filter((t) => t.db_schema === dbSchema.name)
-                .map((t) => (
-                  <li key={t.id} className={`${rowClasses} text-sand-11`}>
-                    <span className={monoClasses}>{t.name}</span>
-                    {t.kind === "view" && " (view)"}
-                    <StatusBadge status={t.status} />
-                  </li>
-                ))}
-            </ul>
-            <ul
-              aria-label={`Routines of ${dbSchema.name}`}
-              className={listCardClasses}
-            >
-              {content.routines
-                .filter((r) => r.db_schema === dbSchema.name)
-                .map((r) => (
-                  <li key={r.id} className={rowClasses}>
-                    <button
-                      type="button"
-                      className={linkButtonClasses}
-                      onClick={() =>
-                        setSelection({ kind: "routine", id: r.id })
-                      }
-                    >
-                      {r.name}({r.signature})
-                    </button>
-                    {` (${r.kind})`}
-                    <StatusBadge status={r.status} />
-                  </li>
-                ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-      {table && (
-        <TablePage
-          table={table}
-          workspace={workspace}
-          systemId={systemId}
-          removedColumns={content.removed_columns.filter(
-            (c) => c.table_id === table.id,
-          )}
-        />
-      )}
-      {routine && <RoutinePage routine={routine} />}
+      <div className="flex min-w-0 flex-col gap-4">
+        {table && (
+          <TablePage
+            table={table}
+            workspace={workspace}
+            systemId={systemId}
+            removedColumns={content.removed_columns.filter(
+              (c) => c.table_id === table.id,
+            )}
+          />
+        )}
+        {routine && <RoutinePage routine={routine} />}
+      </div>
     </div>
   );
 }
@@ -231,7 +265,7 @@ function SearchResults({
   onOpen: (hit: SchemaSearchHit) => void;
 }) {
   if (results.isPending) {
-    return <p className="text-sand-11">Searching…</p>;
+    return <p className="text-muted-foreground">Searching…</p>;
   }
   if (results.isError) {
     return <ErrorText>Could not search: {results.error.message}</ErrorText>;
@@ -245,7 +279,7 @@ function SearchResults({
         <li key={`${hit.kind}-${hit.id}`} className={rowClasses}>
           <button
             type="button"
-            className={linkButtonClasses}
+            className={`${linkButtonClasses} min-w-0 truncate`}
             onClick={() => onOpen(hit)}
           >
             {[hit.db_schema, hit.table, hit.name].filter(Boolean).join(".")}
@@ -255,6 +289,13 @@ function SearchResults({
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Whether a column is part of a foreign key (derived from the keys shown below). */
+function isFkColumn(table: SchemaTable, name: string) {
+  return table.constraints.some(
+    (k) => k.type === "fk" && k.columns.includes(name),
   );
 }
 
@@ -273,7 +314,7 @@ function TablePage({
   return (
     <Panel aria-label={`Table ${title}`}>
       <h4
-        className={`${h4Classes} ${monoClasses} flex flex-wrap items-center gap-2`}
+        className={`${h4Classes} ${monoClasses} flex min-w-0 flex-wrap items-center gap-2 break-all`}
       >
         {title} <Badge>{table.kind}</Badge>
         <StatusBadge status={table.status} />
@@ -299,7 +340,7 @@ function TablePage({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>#</TableHead>
+              <TableHead className="text-right">#</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Nullable</TableHead>
@@ -311,28 +352,43 @@ function TablePage({
           <TableBody>
             {table.columns.map((column) => (
               <TableRow key={column.id}>
-                <TableCell className="text-sand-11">{column.ordinal}</TableCell>
-                <TableCell className={monoClasses}>
-                  {column.name}
+                <TableCell className="text-right text-muted-foreground tabular-nums">
+                  {column.ordinal}
+                </TableCell>
+                <TableCell className={`${monoClasses} max-w-64`}>
+                  <Truncated text={column.name} />
                   <StatusBadge status={column.status} />
                 </TableCell>
-                <TableCell className={`${monoClasses} text-sand-11`}>
+                <TableCell className={`${monoClasses} text-muted-foreground`}>
                   {column.data_type}
                 </TableCell>
                 <TableCell>{column.is_nullable ? "yes" : "no"}</TableCell>
-                <TableCell>{column.is_pk ? "PK" : ""}</TableCell>
-                <TableCell className={monoClasses}>{column.default}</TableCell>
-                <TableCell>{column.comment}</TableCell>
+                <TableCell>
+                  <span className="inline-flex gap-1">
+                    {column.is_pk && <Badge variant="pk">PK</Badge>}
+                    {isFkColumn(table, column.name) && (
+                      <Badge variant="fk">FK</Badge>
+                    )}
+                  </span>
+                </TableCell>
+                <TableCell className={`${monoClasses} max-w-48`}>
+                  {column.default != null && (
+                    <Truncated text={String(column.default)} />
+                  )}
+                </TableCell>
+                <TableCell className="max-w-64">
+                  {column.comment && <Truncated text={column.comment} />}
+                </TableCell>
               </TableRow>
             ))}
             {removedColumns.map((column) => (
               <TableRow key={column.id}>
                 <TableCell />
-                <TableCell className={monoClasses}>
-                  {column.name}
+                <TableCell className={`${monoClasses} max-w-64`}>
+                  <Truncated text={column.name} />
                   <StatusBadge status={column.status} />
                 </TableCell>
-                <TableCell className={`${monoClasses} text-sand-11`}>
+                <TableCell className={`${monoClasses} text-muted-foreground`}>
                   {column.data_type}
                 </TableCell>
                 <TableCell />
@@ -355,7 +411,10 @@ function TablePage({
       ) : (
         <ul aria-label="Keys" className={listCardClasses}>
           {table.constraints.map((key) => (
-            <li key={key.name} className={`${rowClasses} ${monoClasses}`}>
+            <li
+              key={key.name}
+              className={`${rowClasses} ${monoClasses} flex-wrap`}
+            >
               {key.name}: {key.type.toUpperCase()} ({key.columns.join(", ")})
               {key.type === "fk" &&
                 ` references ${key.ref_db_schema}.${key.ref_table} (${key.ref_columns.join(", ")})`}
@@ -385,7 +444,7 @@ function RoutinePage({ routine }: { routine: Routine }) {
   return (
     <Panel aria-label={`Routine ${title}`}>
       <h4
-        className={`${h4Classes} ${monoClasses} flex flex-wrap items-center gap-2`}
+        className={`${h4Classes} ${monoClasses} flex min-w-0 flex-wrap items-center gap-2 break-all`}
       >
         {title} <Badge>{routine.kind}</Badge>
         <StatusBadge status={routine.status} />

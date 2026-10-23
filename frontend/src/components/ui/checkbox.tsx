@@ -11,7 +11,7 @@ function Checkbox({ className, ...props }: ComponentProps<typeof CheckboxPrimiti
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer size-4 shrink-0 rounded-[4px] border border-control-edge bg-sand-1 disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-accent-solid data-[state=checked]:bg-accent-solid data-[state=checked]:text-on-accent",
+        "peer size-4 shrink-0 rounded-sm border border-control-edge bg-background disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
         className,
       )}
       {...props}

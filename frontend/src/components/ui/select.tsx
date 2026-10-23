@@ -30,14 +30,14 @@ function SelectTrigger({
       data-slot="select-trigger"
       className={cn(
         fieldClasses,
-        "flex h-[34px] items-center justify-between gap-2 text-left whitespace-nowrap data-[placeholder]:text-sand-10 [&>span]:truncate",
+        "flex h-9 items-center justify-between gap-2 text-left whitespace-nowrap data-[placeholder]:text-subtle-foreground [&>span]:truncate",
         className,
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 shrink-0 text-sand-11" aria-hidden />
+        <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -79,14 +79,14 @@ function SelectItem({ className, children, ...props }: ComponentProps<typeof Sel
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center rounded-md py-1.5 pr-8 pl-2 outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-60 data-[highlighted]:bg-sand-3",
+        "relative flex w-full cursor-default items-center rounded-md py-1.5 pr-8 pl-2 outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-60 data-[highlighted]:bg-muted",
         className,
       )}
       {...props}
     >
       <span className="absolute right-2 flex size-4 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <Check className="size-4 text-jade-11" aria-hidden />
+          <Check className="size-4 text-primary" aria-hidden />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
@@ -98,7 +98,7 @@ function SelectLabel({ className, ...props }: ComponentProps<typeof SelectPrimit
   return (
     <SelectPrimitive.Label
       data-slot="select-label"
-      className={cn("px-2 py-1.5 text-xs font-medium text-sand-11", className)}
+      className={cn("px-2 py-1.5 text-xs font-medium text-muted-foreground", className)}
       {...props}
     />
   );
@@ -108,7 +108,7 @@ function SelectSeparator({ className, ...props }: ComponentProps<typeof SelectPr
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"
-      className={cn("-mx-1 my-1 h-px bg-sand-5", className)}
+      className={cn("-mx-1 my-1 h-px bg-border", className)}
       {...props}
     />
   );

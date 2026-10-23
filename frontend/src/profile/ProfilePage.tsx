@@ -5,10 +5,12 @@ import { useState, type FormEvent } from "react";
 
 import { useChangePassword, useSignOutEverywhere, useUpdateDisplayName } from "../api/account";
 import { useMe, type Me } from "../api/queries";
-import { PageHead, ErrorText, formCardClasses, h3Classes } from "../admin/parts";
+import { ErrorText, h3Classes } from "../admin/parts";
+import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Input } from "../components/ui/input";
+import { Panel } from "../workspaces/parts";
 
 /** The signed-in user's own account: display name, password and sessions. */
 export function ProfilePage() {
@@ -18,11 +20,11 @@ export function ProfilePage() {
   }
   return (
     <section className="flex max-w-xl flex-col gap-5">
-      <PageHead
+      <PageHeader
         title="Your profile"
         description={
           <>
-            Signed in as <strong className="font-medium text-sand-12">{me.data.email}</strong>
+            Signed in as <strong className="font-medium text-foreground">{me.data.email}</strong>
           </>
         }
       />
@@ -44,15 +46,12 @@ function DisplayNameForm({ me }: { me: Me }) {
   }
 
   return (
-    <section
-      className={formCardClasses}
-      aria-labelledby="display-name-title"
-    >
+    <Panel aria-labelledby="display-name-title" className="max-w-xl gap-4">
       <h3 className={h3Classes} id="display-name-title">
         Name
       </h3>
-      <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
+      <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
           Display name
           <Input
             name="display_name"
@@ -66,11 +65,11 @@ function DisplayNameForm({ me }: { me: Me }) {
             {update.error.message}
           </ErrorText>
         )}
-        <Button type="submit" variant="primary" className="self-start" disabled={update.isPending}>
+        <Button type="submit" variant="primary" size="lg" className="self-start" disabled={update.isPending}>
           Save name
         </Button>
       </form>
-    </section>
+    </Panel>
   );
 }
 
@@ -109,27 +108,24 @@ function ChangePasswordForm() {
       : null;
 
   return (
-    <section
-      className={formCardClasses}
-      aria-labelledby="password-title"
-    >
+    <Panel aria-labelledby="password-title" className="max-w-xl gap-4">
       <h3 className={h3Classes} id="password-title">
         Change password
       </h3>
-      <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
+      <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
           Current password
           <Input name="current_password" type="password" autoComplete="current-password" required />
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
           New password
           <Input name="new_password" type="password" autoComplete="new-password" required />
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
           Confirm new password
           <Input name="confirm" type="password" autoComplete="new-password" required />
         </label>
-        <p className="text-sm text-sand-11">
+        <p className="text-sm text-muted-foreground">
           At least 10 characters, and not a common password. Changing it signs you out on every
           other device.
         </p>
@@ -138,11 +134,11 @@ function ChangePasswordForm() {
             {problem}
           </ErrorText>
         )}
-        <Button type="submit" variant="primary" className="self-start" disabled={change.isPending}>
+        <Button type="submit" variant="primary" size="lg" className="self-start" disabled={change.isPending}>
           Change password
         </Button>
       </form>
-    </section>
+    </Panel>
   );
 }
 
@@ -152,14 +148,11 @@ function SignOutEverywhere() {
     onSignedOut: () => router.replace("/login"),
   });
   return (
-    <section
-      className={formCardClasses}
-      aria-labelledby="sessions-title"
-    >
+    <Panel aria-labelledby="sessions-title" className="max-w-xl gap-4">
       <h3 className={h3Classes} id="sessions-title">
         Sessions
       </h3>
-      <p className="text-sm text-sand-11">
+      <p className="text-sm text-muted-foreground">
         Lost a device, or signed in somewhere you shouldn&apos;t have? Sign out of every session,
         this one included.
       </p>
@@ -169,12 +162,14 @@ function SignOutEverywhere() {
         </ErrorText>
       )}
       <Button
-        className="self-start border-red-11 text-red-11"
+        variant="destructive"
+        size="lg"
+        className="self-start"
         disabled={signOut.isPending}
         onClick={() => signOut.mutate()}
       >
         Sign out everywhere
       </Button>
-    </section>
+    </Panel>
   );
 }

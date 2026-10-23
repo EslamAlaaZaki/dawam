@@ -7,6 +7,7 @@ import {
   type SecurityEvent,
   type SecurityEventFilters,
 } from "../api/users";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -48,6 +49,13 @@ const EVENT_TYPES = [
   "workspace_ownership_reassigned",
 ];
 
+/** Badge color for an event type: problems red, successes green, everything else neutral. */
+function eventVariant(type: string): "danger" | "success" | "neutral" {
+  if (/failed|locked|deactivated|removed|deleted/.test(type)) return "danger";
+  if (/succeeded|registered|created|reactivated/.test(type)) return "success";
+  return "neutral";
+}
+
 /** Midnight at the start of a `YYYY-MM-DD` day in the admin's time zone, `days` later. */
 function startOfDay(day: string, days = 0): string {
   const [year, month, date] = day.split("-").map(Number);
@@ -79,13 +87,13 @@ export function SecurityEventsPage() {
   }
 
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex flex-col gap-6">
       <PageHead
         title="Security events"
         description="Sign-ins, role changes, deactivations and other security-relevant activity."
       />
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-end gap-3"
         aria-label="Filter security events"
         onSubmit={onFilter}
       >
@@ -112,7 +120,7 @@ export function SecurityEventsPage() {
           To
           <Input name="to" type="date" />
         </label>
-        <Button type="submit" className="h-[34px]">
+        <Button type="submit" size="lg">
           Filter
         </Button>
       </form>
@@ -171,13 +179,24 @@ function EventRow({ event }: { event: SecurityEvent }) {
     .join(", ");
   return (
     <TableRow aria-label={`${event.event_type} at ${when(event.created_at)}`}>
-      <TableCell className="text-sand-11">{when(event.created_at)}</TableCell>
-      <TableCell>{event.event_type}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {when(event.created_at)}
+      </TableCell>
+      <TableCell>
+        <Badge variant={eventVariant(event.event_type)} className="font-mono">
+          {event.event_type}
+        </Badge>
+      </TableCell>
       <TableCell>{event.actor_email ?? event.actor_id ?? "—"}</TableCell>
-      <TableCell className="whitespace-normal break-words text-sand-11">
+      <TableCell
+        mono
+        className="whitespace-normal break-words text-muted-foreground"
+      >
         {details}
       </TableCell>
-      <TableCell className="text-sand-11">{event.ip ?? "—"}</TableCell>
+      <TableCell mono className="text-muted-foreground">
+        {event.ip ?? "—"}
+      </TableCell>
     </TableRow>
   );
 }
