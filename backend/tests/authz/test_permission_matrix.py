@@ -403,7 +403,13 @@ ROWS: list[Row] = [
             "cached_input_per_million": "0.5",
         },
     ),
-    Row("DELETE", "/api/v1/admin/llm/prices", "remove a model's price", admin_only()),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/prices",
+        "remove a model's price",
+        admin_only(),
+        query={"model_name": "m"},
+    ),
     # User management (stories 14-19, 15a) and the security-event log (story 23).
     Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
     Row(
