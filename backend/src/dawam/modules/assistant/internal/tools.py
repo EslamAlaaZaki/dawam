@@ -167,18 +167,17 @@ SYSTEM_ID = "The Source System's id."
 
 def _drop_titles(node: Any) -> None:
     """Remove the ``title`` keyword pydantic adds to every schema, not fields named ``title``."""
-    if isinstance(node, dict):
-        if isinstance(node.get("title"), str):
-            del node["title"]
-        for key, child in node.items():
-            if key in ("properties", "$defs"):
-                for sub in child.values():
-                    _drop_titles(sub)
-            else:
-                _drop_titles(child)
-    elif isinstance(node, list):
-        for child in node:
-            _drop_titles(child)
+    if not isinstance(node, dict):
+        return
+    node.pop("title", None)
+    for key in ("properties", "$defs"):
+        for sub in node.get(key, {}).values():
+            _drop_titles(sub)
+    for key in ("anyOf", "oneOf", "allOf"):
+        for sub in node.get(key, []):
+            _drop_titles(sub)
+    for key in ("items", "additionalProperties"):
+        _drop_titles(node.get(key))
 
 
 class _SearchCatalog(BaseModel):
@@ -394,8 +393,9 @@ class _ChangeItem(BaseModel):
     object_id: uuid.UUID = Field(description="The table's or column's id.")
     changes: dict[str, Any] = Field(
         min_length=1,
-        description="Field to new value: `description`, `tags`, `is_sensitive`; tables also "
-        "`classification` (master, transactional, reference, log, landing), `scd_hint`.",
+        description="Field to new value: `description` (text), `tags` (list of text), "
+        "`is_sensitive` (boolean); tables also `classification` (master, transactional, "
+        "reference, log, landing) and `scd_hint` (text).",
     )
     label: str = Field(
         default="", max_length=200, description="E.g. `core.customers`."
@@ -411,7 +411,7 @@ class _RelationshipDecision(BaseModel):
     reason: str = Field(
         min_length=1,
         max_length=2000,
-        description="The evidence for the decision.",
+        description="Why: the names, profiles, documents or counts that support it.",
     )
     evidence_queries: list[str] = Field(
         default_factory=list,
