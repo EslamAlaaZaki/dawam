@@ -67,6 +67,15 @@ export const formCardClasses =
 /** Headings inside a panel; the reset leaves them unstyled. */
 export const h3Classes = "text-md font-semibold tracking-tight";
 
+/** A non-blocking caution about a model (e.g. a context window too small for a role). */
+export function WarningNote({ children }: { children: ReactNode }) {
+  return (
+    <p role="note" className="text-sm text-warning-strong">
+      {children}
+    </p>
+  );
+}
+
 export function ErrorText({ children }: { children: ReactNode }) {
   return (
     <p className="text-sm text-danger-strong" role="alert">

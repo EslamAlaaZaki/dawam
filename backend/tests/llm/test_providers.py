@@ -275,6 +275,7 @@ def test_unticking_a_role_in_use_is_refused_until_it_is_free(
 def test_a_model_with_no_role_cannot_be_chosen_and_does_not_count_for_setup(
     admin_client, signed_in_client, fake_llm
 ):
+    fake_llm.window = 32768  # the agent role needs 32K
     model = add_model(admin_client, add_provider(admin_client), roles=())
     assert admin_client.post(f"{BASE}/models/{model['id']}/test").json()["test_ok"] is True
 
@@ -322,7 +323,7 @@ def test_test_connection_records_capabilities_and_context_window(admin_client, f
 def test_a_model_without_tool_calling_is_shown_as_limited(admin_client, fake_llm):
     fake_llm.supports_tools = False
     provider = add_provider(admin_client)
-    model = add_model(admin_client, provider, context_window=4096)
+    model = add_model(admin_client, provider, roles=("light",), context_window=4096)
 
     tested = admin_client.post(f"{BASE}/models/{model['id']}/test").json()
 

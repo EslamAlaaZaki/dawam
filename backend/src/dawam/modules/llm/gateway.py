@@ -126,6 +126,14 @@ class Capabilities:
     embedding_dimension: int | None = None
 
 
+@dataclass(frozen=True)
+class OllamaContext:
+    """What an Ollama server says about a model: ``num_ctx`` is the context it is
+    configured to run with (``None``: not set, so Ollama's small default applies)."""
+
+    num_ctx: int | None
+
+
 class Adapter(Protocol):
     """One provider family's protocol. Raises ``LlmError`` for every provider failure
     (including unreachable servers) and never retries: the ``Gateway`` does."""
@@ -147,6 +155,8 @@ class Adapter(Protocol):
 
     # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
     # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
+    # Optional: ``ollama_context(self, model) -> OllamaContext | None`` (``None``: the
+    # server is not Ollama).
 
 
 def estimate_tokens(text: str) -> int:
@@ -191,6 +201,17 @@ class Gateway:
     def server_context_window(self) -> int | None:
         """The context window the provider's own metadata reports for this model."""
         return self._adapter.context_window(self._model)
+
+    def ollama_context(self) -> OllamaContext | None:
+        """The configured context when the server is Ollama, else ``None`` (also when it
+        cannot be told). Never raises."""
+        reader = getattr(self._adapter, "ollama_context", None)
+        if reader is None:
+            return None
+        try:
+            return reader(self._model)  # type: ignore[no-any-return]
+        except LlmError:
+            return None
 
     def chat(
         self,

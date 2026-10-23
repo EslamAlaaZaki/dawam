@@ -89,6 +89,11 @@ class LlmModel(BaseModel):
     )
     test_error: str | None
     last_tested_at: datetime | None
+    warnings: list[str] = Field(
+        description="Why the model may not suit its roles, for the admin: an unknown or "
+        "too-small context window for the agent role, and (right after Test connection) "
+        "an Ollama `num_ctx` below the minimum with how to raise it. Not blocking."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -210,6 +215,7 @@ def _model_out(view: ModelView) -> LlmModel:
         test_error_code=view.test_error_code,
         test_error=view.test_error,
         last_tested_at=view.last_tested_at,
+        warnings=list(view.warnings),
         created_at=view.created_at,
         updated_at=view.updated_at,
     )
@@ -345,7 +351,9 @@ def set_model_roles(
 ) -> LlmModel:
     """Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
-    provider's error when the model cannot embed. Unticking a role needs a replacement in each
+    provider's error when the model cannot embed. Giving a model the `agent` role needs a
+    known context window of at least 32K tokens: 422 `context_window_too_small` otherwise; an
+    unknown window is allowed with a `warnings` entry. Unticking a role needs a replacement in each
     Workspace where the model is the default or only model for it: 409 `replacement_required`
     lists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other
     Workspaces just lose it."""

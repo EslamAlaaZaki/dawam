@@ -22,6 +22,7 @@ from ..gateway import (
     ListingUnsupported,
     LlmError,
     Message,
+    OllamaContext,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -71,6 +72,8 @@ class FakeAdapter:
         self.calls: list[FakeCall] = []
         self.models: list[str] | LlmError | None = None
         """What ``list_models`` returns (or raises); ``None``: listing unsupported."""
+        self.ollama: OllamaContext | None = None
+        """What ``ollama_context`` returns; ``None``: the fake is not an Ollama server."""
 
     def script(self, *outcomes: Reply | LlmError) -> FakeAdapter:
         self._script.extend(outcomes)
@@ -124,6 +127,9 @@ class FakeAdapter:
 
     def context_window(self, model: str) -> int | None:
         return self.window
+
+    def ollama_context(self, model: str) -> OllamaContext | None:
+        return self.ollama
 
     def list_models(self) -> list[str]:
         if self.models is None:

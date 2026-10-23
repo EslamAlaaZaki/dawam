@@ -42,6 +42,7 @@ function model(
     test_error_code: null,
     test_error: null,
     last_tested_at: null,
+    warnings: [],
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
     ...over,
@@ -147,6 +148,17 @@ function api(extra?: (r: ApiRequest) => Response | undefined) {
   };
 }
 
+/** The page's API with the Local provider holding just `models`. */
+function withModels(
+  models: LlmModel[],
+  extra?: (r: ApiRequest) => Response | undefined,
+) {
+  return (r: ApiRequest) =>
+    r.path === "/api/v1/admin/llm/providers"
+      ? json({ items: [{ ...PROVIDER, models }] })
+      : api(extra)(r);
+}
+
 let clearCookie: () => void;
 beforeEach(() => {
   clearCookie = setCsrfCookie();
@@ -232,6 +244,56 @@ describe("AI roles, budgets and usage page", () => {
     );
 
     expect(await within(row).findByText(/no embeddings here/)).toBeInTheDocument();
+  });
+
+  it("shows why a model is rejected for the agent role", async () => {
+    const small = model("5d3a8b1e-0000-4000-8000-0000000000c1", "tiny", {
+      roles: ["light"],
+      context_window: 8192,
+    });
+    renderApp(
+      withModels([small], (r) =>
+        r.method === "PUT" && r.path.includes("/models/")
+          ? json(
+              {
+                error: {
+                  code: "context_window_too_small",
+                  message:
+                    "This model's context window is 8,192 tokens. The agent role needs at least 32K.",
+                },
+              },
+              422,
+            )
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const row = await screen.findByRole("row", { name: "Roles of tiny" });
+    fireEvent.click(within(row).getByLabelText("Agent role of tiny"));
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Save roles of tiny" }),
+    );
+
+    expect(await within(row).findByRole("alert")).toHaveTextContent(
+      "needs at least 32K",
+    );
+  });
+
+  it("shows a model's warning next to its roles", async () => {
+    const unknown = model("5d3a8b1e-0000-4000-8000-0000000000c2", "mystery", {
+      warnings: ["The context window is unknown."],
+    });
+    renderApp(
+      withModels([unknown]),
+      "/admin/llm/settings",
+    );
+
+    const row = await screen.findByRole("row", { name: "Roles of mystery" });
+
+    expect(within(row).getByRole("note")).toHaveTextContent(
+      "The context window is unknown.",
+    );
   });
 
   describe("unticking a role a Workspace depends on", () => {

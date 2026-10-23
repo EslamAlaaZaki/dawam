@@ -3703,7 +3703,9 @@ export interface paths {
          * Set Model Roles
          * @description Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
          *     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
-         *     provider's error when the model cannot embed. Unticking a role needs a replacement in each
+         *     provider's error when the model cannot embed. Giving a model the `agent` role needs a
+         *     known context window of at least 32K tokens: 422 `context_window_too_small` otherwise; an
+         *     unknown window is allowed with a `warnings` entry. Unticking a role needs a replacement in each
          *     Workspace where the model is the default or only model for it: 409 `replacement_required`
          *     lists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other
          *     Workspaces just lose it.
@@ -6909,6 +6911,11 @@ export interface components {
             test_error: string | null;
             /** Last Tested At */
             last_tested_at: string | null;
+            /**
+             * Warnings
+             * @description Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking.
+             */
+            warnings: string[];
             /**
              * Created At
              * Format: date-time

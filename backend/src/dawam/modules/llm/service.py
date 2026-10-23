@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from urllib.parse import parse_qsl, urlsplit
 
@@ -24,7 +24,15 @@ from dawam.platform.clock import Clock
 from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 
-from .gateway import Capabilities, Gateway, ListingUnsupported, LlmError, ProbeResult, probe
+from .gateway import (
+    Capabilities,
+    Gateway,
+    ListingUnsupported,
+    LlmError,
+    OllamaContext,
+    ProbeResult,
+    probe,
+)
 from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, adapter_kinds
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
@@ -40,6 +48,9 @@ ROLES = ("agent", "light", "embedding")
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 600
 MAX_CONTEXT_WINDOW = 100_000_000
+AGENT_MIN_CONTEXT = 32_768
+"""The smallest context window (tokens) a model may have to fill the agent role: below
+it the tool schemas alone crowd out the prompt."""
 
 
 @dataclass(frozen=True)
@@ -59,6 +70,8 @@ class Model:
     last_tested_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    warnings: tuple[str, ...] = ()
+    """Why the model may not suit its roles (not blocking); see ``context_warnings``."""
 
     @property
     def limited(self) -> bool:
@@ -170,6 +183,20 @@ def _clean_window(value: int | None) -> int | None:
     return value
 
 
+def _k(tokens: int) -> str:
+    return f"{tokens // 1024}K" if tokens % 1024 == 0 else f"{tokens:,}"
+
+
+def context_warnings(roles: Sequence[str], window: int | None) -> tuple[str, ...]:
+    """Warnings for a model in the agent role whose window is not known."""
+    if "agent" in roles and window is None:
+        return (
+            "The context window is unknown. The agent role needs at least "
+            f"{_k(AGENT_MIN_CONTEXT)} tokens: enter the window or run Test connection.",
+        )
+    return ()
+
+
 def _model_view(record: ModelRecord) -> Model:
     return Model(
         id=record.id,
@@ -187,7 +214,33 @@ def _model_view(record: ModelRecord) -> Model:
         last_tested_at=record.last_tested_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        warnings=context_warnings(record.roles, record.context_window),
     )
+
+
+def _agent_test_warnings(model: Model, ollama: OllamaContext | None) -> tuple[str, ...]:
+    """What "Test connection" adds for a model in the agent role: a window below the
+    minimum, and, on Ollama, the ``num_ctx`` it runs with."""
+    minimum = f"{_k(AGENT_MIN_CONTEXT)} ({AGENT_MIN_CONTEXT:,})"
+    found: list[str] = []
+    if model.context_window is not None and model.context_window < AGENT_MIN_CONTEXT:
+        found.append(
+            f"The context window is {model.context_window:,} tokens, below the {minimum} the "
+            "agent role needs. Remove the agent role, or correct the window if it is wrong."
+        )
+    if ollama is not None and (ollama.num_ctx is None or ollama.num_ctx < AGENT_MIN_CONTEXT):
+        now = (
+            f"runs with num_ctx {ollama.num_ctx:,}"
+            if ollama.num_ctx is not None
+            else "has no num_ctx set, so Ollama's small default applies"
+        )
+        found.append(
+            f"Ollama {now} and silently drops what does not fit. The agent role needs at "
+            f"least {minimum}: raise it with `PARAMETER num_ctx {AGENT_MIN_CONTEXT}` in the "
+            "model's Modelfile (then `ollama create`), or set OLLAMA_CONTEXT_LENGTH on the "
+            "server."
+        )
+    return tuple(found)
 
 
 def _provider_view(record: ProviderRecord, models: Sequence[ModelRecord]) -> Provider:
@@ -376,6 +429,20 @@ class ProviderService:
                 record.embedding_dimension = dimension
             elif "embedding" not in wanted:
                 record.embedding_dimension = None
+            if (
+                "agent" in wanted
+                and "agent" not in record.roles
+                and record.context_window is not None
+                and record.context_window < AGENT_MIN_CONTEXT
+            ):
+                raise ApiError(
+                    422,
+                    "context_window_too_small",
+                    f"This model's context window is {record.context_window:,} tokens. The "
+                    f"agent role needs at least {_k(AGENT_MIN_CONTEXT)} ({AGENT_MIN_CONTEXT:,}) "
+                    "tokens: pick a larger model, or correct the window if it is wrong.",
+                    {"field": "roles", "context_window": record.context_window},
+                )
             record.roles = wanted
             record.updated_at = self._clock()
             return _model_view(record)
@@ -394,6 +461,7 @@ class ProviderService:
             name, roles, window = model.name, list(model.roles), model.context_window
             tested_provider_state = (provider.base_url, provider.secret_encrypted)
             gateway = self._gateway(provider, name)
+        ollama = gateway.ollama_context() if "agent" in roles else None
         result: ProbeResult = probe(
             gateway,
             chat=roles != ["embedding"],
@@ -419,7 +487,10 @@ class ProviderService:
             record.embedding_dimension = caps.embedding_dimension
             if record.context_window is None:
                 record.context_window = caps.context_window
-            return _model_view(record)
+            view = _model_view(record)
+            if result.ok and "agent" in view.roles:
+                return replace(view, warnings=view.warnings + _agent_test_warnings(view, ollama))
+            return view
 
     # -- the gateway -----------------------------------------------------------------
 
