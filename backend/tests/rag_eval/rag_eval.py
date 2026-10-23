@@ -30,7 +30,7 @@ _STOP = {"the", "a", "an", "of", "to", "in", "is", "are", "can", "how", "do", "i
 
 def tokens(text: str) -> list[str]:
     text = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
-    text = re.sub("[إأآ]", "ا", text.lower())  # fold alef variants
+    text = re.sub("[إأآ]", "ا", text.lower())  # noqa: RUF001 (fold alef variants)
     out = []
     for word in _WORD.findall(text):
         if word in _STOP:
