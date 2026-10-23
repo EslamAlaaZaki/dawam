@@ -157,6 +157,8 @@ class Adapter(Protocol):
         """The model's context window from the server's metadata, if it reports one."""
         ...
 
+    # Optional: ``count_tokens(self, model, text) -> int | None`` (the provider's own count of
+    # ``text``; ``None``/absent: not available, the gateway estimates).
     # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
     # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
     # Optional: ``ollama_context(self, model) -> OllamaContext | None`` (``None``: the
@@ -216,6 +218,19 @@ class Gateway:
             return reader(self._model)  # type: ignore[no-any-return]
         except LlmError:
             return None
+
+    def count_tokens(self, text: str) -> int:
+        """Tokens in ``text``: the provider's own count when its adapter has one, else the
+        chars/4 estimate. Never fails: an unknown model or a down endpoint only costs accuracy."""
+        counter = getattr(self._adapter, "count_tokens", None)
+        if counter is not None and text:
+            try:
+                counted = counter(self._model, text)
+            except Exception:  # a broken tokenizer or endpoint only costs accuracy
+                counted = None
+            if isinstance(counted, int) and not isinstance(counted, bool) and counted >= 0:
+                return counted
+        return estimate_tokens(text)
 
     def chat(
         self,

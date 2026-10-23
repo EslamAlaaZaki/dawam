@@ -296,6 +296,26 @@ class GeminiAdapter:
             return value
         return None
 
+    def count_tokens(self, model: str, text: str) -> int | None:
+        """The provider's count of ``text`` (``:countTokens``), ``None`` on any failure."""
+        body = {"contents": [{"role": "user", "parts": [{"text": text}]}]}
+        try:
+            response = self._send(
+                "POST", f"{_model_path(model)}:countTokens", json.dumps(body).encode()
+            )
+        except LlmError:
+            return None
+        try:
+            if response.status != 200:
+                return None
+            data = json_body(response)
+        except (LlmError, OSError):
+            return None
+        finally:
+            response.close()
+        value = data.get("totalTokens") if isinstance(data, dict) else None
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
     def list_models(self) -> list[str]:
         if "aiplatform.googleapis.com" in self._base_url:
             raise ListingUnsupported("Vertex AI has no reliable model list here.")
