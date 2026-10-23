@@ -17,7 +17,7 @@ For each ticket:
 
 Save tokens:
 - Subagents return short reports, never file dumps.
-- Implementers read only the `docs/spec.md` sections the ticket cites.
+- Implementers read only the `docs/spec.md` sections the ticket cites, and `docs/ai-architecture.md` / `docs/ai-enhancements.md` sections only when the ticket touches the AI side.
 - Skip docker-compose and browser end-to-end runs unless the ticket touches infra or the frontend flow; CI covers the rest.
 
 Stop and ask only for genuine product decisions, or for tickets labelled `needs-info` or `needs-triage`.

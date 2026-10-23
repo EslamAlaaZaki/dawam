@@ -2,6 +2,8 @@
 
 Product spec: `docs/spec.md`. It is large (~130 KB): grep for the relevant heading and read only that section, never the whole file.
 
+AI docs: `docs/ai-architecture.md` (~50 KB, how the AI side works today) and `docs/ai-enhancements.md` (~34 KB, the AI roadmap). Open them only when the task is about the AI side, and then the same way: grep for the heading, read only that section.
+
 ## Agent skills
 
 ### Issue tracker
