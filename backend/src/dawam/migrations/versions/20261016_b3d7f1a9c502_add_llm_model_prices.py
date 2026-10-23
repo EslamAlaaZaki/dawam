@@ -1,7 +1,7 @@
 """Add the model price table (per million tokens) used to cost AI usage.
 
 Revision ID: b3d7f1a9c502
-Revises: a1c5e8d2b7f3
+Revises: d4e7a1c9b5f2
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b3d7f1a9c502"
-down_revision: str | Sequence[str] | None = "a1c5e8d2b7f3"
+down_revision: str | Sequence[str] | None = "d4e7a1c9b5f2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
