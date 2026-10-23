@@ -11,6 +11,7 @@ import {
   type WorkspaceModel,
 } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Loading } from "../shell/Loading";
@@ -33,7 +34,6 @@ const NONE = "";
 
 /** A settings section inside the dialog: the dialog is the card, so no border of its own. */
 const dialogFormClasses = "flex max-w-xl flex-col gap-4";
-
 
 /**
  * The Workspace's AI settings (stories 160, 161): its Workspace Models. Every member sees
@@ -65,6 +65,7 @@ export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
         AI settings
       </h3>
       <Chosen settings={settings.data} />
+      <LightFeatures settings={settings.data} />
       <Hint>
         {workspace.status === "active"
           ? "Only owners can choose the models."
@@ -88,7 +89,7 @@ function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
       <dt>Light models</dt>
       <dd>
         {names(settings.light_models) ||
-          "None: light tasks use the default agent model"}
+          "None: the light-role features are off"}
       </dd>
       <dt>Embedding model</dt>
       <dd>
@@ -102,6 +103,33 @@ function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
         )}
       </dd>
     </DetailList>
+  );
+}
+
+/** The features that run on the light role, each on or off (all off without a light model). */
+function LightFeatures({ settings }: { settings: WorkspaceAiSettings }) {
+  return (
+    <section aria-label="Light-role features" className="flex flex-col gap-2">
+      <h4 className={h4Classes}>Light-role features</h4>
+      <ul className="flex flex-col gap-2">
+        {settings.light_features.map((feature) => (
+          <li
+            key={feature.key}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+          >
+            <span className="flex flex-col">
+              <span className="text-sm font-medium">{feature.name}</span>
+              <span className="text-sm text-muted-foreground">
+                {feature.description}
+              </span>
+            </span>
+            <Badge variant={feature.enabled ? "success" : "neutral"} dot>
+              {feature.enabled ? "On" : "Off"}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -187,8 +215,9 @@ function OwnerForm({
         rows={offered(settings, settings.choices.light, settings.light_models)}
         pick={light}
         onChange={setLight}
-        none="None chosen: light tasks use the default agent model."
+        none="None chosen: the light-role features are off."
       />
+      <LightFeatures settings={settings} />
       <label className={labelClasses}>
         Embedding model
         <NativeSelect

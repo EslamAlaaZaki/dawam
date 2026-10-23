@@ -6904,6 +6904,20 @@ export interface components {
             /** Table Count */
             table_count: number;
         };
+        /** LightFeature */
+        LightFeature: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Enabled
+             * @description On: the Workspace has a light model to run it.
+             */
+            enabled: boolean;
+        };
         /** LineageEdge */
         LineageEdge: {
             /**
@@ -10417,9 +10431,14 @@ export interface components {
             agent_models: components["schemas"]["WorkspaceModel"][];
             /**
              * Light Models
-             * @description The Workspace's light models; none: light tasks use the default agent model.
+             * @description The Workspace's light models; none: the light-role features are off.
              */
             light_models: components["schemas"]["WorkspaceModel"][];
+            /**
+             * Light Features
+             * @description Each feature that uses the light role, and whether it is on.
+             */
+            light_features: components["schemas"]["LightFeature"][];
             /** @description The Workspace's embedding model; null: document search matches text only. */
             embedding_model: components["schemas"]["WorkspaceModel"] | null;
             /**
