@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
@@ -38,6 +39,7 @@ from .gateway import (
 from .service import ProviderService
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
+    ModelPriceRecord,
     ModelRecord,
     SettingsRecord,
     UsageRecord,
@@ -61,11 +63,40 @@ class Budgets:
 
 
 @dataclass(frozen=True)
+class ModelPrice:
+    """Per million tokens; ``cached_input`` prices the part of the prompt served from cache."""
+
+    model_name: str
+    currency: str
+    input: Decimal
+    output: Decimal
+    cached_input: Decimal
+
+
+@dataclass(frozen=True)
+class Cost:
+    """What calls cost, per currency, from the calls whose model has a price. Calls on a
+    model without one are counted in ``unpriced_calls``: their cost is unknown, not zero."""
+
+    amounts: dict[str, Decimal] = field(default_factory=dict)
+    unpriced_calls: int = 0
+
+
+def call_cost(price: ModelPrice, prompt: int, completion: int, cache_read: int) -> Decimal:
+    """Cached tokens are part of the prompt; they cost the cached price, not the input price."""
+    cached = min(cache_read, prompt)
+    return (
+        (prompt - cached) * price.input + cached * price.cached_input + completion * price.output
+    ) / 1_000_000
+
+
+@dataclass(frozen=True)
 class UsageTotals:
     prompt_tokens: int
     completion_tokens: int
     calls: int
     estimated_calls: int
+    cost: Cost = field(default_factory=Cost)
 
     @property
     def total_tokens(self) -> int:
@@ -411,6 +442,28 @@ class RoleService:
                 ],
             )
 
+    # -- model prices ----------------------------------------------------------------
+
+    def prices(self) -> list[ModelPrice]:
+        with Session(self._engine) as db:
+            return list(self._price_map(db).values())
+
+    def set_price(self, price: ModelPrice) -> None:
+        with Session(self._engine) as db, db.begin():
+            record = db.get(ModelPriceRecord, price.model_name)
+            if record is None:
+                record = ModelPriceRecord(model_name=price.model_name)
+                db.add(record)
+            record.currency = price.currency
+            record.input_per_million = price.input
+            record.output_per_million = price.output
+            record.cached_input_per_million = price.cached_input
+            record.updated_at = self._clock()
+
+    def clear_price(self, model_name: str) -> None:
+        with Session(self._engine) as db, db.begin():
+            db.execute(sa.delete(ModelPriceRecord).where(ModelPriceRecord.model_name == model_name))
+
     # -- internals -------------------------------------------------------------------
 
     def _settings(self, db: Session, *, lock: bool = False) -> SettingsRecord:
@@ -439,13 +492,60 @@ class RoleService:
         return int(db.scalar(query) or 0)
 
     @staticmethod
-    def _totals(db: Session, where: sa.ColumnElement[bool]) -> UsageTotals:
-        row = db.execute(_totals_query().where(where)).one()
-        return UsageTotals(row.prompt, row.completion, row.calls, row.estimated)
+    def _price_map(db: Session) -> dict[str, ModelPrice]:
+        rows = db.scalars(sa.select(ModelPriceRecord).order_by(ModelPriceRecord.model_name))
+        return {
+            r.model_name: ModelPrice(
+                r.model_name,
+                r.currency,
+                r.input_per_million,
+                r.output_per_million,
+                r.cached_input_per_million,
+            )
+            for r in rows
+        }
 
-    @staticmethod
+    @classmethod
+    def _costs(
+        cls, db: Session, where: sa.ColumnElement[bool], key: sa.ColumnElement[Any] | None
+    ) -> dict[Any, Cost]:
+        """The cost of the calls matching ``where``, per ``key`` (None: one entry, key 0)."""
+        prices = cls._price_map(db)
+        key_column = (key if key is not None else sa.literal(0)).label("key")
+        rows = db.execute(
+            sa.select(
+                key_column,
+                UsageRecord.model_name,
+                sa.func.sum(UsageRecord.prompt_tokens).label("prompt"),
+                sa.func.sum(UsageRecord.completion_tokens).label("completion"),
+                sa.func.sum(UsageRecord.cache_read_tokens).label("cache_read"),
+                sa.func.count(UsageRecord.id).label("calls"),
+            )
+            .where(where)
+            .group_by(key_column, UsageRecord.model_name)
+        ).all()
+        amounts: dict[Any, dict[str, Decimal]] = {}
+        unpriced: dict[Any, int] = {}
+        for row in rows:
+            amounts.setdefault(row.key, {})
+            unpriced.setdefault(row.key, 0)
+            price = prices.get(row.model_name)
+            if price is None:
+                unpriced[row.key] += row.calls
+                continue
+            cost = call_cost(price, row.prompt, row.completion, row.cache_read)
+            amounts[row.key][price.currency] = amounts[row.key].get(price.currency, 0) + cost
+        return {k: Cost(amounts[k], unpriced[k]) for k in amounts}
+
+    @classmethod
+    def _totals(cls, db: Session, where: sa.ColumnElement[bool]) -> UsageTotals:
+        row = db.execute(_totals_query().where(where)).one()
+        cost = cls._costs(db, where, None).get(0, Cost())
+        return UsageTotals(row.prompt, row.completion, row.calls, row.estimated, cost)
+
+    @classmethod
     def _grouped(
-        db: Session, where: sa.ColumnElement[bool], key: sa.Column[Any]
+        cls, db: Session, where: sa.ColumnElement[bool], key: sa.Column[Any]
     ) -> list[tuple[uuid.UUID | None, UsageTotals, dict[str, int]]]:
         rows = db.execute(
             _totals_query()
@@ -453,6 +553,7 @@ class RoleService:
             .where(where)
             .group_by(key, UsageRecord.role)
         ).all()
+        costs = cls._costs(db, where, key)
         grouped: dict[uuid.UUID | None, list[Any]] = {}
         for row in rows:
             grouped.setdefault(row.key, []).append(row)
@@ -463,6 +564,7 @@ class RoleService:
                 sum(r.completion for r in group),
                 sum(r.calls for r in group),
                 sum(r.estimated for r in group),
+                costs.get(group_key, Cost()),
             )
             roles = {r.role: r.prompt + r.completion for r in group}
             result.append((group_key, totals, roles))

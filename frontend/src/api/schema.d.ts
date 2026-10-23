@@ -3892,6 +3892,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Prices
+         * @description The model price table (admins only). A model without a row has an unknown cost.
+         */
+        get: operations["getLlmModelPrices"];
+        /**
+         * Set Price
+         * @description Add or replace one model's price (admins only). Usage cost uses it from now on,
+         *     for past calls too: cost is computed from recorded tokens when usage is read.
+         */
+        put: operations["setLlmModelPrice"];
+        post?: never;
+        /**
+         * Clear Price
+         * @description Remove a model's price (admins only): its cost becomes unknown.
+         */
+        delete: operations["clearLlmModelPrice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
         parameters: {
             query?: never;
@@ -6844,6 +6873,26 @@ export interface components {
             /** Workspaces */
             workspaces: components["schemas"]["LlmWorkspaceBudget"][];
         };
+        /** LlmCost */
+        LlmCost: {
+            /**
+             * Amounts
+             * @description Cost of the calls whose model has a price, per currency.
+             */
+            amounts: components["schemas"]["LlmCostAmount"][];
+            /**
+             * Unpriced Calls
+             * @description Calls whose model has no price: their cost is unknown, not zero.
+             */
+            unpriced_calls: number;
+        };
+        /** LlmCostAmount */
+        LlmCostAmount: {
+            /** Currency */
+            currency: string;
+            /** Amount */
+            amount: string;
+        };
         /** LlmListedModel */
         LlmListedModel: {
             /** Name */
@@ -6926,6 +6975,52 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** LlmModelPrice */
+        LlmModelPrice: {
+            /** Model Name */
+            model_name: string;
+            /** Currency */
+            currency: string;
+            /** Input Per Million */
+            input_per_million: string;
+            /** Output Per Million */
+            output_per_million: string;
+            /** Cached Input Per Million */
+            cached_input_per_million: string;
+        };
+        /** LlmModelPriceRequest */
+        LlmModelPriceRequest: {
+            /**
+             * Model Name
+             * @description The model's name, as usage records carry it.
+             */
+            model_name: string;
+            /**
+             * Currency
+             * @description ISO 4217 code, e.g. `USD`.
+             */
+            currency: string;
+            /**
+             * Input Per Million
+             * @description Per million input tokens.
+             */
+            input_per_million: number | string;
+            /**
+             * Output Per Million
+             * @description Per million output tokens.
+             */
+            output_per_million: number | string;
+            /**
+             * Cached Input Per Million
+             * @description Per million input tokens served from the provider's prompt cache.
+             */
+            cached_input_per_million: number | string;
+        };
+        /** LlmModelPrices */
+        LlmModelPrices: {
+            /** Prices */
+            prices: components["schemas"]["LlmModelPrice"][];
         };
         /** LlmModelRemoval */
         LlmModelRemoval: {
@@ -7145,6 +7240,7 @@ export interface components {
              * @description Calls whose tokens DAWAM estimated.
              */
             estimated_calls: number;
+            cost: components["schemas"]["LlmCost"];
         };
         /** LlmUserUsage */
         LlmUserUsage: {
@@ -19462,6 +19558,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LlmUsage"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmModelPrices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelPrices"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmModelPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelPriceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelPrices"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmModelPrice: {
+        parameters: {
+            query: {
+                model_name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {

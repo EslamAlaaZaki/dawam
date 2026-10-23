@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -22,7 +23,7 @@ from .model_removal import (
     release_roles,
     remove_model,
 )
-from .role_service import MAX_BUDGET, RoleService, UsageTotals
+from .role_service import MAX_BUDGET, Cost, ModelPrice, RoleService, UsageTotals
 from .service import (
     API_KEY_MAX_LENGTH,
     DEFAULT_TIMEOUT_SECONDS,
@@ -526,12 +527,27 @@ class LlmWorkspaceBudgetRequest(BaseModel):
     monthly_token_budget: int = Field(ge=0, le=MAX_BUDGET)
 
 
+class LlmCostAmount(BaseModel):
+    currency: str
+    amount: Decimal
+
+
+class LlmCost(BaseModel):
+    amounts: list[LlmCostAmount] = Field(
+        description="Cost of the calls whose model has a price, per currency."
+    )
+    unpriced_calls: int = Field(
+        description="Calls whose model has no price: their cost is unknown, not zero."
+    )
+
+
 class LlmUsageTotals(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
     calls: int
     estimated_calls: int = Field(description="Calls whose tokens DAWAM estimated.")
+    cost: LlmCost
 
 
 class LlmWorkspaceUsage(BaseModel):
@@ -560,6 +576,16 @@ class LlmUsage(BaseModel):
     users: list[LlmUserUsage]
 
 
+def _cost_out(cost: Cost) -> LlmCost:
+    return LlmCost(
+        amounts=[
+            LlmCostAmount(currency=currency, amount=amount.quantize(Decimal("0.000001")))
+            for currency, amount in sorted(cost.amounts.items())
+        ],
+        unpriced_calls=cost.unpriced_calls,
+    )
+
+
 def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
     return LlmUsageTotals(
         prompt_tokens=totals.prompt_tokens,
@@ -567,6 +593,7 @@ def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
         total_tokens=totals.total_tokens,
         calls=totals.calls,
         estimated_calls=totals.estimated_calls,
+        cost=_cost_out(totals.cost),
     )
 
 
@@ -676,3 +703,86 @@ def get_usage(
             for u in report.users
         ],
     )
+
+
+PRICE_MAX = Decimal(10**9)
+
+
+class LlmModelPriceRequest(BaseModel):
+    model_name: str = Field(
+        min_length=1,
+        max_length=MODEL_NAME_MAX_LENGTH,
+        description="The model's name, as usage records carry it.",
+    )
+    currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code, e.g. `USD`.")
+    input_per_million: Decimal = Field(ge=0, le=PRICE_MAX, description="Per million input tokens.")
+    output_per_million: Decimal = Field(
+        ge=0, le=PRICE_MAX, description="Per million output tokens."
+    )
+    cached_input_per_million: Decimal = Field(
+        ge=0,
+        le=PRICE_MAX,
+        description="Per million input tokens served from the provider's prompt cache.",
+    )
+
+
+class LlmModelPrice(BaseModel):
+    model_name: str
+    currency: str
+    input_per_million: Decimal
+    output_per_million: Decimal
+    cached_input_per_million: Decimal
+
+
+class LlmModelPrices(BaseModel):
+    prices: list[LlmModelPrice]
+
+
+def _prices_out(roles: RoleService) -> LlmModelPrices:
+    return LlmModelPrices(
+        prices=[
+            LlmModelPrice(
+                model_name=p.model_name,
+                currency=p.currency,
+                input_per_million=p.input,
+                output_per_million=p.output,
+                cached_input_per_million=p.cached_input,
+            )
+            for p in roles.prices()
+        ]
+    )
+
+
+@router.get("/prices", operation_id="getLlmModelPrices")
+def get_prices(_admin: LlmAdmin, roles: RoleServiceDep) -> LlmModelPrices:
+    """The model price table (admins only). A model without a row has an unknown cost."""
+    return _prices_out(roles)
+
+
+@router.put("/prices", operation_id="setLlmModelPrice")
+def set_price(
+    body: LlmModelPriceRequest, _admin: LlmAdmin, roles: RoleServiceDep
+) -> LlmModelPrices:
+    """Add or replace one model's price (admins only). Usage cost uses it from now on,
+    for past calls too: cost is computed from recorded tokens when usage is read."""
+    roles.set_price(
+        ModelPrice(
+            body.model_name,
+            body.currency,
+            body.input_per_million,
+            body.output_per_million,
+            body.cached_input_per_million,
+        )
+    )
+    return _prices_out(roles)
+
+
+@router.delete("/prices", operation_id="clearLlmModelPrice", status_code=204)
+def clear_price(
+    model_name: Annotated[str, Query(min_length=1, max_length=MODEL_NAME_MAX_LENGTH)],
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+) -> Response:
+    """Remove a model's price (admins only): its cost becomes unknown."""
+    roles.clear_price(model_name)
+    return Response(status_code=204)

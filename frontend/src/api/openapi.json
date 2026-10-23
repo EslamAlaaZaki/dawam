@@ -14251,6 +14251,144 @@
         }
       }
     },
+    "/api/v1/admin/llm/prices": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Prices",
+        "description": "The model price table (admins only). A model without a row has an unknown cost.",
+        "operationId": "getLlmModelPrices",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelPrices"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Price",
+        "description": "Add or replace one model's price (admins only). Usage cost uses it from now on,\nfor past calls too: cost is computed from recorded tokens when usage is read.",
+        "operationId": "setLlmModelPrice",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmModelPriceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelPrices"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Price",
+        "description": "Remove a model's price (admins only): its cost becomes unknown.",
+        "operationId": "clearLlmModelPrice",
+        "parameters": [
+          {
+            "name": "model_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Model Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
       "get": {
         "tags": [
@@ -21175,6 +21313,48 @@
         ],
         "title": "LlmBudgets"
       },
+      "LlmCost": {
+        "properties": {
+          "amounts": {
+            "items": {
+              "$ref": "#/components/schemas/LlmCostAmount"
+            },
+            "type": "array",
+            "title": "Amounts",
+            "description": "Cost of the calls whose model has a price, per currency."
+          },
+          "unpriced_calls": {
+            "type": "integer",
+            "title": "Unpriced Calls",
+            "description": "Calls whose model has no price: their cost is unknown, not zero."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amounts",
+          "unpriced_calls"
+        ],
+        "title": "LlmCost"
+      },
+      "LlmCostAmount": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "LlmCostAmount"
+      },
       "LlmListedModel": {
         "properties": {
           "name": {
@@ -21373,6 +21553,129 @@
           "updated_at"
         ],
         "title": "LlmModel"
+      },
+      "LlmModelPrice": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "input_per_million": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Input Per Million"
+          },
+          "output_per_million": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Output Per Million"
+          },
+          "cached_input_per_million": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cached Input Per Million"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "currency",
+          "input_per_million",
+          "output_per_million",
+          "cached_input_per_million"
+        ],
+        "title": "LlmModelPrice"
+      },
+      "LlmModelPriceRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model Name",
+            "description": "The model's name, as usage records carry it."
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "description": "ISO 4217 code, e.g. `USD`."
+          },
+          "input_per_million": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Input Per Million",
+            "description": "Per million input tokens."
+          },
+          "output_per_million": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Output Per Million",
+            "description": "Per million output tokens."
+          },
+          "cached_input_per_million": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Cached Input Per Million",
+            "description": "Per million input tokens served from the provider's prompt cache."
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "currency",
+          "input_per_million",
+          "output_per_million",
+          "cached_input_per_million"
+        ],
+        "title": "LlmModelPriceRequest"
+      },
+      "LlmModelPrices": {
+        "properties": {
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModelPrice"
+            },
+            "type": "array",
+            "title": "Prices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prices"
+        ],
+        "title": "LlmModelPrices"
       },
       "LlmModelRemoval": {
         "properties": {
@@ -21827,6 +22130,9 @@
             "type": "integer",
             "title": "Estimated Calls",
             "description": "Calls whose tokens DAWAM estimated."
+          },
+          "cost": {
+            "$ref": "#/components/schemas/LlmCost"
           }
         },
         "type": "object",
@@ -21835,7 +22141,8 @@
           "completion_tokens",
           "total_tokens",
           "calls",
-          "estimated_calls"
+          "estimated_calls",
+          "cost"
         ],
         "title": "LlmUsageTotals"
       },

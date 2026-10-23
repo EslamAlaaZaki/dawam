@@ -105,6 +105,7 @@ const TOTALS = {
   total_tokens: 100,
   calls: 2,
   estimated_calls: 0,
+  cost: { amounts: [], unpriced_calls: 2 },
 };
 
 const USAGE: LlmUsage = {
@@ -131,6 +132,14 @@ const USAGE: LlmUsage = {
   ],
 };
 
+const PRICE = {
+  model_name: "big",
+  currency: "USD",
+  input_per_million: "3.000000",
+  output_per_million: "15.000000",
+  cached_input_per_million: "0.300000",
+};
+
 function api(extra?: (r: ApiRequest) => Response | undefined) {
   return (r: ApiRequest) => {
     if (r.path === "/api/v1/me") return json(ROOT);
@@ -138,6 +147,7 @@ function api(extra?: (r: ApiRequest) => Response | undefined) {
       return json({ items: [PROVIDER, EXTERNAL] });
     if (r.path === "/api/v1/admin/llm/budgets") return json(BUDGETS);
     if (r.path === "/api/v1/admin/llm/usage") return json(USAGE);
+    if (r.path === "/api/v1/admin/llm/prices") return json({ prices: [PRICE] });
     if (r.path === "/api/v1/admin/workspaces") {
       return json({
         items: [{ id: WORKSPACE, name: "Core" }],
@@ -186,16 +196,17 @@ describe("AI roles, budgets and usage page", () => {
     expect(big).toHaveTextContent("Passed");
     expect(within(big).getByLabelText("Agent role of big")).toBeChecked();
     expect(within(big).getByLabelText("Light role of big")).not.toBeChecked();
-    expect(screen.getByRole("row", { name: "Roles of fresh" })).toHaveTextContent(
-      "Not tested",
-    );
+    expect(
+      screen.getByRole("row", { name: "Roles of fresh" }),
+    ).toHaveTextContent("Not tested");
   });
 
   it("saves any combination of roles for a model, and hints about embedding", async () => {
     const saved: LlmModel = { ...BIG, roles: ["agent", "light", "embedding"] };
     const requests = renderApp(
       api((r) =>
-        r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
+        r.method === "PUT" &&
+        r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
           ? json(saved)
           : undefined,
       ),
@@ -212,7 +223,14 @@ describe("AI roles, budgets and usage page", () => {
     );
 
     await waitFor(() =>
-      expect(requests.some((r) => r.path.endsWith("/roles") && r.method === "PUT" && r.path.includes("models"))).toBe(true),
+      expect(
+        requests.some(
+          (r) =>
+            r.path.endsWith("/roles") &&
+            r.method === "PUT" &&
+            r.path.includes("models"),
+        ),
+      ).toBe(true),
     );
     expect(requests.find((r) => r.path.includes("/models/"))?.body).toEqual({
       roles: ["agent", "light", "embedding"],
@@ -243,7 +261,9 @@ describe("AI roles, budgets and usage page", () => {
       within(row).getByRole("button", { name: "Save roles of big" }),
     );
 
-    expect(await within(row).findByText(/no embeddings here/)).toBeInTheDocument();
+    expect(
+      await within(row).findByText(/no embeddings here/),
+    ).toBeInTheDocument();
   });
 
   it("shows why a model is rejected for the agent role", async () => {
@@ -284,10 +304,7 @@ describe("AI roles, budgets and usage page", () => {
     const unknown = model("5d3a8b1e-0000-4000-8000-0000000000c2", "mystery", {
       warnings: ["The context window is unknown."],
     });
-    renderApp(
-      withModels([unknown]),
-      "/admin/llm/settings",
-    );
+    renderApp(withModels([unknown]), "/admin/llm/settings");
 
     const row = await screen.findByRole("row", { name: "Roles of mystery" });
 
@@ -391,7 +408,9 @@ describe("AI roles, budgets and usage page", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Budget settings" }),
     );
-    const dialog = await screen.findByRole("dialog", { name: "Budget settings" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Budget settings",
+    });
     const installation = await within(dialog).findByLabelText(
       /^Installation \(tokens/,
     );
@@ -439,6 +458,91 @@ describe("AI roles, budgets and usage page", () => {
     });
     await waitFor(() =>
       expect(requests.some((r) => r.query.month === "2025-12")).toBe(true),
+    );
+  });
+
+  it("shows cost as unknown, not zero, for a model without a price", async () => {
+    renderApp(api(), "/admin/llm/settings");
+
+    const perWorkspace = await screen.findByRole("table", {
+      name: "Usage per Workspace",
+    });
+    expect(within(perWorkspace).getByText("Unknown")).toBeInTheDocument();
+  });
+
+  it("shows known cost per currency", async () => {
+    const priced = {
+      ...TOTALS,
+      cost: {
+        amounts: [{ currency: "USD", amount: "3.420000" }],
+        unpriced_calls: 0,
+      },
+    };
+    const usage = {
+      ...USAGE,
+      totals: priced,
+      workspaces: [{ ...USAGE.workspaces[0], totals: priced }],
+    };
+    renderApp(
+      (r) => (r.path === "/api/v1/admin/llm/usage" ? json(usage) : api()(r)),
+      "/admin/llm/settings",
+    );
+
+    const perWorkspace = await screen.findByRole("table", {
+      name: "Usage per Workspace",
+    });
+    expect(within(perWorkspace).getByText("3.42 USD")).toBeInTheDocument();
+  });
+
+  it("lists, saves and removes model prices", async () => {
+    const requests = renderApp(
+      api((r) =>
+        r.path === "/api/v1/admin/llm/prices" && r.method !== "GET"
+          ? r.method === "DELETE"
+            ? noContent()
+            : json({ prices: [PRICE] })
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const table = await screen.findByRole("table", { name: "Model prices" });
+    expect(within(table).getByText("big")).toBeInTheDocument();
+
+    const form = screen.getByRole("form", { name: "Model price" });
+    fireEvent.change(within(form).getByLabelText("Model name"), {
+      target: { value: "small" },
+    });
+    fireEvent.change(within(form).getByLabelText(/^Input price/), {
+      target: { value: "1" },
+    });
+    fireEvent.change(within(form).getByLabelText(/^Output price/), {
+      target: { value: "2" },
+    });
+    fireEvent.change(within(form).getByLabelText(/^Cached input price/), {
+      target: { value: "0.5" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Save price" }));
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (r) =>
+            r.method === "PUT" &&
+            r.path === "/api/v1/admin/llm/prices" &&
+            (r.body as { model_name: string }).model_name === "small",
+        ),
+      ).toBe(true),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove price of big" }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (r) => r.method === "DELETE" && r.query.model_name === "big",
+        ),
+      ).toBe(true),
     );
   });
 });
