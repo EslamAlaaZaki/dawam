@@ -118,6 +118,38 @@ def test_context_fitting_uses_the_real_count_so_arabic_is_not_under_counted():
     assert real[-1].content == "LAST"
 
 
+def test_the_fitter_does_not_count_the_turns_it_drops():
+    history = [
+        Message("user" if i % 2 == 0 else "assistant", f"{i} " + "w" * 400) for i in range(10)
+    ]
+    messages = [Message("system", "SYS"), *history, Message("user", "LAST")]
+    asked: list[str] = []
+
+    def count(text: str) -> int:
+        asked.append(text)
+        return len(text) // 4
+
+    fitted = fit_messages(messages, 400, protect_from=len(messages) - 1, count=count)
+
+    assert len(fitted) < len(messages) and fitted[-1].content == "LAST"
+    assert history[0].content not in asked and len(asked) < len(messages)
+
+
+def test_a_tokenizer_that_throws_never_fails_the_count(monkeypatch):
+    def broken(model: str):
+        def count(text: str) -> int:
+            raise RuntimeError("tokenizer crashed")
+
+        return count
+
+    monkeypatch.setattr("dawam.modules.llm.internal.openai_compatible.local_counter", broken)
+    adapter = OpenAICompatibleAdapter(
+        base_url="http://llm.test/v1", api_key="k", timeout_seconds=5, transport=_NoNetwork()
+    )
+
+    assert Gateway(adapter, model="gpt-4o").count_tokens("x" * 40) == 10
+
+
 class _NoNetwork:
     def request(self, *args, **kwargs):
         raise AssertionError("counting tokens must not use the network")

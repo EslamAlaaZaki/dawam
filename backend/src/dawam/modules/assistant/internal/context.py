@@ -72,23 +72,28 @@ def fit_messages(
     if window is None:
         return result
     budget = int(window * PROMPT_SHARE)
-    used = sum(_tokens(m, count) for m in result)
-    if used <= budget:
+    counted: dict[str, int] = {}  # a text is counted once, however often the fitter asks
+    raw = count
+
+    def count(text: str) -> int:
+        if text not in counted:
+            counted[text] = raw(text)
+        return counted[text]
+
+    # Count the system message and the protected turns, then the history newest first and
+    # stop at the first turn that no longer fits: older turns are dropped uncounted (a real
+    # count may be a request to the provider).
+    used = _tokens(result[0], count) + sum(_tokens(m, count) for m in result[protect_from:])
+    start = protect_from
+    while start > 1 and used + _tokens(result[start - 1], count) <= budget:
+        start -= 1
+        used += _tokens(result[start], count)
+    if used <= budget and start == 1:
         return result
 
-    # 1. Drop the oldest history, a tool call together with its results.
-    drop = 0
-    index = 1
-    while used > budget and index < protect_from:
-        end = index + 1
-        if result[index].tool_calls:
-            while end < protect_from and result[end].role == "tool":
-                end += 1
-        used -= sum(_tokens(m, count) for m in result[index:end])
-        index = end
-        drop = end - 1
+    # 1. Drop the oldest history; the kept history starts on a user turn.
+    drop = start - 1
     while 0 < drop < protect_from - 1 and result[drop + 1].role != "user":
-        used -= _tokens(result[drop + 1], count)  # never start on an assistant or tool turn
         drop += 1
     if drop:
         del result[1 : drop + 1]

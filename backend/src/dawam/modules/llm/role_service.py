@@ -201,11 +201,8 @@ class MeteredGateway:
         finally:
             # Errors and abandoned streams count too: estimate what was sent and received.
             if reported is None:
-                reported = Usage(
-                    sum(self.count_tokens(_message_text(m)) for m in messages),
-                    self.count_tokens("".join(produced)),
-                    estimated=True,
-                )
+                prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
+                reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
             self._record(reported)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
@@ -214,7 +211,7 @@ class MeteredGateway:
         try:
             return self._gateway.embed(texts)
         finally:
-            self._record(Usage(sum(self.count_tokens(t) for t in texts), 0, estimated=True))
+            self._record(Usage(sum(estimate_tokens(t) for t in texts), 0, estimated=True))
 
     def _ensure_allowed(self) -> None:
         """Refuse an external provider for an internal-only Workspace, whatever the role,

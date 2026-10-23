@@ -201,7 +201,7 @@ class Gateway:
         if counter is not None and text:
             try:
                 counted = counter(self._model, text)
-            except LlmError:
+            except Exception:  # a broken tokenizer or endpoint only costs accuracy
                 counted = None
             if isinstance(counted, int) and not isinstance(counted, bool) and counted >= 0:
                 return counted
