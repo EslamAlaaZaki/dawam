@@ -20946,6 +20946,35 @@
         ],
         "title": "LayerScore"
       },
+      "LightFeature": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "On: the Workspace has a light model to run it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "description",
+          "enabled"
+        ],
+        "title": "LightFeature"
+      },
       "LineageEdge": {
         "properties": {
           "id": {
@@ -28968,7 +28997,15 @@
             },
             "type": "array",
             "title": "Light Models",
-            "description": "The Workspace's light models; none: light tasks use the default agent model."
+            "description": "The Workspace's light models; none: the light-role features are off."
+          },
+          "light_features": {
+            "items": {
+              "$ref": "#/components/schemas/LightFeature"
+            },
+            "type": "array",
+            "title": "Light Features",
+            "description": "Each feature that uses the light role, and whether it is on."
           },
           "embedding_model": {
             "anyOf": [
@@ -29007,6 +29044,7 @@
           "data_sharing_level",
           "agent_models",
           "light_models",
+          "light_features",
           "embedding_model",
           "embedding_locked",
           "choices",

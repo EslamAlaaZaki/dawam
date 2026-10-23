@@ -268,6 +268,18 @@ class RoleService:
             )
         return self.metered_gateway(model_id, role, workspace_id=workspace_id, user_id=user_id)
 
+    def light_gateway(
+        self, *, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> MeteredGateway | None:
+        """The gateway of a light-role feature, or ``None`` when the Workspace has no light
+        model: such a feature is then off. Unlike ``gateway_for_role("light")`` it never
+        falls back to the agent model."""
+        with Session(self._engine) as db:
+            model_id = default_model_id(db, workspace_id, "light")
+        if model_id is None:
+            return None
+        return self.metered_gateway(model_id, "light", workspace_id=workspace_id, user_id=user_id)
+
     def metered_gateway(
         self,
         model_id: uuid.UUID,
