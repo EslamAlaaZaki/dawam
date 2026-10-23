@@ -30,6 +30,8 @@ dependencies = [
     "regex>=2024.11",
     "tiktoken>=0.8",
     "tokenizers>=0.20",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
 
 [project.optional-dependencies]

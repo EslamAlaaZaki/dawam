@@ -99,6 +99,8 @@ class RunRecord(Base):
     input_tokens: Mapped[int]
     output_tokens: Mapped[int]
     duration_ms: Mapped[int]
+    prompt_version: Mapped[str | None] = mapped_column(sa.String(32))
+    """Id of the system prompt and tool prompts the run was given (``prompt_version``)."""
     error_code: Mapped[str | None] = mapped_column(sa.String(64))
     error_message: Mapped[str | None] = mapped_column(sa.String(ERROR_MAX_LENGTH))
     started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
