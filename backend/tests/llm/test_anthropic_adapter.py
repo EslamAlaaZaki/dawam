@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dawam.modules.llm import Capabilities, Gateway, Message, ToolSpec
+from dawam.modules.llm import Capabilities, Gateway, Message, ToolSpec, Usage
 from dawam.modules.llm.gateway import probe
 from dawam.modules.llm.internal.anthropic import DEFAULT_MAX_TOKENS, AnthropicAdapter
 from tests.llm.replay import ReplayTransport, load
@@ -40,7 +40,12 @@ def test_tools_use_input_schema_and_a_schema_request_uses_structured_output():
 
     body = transport.requests[0].json
     assert body["tools"] == [
-        {"name": "echo", "description": "Repeat.", "input_schema": tool.parameters}
+        {
+            "name": "echo",
+            "description": "Repeat.",
+            "input_schema": tool.parameters,
+            "cache_control": {"type": "ephemeral"},
+        }
     ]
     assert body["output_config"] == {"format": {"type": "json_schema", "schema": schema}}
 
@@ -61,6 +66,31 @@ def test_consecutive_tool_results_share_one_user_message():
         "1",
         "2",
     ]
+
+
+def test_the_system_prompt_and_the_last_tool_carry_cache_control():
+    adapter, transport = _adapter("chat_text")
+    tools = [
+        ToolSpec("a", "A.", {"type": "object", "properties": {}}),
+        ToolSpec("b", "B.", {"type": "object", "properties": {}}),
+    ]
+    messages = [Message("system", "Be brief."), Message("user", "Hi")]
+
+    list(adapter.chat("m", messages, tools, False, None))
+
+    body = transport.requests[0].json
+    cache = {"type": "ephemeral"}
+    assert body["system"] == [{"type": "text", "text": "Be brief.", "cache_control": cache}]
+    assert "cache_control" not in body["tools"][0]
+    assert body["tools"][1]["cache_control"] == cache
+
+
+def test_cached_tokens_are_recorded_and_still_counted_in_the_prompt():
+    adapter, _ = _adapter("chat_text_cached")
+
+    done = list(adapter.chat("m", [Message("user", "Hi")], [], False, None))[-1]
+
+    assert done.usage == Usage(125, 3, cache_read_tokens=100, cache_write_tokens=20)
 
 
 def test_the_context_window_asks_for_the_model_by_name():

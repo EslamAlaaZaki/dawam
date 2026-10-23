@@ -433,7 +433,9 @@ def _usage(raw: Any, previous: Usage | None = None) -> Usage | None:
             completion += value
     if "candidatesTokenCount" not in raw and previous is not None:
         return previous  # an early chunk that counts the prompt only
-    return Usage(prompt, completion)
+    cached = raw.get("cachedContentTokenCount")
+    cached = cached if isinstance(cached, int) and not isinstance(cached, bool) else 0
+    return Usage(prompt, completion, cache_read_tokens=cached)
 
 
 def _finish(reason: Any, called_tools: bool) -> str | None:
