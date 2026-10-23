@@ -118,6 +118,24 @@ class AnthropicAdapter:
             return value
         return None
 
+    def count_tokens(self, model: str, text: str) -> int | None:
+        """The provider's count of ``text`` (``/messages/count_tokens``); ``None`` on failure."""
+        body = {"model": model, "messages": [{"role": "user", "content": text}]}
+        try:
+            response = self._send("POST", "/messages/count_tokens", json.dumps(body).encode())
+        except LlmError:
+            return None
+        try:
+            if response.status != 200:
+                return None
+            data = json_body(response)
+        except (LlmError, OSError):
+            return None
+        finally:
+            response.close()
+        value = data.get("input_tokens") if isinstance(data, dict) else None
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
     def list_models(self) -> list[str]:
         names: list[str] = []
         path = "/models?limit=1000"

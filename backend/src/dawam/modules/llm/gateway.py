@@ -145,6 +145,8 @@ class Adapter(Protocol):
         """The model's context window from the server's metadata, if it reports one."""
         ...
 
+    # Optional: ``count_tokens(self, model, text) -> int | None`` (the provider's own count of
+    # ``text``; ``None``/absent: not available, the gateway estimates).
     # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
     # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
 
@@ -191,6 +193,19 @@ class Gateway:
     def server_context_window(self) -> int | None:
         """The context window the provider's own metadata reports for this model."""
         return self._adapter.context_window(self._model)
+
+    def count_tokens(self, text: str) -> int:
+        """Tokens in ``text``: the provider's own count when its adapter has one, else the
+        chars/4 estimate. Never fails: an unknown model or a down endpoint only costs accuracy."""
+        counter = getattr(self._adapter, "count_tokens", None)
+        if counter is not None and text:
+            try:
+                counted = counter(self._model, text)
+            except LlmError:
+                counted = None
+            if isinstance(counted, int) and not isinstance(counted, bool) and counted >= 0:
+                return counted
+        return estimate_tokens(text)
 
     def chat(
         self,

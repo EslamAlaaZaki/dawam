@@ -4,12 +4,13 @@ Smaller self-hosted models have small windows. Before each model call, large too
 are cut (``shorten_result``, applied as results arrive) and, if the conversation is still
 too big, the oldest turns are left out, then the oldest tool results of the current run.
 The member's latest message and the current run's calls are never dropped. Token counts
-are estimates (about four characters per token); with an unknown window nothing is trimmed.
+come from the gateway (the provider's count, else about four characters per token);
+with an unknown window nothing is trimmed.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 
 from dawam.modules.llm import Message
@@ -30,9 +31,12 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // CHARS_PER_TOKEN) if text else 0
 
 
-def _tokens(message: Message) -> int:
+TokenCounter = Callable[[str], int]
+
+
+def _tokens(message: Message, count: TokenCounter = estimate_tokens) -> int:
     calls = "".join(f"{c.name}{c.arguments}" for c in message.tool_calls)
-    return estimate_tokens((message.content or "") + calls)
+    return count((message.content or "") + calls)
 
 
 def shorten_result(text: str, window: int | None) -> str:
@@ -53,7 +57,11 @@ def _is_tool_result(message: Message) -> bool:
 
 
 def fit_messages(
-    messages: Sequence[Message], window: int | None, *, protect_from: int
+    messages: Sequence[Message],
+    window: int | None,
+    *,
+    protect_from: int,
+    count: TokenCounter = estimate_tokens,
 ) -> list[Message]:
     """``messages`` (the system message first) trimmed to fit ``window``.
 
@@ -64,7 +72,7 @@ def fit_messages(
     if window is None:
         return result
     budget = int(window * PROMPT_SHARE)
-    used = sum(_tokens(m) for m in result)
+    used = sum(_tokens(m, count) for m in result)
     if used <= budget:
         return result
 
@@ -76,18 +84,18 @@ def fit_messages(
         if result[index].tool_calls:
             while end < protect_from and result[end].role == "tool":
                 end += 1
-        used -= sum(_tokens(m) for m in result[index:end])
+        used -= sum(_tokens(m, count) for m in result[index:end])
         index = end
         drop = end - 1
     while 0 < drop < protect_from - 1 and result[drop + 1].role != "user":
-        used -= _tokens(result[drop + 1])  # never start on an assistant or tool turn
+        used -= _tokens(result[drop + 1], count)  # never start on an assistant or tool turn
         drop += 1
     if drop:
         del result[1 : drop + 1]
         protect_from -= drop
         system = result[0]
         result[0] = replace(system, content=(system.content or "") + _OMITTED_TURNS)
-        used = sum(_tokens(m) for m in result)
+        used = sum(_tokens(m, count) for m in result)
 
     # 2. Replace the oldest tool results of the current run, keeping the newest.
     placeholder = "[... the result was left out to fit the model's context window]"
@@ -102,6 +110,6 @@ def fit_messages(
         if _is_tool_result(message):
             source = (message.content or "")[len(_TOOL_SOURCE) :].split('"', 1)[0]
             content = f'{_TOOL_SOURCE}{source}">\n{placeholder}\n</data>'
-            used -= _tokens(message) - estimate_tokens(content)
+            used -= _tokens(message, count) - count(content)
             result[i] = replace(message, content=content)
     return result

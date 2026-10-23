@@ -171,6 +171,11 @@ class MeteredGateway:
     def capabilities(self) -> Capabilities:
         return self._gateway.capabilities()
 
+    def count_tokens(self, text: str) -> int:
+        """Like ``Gateway.count_tokens``; an internal-only Workspace never reaches an
+        external provider's count endpoint, so it gets the estimate."""
+        return estimate_tokens(text) if self._refuse_external else self._gateway.count_tokens(text)
+
     def chat(
         self,
         messages: Sequence[Message],

@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Any, Literal, Protocol
 
 from dawam.modules.llm import (
@@ -33,7 +34,7 @@ from dawam.modules.llm import (
 )
 from dawam.platform.errors import ApiError
 
-from .context import fit_messages, shorten_result
+from .context import estimate_tokens, fit_messages, shorten_result
 from .prompt import quote_data
 from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
 
@@ -131,6 +132,14 @@ class _Run:
         )
 
 
+def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
+    """``counter`` (the gateway's real count) remembered per text, so a long conversation
+    is counted once per message, not once per model call; none: the chars/4 estimate."""
+    if counter is None:
+        return estimate_tokens
+    return lru_cache(maxsize=2048)(counter)
+
+
 def run_agent(
     gateway: ChatGateway,
     tools: ToolSet,
@@ -147,6 +156,7 @@ def run_agent(
     capabilities = gateway.capabilities()
     window = capabilities.context_window
     stream = capabilities.streaming is not False
+    count = _cached_counter(getattr(gateway, "count_tokens", None))
     prompted = capabilities.tool_calling is False  # limited mode: tools are described in text
     messages = [Message("system", system), *history]
     protect_from = len(history)  # the member's latest message
@@ -165,7 +175,7 @@ def run_agent(
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
-            sent = fit_messages(messages, window, protect_from=protect_from)
+            sent = fit_messages(messages, window, protect_from=protect_from, count=count)
             if prompted and offered:
                 head = sent[0]
                 sent[0] = replace(head, content=head.content + "\n\n" + tools_prompt(offered))
