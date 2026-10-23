@@ -172,6 +172,7 @@ flowchart LR
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
   - checks the installation's and the Workspace's **monthly token budgets** before every call (429 `token_budget_exhausted`);
   - records tokens per call in `llm_usage` (by Workspace, user and model);
+  - checks the installation's and the Workspace's **monthly currency budgets** after the token budgets (429 `cost_budget_exhausted`); a currency budget counts only calls whose model price is in its currency, so unpriced calls and other currencies don't count; set with `PUT/DELETE /admin/llm/budgets/installation/cost` and `.../workspaces/{id}/cost` (table `llm_workspace_cost_budgets`); concurrent calls can overshoot by design;
   - emits an OpenTelemetry GenAI span per model call (§11, §12.1);
   - refuses external providers in an **internal-only** Workspace (409 `external_provider_refused`), for every role.
 
@@ -773,7 +774,7 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 
 - **Tracing** (`platform/tracing.py`): OpenTelemetry GenAI spans per model call (in `MeteredGateway.chat`) and per tool call, exported over OTLP/HTTP when `DAWAM_OTEL_ENDPOINT` is set. Spans carry metadata only unless `DAWAM_OTEL_CAPTURE_CONTENT` is on. Tool spans are not nested under model spans, and background jobs get spans but no prompt version.
 - **Prompt version:** each run stores `assistant_runs.prompt_version` (`p-<hash>` of the system prompt and the tool specs). It is not in the run API yet.
-- **Cost:** `llm_model_prices` holds currency and input, output and cached-input price per million tokens, keyed by model name. `/admin/llm/usage` returns `cost` on totals, per Workspace and per user, as `amounts` per currency (never summed across currencies) plus `unpriced_calls`. Cost is computed at read time, so a changed price re-costs past calls. An unpriced model shows "Unknown", never zero. Cache-write tokens are billed at the input price. Budgets are still in tokens.
+- **Cost:** `llm_model_prices` holds currency and input, output and cached-input price per million tokens, keyed by model name. `/admin/llm/usage` returns `cost` on totals, per Workspace and per user, as `amounts` per currency (never summed across currencies) plus `unpriced_calls`. Cost is computed at read time, so a changed price re-costs past calls. An unpriced model shows "Unknown", never zero. Cache-write tokens are billed at the input price. Currency budgets use the same prices (§3.5).
 - **Feedback:** `assistant_run_feedback` stores one `up`/`down` rating and an optional comment per run and member (`PUT .../runs/{run_id}/feedback`; `AnswerFeedback` under each answer, hidden in archived Workspaces). Owners and system admins (`VIEW_AI_FEEDBACK`) list feedback and eval candidates (thumbs-down by default).
 - **Admin run explorer** (`assistant/run_explorer.py`, `assistant/admin_api.py`): `GET /api/v1/admin/assistant/runs` (newest first, up to 100; filters Workspace, member, status, dates) and `.../runs/{run_id}` with a timeline: one model step, one step per tool call, an error step. Admin-only (`VIEW_ASSISTANT_RUNS`), page `/admin/ai-runs`. Question, answer, tool arguments and results, errors and comments are redacted. Runs store summed tokens, so model calls show as one combined step, and cost has no cached-token split.
 
