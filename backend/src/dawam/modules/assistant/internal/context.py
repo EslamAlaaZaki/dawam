@@ -10,10 +10,11 @@ with an unknown window nothing is trimmed.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 
-from dawam.modules.llm import Message
+from dawam.modules.llm import Message, ToolSpec
 
 CHARS_PER_TOKEN = 4
 PROMPT_SHARE = 0.75
@@ -32,6 +33,17 @@ def estimate_tokens(text: str) -> int:
 
 
 TokenCounter = Callable[[str], int]
+
+
+def schema_tokens(specs: Sequence[ToolSpec], count: TokenCounter = estimate_tokens) -> int:
+    """Tokens the native tool schemas take when sent next to the messages."""
+    if not specs:
+        return 0
+    return count("".join(json.dumps([s.name, s.description, s.parameters]) for s in specs))
+
+
+def prompt_budget(window: int | None) -> int | None:
+    return None if window is None else int(window * PROMPT_SHARE)
 
 
 def _tokens(message: Message, count: TokenCounter = estimate_tokens) -> int:
@@ -62,16 +74,19 @@ def fit_messages(
     *,
     protect_from: int,
     count: TokenCounter = estimate_tokens,
+    reserved: int = 0,
 ) -> list[Message]:
     """``messages`` (the system message first) trimmed to fit ``window``.
 
     ``protect_from`` is the index of the member's latest message: everything before it
     (after the system message) is history that may be dropped, everything from it on is kept.
+    ``reserved`` is the estimated tokens of tool schemas sent beside the messages; they come
+    off the prompt budget.
     """
     result = list(messages)
     if window is None:
         return result
-    budget = int(window * PROMPT_SHARE)
+    budget = int(window * PROMPT_SHARE) - reserved
     counted: dict[str, int] = {}  # a text is counted once, however often the fitter asks
     raw = count
 

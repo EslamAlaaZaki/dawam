@@ -103,6 +103,10 @@ def core_model(customers: str, orders: str) -> list[dict[str, Any]]:
 
 
 class E2eAdapter(FakeAdapter):
+    def __init__(self) -> None:
+        # A realistic window: the real tool schemas count against the prompt budget.
+        super().__init__(context_window=32_768)
+
     def chat(
         self,
         model: str,
