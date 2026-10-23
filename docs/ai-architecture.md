@@ -172,6 +172,8 @@ flowchart LR
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
   - checks the installation's and the Workspace's **monthly token budgets** before every call (429 `token_budget_exhausted`);
   - records tokens per call in `llm_usage` (by Workspace, user and model);
+  - checks the installation's and the Workspace's **monthly currency budgets** after the token budgets (429 `cost_budget_exhausted`); a currency budget counts only calls whose model price is in its currency, so unpriced calls and other currencies don't count; set with `PUT/DELETE /admin/llm/budgets/installation/cost` and `.../workspaces/{id}/cost` (table `llm_workspace_cost_budgets`); concurrent calls can overshoot by design;
+  - emits an OpenTelemetry GenAI span per model call (§11, §12.1);
   - refuses external providers in an **internal-only** Workspace (409 `external_provider_refused`), for every role.
 
 ```mermaid
@@ -741,10 +743,12 @@ The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/Assistan
 | `DAWAM_ASSISTANT_MAX_TOOL_CALLS` | 25 | tool calls per chat answer |
 | `DAWAM_ASSISTANT_JOB_MAX_TOOL_CALLS` | 150 | tool calls per background job |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | 120 | total source-query seconds per run |
+| `DAWAM_OTEL_ENDPOINT` | unset | OTLP/HTTP collector URL; tracing is off unless set |
+| `DAWAM_OTEL_CAPTURE_CONTENT` | false | also put prompt and tool content on spans (redacted, capped at 8000 characters) |
 | `DAWAM_FAKE_LLM` | false | tests only: every provider becomes the rule-based fake |
 | encryption key | — | seals provider API keys |
 
-Providers, models, roles, budgets, Workspace Models, internal-only and data-sharing levels are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
+Model prices (cost per million tokens, per currency) are set by system admins in the AI settings page (`llm_model_prices`). Providers, models, roles, budgets, Workspace Models, internal-only and data-sharing levels are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
 
 ---
 
@@ -758,7 +762,21 @@ Providers, models, roles, budgets, Workspace Models, internal-only and data-shar
 | Agent loop, prompted mode, JSON Schema checker, context fitting, prompt quoting | `backend/tests/assistant/test_agent.py`, `test_prompted.py`, `test_json_schema.py`, `test_context.py`, `test_prompt.py` | unit tests with the fake |
 | Each tool family | `backend/tests/assistant/test_*` (source tools, documents, KPI links, DW generation, mappings, files, jobs, source query…) | integration tests against Postgres (testcontainers) |
 | Real small model | `backend/tests/assistant/test_ollama.py`, `pytest -m ollama` | CI workflow `.github/workflows/assistant-ollama.yml` runs Ollama with `qwen2.5:1.5b` on PRs touching `assistant/` or `llm/`, weekly and on demand; never blocks a PR |
+| Tool-selection eval set | `backend/tests/assistant/evals/tool_selection/cases.json`, `tool_selection_eval.py` | 36 cases (15 Arabic) replayed from recordings through `Gateway` and `FakeAdapter`; scores the right tool and arguments per prompt version and language; fails below 0.85. Guards the case data and runner, not prompt regressions |
+| Safety eval set | `backend/tests/assistant/evals/safety_eval.py`, `safety/cases.json` | prompt injection in documents and tool results (English and Arabic, `</data>` close attempts); fails on a forbidden tool call, forbidden phrase or text escaping its `<data>` block; runs in CI on the fake |
+| LLM-as-judge rubrics | `evals/judge.py` | quality and faithfulness rubrics with strict JSON verdicts (a bad verdict scores 0) |
+| RAG eval set | `backend/tests/rag_eval/` | English and Arabic corpus with distractors, 15 questions with gold passages; product chunker, hashing `FakeAdapter`; reports recall@3, MRR and citation correctness; fails below 0.9, 0.9 and 1.0 |
+| Manual real-model script | `evals/eval_real.py`, `python -m tests.assistant.evals.eval_real` | needs `DAWAM_EVAL_URL`, `DAWAM_EVAL_MODEL`, `DAWAM_EVAL_API_KEY`; prints tool-selection and safety scores with the prompt version, plus judge averages over the RAG questions; not collected by pytest, no workflow runs it, not yet run against a real model. See `evals/README.md` |
+| No real model calls in CI | `backend/tools/check_workflow_keys.py`, `backend/tests/no_real_model.py` | the `backend` job fails if a workflow sets a provider API key or `secrets.*` reference; an autouse fixture refuses DNS and sockets to provider hosts (localhost allowed; `real_model` tests exempt). A denylist of hostnames, so a raw IP is not caught |
 | DW generation eval set | `backend/tests/assistant/evals/` (`bank_loans.json`, `retail_sales.json`, `dw_generation_eval.py`) | `pytest -m real_model` with `DAWAM_EVAL_URL` / `DAWAM_EVAL_MODEL`; scores a generated Kimball model against a reference (facts and dimensions found, grain, SCD types, measure additivity, star foreign keys); a yardstick before a release |
+
+### 12.1 Observability, cost and feedback
+
+- **Tracing** (`platform/tracing.py`): OpenTelemetry GenAI spans per model call (in `MeteredGateway.chat`) and per tool call, exported over OTLP/HTTP when `DAWAM_OTEL_ENDPOINT` is set. Spans carry metadata only unless `DAWAM_OTEL_CAPTURE_CONTENT` is on. Tool spans are not nested under model spans, and background jobs get spans but no prompt version.
+- **Prompt version:** each run stores `assistant_runs.prompt_version` (`p-<hash>` of the system prompt and the tool specs). It is not in the run API yet.
+- **Cost:** `llm_model_prices` holds currency and input, output and cached-input price per million tokens, keyed by model name. `/admin/llm/usage` returns `cost` on totals, per Workspace and per user, as `amounts` per currency (never summed across currencies) plus `unpriced_calls`. Cost is computed at read time, so a changed price re-costs past calls. An unpriced model shows "Unknown", never zero. Cache-write tokens are billed at the input price. Currency budgets use the same prices (§3.5).
+- **Feedback:** `assistant_run_feedback` stores one `up`/`down` rating and an optional comment per run and member (`PUT .../runs/{run_id}/feedback`; `AnswerFeedback` under each answer, hidden in archived Workspaces). Owners and system admins (`VIEW_AI_FEEDBACK`) list feedback and eval candidates (thumbs-down by default).
+- **Admin run explorer** (`assistant/run_explorer.py`, `assistant/admin_api.py`): `GET /api/v1/admin/assistant/runs` (newest first, up to 100; filters Workspace, member, status, dates) and `.../runs/{run_id}` with a timeline: one model step, one step per tool call, an error step. Admin-only (`VIEW_ASSISTANT_RUNS`), page `/admin/ai-runs`. Question, answer, tool arguments and results, errors and comments are redacted. Runs store summed tokens, so model calls show as one combined step, and cost has no cached-token split.
 
 ---
 
@@ -770,7 +788,9 @@ Providers, models, roles, budgets, Workspace Models, internal-only and data-shar
 | Adapters | `llm/internal/{openai_compatible,anthropic,azure_openai,gemini,bedrock}.py`, `adapters.py`, `transport.py`, `wire.py` |
 | Fakes | `llm/internal/fake.py`, `llm/internal/e2e.py` |
 | Providers / models / probe | `llm/service.py`, `llm/api.py`, `llm/model_removal.py` |
-| Roles, budgets, usage | `llm/role_service.py` |
+| Roles, budgets, usage, model prices | `llm/role_service.py`, `llm/tables.py` (`llm_model_prices`) |
+| Tracing | `platform/tracing.py` |
+| Run explorer, feedback | `assistant/run_explorer.py`, `assistant/admin_api.py`, `assistant/api.py` |
 | Workspace AI settings, data-sharing policy | `llm/workspace_ai.py`, `llm/workspace_ai_api.py` |
 | Agent loop | `assistant/internal/agent.py` |
 | Prompts and quoting | `assistant/internal/prompt.py` |

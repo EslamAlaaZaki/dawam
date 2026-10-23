@@ -345,12 +345,12 @@ flowchart TD
 
 | Area | Today | Enhancement |
 |---|---|---|
-| **Tracing** | run rows (tool calls, tokens, duration) + logs | OpenTelemetry traces with the **GenAI semantic conventions** (spans per model call and tool call); export to **Langfuse** (self-hostable, good for internal-only), Arize Phoenix, or LangSmith |
-| **Admin run explorer** | none | A page listing runs with the full step timeline, prompts (redacted), latencies, tokens, cost and errors |
-| **Cost** | tokens only | Price table per model → cost per run, Workspace and month; budgets in currency |
-| **Evals** | DW generation set (2 cases), Ollama smoke test | More sets: **tool-selection** (right tool, right arguments), **RAG** (recall@k, MRR, faithfulness, citation correctness, Ragas/DeepEval-style), **refusals and safety** (prompt injection in documents), **Arabic** questions; LLM-as-judge with rubrics; run in CI on recorded fakes and nightly on real models |
-| **Prompt management** | prompts are constants | Versioned prompts with an id stored on each run, to compare versions in evals and A/B test |
-| **User feedback** | none | 👍/👎 and a comment on each answer, saved on the run; bad answers become eval cases |
+| **Tracing** | **Done** (#355): OTel GenAI spans per model and tool call over OTLP/HTTP, off unless `DAWAM_OTEL_ENDPOINT` is set. Before: run rows (tool calls, tokens, duration) + logs | OpenTelemetry traces with the **GenAI semantic conventions** (spans per model call and tool call); export to **Langfuse** (self-hostable, good for internal-only), Arize Phoenix, or LangSmith |
+| **Admin run explorer** | **Done** (#423): `/admin/ai-runs`, runs with step timeline, redacted. Before: none | A page listing runs with the full step timeline, prompts (redacted), latencies, tokens, cost and errors |
+| **Cost** | **Done** (#357, #358): price table, cost per Workspace and user in usage, and monthly currency budgets for the installation and each Workspace. Before: tokens only | Price table per model → cost per run, Workspace and month; budgets in currency |
+| **Evals** | **Done** (#359, #360, #361, #362): tool-selection, RAG and safety sets, LLM-as-judge rubrics, manual real-model script, CI guard against real model calls. Not done: Arabic-specific set beyond the Arabic cases inside these sets, nightly real-model run. Before: DW generation set (2 cases), Ollama smoke test | More sets: **tool-selection** (right tool, right arguments), **RAG** (recall@k, MRR, faithfulness, citation correctness, Ragas/DeepEval-style), **refusals and safety** (prompt injection in documents), **Arabic** questions; LLM-as-judge with rubrics; run in CI on recorded fakes and nightly on real models |
+| **Prompt management** | **Done** (#355): `prompt_version` stored on each run. Before: prompts are constants | Versioned prompts with an id stored on each run, to compare versions in evals and A/B test |
+| **User feedback** | **Done** (#356): thumbs and a comment saved per run; admin eval-candidates endpoint. Before: none | 👍/👎 and a comment on each answer, saved on the run; bad answers become eval cases |
 
 ```mermaid
 flowchart LR
@@ -399,8 +399,8 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
 | 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain |
 | 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable |
-| 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else |
-| 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions |
+| 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
+| 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
 | 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | |
 | 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks |
