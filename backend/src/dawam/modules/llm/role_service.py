@@ -187,7 +187,6 @@ class MeteredGateway:
         """Like ``Gateway.chat``, but raises 429 ``token_budget_exhausted`` before the
         call when a budget is used up, and records the usage when the reply is done."""
         self._ensure_allowed()
-        prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
         produced: list[str] = []
         reported: Usage | None = None
         try:
@@ -201,9 +200,13 @@ class MeteredGateway:
                 yield event
         finally:
             # Errors and abandoned streams count too: estimate what was sent and received.
-            self._record(
-                reported or Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
-            )
+            if reported is None:
+                reported = Usage(
+                    sum(self.count_tokens(_message_text(m)) for m in messages),
+                    self.count_tokens("".join(produced)),
+                    estimated=True,
+                )
+            self._record(reported)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Like ``Gateway.embed``; embeddings report no usage, so the tokens are estimated."""
@@ -211,7 +214,7 @@ class MeteredGateway:
         try:
             return self._gateway.embed(texts)
         finally:
-            self._record(Usage(sum(estimate_tokens(t) for t in texts), 0, estimated=True))
+            self._record(Usage(sum(self.count_tokens(t) for t in texts), 0, estimated=True))
 
     def _ensure_allowed(self) -> None:
         """Refuse an external provider for an internal-only Workspace, whatever the role,

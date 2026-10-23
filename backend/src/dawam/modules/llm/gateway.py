@@ -228,8 +228,8 @@ class Gateway:
             elif isinstance(event, ToolCallEvent):
                 produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
             elif isinstance(event, Done) and event.usage is None:
-                prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
-                completion = estimate_tokens("".join(produced))
+                prompt = sum(self.count_tokens(_message_text(m)) for m in messages)
+                completion = self.count_tokens("".join(produced))
                 event = Done(Usage(prompt, completion, estimated=True), event.finish_reason)
             yield event
 

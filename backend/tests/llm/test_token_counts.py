@@ -116,3 +116,33 @@ def test_context_fitting_uses_the_real_count_so_arabic_is_not_under_counted():
 
     assert len(real) < len(estimated)
     assert real[-1].content == "LAST"
+
+
+class _NoNetwork:
+    def request(self, *args, **kwargs):
+        raise AssertionError("counting tokens must not use the network")
+
+
+def test_an_openai_model_is_counted_locally_and_arabic_costs_more_than_chars_over_four():
+    adapter = OpenAICompatibleAdapter(
+        base_url="http://llm.test/v1", api_key="k", timeout_seconds=5, transport=_NoNetwork()
+    )
+
+    for name in ("gpt-4o", "gpt-4"):
+        assert Gateway(adapter, model=name).count_tokens(ARABIC) > estimate_tokens(ARABIC)
+    assert Gateway(adapter, model="gpt-4o").count_tokens("hello world") == 2
+
+
+def test_a_self_hosted_model_without_a_cached_tokenizer_falls_back_without_a_request():
+    with StubLlmServer().running() as server:
+        adapter = OpenAICompatibleAdapter(
+            base_url=server.base_url,
+            api_key=None,
+            timeout_seconds=5,
+            transport=UrllibTransport(),
+        )
+
+        counted = Gateway(adapter, model="no-such-org/never-cached-model").count_tokens(ARABIC)
+
+        assert counted == estimate_tokens(ARABIC)
+        assert server.requests == []
