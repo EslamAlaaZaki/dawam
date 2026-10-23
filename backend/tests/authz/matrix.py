@@ -659,8 +659,46 @@ def conversation_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(created.json()["id"])
 
 
+def run_id(roles: RoleClients) -> uuid.UUID:
+    """A finished run with an answer in the conversation ``conversation_id`` just made (it
+    resolves first, being earlier in the path), written straight into the tables (no
+    model is called)."""
+    owner = roles.user("owner")
+    question, answer, run = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    message = sa.text(
+        "INSERT INTO assistant_messages (id, conversation_id, position, role, sender_user_id, "
+        "content, created_at) VALUES (:id, :c, :p, :r, :u, 'x', :now)"
+    )
+    with roles.app.state.engine.begin() as conn:
+        cid = conn.execute(
+            sa.text(
+                "SELECT id FROM assistant_conversations WHERE workspace_id = :w "
+                "ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"w": roles.workspace_id},
+        ).scalar_one()
+        conn.execute(
+            message, {"id": question, "c": cid, "p": 1, "r": "user", "u": owner.id, "now": now}
+        )
+        conn.execute(
+            message, {"id": answer, "c": cid, "p": 2, "r": "assistant", "u": None, "now": now}
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO assistant_runs (id, conversation_id, user_message_id, "
+                "answer_message_id, status, cancel_requested, tool_calls, input_tokens, "
+                "output_tokens, duration_ms, started_at, finished_at) VALUES (:id, :c, :q, :a, "
+                "'completed', false, '[]', 0, 0, 0, :now, :now)"
+            ),
+            {"id": run, "c": cid, "q": question, "a": answer, "now": now},
+        )
+    return run
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "conversation_id": conversation_id,
+    "run_id": run_id,
     "candidate_id": lambda roles: rename_pair(roles)[0],
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,

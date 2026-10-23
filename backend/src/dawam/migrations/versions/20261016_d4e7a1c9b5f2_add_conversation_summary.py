@@ -1,7 +1,7 @@
 """Keep a summary of the compacted turns of a conversation.
 
 Revision ID: d4e7a1c9b5f2
-Revises: a1c5e8d2b7f3
+Revises: d4e7a1b9c258
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d4e7a1c9b5f2"
-down_revision: str | Sequence[str] | None = "a1c5e8d2b7f3"
+down_revision: str | Sequence[str] | None = "d4e7a1b9c258"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

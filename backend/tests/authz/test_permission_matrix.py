@@ -688,6 +688,25 @@ ROWS: list[Row] = [
         "Owner or Editor in a shared conversation)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/runs/{run_id}/feedback",
+        "Ask the assistant questions (rate an answer in a conversation you can read)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        json=lambda roles: {"rating": "up"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/feedback",
+        "View members' feedback on answers (Owners and admins)",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/feedback/eval-candidates",
+        "View members' feedback on answers (export as eval-case candidates)",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
+    ),
     # Data Warehouse.
     Row(
         "GET",

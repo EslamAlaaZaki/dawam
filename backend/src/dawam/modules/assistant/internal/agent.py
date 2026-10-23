@@ -34,6 +34,7 @@ from dawam.modules.llm import (
     ToolSpec,
 )
 from dawam.platform.errors import ApiError
+from dawam.platform.tracing import tracing
 
 from .context import (
     cap_summary,
@@ -309,7 +310,9 @@ def run_agent(
                     outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0
                 else:
                     started = timer()
-                    outcome = tools.execute(call.name, call.arguments)
+                    with tracing().tool_call(call.name, call.arguments) as span:
+                        outcome = tools.execute(call.name, call.arguments)
+                        span.result(outcome.status, outcome.content)
                     duration = round((timer() - started) * 1000)
                     executed += 1
                 record = ToolCallRecord(

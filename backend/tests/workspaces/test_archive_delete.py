@@ -125,6 +125,7 @@ def test_reads_still_work_while_archived_and_the_permissions_say_read_only(roles
         assert client.get(path(roles, "/members")).status_code == 200
     permissions = set(roles.client("owner").get(path(roles)).json()["permissions"])
     assert permissions == {
+        "assistant.view_feedback",
         "connection.view",
         "workspace.view",
         "workspace.unarchive",
@@ -148,6 +149,7 @@ def test_the_policy_refuses_every_action_that_changes_anything_once_archived(
     survive = {
         Action.VIEW_WORKSPACE,
         Action.VIEW_CONNECTION,
+        Action.VIEW_AI_FEEDBACK,
         Action.LEAVE_WORKSPACE,
         Action.UNARCHIVE_WORKSPACE,
         Action.DELETE_WORKSPACE,
@@ -163,6 +165,7 @@ def test_the_policy_refuses_every_action_that_changes_anything_once_archived(
         Action.UNARCHIVE_WORKSPACE,
         Action.DELETE_WORKSPACE,
         Action.REASSIGN_OWNERSHIP,
+        Action.VIEW_AI_FEEDBACK,
     }
 
 

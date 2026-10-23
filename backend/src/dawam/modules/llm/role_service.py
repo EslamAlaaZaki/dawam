@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.tracing import tracing
 
 from .gateway import (
     Capabilities,
@@ -189,21 +190,25 @@ class MeteredGateway:
         self._ensure_allowed()
         produced: list[str] = []
         reported: Usage | None = None
-        try:
-            for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
-                if isinstance(event, TextDelta):
-                    produced.append(event.text)
-                elif isinstance(event, ToolCallEvent):
-                    produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
-                elif isinstance(event, Done):
-                    reported = event.usage
-                yield event
-        finally:
-            # Errors and abandoned streams count too: estimate what was sent and received.
-            if reported is None:
-                prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
-                reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
-            self._record(reported)
+        with tracing().model_call(self._model_name, self._role) as span:
+            try:
+                for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
+                    if isinstance(event, TextDelta):
+                        produced.append(event.text)
+                    elif isinstance(event, ToolCallEvent):
+                        produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
+                    elif isinstance(event, Done):
+                        reported = event.usage
+                    yield event
+            finally:
+                # Errors and abandoned streams count too: estimate what was sent and received.
+                if reported is None:
+                    prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
+                    reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
+                self._record(reported)
+                span.usage(reported.prompt_tokens, reported.completion_tokens)
+                if tracing().capture_content:
+                    span.content("\n".join(_message_text(m) for m in messages), "".join(produced))
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Like ``Gateway.embed``; embeddings report no usage, so the tokens are estimated."""
