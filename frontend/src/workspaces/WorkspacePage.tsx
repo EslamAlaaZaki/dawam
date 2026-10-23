@@ -139,6 +139,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             <>
               <Button
                 ref={toggleRef}
+                aria-label="Assistant"
                 aria-expanded={assistantOpen}
                 aria-controls="assistant-panel"
                 onClick={() => {

@@ -28,7 +28,7 @@ When the main session's context gets long (about every 3–4 tickets), or the ne
 
 ## UI redesign exception
 
-Tickets for the UI redesign (`DESIGN.md`, `UI-ROADMAP.md`) change steps 2 and 5 above:
+Tickets for the UI redesign (`DESIGN.md`) change steps 2 and 5 above:
 
 - The implementer commits straight to `feature/ui-redesign`, with commit messages like `ui: <short description> (#N)`. No ticket branches and no PRs. Nothing is ever pushed to, merged into or opened as a PR against `main`.
 - The ticket is visual-only, so no new tests. It's done when `npm run lint`, `npm test` and `npm run build` pass in `frontend/` without changing any test. The exceptions are `contrast.test.ts` and `tokens.test.ts` (palette ticket only) and tests that only assert class names or colors. If a role or text test fails, fix the UI, not the test.
