@@ -1,0 +1,15 @@
+{"cases": [
+ {"id": "en-refund-window", "question": "How many days do I have to ask for a refund?", "gold": ["en/refund-policy#Eligibility"], "answer": "Within 30 days of purchase [en/refund-policy#Eligibility]."},
+ {"id": "en-refund-time", "question": "How long until an approved refund reaches my payment method?", "gold": ["en/refund-policy#Processing time"], "answer": "Within 10 business days [en/refund-policy#Processing time]."},
+ {"id": "en-gift-card", "question": "Can gift cards or custom-made products be refunded?", "gold": ["en/refund-policy#Exceptions"], "answer": "No [en/refund-policy#Exceptions]."},
+ {"id": "en-backups", "question": "How long are nightly database backups kept?", "gold": ["en/data-retention#Backups"], "answer": "35 days [en/data-retention#Backups]."},
+ {"id": "en-audit", "question": "Can administrators delete audit logs?", "gold": ["en/data-retention#Audit logs"], "answer": "No [en/data-retention#Audit logs]."},
+ {"id": "en-grace", "question": "Can an owner restore a deleted workspace during the grace period?", "gold": ["en/data-retention#Deleting a workspace"], "answer": "Yes, for 14 days [en/data-retention#Deleting a workspace]."},
+ {"id": "en-export", "question": "How do owners export a workspace as a ZIP archive?", "gold": ["en/data-retention#Exporting data"], "answer": "As a ZIP of CSV files [en/data-retention#Exporting data]."},
+ {"id": "ar-annual", "question": "كم يوماً في الإجازة السنوية المدفوعة؟", "gold": ["ar/leave-policy#الإجازة السنوية"], "answer": "21 يوماً [ar/leave-policy#الإجازة السنوية]."},
+ {"id": "ar-sick", "question": "كم نسبة الراتب في الإجازة المرضية بعد أول 15 يوماً؟", "gold": ["ar/leave-policy#الإجازة المرضية"], "answer": "75 في المئة [ar/leave-policy#الإجازة المرضية]."},
+ {"id": "ar-maternity", "question": "ما مدة إجازة الأمومة؟", "gold": ["ar/leave-policy#إجازة الأمومة"], "answer": "70 يوماً [ar/leave-policy#إجازة الأمومة]."},
+ {"id": "ar-hours", "question": "ما ساعات عمل فريق الدعم الفني؟", "gold": ["ar/support-handbook#ساعات العمل"], "answer": "من التاسعة إلى الخامسة [ar/support-handbook#ساعات العمل]."},
+ {"id": "ar-password", "question": "كيف أعيد تعيين كلمة المرور؟", "gold": ["ar/support-handbook#إعادة تعيين كلمة المرور"], "answer": "عبر رابط نسيت كلمة المرور [ar/support-handbook#إعادة تعيين كلمة المرور]."},
+ {"id": "ar-email", "question": "كيف أغير البريد الإلكتروني في الملف الشخصي؟", "gold": ["ar/support-handbook#تحديث بيانات الحساب"], "answer": "برمز تأكيد [ar/support-handbook#تحديث بيانات الحساب]."}
+]}
