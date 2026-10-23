@@ -11,7 +11,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-start gap-x-4 gap-y-3">
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
       <div className="min-w-0">
         <h2 className="text-2xl font-semibold tracking-tight text-balance text-foreground">
           {title}
@@ -25,6 +25,6 @@ export function PageHeader({
           {actions}
         </div>
       )}
-    </header>
+    </div>
   );
 }
