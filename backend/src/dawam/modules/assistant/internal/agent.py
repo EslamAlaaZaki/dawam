@@ -161,7 +161,8 @@ def run_agent(
     messages = [Message("system", system), *history]
     protect_from = len(history)  # the member's latest message
     limit_hit = False
-    specs = {spec.name: spec for spec in tools.specs()}
+    all_specs = list(tools.specs())  # one snapshot: the tool list stays identical per call
+    specs = {spec.name: spec for spec in all_specs}
     known_tools = set(specs)
     retries = 0
     last_poll = timer()
@@ -171,7 +172,7 @@ def run_agent(
                 yield run.finish("cancelled")
                 return
             under_cap = len(run.calls) < max_tool_calls
-            offered = tools.specs() if under_cap else ()
+            offered = all_specs if under_cap else ()
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
