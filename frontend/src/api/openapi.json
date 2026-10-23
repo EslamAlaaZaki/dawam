@@ -22301,7 +22301,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
+                "type": "string"
               }
             ],
             "title": "Input Per Million",
@@ -22315,7 +22315,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
+                "type": "string"
               }
             ],
             "title": "Output Per Million",
@@ -22329,7 +22329,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
+                "type": "string"
               }
             ],
             "title": "Cached Input Per Million",
