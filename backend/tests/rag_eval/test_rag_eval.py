@@ -7,7 +7,7 @@ import pytest
 from tests.rag_eval.rag_eval import evaluate, load_cases, load_passages
 
 MIN_RECALL = 0.9
-MIN_MRR = 0.7
+MIN_MRR = 0.9
 
 
 def test_the_corpus_is_consistent_and_covers_both_languages():
