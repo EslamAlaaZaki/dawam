@@ -10,6 +10,7 @@ import SignedInLayout from "../app/(signed-in)/layout";
 import InvitationsPage from "../app/(signed-in)/admin/invitations/page";
 import AdminWorkspacesPage from "../app/(signed-in)/admin/workspaces/page";
 import AdminSettingsPage from "../app/(signed-in)/admin/settings/page";
+import AiRunsPage from "../app/(signed-in)/admin/ai-runs/page";
 import SecurityEventsPage from "../app/(signed-in)/admin/security-events/page";
 import UsersPage from "../app/(signed-in)/admin/users/page";
 import ChangePasswordPage from "../app/(signed-in)/change-password/page";
@@ -62,6 +63,12 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <InvitationsPage />
+        </SignedInLayout>
+      );
+    case "/admin/ai-runs":
+      return (
+        <SignedInLayout>
+          <AiRunsPage />
         </SignedInLayout>
       );
     case "/admin/security-events":
