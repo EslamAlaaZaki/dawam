@@ -14,6 +14,7 @@ import os
 import sys
 from collections.abc import Mapping
 
+from dawam.modules.assistant.internal.prompt import quote_data
 from dawam.modules.llm import AdapterConfig, Capabilities, Gateway, Message, TextDelta, adapter_for
 from tests.assistant.evals import safety_eval, tool_selection_eval
 from tests.assistant.evals.judge import RUBRICS, judge
@@ -36,17 +37,21 @@ def gateway(env: Mapping[str, str], model_var: str = "DAWAM_EVAL_MODEL") -> Gate
     )
 
 
+def passages_for(case: dict, passages: dict[str, str]) -> list[str]:
+    """The gold passages plus one distractor from the corpus, as ``[id]`` text pairs."""
+    distractor = next(i for i in passages if i not in case["gold"])
+    return [f"[{i}]\n{passages[i]}" for i in [*case["gold"], distractor]]
+
+
 def answer_rag(model: Gateway) -> list[str]:
-    """Judge the model's answers to the RAG questions, given the gold passages."""
+    """The model's answers to the RAG questions, given quoted passages."""
     passages = {p.id: p.text for p in load_passages()}
-    lines = []
+    answers = []
     for case in load_cases():
-        quoted = [passages[g] for g in case["gold"]]
-        context = "\n\n".join(f"[{g}]\n{t}" for g, t in zip(case["gold"], quoted, strict=True))
+        context = "\n\n".join(quote_data("passage", t) for t in passages_for(case, passages))
         events = model.chat([Message("user", f"{case['question']}\n\n{context}")])
-        answer = "".join(e.text for e in events if isinstance(e, TextDelta))
-        lines.append(answer)
-    return lines
+        answers.append("".join(e.text for e in events if isinstance(e, TextDelta)))
+    return answers
 
 
 def main(env: Mapping[str, str] = os.environ) -> int:
@@ -61,13 +66,13 @@ def main(env: Mapping[str, str] = os.environ) -> int:
     cases, answers = load_cases(), answer_rag(model)
     passages = {p.id: p.text for p in load_passages()}
     for rubric in RUBRICS:
-        scores = [
-            judge(
-                judge_model, rubric, c["question"], a, [passages[g] for g in c["gold"]]
-            ).normalised
+        verdicts = [
+            judge(judge_model, rubric, c["question"], a, passages_for(c, passages))
             for c, a in zip(cases, answers, strict=True)
         ]
-        print(f"judge {rubric}: {round(sum(scores) / len(scores), 3)} over {len(scores)} answers")
+        mean = round(sum(v.normalised for v in verdicts) / len(verdicts), 3)
+        bad = sum(1 for v in verdicts if v.score is None)
+        print(f"judge {rubric}: {mean} over {len(verdicts)} answers ({bad} unparseable)")
     return 0
 
 
