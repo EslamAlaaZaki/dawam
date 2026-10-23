@@ -48,6 +48,7 @@ from dawam.platform.config import Settings
 from dawam.platform.csrf import CSRF_HEADER
 from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
+from tests.docker_pulls import retry_image_pulls
 from tests.helpers import csrf_token, sign_in
 from tests.roles import RoleClients
 from tests.sample_source import sample_source  # noqa: F401  (fixture for every test)
@@ -63,6 +64,10 @@ POSTGRES_COMMAND = "postgres -c fsync=off -c synchronous_commit=off -c full_page
 slow (Docker Desktop), the TRUNCATE after every test is then about 15x faster."""
 TEST_ENCRYPTION_KEY = secrets.token_bytes(32)
 """A fresh encryption key per test run; tests never need a real one."""
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    retry_image_pulls()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
