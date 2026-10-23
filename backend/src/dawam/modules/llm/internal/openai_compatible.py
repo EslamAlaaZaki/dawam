@@ -24,6 +24,7 @@ from ..gateway import (
     ToolSpec,
     Usage,
 )
+from .local_tokens import local_counter
 from .transport import HttpResponse, Transport, TransportError
 from .wire import detail, error_for, json_body
 
@@ -97,6 +98,12 @@ class OpenAICompatibleAdapter:
         if len(vectors) != len(texts):
             raise LlmError(INVALID_RESPONSE, "The provider returned a different number of vectors.")
         return vectors
+
+    def count_tokens(self, model: str, text: str) -> int | None:
+        """Counted on this machine (a vendored tiktoken encoding, or a Hugging Face tokenizer
+        already on local disk); ``None`` when no tokenizer is known. Never a network call."""
+        counter = local_counter(model)
+        return counter(text) if counter else None
 
     def context_window(self, model: str) -> int | None:
         try:

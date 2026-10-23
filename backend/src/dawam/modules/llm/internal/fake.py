@@ -11,7 +11,7 @@ otherwise ``OK``.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -69,6 +69,8 @@ class FakeAdapter:
         self.dimension = embedding_dimension
         self._script: deque[Reply | list[float] | LlmError] = deque()
         self.calls: list[FakeCall] = []
+        self.token_counter: Callable[[str], int] | None = None
+        """The provider's own token count; ``None``: this fake has no count endpoint."""
         self.models: list[str] | LlmError | None = None
         """What ``list_models`` returns (or raises); ``None``: listing unsupported."""
 
@@ -124,6 +126,9 @@ class FakeAdapter:
 
     def context_window(self, model: str) -> int | None:
         return self.window
+
+    def count_tokens(self, model: str, text: str) -> int | None:
+        return self.token_counter(text) if self.token_counter else None
 
     def list_models(self) -> list[str]:
         if self.models is None:
