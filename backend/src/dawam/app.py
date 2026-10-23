@@ -62,6 +62,7 @@ from dawam.platform.migrations import upgrade_to_head
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 from dawam.platform.storage import create_storage
+from dawam.platform.tracing import configure_tracing
 from dawam.wiring import after_change_set, staging_sync_after_snapshot
 from dawam.wiring import propagation as propagation_service
 
@@ -101,6 +102,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         logger.warning("DAWAM_FAKE_LLM is on: every LLM provider is a fake. Tests only.")
         services.llm_adapters = services.llm_adapters or fake_adapter_factory
     install_request_id_on_records()
+    if settings.otel_endpoint:
+        configure_tracing(settings)
     engine = create_engine(settings.database_url)
     # The worker registers the same handlers: a job is submitted here and run there.
     job_handlers.register_job_handlers(

@@ -38,7 +38,7 @@ from .internal.agent import (
     ToolFinished,
     run_agent,
 )
-from .internal.prompt import JOB_PROMPT, SYSTEM_PROMPT, quote_data
+from .internal.prompt import JOB_PROMPT, SYSTEM_PROMPT, prompt_version, quote_data
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -694,6 +694,9 @@ class AssistantService:
                 tools = self._tools.bind(
                     user, workspace_id, self._ai.policy(workspace_id), conversation_id
                 )
+                self._set_prompt_version(
+                    started.run_id, prompt_version(SYSTEM_PROMPT, tools.specs())
+                )
                 for event in run_agent(
                     gateway,
                     tools,
@@ -736,6 +739,12 @@ class AssistantService:
             if not saved:  # the browser went away mid-answer
                 gone = Finished("cancelled", "".join(text), calls, 0, 0)
                 self._finish(user, workspace_id, started, gone, self._timer() - began, answered_by)
+
+    def _set_prompt_version(self, run_id: uuid.UUID, version: str) -> None:
+        with Session(self._engine) as db, db.begin():
+            db.execute(
+                sa.update(RunRecord).where(RunRecord.id == run_id).values(prompt_version=version)
+            )
 
     def _finish(
         self,

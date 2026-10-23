@@ -120,6 +120,11 @@ class Settings(DatabaseSettings):
     startup only if no admin exists yet. Empty counts as unset. The auth module
     checks them (both set, valid), and only when it is about to create the admin."""
 
+    @field_validator("otel_endpoint", mode="before")
+    @classmethod
+    def _empty_endpoint_is_unset(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
     @field_validator("admin_email", "admin_password", mode="before")
     @classmethod
     def _empty_admin_value_is_unset(cls, value: object) -> object:
@@ -173,6 +178,13 @@ class Settings(DatabaseSettings):
     score_debounce_seconds: float = Field(default=2.0, ge=0)
     """How long after a design change the Data Warehouse score is recalculated, so a burst of
     edits is scored once; 0 scores at once."""
+    otel_endpoint: str | None = None
+    """OTLP/HTTP traces endpoint (e.g. ``http://langfuse:3000/api/public/otel/v1/traces``) for
+    the AI side's spans. Unset (the default): tracing is off. Empty counts as unset."""
+    otel_capture_content: bool = False
+    """Add prompts, answers and tool arguments/results to the spans, redacted. Off by default:
+    spans then carry metadata only (model, tokens, latency, tool name)."""
+    otel_service_name: str = "dawam"
     fake_llm: bool = False
     """Tests only: replace every LLM provider with a rule-based fake that never calls a model
     (the browser end-to-end suite). Never on in a real installation."""
