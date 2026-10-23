@@ -1,0 +1,768 @@
+[
+ {
+  "id": "search-tables-by-name",
+  "language": "en",
+  "question": "Find tables with 'customer' in the name",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "customer"
+   }
+  },
+  "recorded": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "customer"
+   }
+  }
+ },
+ {
+  "id": "search-columns-by-name",
+  "language": "en",
+  "question": "Which columns look like an email address?",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "email"
+   }
+  },
+  "recorded": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "email"
+   }
+  }
+ },
+ {
+  "id": "get-kpi-details",
+  "language": "en",
+  "question": "Explain how this KPI is defined",
+  "page_context": {
+   "type": "kpi",
+   "id": "44444444-4444-4444-8444-444444444444",
+   "label": "Net Interest Margin"
+  },
+  "expected": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "kpi",
+    "id": "44444444-4444-4444-8444-444444444444"
+   }
+  },
+  "recorded": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "kpi",
+    "id": "44444444-4444-4444-8444-444444444444"
+   }
+  }
+ },
+ {
+  "id": "get-table-details",
+  "language": "en",
+  "question": "Show me the columns of this table",
+  "page_context": {
+   "type": "table",
+   "id": "22222222-2222-4222-8222-222222222222",
+   "label": "LOANS"
+  },
+  "expected": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "table",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "table",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "get-column-details",
+  "language": "en",
+  "question": "What is this column?",
+  "page_context": {
+   "type": "column",
+   "id": "33333333-3333-4333-8333-333333333333",
+   "label": "LOANS.AMOUNT"
+  },
+  "expected": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "column",
+    "id": "33333333-3333-4333-8333-333333333333",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "column",
+    "id": "33333333-3333-4333-8333-333333333333",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "profile-table",
+  "language": "en",
+  "question": "How many nulls does this table have?",
+  "page_context": {
+   "type": "table",
+   "id": "22222222-2222-4222-8222-222222222222",
+   "label": "LOANS"
+  },
+  "expected": {
+   "tool": "get_profile",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "table_id": "22222222-2222-4222-8222-222222222222"
+   }
+  },
+  "recorded": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "table",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "profile-column",
+  "language": "en",
+  "question": "What is the distinct count of this column?",
+  "page_context": {
+   "type": "column",
+   "id": "33333333-3333-4333-8333-333333333333",
+   "label": "LOANS.AMOUNT"
+  },
+  "expected": {
+   "tool": "get_profile",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "table_id": "22222222-2222-4222-8222-222222222222",
+    "column_id": "33333333-3333-4333-8333-333333333333"
+   }
+  },
+  "recorded": {
+   "tool": "get_profile",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "table_id": "22222222-2222-4222-8222-222222222222",
+    "column_id": "33333333-3333-4333-8333-333333333333"
+   }
+  }
+ },
+ {
+  "id": "snapshot-diff-latest",
+  "language": "en",
+  "question": "What changed since the last snapshot?",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "get_snapshot_diff",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_snapshot_diff",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "relationships-suggested",
+  "language": "en",
+  "question": "Are there suggested relationships to review?",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "get_relationships",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_relationships",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "pii-confirmed",
+  "language": "en",
+  "question": "List the confirmed PII findings",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "get_pii_findings",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "status": "confirmed"
+   }
+  },
+  "recorded": {
+   "tool": "get_pii_findings",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "status": "confirmed"
+   }
+  }
+ },
+ {
+  "id": "lineage-upstream",
+  "language": "en",
+  "question": "Where does this column's data come from?",
+  "page_context": {
+   "type": "column",
+   "id": "33333333-3333-4333-8333-333333333333",
+   "label": "LOANS.AMOUNT"
+  },
+  "expected": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "33333333-3333-4333-8333-333333333333",
+    "direction": "upstream"
+   }
+  },
+  "recorded": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "33333333-3333-4333-8333-333333333333",
+    "direction": "upstream"
+   }
+  }
+ },
+ {
+  "id": "lineage-downstream",
+  "language": "en",
+  "question": "What depends on this table?",
+  "page_context": {
+   "type": "table",
+   "id": "22222222-2222-4222-8222-222222222222",
+   "label": "LOANS"
+  },
+  "expected": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "22222222-2222-4222-8222-222222222222",
+    "direction": "downstream"
+   }
+  },
+  "recorded": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "22222222-2222-4222-8222-222222222222",
+    "direction": "upstream"
+   }
+  }
+ },
+ {
+  "id": "score-top",
+  "language": "en",
+  "question": "Why is our quality score low?",
+  "page_context": {
+   "type": "data_warehouse",
+   "id": null,
+   "label": "Data Warehouse"
+  },
+  "expected": {
+   "tool": "get_score",
+   "arguments": {}
+  },
+  "recorded": {
+   "tool": "get_score",
+   "arguments": {}
+  }
+ },
+ {
+  "id": "run-validation",
+  "language": "en",
+  "question": "Run the validation checks now",
+  "page_context": {
+   "type": "data_warehouse",
+   "id": null,
+   "label": "Data Warehouse"
+  },
+  "expected": {
+   "tool": "run_validation",
+   "arguments": {}
+  },
+  "recorded": {
+   "tool": "run_validation",
+   "arguments": {}
+  }
+ },
+ {
+  "id": "search-docs",
+  "language": "en",
+  "question": "What does the data dictionary say about interest rates?",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "search_documents",
+   "arguments": {
+    "query": "interest rates",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "search_documents",
+   "arguments": {
+    "query": "interest rates",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "list-dw-files",
+  "language": "en",
+  "question": "What files are in the warehouse file area?",
+  "page_context": {
+   "type": "data_warehouse",
+   "id": null,
+   "label": "Data Warehouse"
+  },
+  "expected": {
+   "tool": "list_files",
+   "arguments": {}
+  },
+  "recorded": {
+   "tool": "list_files",
+   "arguments": {}
+  }
+ },
+ {
+  "id": "list-system-files",
+  "language": "en",
+  "question": "List the files of this system",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "list_files",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "list_files",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "read-file",
+  "language": "en",
+  "question": "Read this file for me",
+  "page_context": {
+   "type": "file",
+   "id": "55555555-5555-4555-8555-555555555555",
+   "label": "loans_mapping.xlsx"
+  },
+  "expected": {
+   "tool": "read_file",
+   "arguments": {
+    "file_id": "55555555-5555-4555-8555-555555555555"
+   }
+  },
+  "recorded": {
+   "tool": "read_file",
+   "arguments": {
+    "file_id": "55555555-5555-4555-8555-555555555555"
+   }
+  }
+ },
+ {
+  "id": "kpi-link-candidates",
+  "language": "en",
+  "question": "Which KPIs could be linked to warehouse columns?",
+  "page_context": {
+   "type": "data_warehouse",
+   "id": null,
+   "label": "Data Warehouse"
+  },
+  "expected": {
+   "tool": "get_kpi_link_candidates",
+   "arguments": {}
+  },
+  "recorded": {
+   "tool": "get_kpi_link_candidates",
+   "arguments": {}
+  }
+ },
+ {
+  "id": "no-tool-greeting",
+  "language": "en",
+  "question": "Hello",
+  "page_context": null,
+  "expected": {
+   "tool": null,
+   "arguments": {}
+  },
+  "recorded": {
+   "text": "Hello! How can I help with your Workspace?"
+  }
+ },
+ {
+  "id": "ar-search-tables",
+  "language": "ar",
+  "question": "ابحث عن الجداول التي تحتوي على 'عميل' في الاسم",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "عميل"
+   }
+  },
+  "recorded": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "عميل"
+   }
+  }
+ },
+ {
+  "id": "ar-search-columns",
+  "language": "ar",
+  "question": "أي الأعمدة تحتوي على رقم الهاتف؟",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "phone"
+   }
+  },
+  "recorded": {
+   "tool": "search_catalog",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "query": "phone"
+   }
+  }
+ },
+ {
+  "id": "ar-get-kpi",
+  "language": "ar",
+  "question": "اشرح لي تعريف هذا المؤشر",
+  "page_context": {
+   "type": "kpi",
+   "id": "44444444-4444-4444-8444-444444444444",
+   "label": "Net Interest Margin"
+  },
+  "expected": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "kpi",
+    "id": "44444444-4444-4444-8444-444444444444"
+   }
+  },
+  "recorded": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "kpi",
+    "id": "44444444-4444-4444-8444-444444444444"
+   }
+  }
+ },
+ {
+  "id": "ar-get-table",
+  "language": "ar",
+  "question": "اعرض أعمدة هذا الجدول",
+  "page_context": {
+   "type": "table",
+   "id": "22222222-2222-4222-8222-222222222222",
+   "label": "LOANS"
+  },
+  "expected": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "table",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_object",
+   "arguments": {
+    "kind": "table",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "ar-profile-column",
+  "language": "ar",
+  "question": "ما عدد القيم المختلفة في هذا العمود؟",
+  "page_context": {
+   "type": "column",
+   "id": "33333333-3333-4333-8333-333333333333",
+   "label": "LOANS.AMOUNT"
+  },
+  "expected": {
+   "tool": "get_profile",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "table_id": "22222222-2222-4222-8222-222222222222",
+    "column_id": "33333333-3333-4333-8333-333333333333"
+   }
+  },
+  "recorded": {
+   "tool": "get_profile",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "table_id": "22222222-2222-4222-8222-222222222222",
+    "column_id": "33333333-3333-4333-8333-333333333333"
+   }
+  }
+ },
+ {
+  "id": "ar-snapshot-diff",
+  "language": "ar",
+  "question": "ما الذي تغير منذ آخر لقطة؟",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "get_snapshot_diff",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_snapshot_diff",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "ar-pii",
+  "language": "ar",
+  "question": "اعرض البيانات الشخصية المقترحة",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "get_pii_findings",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "status": "suggested"
+   }
+  },
+  "recorded": {
+   "tool": "get_pii_findings",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111",
+    "status": "suggested"
+   }
+  }
+ },
+ {
+  "id": "ar-lineage-up",
+  "language": "ar",
+  "question": "من أين تأتي بيانات هذا العمود؟",
+  "page_context": {
+   "type": "column",
+   "id": "33333333-3333-4333-8333-333333333333",
+   "label": "LOANS.AMOUNT"
+  },
+  "expected": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "33333333-3333-4333-8333-333333333333",
+    "direction": "upstream"
+   }
+  },
+  "recorded": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "22222222-2222-4222-8222-222222222222",
+    "direction": "upstream"
+   }
+  }
+ },
+ {
+  "id": "ar-lineage-down",
+  "language": "ar",
+  "question": "ما الذي يعتمد على هذا الجدول؟",
+  "page_context": {
+   "type": "table",
+   "id": "22222222-2222-4222-8222-222222222222",
+   "label": "LOANS"
+  },
+  "expected": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "22222222-2222-4222-8222-222222222222",
+    "direction": "downstream"
+   }
+  },
+  "recorded": {
+   "tool": "get_lineage",
+   "arguments": {
+    "node_id": "22222222-2222-4222-8222-222222222222",
+    "direction": "downstream"
+   }
+  }
+ },
+ {
+  "id": "ar-score",
+  "language": "ar",
+  "question": "لماذا درجة الجودة منخفضة؟",
+  "page_context": {
+   "type": "data_warehouse",
+   "id": null,
+   "label": "Data Warehouse"
+  },
+  "expected": {
+   "tool": "get_score",
+   "arguments": {}
+  },
+  "recorded": {
+   "tool": "run_validation",
+   "arguments": {}
+  }
+ },
+ {
+  "id": "ar-validation",
+  "language": "ar",
+  "question": "شغّل فحوصات التحقق الآن",
+  "page_context": {
+   "type": "data_warehouse",
+   "id": null,
+   "label": "Data Warehouse"
+  },
+  "expected": {
+   "tool": "run_validation",
+   "arguments": {}
+  },
+  "recorded": {
+   "tool": "run_validation",
+   "arguments": {}
+  }
+ },
+ {
+  "id": "ar-search-docs",
+  "language": "ar",
+  "question": "ماذا يقول قاموس البيانات عن أسعار الفائدة؟",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "search_documents",
+   "arguments": {
+    "query": "أسعار الفائدة",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "search_documents",
+   "arguments": {
+    "query": "أسعار الفائدة",
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ },
+ {
+  "id": "ar-read-file",
+  "language": "ar",
+  "question": "اقرأ هذا الملف",
+  "page_context": {
+   "type": "file",
+   "id": "55555555-5555-4555-8555-555555555555",
+   "label": "loans_mapping.xlsx"
+  },
+  "expected": {
+   "tool": "read_file",
+   "arguments": {
+    "file_id": "55555555-5555-4555-8555-555555555555"
+   }
+  },
+  "recorded": {
+   "tool": "read_file",
+   "arguments": {
+    "file_id": "55555555-5555-4555-8555-555555555555"
+   }
+  }
+ },
+ {
+  "id": "ar-relationships",
+  "language": "ar",
+  "question": "هل توجد علاقات مقترحة للمراجعة؟",
+  "page_context": {
+   "type": "source_system",
+   "id": "11111111-1111-4111-8111-111111111111",
+   "label": "Core Banking"
+  },
+  "expected": {
+   "tool": "get_relationships",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  "recorded": {
+   "tool": "get_relationships",
+   "arguments": {
+    "system_id": "11111111-1111-4111-8111-111111111111"
+   }
+  }
+ }
+]
