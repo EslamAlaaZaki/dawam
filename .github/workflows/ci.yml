@@ -39,6 +39,8 @@ jobs:
         run: |
           ruff check .
           ruff format --check .
+      - name: No provider API key in any workflow
+        run: python tools/check_workflow_keys.py ../.github/workflows
       - name: Tests (pytest, PostgreSQL 16 and SQL Server 2022 via Testcontainers)
         run: pytest --shard ${{ matrix.shard }}/4
 
