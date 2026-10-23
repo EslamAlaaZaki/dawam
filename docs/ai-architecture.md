@@ -110,6 +110,7 @@ Module boundaries (enforced by the repo's module rules, see `modules/README.md`)
 `Gateway(adapter, model=..., capabilities=...)` exposes `chat(messages, tools, stream, json_schema=)`, `embed(texts)`, `capabilities()`, `list_models()` and `server_context_window()`.
 
 - **Retries with exponential backoff** for `rate_limit` and `unavailable` only: up to 3 retries, `0.5s × 2^attempt`, capped at 30 s, honouring the provider's `Retry-After`. A stream is retried **only until its first event**; a stream that has started is never restarted.
+- **Token counts**: `Gateway.count_tokens(text)` uses the adapter's real count and falls back to about 4 characters per token when the model is unknown or the count fails; it never raises. Anthropic (`/messages/count_tokens`) and Gemini (`:countTokens`) use the provider's endpoint. OpenAI and Azure OpenAI models use `tiktoken` with `cl100k_base` and `o200k_base` vendored in `llm/internal/bpe/` (never downloaded). Self-hosted models use a Hugging Face `tokenizer.json` only if it is already in the local cache. Bedrock and anything else use the estimate, and `MeteredGateway` always estimates for internal-only Workspaces.
 - **Token usage**: when the provider sends no usage, it estimates about 4 characters per token for both prompt and completion and marks it `estimated`.
 
 ### 3.3 Adapters (connectors / providers)
@@ -165,7 +166,8 @@ flowchart LR
 
 ### 3.5 Model roles, Workspace Models and budgets
 
-- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; at the time of writing no feature asks for it outside the `llm` module) and `embedding` (document vectors).
+- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3); no fallback to the agent role for that) and `embedding` (document vectors).
+- **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
   - checks the installation's and the Workspace's **monthly token budgets** before every call (429 `token_budget_exhausted`);
@@ -346,30 +348,39 @@ flowchart TD
 
 Small self-hosted models have small windows, so before each model call:
 
+0. **Reserve** the tokens of the tool schemas (native mode) or of `tools_prompt` (prompted mode) out of the budget. If the system prompt plus the tools alone exceed it, the run fails before any model call with `context_window_too_small`.
 1. **Each tool result** is cut to 1/6 of the context window (min 200 tokens), with a note saying how much was left out.
-2. If the prompt still exceeds **75% of the window** (the rest is kept for the answer), the **oldest conversation turns** are dropped (a tool call is dropped with its results; the kept history never starts on an assistant or tool turn), and the system prompt gets a note that earlier messages were left out.
+2. If the prompt still exceeds **75% of the window** (the rest is kept for the answer), the **oldest conversation turns** are dropped (a tool call is dropped with its results; the kept history never starts on an assistant or tool turn), and the system prompt gets a note that earlier messages were left out. If a **light model** is assigned, it first **summarises** the dropped turns (see Compaction below).
 3. If it's still too big, the **oldest tool results of the current run** are replaced with a placeholder, always keeping the newest one.
 
 ```mermaid
 flowchart TD
     IN["system + history + current run"] --> W{"Context window known?"}
     W -->|no| OUT(["Send as is"])
-    W -->|yes| B{"Estimated tokens<br/>within 75% of the window?"}
+    W -->|yes| RS["Reserve tool schema tokens"]
+    RS --> TS{"System + tools<br/>fit the budget?"}
+    TS -->|no| FAIL(["Fail: context_window_too_small"])
+    TS -->|yes| B{"Counted tokens<br/>within 75% of the window?"}
     B -->|yes| OUT
     B -->|no| D1["Drop the oldest history turns,<br/>a tool call with its results"]
-    D1 --> N["Add a note to the system prompt"]
+    D1 --> L{"Light model assigned?"}
+    L -->|yes| SM["Summarise dropped turns,<br/>saved on the conversation"]
+    L -->|no| N["Add a note to the system prompt"]
+    SM --> N
     N --> B2{"Fits now?"}
     B2 -->|yes| OUT
     B2 -->|no| D2["Replace the oldest tool results<br/>of this run with a placeholder,<br/>keep the newest"]
     D2 --> OUT
 ```
 
-The member's latest message and the current run's calls are never dropped. Tokens are estimated at about 4 characters per token. With an unknown window nothing is trimmed. On top of that, each tool's own result is capped at 20,000 characters by `tools._json`, which halves the longest lists (marking `truncated: true`) so the result is always valid JSON.
+**Compaction.** The light model (through its metered gateway) summarises the dropped turns. The summary is quoted as data, saved on the conversation (`summary`, `summary_through`), merged forward, and counted in the system message against the budget (capped at 1/6 of the window). With no light model assigned, compaction is off and old turns are simply dropped; a light-model failure, budget refusal or internal-only refusal also falls back to dropping. `GET ai-settings` returns `light_features`, shown as On/Off badges in the AI settings panel.
+
+The member's latest message and the current run's calls are never dropped. Tokens are counted with the run's token counter (real counts where available, otherwise about 4 characters per token); history is counted newest-first and stops at the first turn that doesn't fit. With an unknown window nothing is trimmed. On top of that, each tool's own result is capped at 20,000 characters by `tools._json`, which halves the longest lists (marking `truncated: true`) so the result is always valid JSON.
 
 ### 4.4 Conversation memory
 
 - Conversations and messages live in `assistant_conversations` / messages tables; each answer is a **run** row with its tool calls, token counts, duration, status and error.
-- The **last 30 messages** of the conversation are sent as history with each new message (`HISTORY_MESSAGES`). Past tool calls are not replayed into history; only user and assistant text.
+- The **last 30 messages** of the conversation are sent as history with each new message (`HISTORY_MESSAGES`). Past tool calls are not replayed in full: earlier answers are re-sent with a short redacted digest of their tool calls, quoted as data, so follow-ups don't repeat calls.
 - There is no long-term or vector memory of conversations (see `docs/ai-enhancements.md`). Conversations are private to their starter unless shared with the Workspace (others can read; Owners and Editors can post).
 - Only one run at a time per conversation (409 `run_in_progress`; a run older than 15 minutes stops blocking).
 
@@ -395,7 +406,7 @@ Tool(name, description, arguments: type[BaseModel], kind: "read"|"write",
      level: DataSharingLevel | None = None, chat_only: bool = False)
 ```
 
-- The JSON Schema sent to the model is `arguments.model_json_schema()` (Pydantic).
+- The JSON Schema sent to the model is `arguments.model_json_schema()` (Pydantic). A `compact` flag (set on `generate_dw_schema`, `draft_mappings` and `propose_changes`) drops generated `title` keywords to keep these large schemas short, since schemas are re-sent on every call; long guidance such as the column data-type list lives in the tool's first-phase result.
 - `ToolRegistry` holds the installation's tools; `bind(user, workspace_id, policy, conversation_id, job=)` returns a `BoundTools` (the `ToolSet` for one run).
 - **`specs()`** offers only the tools this user may use right now (policy action + data-sharing level); `start_job` is hidden inside jobs.
 - **`execute()`** checks again regardless of what was offered: unknown tool → `error`; not allowed → `refused`; Pydantic validation failure → `error` with the field problems; `ApiError` 401/403 → `refused`, other → `error`; unexpected exception → logged, generic `error`. Tools never raise into the loop.
