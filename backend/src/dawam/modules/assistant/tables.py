@@ -38,6 +38,10 @@ class ConversationRecord(Base):
         sa.ForeignKey("llm_models.id", ondelete="SET NULL")
     )
     """The model picked for the last message; used again until another is picked."""
+    summary: Mapped[str | None] = mapped_column(sa.Text)
+    """Compaction: a summary of the turns up to ``summary_through``, which are no longer sent."""
+    summary_through: Mapped[int | None]
+    """The position of the last message the summary covers."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 

@@ -61,6 +61,24 @@ class ModelChoices(BaseModel):
     embedding: list[ModelChoice]
 
 
+class LightFeature(BaseModel):
+    key: str
+    name: str
+    description: str
+    enabled: bool = Field(description="On: the Workspace has a light model to run it.")
+
+
+LIGHT_FEATURES = (
+    (
+        "conversation_compaction",
+        "Conversation compaction",
+        "Summarises the oldest turns of a long assistant conversation instead of dropping them.",
+    ),
+)
+"""The features that use the light role; each light-role ticket adds its own entry. They are
+all off while the Workspace has no light model."""
+
+
 class WorkspaceAiSettings(BaseModel):
     internal_only: bool = Field(
         description="Every model role (agent, light, embedding) is refused an external provider."
@@ -74,7 +92,10 @@ class WorkspaceAiSettings(BaseModel):
         "names another."
     )
     light_models: list[WorkspaceModel] = Field(
-        description="The Workspace's light models; none: light tasks use the default agent model."
+        description="The Workspace's light models; none: the light-role features are off."
+    )
+    light_features: list[LightFeature] = Field(
+        description="Each feature that uses the light role, and whether it is on."
     )
     embedding_model: WorkspaceModel | None = Field(
         description="The Workspace's embedding model; null: document search matches text only."
@@ -151,6 +172,12 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
         data_sharing_level=settings.data_sharing_level,
         agent_models=[_chosen(m) for m in view.chosen["agent"]],
         light_models=[_chosen(m) for m in view.chosen["light"]],
+        light_features=[
+            LightFeature(
+                key=key, name=name, description=description, enabled=bool(view.chosen["light"])
+            )
+            for key, name, description in LIGHT_FEATURES
+        ],
         embedding_model=_chosen(embedding[0]) if embedding else None,
         embedding_locked=view.embedding_locked,
         choices=_choices(view.choices),
