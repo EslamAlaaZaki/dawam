@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "id": "chatcmpl-5",
+    "object": "chat.completion",
+    "model": "test-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Hello there."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 125,
+      "completion_tokens": 3,
+      "total_tokens": 128,
+      "prompt_cache_hit_tokens": 100,
+      "prompt_cache_miss_tokens": 25
+    }
+  }
+}

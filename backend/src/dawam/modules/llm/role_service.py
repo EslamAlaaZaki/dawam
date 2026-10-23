@@ -380,6 +380,8 @@ class RoleService:
                     prompt_tokens=usage.prompt_tokens,
                     completion_tokens=usage.completion_tokens,
                     estimated=usage.estimated,
+                    cache_read_tokens=usage.cache_read_tokens,
+                    cache_write_tokens=usage.cache_write_tokens,
                 )
             )
 

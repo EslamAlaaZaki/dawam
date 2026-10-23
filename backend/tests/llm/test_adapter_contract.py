@@ -85,7 +85,9 @@ def _openai_round_trip(body: Any) -> None:
 
 
 def _anthropic_round_trip(body: Any) -> None:
-    assert body["system"] == "Be brief."
+    assert body["system"] == [
+        {"type": "text", "text": "Be brief.", "cache_control": {"type": "ephemeral"}}
+    ]
     sent = body["messages"]
     assert [m["role"] for m in sent] == ["user", "assistant", "user"]
     assert sent[1]["content"] == [

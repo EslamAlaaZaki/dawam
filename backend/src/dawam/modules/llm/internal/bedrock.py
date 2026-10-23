@@ -466,12 +466,11 @@ def _usage(raw: Any) -> Usage | None:
     """Prompt tokens include cached input, which Bedrock reports separately."""
     if not isinstance(raw, dict) or not isinstance(raw.get("inputTokens"), int):
         return None
-    prompt = (
-        _count(raw.get("inputTokens"))
-        + _count(raw.get("cacheReadInputTokens"))
-        + _count(raw.get("cacheWriteInputTokens"))
+    read, write = _count(raw.get("cacheReadInputTokens")), _count(raw.get("cacheWriteInputTokens"))
+    prompt = _count(raw.get("inputTokens")) + read + write
+    return Usage(
+        prompt, _count(raw.get("outputTokens")), cache_read_tokens=read, cache_write_tokens=write
     )
-    return Usage(prompt, _count(raw.get("outputTokens")))
 
 
 def _finish(stop_reason: Any) -> str | None:

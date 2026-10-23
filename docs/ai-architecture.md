@@ -131,6 +131,10 @@ Shared helpers in `llm/internal/wire.py` map HTTP errors into `LlmError` (401/40
 
 **Transport:** `llm/internal/transport.py` defines a `Transport` protocol; `UrllibTransport` is the real one. Tests swap in a replaying transport to run the adapter contract suite against recorded responses.
 
+**Prompt caching:** the system prompt and the tool list come first in every request and are byte-identical across the calls of one run (tools are sorted by name and snapshotted once per run). The `anthropic` adapter sends `cache_control: {"type": "ephemeral"}` on the system prompt and on the last tool. OpenAI, Gemini and DeepSeek cache the prefix automatically, so the adapters send nothing extra. Cached input is recorded per call in `llm_usage` (`cache_read_tokens`, `cache_write_tokens`) from what the provider reports (Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`, OpenAI `prompt_tokens_details.cached_tokens`, DeepSeek `prompt_cache_hit_tokens`, Gemini `cachedContentTokenCount`, Bedrock `cacheReadInputTokens` / `cacheWriteInputTokens`). Budgets still count all input tokens: the cached tokens are part of `prompt_tokens`, recorded separately for pricing.
+
+**Self-hosted models:** vLLM and SGLang only reuse the prefix if prefix caching is on. vLLM: start the server with `--enable-prefix-caching` (the default in recent V1 engines). SGLang: RadixAttention prefix caching is on by default; do not start it with `--disable-radix-cache`. Ollama keeps the prompt of the last request loaded, so no setting is needed. These servers do not report cached tokens, so none are recorded.
+
 ### 3.4 Providers, models and "Test connection"
 
 `llm/service.py` (`ProviderService`) is the admin's registry (`llm_providers`, `llm_models`). An admin adds a provider (kind, base URL, key, `is_internal`), then models, each with **roles**.
