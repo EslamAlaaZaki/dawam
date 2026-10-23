@@ -389,6 +389,27 @@ ROWS: list[Row] = [
         "AI usage per Workspace and user (story 162)",
         admin_only(),
     ),
+    Row("GET", "/api/v1/admin/llm/prices", "see the model price table", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/prices",
+        "set a model's price",
+        admin_only(),
+        json=lambda roles: {
+            "model_name": "m",
+            "currency": "USD",
+            "input_per_million": "1",
+            "output_per_million": "2",
+            "cached_input_per_million": "0.5",
+        },
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/prices",
+        "remove a model's price",
+        admin_only(),
+        query={"model_name": "m"},
+    ),
     # User management (stories 14-19, 15a) and the security-event log (story 23).
     Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
     Row(

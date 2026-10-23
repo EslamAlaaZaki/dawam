@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
@@ -157,3 +158,23 @@ class UsageRecord(Base):
     cache_read_tokens: Mapped[int] = mapped_column(server_default="0")
     """Part of ``prompt_tokens`` served from the provider's prompt cache (budgets count it)."""
     cache_write_tokens: Mapped[int] = mapped_column(server_default="0")
+
+
+class ModelPriceRecord(Base):
+    """What a model costs per million tokens, keyed by the model name usage records carry.
+    An admin edits it; a model without a row has an unknown cost."""
+
+    __tablename__ = "llm_model_prices"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "input_per_million >= 0 AND output_per_million >= 0 AND cached_input_per_million >= 0",
+            name="non_negative",
+        ),
+    )
+
+    model_name: Mapped[str] = mapped_column(sa.String(MODEL_NAME_MAX_LENGTH), primary_key=True)
+    currency: Mapped[str] = mapped_column(sa.String(3))
+    input_per_million: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    output_per_million: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    cached_input_per_million: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

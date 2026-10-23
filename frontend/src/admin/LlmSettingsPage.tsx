@@ -12,10 +12,14 @@ import {
   type LlmProvider,
 } from "../api/llm";
 import {
+  formatCost,
+  useClearLlmModelPrice,
   useClearWorkspaceBudget,
   useLlmBudgets,
+  useLlmModelPrices,
   useLlmUsage,
   useSetInstallationBudget,
+  useSetLlmModelPrice,
   useSetWorkspaceBudget,
   type LlmBudgets,
 } from "../api/llmSettings";
@@ -67,6 +71,7 @@ export function LlmSettingsPage() {
       />
       <ModelRolesSection />
       <BudgetsSection />
+      <PricesSection />
       <UsageSection />
     </section>
   );
@@ -161,8 +166,9 @@ function ModelRoleRow({
     toast.success(`Roles of ${model.name} saved.`);
   };
   const [roles, setRoles] = useState<LlmModelRole[]>(model.roles);
-  const changed =
-    ROLE_COLUMNS.some(({ role }) => roles.includes(role) !== model.roles.includes(role));
+  const changed = ROLE_COLUMNS.some(
+    ({ role }) => roles.includes(role) !== model.roles.includes(role),
+  );
   const mixed =
     roles.includes("embedding") &&
     (roles.includes("agent") || roles.includes("light"));
@@ -185,9 +191,7 @@ function ModelRoleRow({
             {EMBEDDING_HINT}
           </div>
         )}
-        {save.isError && !asking && (
-          <ErrorText>{save.error.message}</ErrorText>
-        )}
+        {save.isError && !asking && <ErrorText>{save.error.message}</ErrorText>}
         {model.warnings.map((warning) => (
           <WarningNote key={warning}>{warning}</WarningNote>
         ))}
@@ -291,7 +295,9 @@ function BudgetsPanel() {
   const setInstallation = useSetInstallationBudget();
   const setWorkspace = useSetWorkspaceBudget();
   const clear = useClearWorkspaceBudget();
-  const [removing, setRemoving] = useState<LlmBudgets["workspaces"][number] | null>(null);
+  const [removing, setRemoving] = useState<
+    LlmBudgets["workspaces"][number] | null
+  >(null);
   if (budgets.isPending) {
     return <Loading />;
   }
@@ -336,7 +342,9 @@ function BudgetsPanel() {
               type="number"
               min={0}
               key={budgets.data.installation_monthly_token_budget ?? "none"}
-              defaultValue={budgets.data.installation_monthly_token_budget ?? ""}
+              defaultValue={
+                budgets.data.installation_monthly_token_budget ?? ""
+              }
             />
           </label>
         </SettingsCard>
@@ -407,9 +415,122 @@ function BudgetsPanel() {
         error={clear.error}
         onConfirm={() =>
           removing &&
-          clear.mutate(removing.workspace_id, { onSuccess: () => setRemoving(null) })
+          clear.mutate(removing.workspace_id, {
+            onSuccess: () => setRemoving(null),
+          })
         }
       />
+      {failure && <ErrorText>{failure.message}</ErrorText>}
+    </div>
+  );
+}
+
+function PricesSection() {
+  const prices = useLlmModelPrices();
+  const setPrice = useSetLlmModelPrice();
+  const clear = useClearLlmModelPrice();
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setPrice.mutate(
+      {
+        model_name: String(data.get("model_name")).trim(),
+        currency: String(data.get("currency")).trim().toUpperCase(),
+        input_per_million: String(data.get("input")),
+        output_per_million: String(data.get("output")),
+        cached_input_per_million: String(data.get("cached")),
+      },
+      { onSuccess: () => form.reset() },
+    );
+  }
+
+  const failure = setPrice.error ?? clear.error;
+  return (
+    <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5">
+      <h3 className={h3Classes}>Model prices</h3>
+      <p className="text-muted-foreground">
+        Prices per million tokens turn usage into cost. A model without a price
+        shows its cost as unknown.
+      </p>
+      {prices.isPending && <Loading />}
+      {prices.isError && <ErrorText>Could not load the prices.</ErrorText>}
+      {prices.data && prices.data.prices.length > 0 && (
+        <TableCard>
+          <Table aria-label="Model prices">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Model</TableHead>
+                <TableHead>Currency</TableHead>
+                <TableHead>Input</TableHead>
+                <TableHead>Output</TableHead>
+                <TableHead>Cached input</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {prices.data.prices.map((row) => (
+                <TableRow key={row.model_name}>
+                  <TableCell className="font-mono">{row.model_name}</TableCell>
+                  <TableCell>{row.currency}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {Number(row.input_per_million)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {Number(row.output_per_million)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {Number(row.cached_input_per_million)}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={clear.isPending}
+                      onClick={() => clear.mutate(row.model_name)}
+                    >
+                      Remove price of {row.model_name}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+      )}
+      <form onSubmit={onSubmit} aria-label="Model price">
+        <SettingsCard
+          title="Set a model price"
+          description="Saving a name that is already listed replaces its price."
+          footer={
+            <Button type="submit" disabled={setPrice.isPending}>
+              Save price
+            </Button>
+          }
+        >
+          <label className={labelClasses}>
+            Model name
+            <Input name="model_name" required className="font-mono" />
+          </label>
+          <label className={labelClasses}>
+            Currency (ISO code)
+            <Input name="currency" required maxLength={3} defaultValue="USD" />
+          </label>
+          <label className={labelClasses}>
+            Input price per million tokens
+            <Input name="input" type="number" min={0} step="any" required />
+          </label>
+          <label className={labelClasses}>
+            Output price per million tokens
+            <Input name="output" type="number" min={0} step="any" required />
+          </label>
+          <label className={labelClasses}>
+            Cached input price per million tokens
+            <Input name="cached" type="number" min={0} step="any" required />
+          </label>
+        </SettingsCard>
+      </form>
       {failure && <ErrorText>{failure.message}</ErrorText>}
     </div>
   );
@@ -436,7 +557,8 @@ function UsageSection() {
           <p className="text-muted-foreground">
             {usage.data.month}:{" "}
             {usage.data.totals.total_tokens.toLocaleString("en")} tokens in{" "}
-            {usage.data.totals.calls} calls
+            {usage.data.totals.calls} calls, cost{" "}
+            {formatCost(usage.data.totals.cost)}
             {usage.data.installation_monthly_token_budget !== null &&
               ` (budget ${usage.data.installation_monthly_token_budget.toLocaleString("en")})`}
           </p>
@@ -447,6 +569,7 @@ function UsageSection() {
                   <TableHead>Workspace</TableHead>
                   <TableHead>Tokens</TableHead>
                   <TableHead>Calls</TableHead>
+                  <TableHead>Cost</TableHead>
                   <TableHead>Budget</TableHead>
                 </TableRow>
               </TableHeader>
@@ -460,6 +583,9 @@ function UsageSection() {
                       {row.totals.total_tokens.toLocaleString("en")}
                     </TableCell>
                     <TableCell>{row.totals.calls}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatCost(row.totals.cost)}
+                    </TableCell>
                     <TableCell>
                       {row.monthly_token_budget?.toLocaleString("en") ?? "none"}
                     </TableCell>
@@ -475,6 +601,7 @@ function UsageSection() {
                   <TableHead>User</TableHead>
                   <TableHead>Tokens</TableHead>
                   <TableHead>Calls</TableHead>
+                  <TableHead>Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -487,6 +614,9 @@ function UsageSection() {
                       {row.totals.total_tokens.toLocaleString("en")}
                     </TableCell>
                     <TableCell>{row.totals.calls}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatCost(row.totals.cost)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
