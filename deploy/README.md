@@ -238,7 +238,11 @@ the `ACCELERATOR` build arg:
 | Build | Contains | Use it when |
 |-------|----------|-------------|
 | `cpu` (default) | CPU torch + `onnxruntime`, no NVIDIA packages | Any host |
-| `cuda` | CUDA torch + `onnxruntime-gpu` (a much bigger image) | The host has an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
+| `cuda` | CUDA torch + `onnxruntime-gpu` (about 12 GB, against about 4 GB for `cpu`) | The host has an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
+
+The `cuda` build uses CUDA 13, so the host needs an NVIDIA driver 580 or newer. The
+driver stays on the host, never in the image. On Windows, use Docker Desktop with the
+WSL2 backend and the normal Windows NVIDIA driver; no Container Toolkit install is needed.
 
 Both builds download the models into the image (`/opt/dawam/models`), so the worker
 never downloads anything at runtime and indexing works on a host without internet.
@@ -258,11 +262,16 @@ docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.gpu.yaml -
 ```
 
 Use the same `-f` files in every later command. Check that the worker sees the GPU
-(prints `cuda`; `cpu` means it does not):
+for both engines: the first line should be `cuda` (Docling, through torch; `cpu` means
+it does not see the GPU) and the second should list `CUDAExecutionProvider` (RapidOCR,
+through ONNX Runtime):
 
 ```sh
-docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml exec worker python -c "from dawam.modules.files.internal.accelerator import accelerator_device; print(accelerator_device('auto'))"
+docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml exec worker python -c "from dawam.modules.files.internal.accelerator import accelerator_device; import onnxruntime; print(accelerator_device('auto')); print(onnxruntime.get_available_providers())"
 ```
+
+ONNX Runtime may log `No registered plugin EP device found for 'CUDAExecutionProvider'`;
+it is harmless, and the OCR models still run on the GPU.
 
 The worker also logs the device when it first parses a document
 (`... runs on cuda (document_accelerator=auto)`). `DAWAM_DOCUMENT_ACCELERATOR` picks the

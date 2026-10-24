@@ -31,7 +31,8 @@ turns Latin into junk. So a page is read once per language (PP-OCRv6 multilingua
 English, PP-OCRv5 Arabic) and the reading with the higher mean OCR confidence is kept."""
 RAPIDOCR_MODELS = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "rapidocr"
 """Where RapidOCR downloads its model files (cached in CI), instead of its package folder.
-Unused when ``DOCLING_ARTIFACTS_PATH`` is set (the image): the models are read from there."""
+When ``DOCLING_ARTIFACTS_PATH`` is set (the image), Docling passes RapidOCR the model files
+from there, so this folder is created but stays empty."""
 
 
 class OcrEngine(Protocol):
