@@ -1,10 +1,9 @@
 """OCR: the text of a scanned PDF page, read from its image, so a scan becomes searchable.
 
 ``OcrEngine`` is the port; ``DoclingOcr`` is the self-hosted engine behind it: the Docling
-pipeline with a pluggable OCR backend, RapidOCR (PP-OCR models on ONNX Runtime, CPU) by
-default and Tesseract as the fallback. Only the pages with too little text of their own are
-read this way (``pages_needing_ocr``). Tests fake the port, so the default run never loads
-Docling or its model files.
+pipeline with RapidOCR (PP-OCR models on ONNX Runtime, on the CPU or an NVIDIA GPU). Only
+the pages with too little text of their own are read this way (``pages_needing_ocr``). Tests
+fake the port, so the default run never loads Docling or its model files.
 
 The defaults are code constants until the Document AI settings exist.
 """
@@ -17,8 +16,9 @@ import os
 import threading
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
+from .accelerator import DocumentAccelerator, accelerator_options
 from .content import PDF_MAX_PAGES
 
 OCR_MIN_CHARS_PER_PAGE = 50
@@ -29,11 +29,9 @@ RAPIDOCR_LANGUAGES = ("en", "arabic")
 """RapidOCR runs one recognizer per run, and none reads both scripts: PP-OCR's Arabic one
 turns Latin into junk. So a page is read once per language (PP-OCRv6 multilingual for
 English, PP-OCRv5 Arabic) and the reading with the higher mean OCR confidence is kept."""
-TESSERACT_LANGUAGES = ["ara", "eng"]
 RAPIDOCR_MODELS = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "rapidocr"
-"""Where RapidOCR keeps its model files (cached in CI), instead of its package folder."""
-
-OcrBackend = Literal["rapidocr", "tesseract"]
+"""Where RapidOCR downloads its model files (cached in CI), instead of its package folder.
+Unused when ``DOCLING_ARTIFACTS_PATH`` is set (the image): the models are read from there."""
 
 
 class OcrEngine(Protocol):
@@ -81,20 +79,16 @@ def best_reading(results: Sequence[Any]) -> str:
 
 
 class DoclingOcr:
-    """Docling with OCR on. Its default OCR mode reads only the regions of a page that have
-    no PDF text, so the pages with text of their own keep it (``pages`` is advisory here).
-    With RapidOCR the document is read once per language in ``RAPIDOCR_LANGUAGES``."""
+    """Docling with RapidOCR on. Its default OCR mode reads only the regions of a page that
+    have no PDF text, so the pages with text of their own keep it (``pages`` is advisory
+    here). The document is read once per language in ``RAPIDOCR_LANGUAGES``."""
 
-    def __init__(self, backend: OcrBackend = "rapidocr") -> None:
-        self.backend = backend
+    def __init__(self, accelerator: DocumentAccelerator = "auto") -> None:
+        self.accelerator = accelerator
         self._converters: list[Any] | None = None
         self._lock = threading.Lock()  # the converters are shared by worker threads
 
     def _ocr_options(self) -> list[Any]:
-        if self.backend == "tesseract":
-            from docling.datamodel.pipeline_options import TesseractCliOcrOptions
-
-            return [TesseractCliOcrOptions(lang=TESSERACT_LANGUAGES)]  # one multilingual run
         from docling.datamodel.pipeline_options import RapidOcrOptions
 
         try:
@@ -113,12 +107,16 @@ class DoclingOcr:
             from docling.datamodel.pipeline_options import PdfPipelineOptions
             from docling.document_converter import DocumentConverter, PdfFormatOption
 
+            accelerator = accelerator_options(self.accelerator, "OCR (Docling + RapidOCR)")
             self._converters = [
                 DocumentConverter(
                     format_options={
                         InputFormat.PDF: PdfFormatOption(
                             pipeline_options=PdfPipelineOptions(
-                                do_ocr=True, do_table_structure=True, ocr_options=ocr
+                                do_ocr=True,
+                                do_table_structure=True,
+                                ocr_options=ocr,
+                                accelerator_options=accelerator,
                             )
                         )
                     }

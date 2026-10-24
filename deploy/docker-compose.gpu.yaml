@@ -1,0 +1,26 @@
+# Document AI on an NVIDIA GPU: builds the backend image with ACCELERATOR=cuda (CUDA torch,
+# onnxruntime-gpu) and gives the `worker` the GPU, so Docling's layout and table models and
+# RapidOCR run on it. Needs the NVIDIA Container Toolkit on the host. Add it after either
+# Compose file, from the repository root:
+#   docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml up -d --build
+#   docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.gpu.yaml --env-file .env up -d --build
+# deploy/README.md, "Document AI: CPU vs GPU", has the check that the worker sees the GPU.
+
+services:
+  # `app` gets the same build, so both services keep sharing one image.
+  app:
+    build:
+      args:
+        ACCELERATOR: cuda
+
+  worker:
+    build:
+      args:
+        ACCELERATOR: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

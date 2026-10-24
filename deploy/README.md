@@ -228,6 +228,48 @@ Toolkit). The volumes are the same as in method 1 (the project is named `dawam` 
 both), so you can switch between the two files without losing data. Don't run both
 at the same time.
 
+## Document AI: CPU vs GPU
+
+The `worker` reads uploaded PDF, DOCX and XLSX files with Docling (layout and table
+models) and the scanned pages of PDFs with RapidOCR (English and Arabic). These models
+run on the CPU by default. The backend image is built for one of two accelerators, with
+the `ACCELERATOR` build arg:
+
+| Build | Contains | Use it when |
+|-------|----------|-------------|
+| `cpu` (default) | CPU torch + `onnxruntime`, no NVIDIA packages | Any host |
+| `cuda` | CUDA torch + `onnxruntime-gpu` (a much bigger image) | The host has an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
+
+Both builds download the models into the image (`/opt/dawam/models`), so the worker
+never downloads anything at runtime and indexing works on a host without internet.
+
+```sh
+docker build .                                  # cpu
+docker build --build-arg ACCELERATOR=cuda .     # cuda
+```
+
+With Compose, add [`docker-compose.gpu.yaml`](docker-compose.gpu.yaml) after the main
+file: it builds the `cuda` image and gives the `worker` the GPU.
+
+```sh
+docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml up -d --build
+# or, with the all-in-one file:
+docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.gpu.yaml --env-file .env up -d --build
+```
+
+Use the same `-f` files in every later command. Check that the worker sees the GPU
+(prints `cuda`; `cpu` means it does not):
+
+```sh
+docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml exec worker python -c "from dawam.modules.files.internal.accelerator import accelerator_device; print(accelerator_device('auto'))"
+```
+
+The worker also logs the device when it first parses a document
+(`OCR (Docling + RapidOCR) runs on cuda`). `DAWAM_DOCUMENT_ACCELERATOR` picks the
+device: `auto` (default: the GPU when one is visible, else the CPU), `cpu`, or `cuda`
+(falls back to the CPU, with a warning, when no GPU is visible). The `cuda` image also
+runs without a GPU, on the CPU.
+
 ## 3. Local development
 
 Runs each part from source, with hot reload. `next dev` forwards `/api`, `/healthz`
@@ -297,7 +339,8 @@ just as in Compose.
 
    ```sh
    python3.12 -m venv .venv-run
-   .venv-run/bin/pip install ./backend      # Windows: .venv-run\Scripts\pip; use "./backend[s3]" for S3 storage
+   .venv-run/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # Linux: else pip picks the CUDA build
+   .venv-run/bin/pip install "./backend[ocr-cpu]"   # Windows: .venv-run\Scripts\pip; use "./backend[ocr-cpu,s3]" for S3 storage
    ```
 
    Copy [`host/dawam.env.example`](host/dawam.env.example) to `.env` in the directory
@@ -349,7 +392,8 @@ The commands are for Debian/Ubuntu; adapt package names for other distributions.
 
    ```sh
    sudo python3.12 -m venv /opt/dawam/venv
-   sudo /opt/dawam/venv/bin/pip install ./backend
+   sudo /opt/dawam/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+   sudo /opt/dawam/venv/bin/pip install "./backend[ocr-cpu]"   # ocr-gpu instead, with CUDA torch, for an NVIDIA GPU
    ```
 
 4. **Frontend:**

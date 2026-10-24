@@ -85,7 +85,7 @@ By default, uploaded files are stored in a Docker volume at `/var/lib/dawam/file
 - **`DAWAM_STORAGE_PATH`**: Directory for local storage (default: `/var/lib/dawam/files`).
 
 The default image does not include the S3 client (`boto3`, the `s3` extra in `backend/pyproject.toml`). To use S3,
-change `RUN pip install .` in the `Dockerfile` to `RUN pip install ".[s3]"` and rebuild (`docker compose build`).
+change `pip install ".[$ocr]"` in the `Dockerfile` to `pip install ".[$ocr,s3]"` and rebuild (`docker compose build`).
 
 For S3-compatible storage (MinIO, Ceph, AWS S3):
 
@@ -250,7 +250,8 @@ To run DAWAM fully offline with no internet access:
    docker save dawam-app dawam-worker dawam-web dawam-edge pgvector/pgvector:pg16 ollama/ollama | gzip > dawam-images.tar.gz
    ```
 
-   The images are per service: `dawam-app`, `dawam-worker`, `dawam-web`, `dawam-edge`, plus `pgvector/pgvector:pg16`
+   The `app` and `worker` images already contain the document AI models (Docling, RapidOCR), so indexing needs no
+   internet ([`deploy/README.md`](../deploy/README.md), "Document AI: CPU vs GPU"). The images are per service: `dawam-app`, `dawam-worker`, `dawam-web`, `dawam-edge`, plus `pgvector/pgvector:pg16`
    and (optional) `ollama/ollama`. Check `docker images` if your Compose project name differs.
 
 2. **Transfer the archive** to the air-gapped network (USB drive, secure transfer, etc.).

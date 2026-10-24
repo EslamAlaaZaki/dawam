@@ -15,9 +15,11 @@ import pytest
 import sqlalchemy as sa
 from pypdf import PdfReader, PdfWriter
 
-from dawam.job_handlers import default_ocr
+from dawam.job_handlers import default_ocr, default_parser
+from dawam.modules.files.internal.accelerator import accelerator_device
 from dawam.modules.files.internal.content import PDF, FileType
 from dawam.modules.files.internal.ocr import OCR_MIN_CHARS_PER_PAGE, DoclingOcr, best_reading
+from dawam.modules.files.internal.parsing import DoclingParser
 from tests.files import test_indexing
 from tests.files.test_files import blank_pdf, docx_bytes, system, text_pdf, upload
 from tests.files.test_indexing import listed, search
@@ -136,13 +138,48 @@ def test_other_file_types_never_go_to_ocr(roles: RoleClients, ocr, worker):
     assert ocr.pages == []
 
 
-def test_the_settings_choose_the_ocr_backend(settings):
+def test_the_settings_turn_ocr_on_or_off(settings):
     assert default_ocr(settings.model_copy(update={"document_ocr": "off"})) is None
-    rapid = default_ocr(settings.model_copy(update={"document_ocr": "rapidocr"}))
-    tesseract = default_ocr(settings.model_copy(update={"document_ocr": "tesseract"}))
+    on = settings.model_copy(update={"document_ocr": "rapidocr"})
+    assert isinstance(default_ocr(on), DoclingOcr)
 
-    assert isinstance(rapid, DoclingOcr) and rapid.backend == "rapidocr"
-    assert isinstance(tesseract, DoclingOcr) and tesseract.backend == "tesseract"
+
+def test_the_settings_choose_the_device_of_the_document_engines(settings):
+    for accelerator in ("auto", "cpu", "cuda"):
+        chosen = settings.model_copy(
+            update={
+                "document_parser": "docling",
+                "document_ocr": "rapidocr",
+                "document_accelerator": accelerator,
+            }
+        )
+        ocr, parser = default_ocr(chosen), default_parser(chosen)
+
+        assert isinstance(ocr, DoclingOcr) and ocr.accelerator == accelerator
+        assert isinstance(parser, DoclingParser) and parser.accelerator == accelerator
+
+
+def no_gpu() -> bool:
+    return False
+
+
+def a_gpu() -> bool:
+    return True
+
+
+def test_auto_uses_the_gpu_when_one_is_visible_else_the_cpu():
+    assert accelerator_device("auto", a_gpu) == "cuda"
+    assert accelerator_device("auto", no_gpu) == "cpu"
+
+
+def test_cpu_never_uses_the_gpu():
+    assert accelerator_device("cpu", a_gpu) == "cpu"
+
+
+def test_cuda_without_a_gpu_falls_back_to_the_cpu(caplog):
+    assert accelerator_device("cuda", a_gpu) == "cuda"
+    assert accelerator_device("cuda", no_gpu) == "cpu"
+    assert "no CUDA GPU" in caplog.text
 
 
 def scanned_pdf(text: str) -> bytes:
