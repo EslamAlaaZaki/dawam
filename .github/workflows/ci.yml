@@ -57,7 +57,7 @@ jobs:
           path: |
             ~/.cache/huggingface
             ~/.cache/rapidocr
-          key: docling-ocr-models-${{ steps.docling.outputs.pin }}
+          key: docling-ocr-en-ar-models-${{ steps.docling.outputs.pin }}
       - name: Real Docling engine tests
         if: matrix.shard == 1
         run: pytest -m docling tests/files/test_layout_parsing.py tests/files/test_ocr.py

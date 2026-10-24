@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import io
 from collections.abc import Sequence
+from math import nan
+from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -15,7 +17,7 @@ from pypdf import PdfReader, PdfWriter
 
 from dawam.job_handlers import default_ocr
 from dawam.modules.files.internal.content import PDF, FileType
-from dawam.modules.files.internal.ocr import OCR_MIN_CHARS_PER_PAGE, DoclingOcr
+from dawam.modules.files.internal.ocr import OCR_MIN_CHARS_PER_PAGE, DoclingOcr, best_reading
 from tests.files import test_indexing
 from tests.files.test_files import blank_pdf, docx_bytes, system, text_pdf, upload
 from tests.files.test_indexing import listed, search
@@ -24,6 +26,7 @@ from tests.roles import RoleClients
 worker = test_indexing.worker  # the fixture that runs queued jobs on demand
 
 SCANNED = "# Ledger\n\nDormant accounts close after a year.\n\nالحسابات الخاملة تغلق بعد سنة."  # noqa: RUF001
+ARABIC = "الحسابات الخاملة"
 LONG_LINE = "Dormant accounts are closed after twelve months without activity."
 
 
@@ -180,3 +183,29 @@ def test_image_placeholders_alone_are_no_text(roles: RoleClients, app, ocr, work
     worker()
 
     assert listed(roles, system_id)["scan.pdf"]["text_status"] == "no_text_found"
+
+
+class Reading:
+    """A Docling result as ``best_reading`` sees it: per-page Markdown and OCR confidence."""
+
+    def __init__(self, pages: dict[int, tuple[str, float]]) -> None:
+        self.document = SimpleNamespace(
+            pages={no: None for no in pages}, export_to_markdown=self._markdown
+        )
+        self.confidence = SimpleNamespace(
+            pages={no: SimpleNamespace(ocr_score=score) for no, (_, score) in pages.items()}
+        )
+        self._pages = pages
+
+    def _markdown(self, page_no: int | None = None) -> str:
+        if page_no is None:
+            return "\n\n".join(text for text, _ in self._pages.values())
+        return self._pages[page_no][0]
+
+
+def test_each_page_keeps_the_language_pass_that_read_it_most_confidently():
+    english = Reading({1: ("Dormant accounts", 0.95), 2: ("## ^ U", 0.41), 3: ("typed", nan)})
+    arabic = Reading({1: ("## ^ ^ 1 U", 0.52), 2: (ARABIC, 0.9), 3: ("typed", nan)})
+
+    assert best_reading([english, arabic]) == f"Dormant accounts\n\n{ARABIC}\n\ntyped"
+    assert best_reading([arabic]) == f"## ^ ^ 1 U\n\n{ARABIC}\n\ntyped"
