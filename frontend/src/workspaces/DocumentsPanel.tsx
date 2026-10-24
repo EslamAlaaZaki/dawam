@@ -73,11 +73,20 @@ function IndexStatus({ file }: { file: WorkspaceFile }) {
       </div>
     );
   }
-  return (
+  const badge = (
     <Badge variant={file.index_status === "indexed" ? "success" : "neutral"}>
       {label}
     </Badge>
   );
+  if (file.index_note) {
+    return (
+      <div className="flex flex-col gap-1">
+        {badge}
+        <span className="text-xs text-muted-foreground">{file.index_note}</span>
+      </div>
+    );
+  }
+  return badge;
 }
 
 function formatSize(bytes: number): string {

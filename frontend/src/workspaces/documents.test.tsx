@@ -190,6 +190,23 @@ describe("a Source System's Documents folder", () => {
     expect(failed).toHaveTextContent("parser exploded");
   });
 
+  it("shows the note of an indexed file, e.g. which OCR engine read its scans", async () => {
+    renderApp(
+      backend("viewer", [
+        {
+          ...SAD,
+          index_note: "The self-hosted OCR engine read the scanned pages.",
+        },
+      ]),
+      FOLDER,
+    );
+
+    await screen.findByRole("link", { name: "sad.pdf" });
+    const row = screen.getByRole("row", { name: /sad\.pdf/ });
+    expect(row).toHaveTextContent("Indexed");
+    expect(row).toHaveTextContent("self-hosted OCR engine read");
+  });
+
   it("lets an editor upload a document", async () => {
     // Node's fetch cannot serialise jsdom's File (it goes as "[object File]"), so watch
     // what the app puts into the form instead of what reaches the wire.

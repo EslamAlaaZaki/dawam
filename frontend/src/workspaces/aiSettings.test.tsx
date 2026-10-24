@@ -29,6 +29,7 @@ const BIG = "aaaaaaaa-0000-4000-8000-000000000001";
 const SMALL = "aaaaaaaa-0000-4000-8000-000000000002";
 const EMBED = "aaaaaaaa-0000-4000-8000-000000000003";
 const LOCAL = "aaaaaaaa-0000-4000-8000-000000000004";
+const VISION = "aaaaaaaa-0000-4000-8000-000000000005";
 
 function choice(id: string, name: string, internal = false) {
   return { id, name, provider_name: internal ? "Local" : "Cloud", internal };
@@ -77,6 +78,7 @@ function settings(
     ],
     embedding_model: chosen(EMBED, "Embed-1", true),
     embedding_locked: false,
+    vision_model: null,
     choices: {
       agent: [
         choice(BIG, "Big"),
@@ -85,6 +87,7 @@ function settings(
       ],
       light: [choice(SMALL, "Small")],
       embedding: [choice(EMBED, "Embed-1")],
+      vision: [choice(VISION, "Qwen-VL", true)],
     },
     internal_agent_available: true,
     banner: false,
@@ -236,7 +239,45 @@ describe("the Workspace AI settings card", () => {
       light_model_ids: [],
       default_light_model_id: null,
       embedding_model_id: null,
+      vision_model_id: null,
     });
+  });
+
+  it("lets an owner choose the vision model that reads scanned pages", async () => {
+    const requests = renderApp(
+      backend("owner", (r) => (r.path === AI ? json(settings()) : undefined)),
+      PATH,
+    );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    const picker = within(card).getByLabelText("Vision model");
+    expect(picker).toHaveValue("");
+    expect(card).toHaveTextContent(
+      "only when the data-sharing level allows documents",
+    );
+    fireEvent.change(picker, { target: { value: VISION } });
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
+      vision_model_id: VISION,
+    });
+  });
+
+  it("shows the vision model read-only to non-owners", async () => {
+    renderApp(
+      backend("viewer", (r) =>
+        r.method === "GET" && r.path === AI
+          ? json(settings({ vision_model: chosen(VISION, "Qwen-VL", true) }))
+          : undefined,
+      ),
+      PATH,
+    );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("region", { name: "AI settings" });
+    expect(card).toHaveTextContent("Vision modelQwen-VL");
   });
 
   it("offers an internal-only Workspace internal models only", async () => {

@@ -372,6 +372,7 @@ const MODELS: NewWorkspaceModels = {
     agent: [local(BIG, "big"), local(SMALL, "small")],
     light: [local(SMALL, "small")],
     embedding: [local(BGE_SMALL, "bge-small"), local(BGE_LARGE, "bge-large")],
+    vision: [],
   },
 };
 
@@ -418,7 +419,12 @@ describe("creating a Workspace", () => {
     const backend = fakeBackend({
       models: {
         internal_only: false,
-        choices: { agent: [local(BIG, "big")], light: [], embedding: [] },
+        choices: {
+          agent: [local(BIG, "big")],
+          light: [],
+          embedding: [],
+          vision: [],
+        },
       },
     });
     renderApp(backend);

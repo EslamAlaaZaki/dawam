@@ -14,11 +14,12 @@ export const ROLE_LABELS: Record<Role, string> = {
   agent: "Agent",
   light: "Light",
   embedding: "Embedding",
+  vision: "Vision",
 };
 
-const REPLACEMENT_KEY: Record<
-  Role,
-  "agent_model_id" | "light_model_id" | "embedding_model_id"
+/** Vision is optional: a Workspace losing its vision model needs no replacement. */
+const REPLACEMENT_KEY: Partial<
+  Record<Role, "agent_model_id" | "light_model_id" | "embedding_model_id">
 > = {
   agent: "agent_model_id",
   light: "light_model_id",
@@ -107,8 +108,10 @@ export function ReplacementDialog({
     onConfirm(
       workspaces.map((w) => {
         const entry: WorkspaceReplacement = { workspace_id: w.id };
-        for (const role of w.roles)
-          entry[REPLACEMENT_KEY[role]] = chosen[key(w, role)];
+        for (const role of w.roles) {
+          const field = REPLACEMENT_KEY[role];
+          if (field) entry[field] = chosen[key(w, role)];
+        }
         return entry;
       }),
     );

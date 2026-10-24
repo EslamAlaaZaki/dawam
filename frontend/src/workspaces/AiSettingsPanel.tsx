@@ -31,6 +31,7 @@ import {
 } from "./parts";
 
 const NONE = "";
+const VISION_NONE = "None: the self-hosted OCR engine reads scanned pages";
 
 /** A settings section inside the dialog: the dialog is the card, so no border of its own. */
 const dialogFormClasses = "flex max-w-xl flex-col gap-4";
@@ -38,7 +39,8 @@ const dialogFormClasses = "flex max-w-xl flex-col gap-4";
 /**
  * The Workspace's AI settings (stories 160, 161): its Workspace Models. Every member sees
  * them; owners of an active Workspace choose one or more agent and light models (one of
- * each the default) and the embedding model, from the models an admin enabled per role.
+ * each the default), the embedding model and the vision model, from the models an admin
+ * enabled per role.
  */
 export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
   const settings = useWorkspaceAiSettings(workspace.id);
@@ -102,6 +104,8 @@ function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
           </span>
         )}
       </dd>
+      <dt>Vision model</dt>
+      <dd>{settings.vision_model?.name ?? VISION_NONE}</dd>
     </DetailList>
   );
 }
@@ -174,6 +178,12 @@ function OwnerForm({
     settings.choices.embedding,
     settings.embedding_model ? [settings.embedding_model] : [],
   );
+  const [vision, setVision] = useState(settings.vision_model?.id ?? NONE);
+  const visionChoices = offered(
+    settings,
+    settings.choices.vision,
+    settings.vision_model ? [settings.vision_model] : [],
+  );
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -186,6 +196,7 @@ function OwnerForm({
         light_model_ids: light.ids,
         default_light_model_id: light.defaultId,
         embedding_model_id: embedding || null,
+        vision_model_id: vision || null,
       })
       .then(
         () => toast.success("Saved."),
@@ -240,6 +251,27 @@ function OwnerForm({
           would need them indexed again.
         </Hint>
       )}
+      <label className={labelClasses}>
+        Vision model
+        <NativeSelect
+          value={vision}
+          onChange={(event) => setVision(event.target.value)}
+        >
+          <option value={NONE}>{VISION_NONE}</option>
+          {visionChoices.map(({ model, stale }) => (
+            <option key={model.id} value={model.id}>
+              {model.name} ({model.provider_name})
+              {model.internal ? "" : " (external)"}
+              {stale ? " (no longer offered)" : ""}
+            </option>
+          ))}
+        </NativeSelect>
+      </label>
+      <Hint>
+        Reads the scanned pages of uploaded PDFs. An external model gets the
+        page images only when the data-sharing level allows documents; otherwise
+        the self-hosted OCR engine reads them.
+      </Hint>
       {settings.internal_only && (
         <Hint>
           The Workspace is internal-only: only internal models are offered.

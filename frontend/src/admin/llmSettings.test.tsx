@@ -245,6 +245,32 @@ describe("AI roles, budgets and usage page", () => {
     });
   });
 
+  it("gives a model the vision role, which reads scanned pages", async () => {
+    const saved: LlmModel = { ...BIG, roles: ["agent", "vision"] };
+    const requests = renderApp(
+      api((r) =>
+        r.method === "PUT" &&
+        r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
+          ? json(saved)
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const row = await screen.findByRole("row", { name: "Roles of big" });
+    expect(within(row).getByLabelText("Vision role of big")).not.toBeChecked();
+    fireEvent.click(within(row).getByLabelText("Vision role of big"));
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Save roles of big" }),
+    );
+
+    await waitFor(() =>
+      expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
+        roles: ["agent", "vision"],
+      }),
+    );
+  });
+
   it("shows the refusal when a role cannot be saved", async () => {
     renderApp(
       api((r) =>
