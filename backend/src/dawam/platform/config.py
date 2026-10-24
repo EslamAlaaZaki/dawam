@@ -79,6 +79,9 @@ class Settings(DatabaseSettings):
     ``DAWAM_ENCRYPTION_KEY`` (base64). ``get_secret_value()`` returns the raw bytes."""
 
     log_level: str = "INFO"
+    document_parser: Literal["docling", "basic"] = "docling"
+    """How uploaded PDF, DOCX and XLSX files are read for indexing: ``docling`` keeps headings,
+    reading order and tables (Markdown); ``basic`` is plain text (pypdf, python-docx, openpyxl)."""
     run_migrations_on_startup: bool = True
 
     worker_poll_seconds: float = 5.0

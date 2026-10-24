@@ -76,10 +76,10 @@ def test_a_failing_file_ends_failed_with_its_error_and_the_others_continue(
 
     real = search_module.extract_text
 
-    def flaky(file_type, data):
+    def flaky(file_type, data, parser=None):
         if b"broken" in data:
             raise RuntimeError("parser exploded")
-        return real(file_type, data)
+        return real(file_type, data, parser)
 
     monkeypatch.setattr(search_module, "extract_text", flaky)
 
@@ -131,10 +131,10 @@ def test_a_job_for_replaced_bytes_cannot_overwrite_the_newer_state(
 
     real = search_module.extract_text
 
-    def replace_while_extracting(file_type, data):
+    def replace_while_extracting(file_type, data, parser=None):
         monkeypatch.setattr(search_module, "extract_text", real)
         upload(roles, system_id, "n.md", b"# Two\nbeta")  # replaced mid-job
-        return real(file_type, data)
+        return real(file_type, data, parser)
 
     monkeypatch.setattr(search_module, "extract_text", replace_while_extracting)
     queue = worker.queue

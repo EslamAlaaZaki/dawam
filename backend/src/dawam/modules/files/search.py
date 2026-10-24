@@ -42,6 +42,7 @@ from dawam.platform.storage import FileStorage
 from .internal.arabic import normalise, words
 from .internal.chunking import chunk
 from .internal.content import detect, extract_text
+from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
@@ -164,7 +165,9 @@ class DocumentSearchService:
         jobs: JobRunner,
         storage: FileStorage,
         clock: Clock,
+        parser: Callable[[], DocumentParser | None] = lambda: None,
     ) -> None:
+        self._parser = parser
         self._engine = engine
         self._storage = storage
         self._workspaces = workspaces
@@ -238,7 +241,7 @@ class DocumentSearchService:
             step("extracting")
             ctx.raise_if_cancelled()
             data = self._storage.get(key)
-            text, text_status = extract_text(detect(name, data), data)
+            text, text_status = extract_text(detect(name, data), data, self._parser())
             with Session(self._engine) as db, db.begin():
                 updated = db.execute(
                     sa.update(WorkspaceFileRecord)

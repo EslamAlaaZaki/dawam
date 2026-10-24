@@ -8,8 +8,15 @@ file's extension; only types on the allow-list get through.
 from __future__ import annotations
 
 import io
+import logging
 import zipfile
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .parsing import DocumentParser
+
+logger = logging.getLogger(__name__)
 
 EXTRACTED_TEXT_MAX_CHARS = 2_000_000
 PDF_MAX_PAGES = 1_000
@@ -126,19 +133,64 @@ def detect(filename: str, data: bytes) -> FileType:
     return found
 
 
-def extract_text(file_type: FileType, data: bytes) -> tuple[str | None, str]:
+def extract_text(
+    file_type: FileType, data: bytes, parser: DocumentParser | None = None
+) -> tuple[str | None, str]:
     """``(text, status)``: ``status`` is ``extracted``, ``no_text_found`` (e.g. a scanned
-    PDF, or a document that cannot be read) or ``none`` (images: nothing to extract)."""
+    PDF, or a document that cannot be read) or ``none`` (images: nothing to extract).
+
+    A ``parser`` that handles the type returns layout-aware Markdown; if it fails, the basic
+    extraction (pypdf, python-docx, openpyxl) is used instead."""
     if file_type in _IMAGES:
         return None, "none"
     try:
-        text = _extract(file_type, data)
+        if parser is not None and file_type in parser.types and _within_caps(file_type, data):
+            try:
+                text = parser.parse(file_type, data)
+            except Exception:
+                logger.warning("layout-aware parsing failed; using basic extraction", exc_info=True)
+                text = _extract(file_type, data)
+        else:
+            text = _extract(file_type, data)
     except Exception:
         return None, "no_text_found"
     text = text.replace("\x00", "").strip()[:EXTRACTED_TEXT_MAX_CHARS]
     if not text:
         return None, "no_text_found"
     return text, "extracted"
+
+
+def _within_caps(file_type: FileType, data: bytes) -> bool:
+    """Whether a document is small enough for a parser that has no caps of its own; a bigger
+    one is read by the basic extraction, which stops at the caps."""
+    try:
+        if file_type is PDF:
+            from pypdf import PdfReader
+
+            return len(PdfReader(io.BytesIO(data)).pages) <= PDF_MAX_PAGES
+        if file_type is DOCX:
+            from docx import Document
+
+            document = Document(io.BytesIO(data))
+            rows = sum(len(table.rows) for table in document.tables)
+            return len(document.paragraphs) <= DOCX_MAX_PARAGRAPHS and rows <= DOCX_MAX_PARAGRAPHS
+        if file_type is XLSX:
+            from openpyxl import load_workbook
+
+            workbook = load_workbook(io.BytesIO(data), read_only=True)
+            try:
+                rows = cells = 0
+                for sheet in workbook.worksheets:
+                    for row in sheet.iter_rows(values_only=True):
+                        rows += 1
+                        cells += len(row)
+                        if rows > XLSX_MAX_ROWS or cells > XLSX_MAX_CELLS:
+                            return False
+            finally:
+                workbook.close()
+    except Exception:
+        return False  # unreadable here: let the basic extraction decide
+    return True
 
 
 class _Text:
