@@ -27,7 +27,10 @@ Public interface. Other modules import only what is re-exported here:
   PDF, DOCX and XLSX are parsed to Markdown (headings, reading order, tables) before chunking.
 - ``OcrEngine`` / ``DoclingOcr``: the OCR port and its Docling engine (RapidOCR, on the CPU
   or an NVIDIA GPU: setting ``document_accelerator``); a PDF's pages with too little text
-  are read by OCR (stage ``ocr``).
+  are read by OCR (stage ``ocr``). A Workspace's vision model (``VisionModels``,
+  ``RegisteredVisionModels``) reads them instead when the ``DocumentAiPolicy`` lets the
+  document reach its provider (an internal one always may); otherwise, or when it fails, the
+  self-hosted engine does and the file's ``index_note`` says so.
 - ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
@@ -72,6 +75,9 @@ from .search import (
     NoDocumentAi,
     Passage,
     RegisteredEmbeddingModels,
+    RegisteredVisionModels,
+    VisionModel,
+    VisionModels,
 )
 from .service import FileContent, FileService, TextFile, WorkspaceFile, WorkspaceFilePage
 
@@ -100,10 +106,13 @@ __all__ = [
     "OcrEngine",
     "Passage",
     "RegisteredEmbeddingModels",
+    "RegisteredVisionModels",
     "SourceLink",
     "SourceLinkPage",
     "SystemFiles",
     "TextFile",
+    "VisionModel",
+    "VisionModels",
     "WorkspaceFile",
     "WorkspaceFilePage",
     "purge_system_files",

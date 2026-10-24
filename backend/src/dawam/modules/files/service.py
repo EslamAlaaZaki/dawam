@@ -44,6 +44,7 @@ class WorkspaceFile:
     text_status: str
     index_status: str
     index_error: str | None
+    index_note: str | None
     updated_by: uuid.UUID | None
     updated_at: datetime
 
@@ -90,6 +91,7 @@ def _view(record: WorkspaceFileRecord) -> WorkspaceFile:
         text_status=record.text_status,
         index_status=record.index_status,
         index_error=record.index_error,
+        index_note=record.index_note,
         updated_by=record.updated_by,
         updated_at=record.updated_at,
     )
@@ -292,6 +294,7 @@ class FileService:
         record.text_status = "none"
         record.index_status = "queued"
         record.index_error = None
+        record.index_note = None
         record.updated_by = user.id
         record.updated_at = self._clock()
         db.flush()

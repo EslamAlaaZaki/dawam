@@ -28,6 +28,7 @@ from dawam.modules.files import (
     NoDocumentAi,
     OcrEngine,
     RegisteredEmbeddingModels,
+    RegisteredVisionModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
@@ -100,13 +101,13 @@ def build_document_search(
         clock=clock,
         **options,
     )
+    roles = RoleService(engine, providers=providers, clock=clock)
     return DocumentSearchService(
         engine,
         workspaces=WorkspaceService(engine, clock=clock),
         ai=document_ai or NoDocumentAi(),
-        embeddings=RegisteredEmbeddingModels(
-            providers, RoleService(engine, providers=providers, clock=clock), engine
-        ),
+        embeddings=RegisteredEmbeddingModels(providers, roles, engine),
+        vision=RegisteredVisionModels(providers, roles, engine),
         jobs=runner,
         storage=create_storage(settings),
         clock=clock,
