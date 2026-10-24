@@ -126,12 +126,14 @@ class WorkspaceAiSettingsRecord(Base):
 class WorkspaceModelRecord(Base):
     """One of a Workspace's Workspace Models (spec §6.18): a model the owner chose for a
     Model Role. Agent and light have one or more rows, one of them the default; embedding
-    has at most one row, which is the default."""
+    and vision have at most one row, which is the default."""
 
     __tablename__ = "llm_workspace_models"
     __table_args__ = (
-        sa.CheckConstraint("role IN ('agent', 'light', 'embedding')", name="role"),
-        sa.CheckConstraint("role <> 'embedding' OR is_default", name="embedding_is_default"),
+        sa.CheckConstraint("role IN ('agent', 'light', 'embedding', 'vision')", name="role"),
+        sa.CheckConstraint(
+            "role NOT IN ('embedding', 'vision') OR is_default", name="single_is_default"
+        ),
         sa.Index(
             "uq_llm_workspace_models_default",
             "workspace_id",

@@ -9,6 +9,7 @@ reporting for it.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ import pytest
 from dawam.modules.llm import (
     Adapter,
     Done,
+    Image,
     LlmError,
     Message,
     TextDelta,
@@ -58,6 +60,8 @@ class AdapterCase:
     """Whether a recorded chat request asked for a stream."""
     embed_request: Callable[[Any], None] = lambda body: _openai_embed_request(body)
     """Asserts the wire shape of the embeddings request."""
+    vision_request: Callable[[Any], None] = lambda body: _openai_vision_request(body)
+    """Asserts the wire shape of a request with a page image (from the provider's docs)."""
 
     def auth_matches(self, headers: Any) -> bool:
         name, value = self.auth_header
@@ -100,6 +104,65 @@ def _anthropic_round_trip(body: Any) -> None:
 
 def _openai_embed_request(body: Any) -> None:
     assert body == {"model": "embed-model", "input": ["a", "b"]}
+
+
+PAGE = Image("image/png", b"page-bytes")
+PAGE_B64 = base64.b64encode(b"page-bytes").decode("ascii")
+
+
+def _openai_vision_request(body: Any) -> None:
+    # https://platform.openai.com/docs/guides/images-vision (base64 data URL)
+    assert body["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{PAGE_B64}"}},
+                {"type": "text", "text": "Read this page."},
+            ],
+        }
+    ]
+
+
+def _anthropic_vision_request(body: Any) -> None:
+    # https://docs.anthropic.com/en/docs/build-with-claude/vision (base64 image block)
+    assert body["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": PAGE_B64},
+                },
+                {"type": "text", "text": "Read this page."},
+            ],
+        }
+    ]
+
+
+def _gemini_vision_request(body: Any) -> None:
+    # https://ai.google.dev/gemini-api/docs/image-understanding (inline image data)
+    assert body["contents"] == [
+        {
+            "role": "user",
+            "parts": [
+                {"inlineData": {"mimeType": "image/png", "data": PAGE_B64}},
+                {"text": "Read this page."},
+            ],
+        }
+    ]
+
+
+def _bedrock_vision_request(body: Any) -> None:
+    # https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ImageBlock.html
+    assert body["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {"image": {"format": "png", "source": {"bytes": PAGE_B64}}},
+                {"text": "Read this page."},
+            ],
+        }
+    ]
 
 
 def _gemini_round_trip(body: Any) -> None:
@@ -163,6 +226,7 @@ ADAPTERS = [
         auth_header=("x-api-key", "sk-secret"),
         tool_names=lambda body: [t["name"] for t in body["tools"]],
         round_trip=_anthropic_round_trip,
+        vision_request=_anthropic_vision_request,
         context_window=200000,
         embeds=False,
     ),
@@ -196,6 +260,7 @@ ADAPTERS = [
         round_trip=_gemini_round_trip,
         is_stream=lambda request: request.url.endswith(":streamGenerateContent?alt=sse"),
         embed_request=_gemini_embed_request,
+        vision_request=_gemini_vision_request,
     ),
     AdapterCase(
         "bedrock",
@@ -214,6 +279,7 @@ ADAPTERS = [
         auth_is_prefix=True,
         tool_names=lambda body: [t["toolSpec"]["name"] for t in body["toolConfig"]["tools"]],
         round_trip=_bedrock_round_trip,
+        vision_request=_bedrock_vision_request,
         context_window=None,
         embeds=False,
         is_stream=lambda request: request.url.endswith("/converse-stream"),
@@ -392,3 +458,13 @@ def test_an_adapter_without_embeddings_refuses_them_as_a_bad_request(case):
         adapter.embed("embed-model", ["a"])
 
     assert raised.value.code == "bad_request" and transport.requests == []
+
+
+def test_page_images_go_to_the_model_with_the_prompt_in_one_user_turn(case):
+    adapter, transport = case.replay("chat_text")
+
+    events = list(adapter.vision("test-model", "Read this page.", [PAGE]))
+
+    assert events == [TextDelta("Hello there."), Done(Usage(12, 3), "stop")]
+    assert not case.is_stream(transport.requests[0])
+    case.vision_request(transport.requests[0].json)

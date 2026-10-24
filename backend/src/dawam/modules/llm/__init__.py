@@ -6,10 +6,11 @@ Public interface. Other modules import only what is re-exported here:
   ``Model``, ``ProviderInput``, ``ModelInput``, ``SetupStatus``). ``gateway_for(model_id)``
   is how any other module reaches a model: it returns a ``Gateway``. API keys are sealed
   with ``SecretBox`` and never returned.
-- ``Gateway``: ``chat(messages, tools, stream) -> events``, ``embed(texts) -> vectors``
-  and ``capabilities()``. Messages, tool calls, stream events (``TextDelta``,
-  ``ToolCallEvent``, ``Done``), ``Usage`` and errors (``LlmError`` with a common code)
-  are normalised into one internal format (``Message``, ``ToolCall``, ``ToolSpec``,
+- ``Gateway``: ``chat(messages, tools, stream) -> events``, ``embed(texts) -> vectors``,
+  ``vision(prompt, images) -> events`` (``Image``s such as page images, through the adapter's
+  optional ``vision`` method) and ``capabilities()``. Messages, tool calls, stream events
+  (``TextDelta``, ``ToolCallEvent``, ``Done``), ``Usage`` and errors (``LlmError`` with a
+  common code) are normalised into one internal format (``Message``, ``ToolCall``, ``ToolSpec``,
   ``Capabilities``); rate limits and unavailability are retried with backoff.
 - ``Adapter``: the protocol a provider family implements; ``adapter_for`` builds the
   ``openai_compatible`` one (vLLM, SGLang, Ollama, OpenAI and any server exposing
@@ -19,7 +20,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``RoleService``: monthly token budgets (installation and per Workspace) and usage.
   ``gateway_for_role(role, workspace_id=, user_id=)`` is how features call a model, resolved
   from the Workspace's Workspace Models (``agent``: its default agent model; ``light``: its
-  default light model, else its default agent model; ``embedding``: its embedding model): the
+  default light model, else its default agent model; ``embedding``: its embedding model;
+  ``vision``: its vision model, which is optional and reads scanned pages): the
   ``MeteredGateway`` checks the budgets before every call (429 ``token_budget_exhausted``) and
   records tokens per call.
 - ``WorkspaceAiService``: a Workspace's AI settings (its Workspace Models, internal-only,
@@ -52,6 +54,7 @@ from .gateway import (
     ChatEvent,
     Done,
     Gateway,
+    Image,
     LlmError,
     Message,
     OllamaContext,
@@ -87,6 +90,7 @@ from .workspace_ai import (
     WorkspaceAiView,
     on_workspace_created,
     workspace_embedding_model_id,
+    workspace_model_id,
 )
 from .workspace_ai_api import new_workspace_router
 from .workspace_ai_api import router as workspace_ai_router
@@ -108,6 +112,7 @@ __all__ = [
     "Done",
     "FakeAdapter",
     "Gateway",
+    "Image",
     "LlmError",
     "Message",
     "MeteredGateway",
@@ -136,4 +141,5 @@ __all__ = [
     "on_workspace_created",
     "router",
     "workspace_embedding_model_id",
+    "workspace_model_id",
 ]
