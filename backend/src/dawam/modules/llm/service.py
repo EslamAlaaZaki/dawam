@@ -44,7 +44,7 @@ from .tables import (
 
 API_KEY_CONTEXT = "llm.provider.api_key"
 API_KEY_MAX_LENGTH = 1000
-ROLES = ("agent", "light", "embedding")
+ROLES = ("agent", "light", "embedding", "vision")
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 600
 MAX_CONTEXT_WINDOW = 100_000_000
@@ -473,6 +473,7 @@ class ProviderService:
             chat=roles != ["embedding"],
             embedding="embedding" in roles,
             context_window=window,
+            vision="vision" in roles,
         )
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)

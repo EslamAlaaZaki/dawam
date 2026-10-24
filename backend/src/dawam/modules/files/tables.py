@@ -61,6 +61,9 @@ class WorkspaceFileRecord(Base):
     ``chunking``, ``embedding``, then ``indexed`` or ``failed``."""
     index_error: Mapped[str | None] = mapped_column(sa.Text())
     """Why indexing ``failed``; ``None`` otherwise."""
+    index_note: Mapped[str | None] = mapped_column(sa.Text())
+    """Something worth knowing about the last indexing that did not fail it (e.g. the
+    self-hosted OCR engine read the scans instead of the vision model); ``None`` otherwise."""
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )

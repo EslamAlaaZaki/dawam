@@ -59,6 +59,7 @@ class ModelChoices(BaseModel):
     agent: list[ModelChoice]
     light: list[ModelChoice]
     embedding: list[ModelChoice]
+    vision: list[ModelChoice]
 
 
 class LightFeature(BaseModel):
@@ -81,7 +82,8 @@ all off while the Workspace has no light model."""
 
 class WorkspaceAiSettings(BaseModel):
     internal_only: bool = Field(
-        description="Every model role (agent, light, embedding) is refused an external provider."
+        description="Every model role (agent, light, embedding, vision) is refused an external "
+        "provider."
     )
     data_sharing_level: DataSharingLevel = Field(
         description="What the AI may see, cumulative: `metadata` < `profiles` < `documents` "
@@ -102,6 +104,11 @@ class WorkspaceAiSettings(BaseModel):
     )
     embedding_locked: bool = Field(
         description="The Workspace has indexed documents, so its embedding model is fixed."
+    )
+    vision_model: WorkspaceModel | None = Field(
+        description="The Workspace's vision model, which reads scanned pages when the "
+        "data-sharing level allows sending documents to its provider (an internal one always "
+        "may); null, or not allowed: the self-hosted OCR engine reads them."
     )
     choices: ModelChoices = Field(
         description="Per role, the tested models an admin enabled for it, for an owner to choose "
@@ -139,6 +146,9 @@ class WorkspaceAiSettingsRequest(BaseModel):
         description="A model enabled for the embedding role; changes only while the Workspace "
         "has no indexed documents.",
     )
+    vision_model_id: uuid.UUID | None = Field(
+        default=None, description="A model enabled for the vision role; optional."
+    )
 
 
 def _choice(m: ApprovedModel) -> ModelChoice:
@@ -161,12 +171,14 @@ def _choices(choices: dict[str, list[ApprovedModel]]) -> ModelChoices:
         agent=[_choice(m) for m in choices["agent"]],
         light=[_choice(m) for m in choices["light"]],
         embedding=[_choice(m) for m in choices["embedding"]],
+        vision=[_choice(m) for m in choices["vision"]],
     )
 
 
 def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     settings = view.settings
     embedding = view.chosen["embedding"]
+    vision = view.chosen["vision"]
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
@@ -180,6 +192,7 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
         ],
         embedding_model=_chosen(embedding[0]) if embedding else None,
         embedding_locked=view.embedding_locked,
+        vision_model=_chosen(vision[0]) if vision else None,
         choices=_choices(view.choices),
         internal_agent_available=view.internal_agent_available,
         banner=view.banner,
@@ -234,6 +247,7 @@ def set_ai_settings(
             embedding_model_id=(
                 body.embedding_model_id if "embedding_model_id" in sent else current.embedding
             ),
+            vision_model_id=body.vision_model_id if "vision_model_id" in sent else current.vision,
         )
     )
 

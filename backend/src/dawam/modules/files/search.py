@@ -9,8 +9,12 @@ searched with full-text only and nothing is sent to a model. Search fuses both r
 (reciprocal rank fusion) and returns cited passages: the document and its section.
 
 Which data level and internal-only setting a Workspace has is not this module's to know:
-it asks a ``DocumentAiPolicy``, and which embedding model is registered it asks an
-``EmbeddingModels``; the composition root chooses both.
+it asks a ``DocumentAiPolicy``, and which embedding and vision models are registered it asks
+an ``EmbeddingModels`` and a ``VisionModels``; the composition root chooses them. The same
+rule covers scanned pages: their images go to the Workspace's vision model only when the
+policy would let the document's text reach that provider (an internal one always may);
+otherwise, or when the vision model fails, the self-hosted OCR engine reads them and the
+file's ``index_note`` says so.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from dawam.modules.llm import (
     ProviderService,
     RoleService,
     workspace_embedding_model_id,
+    workspace_model_id,
 )
 from dawam.modules.sources import hidden_source_system_ids
 from dawam.modules.workspaces import Action, WorkspaceService
@@ -42,7 +47,7 @@ from dawam.platform.storage import FileStorage
 from .internal.arabic import normalise, words
 from .internal.chunking import chunk
 from .internal.content import detect, extract_text
-from .internal.ocr import OcrEngine
+from .internal.ocr import OcrEngine, VisionOcr
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
 
@@ -129,6 +134,91 @@ class RegisteredEmbeddingModels:
 
 
 @dataclass(frozen=True)
+class VisionModel:
+    is_internal: bool
+    gateway: MeteredGateway
+    """Metered: the token budgets are checked before every call, and internal-only applies."""
+
+
+class VisionModels(Protocol):
+    def current(self, workspace_id: uuid.UUID) -> VisionModel | None:
+        """The Workspace's vision model, or ``None`` if it has none usable."""
+        ...
+
+
+class NoVisionModels:
+    """No Workspace has a vision model: scanned pages go to the self-hosted OCR engine."""
+
+    def current(self, workspace_id: uuid.UUID) -> VisionModel | None:
+        return None
+
+
+class RegisteredVisionModels:
+    """The Workspace's own vision model, one of its Workspace Models (optional)."""
+
+    def __init__(self, providers: ProviderService, roles: RoleService, engine: sa.Engine) -> None:
+        self._providers = providers
+        self._roles = roles
+        self._engine = engine
+
+    def current(self, workspace_id: uuid.UUID) -> VisionModel | None:
+        chosen = workspace_model_id(self._engine, workspace_id, "vision")
+        if chosen is None:
+            return None
+        found = [
+            (provider, model)
+            for provider in self._providers.list_providers()
+            for model in provider.models
+            if model.id == chosen and "vision" in model.roles and model.test_ok
+        ]
+        if not found:
+            return None
+        provider, model = found[0]
+        gateway = self._roles.metered_gateway(model.id, "vision", workspace_id=workspace_id)
+        return VisionModel(provider.is_internal, gateway)
+
+
+VISION_REFUSED = (
+    "The Workspace's data-sharing level does not let documents reach its vision model's "
+    "provider, so {fallback}."
+)
+VISION_FAILED = "The vision model could not read the scanned pages ({reason}), so {fallback}."
+SELF_HOSTED = "the self-hosted OCR engine read the scanned pages"
+NO_FALLBACK = "the scanned pages were not read (the self-hosted OCR engine is off)"
+
+
+class _Unread:
+    """No engine may read the scans: they keep the text they have (none, for a scan)."""
+
+    def recognise(self, data: bytes, pages: Sequence[int]) -> str:
+        return ""
+
+
+class _VisionThenSelfHosted:
+    """The vision model reads the scans; if it fails, the self-hosted engine does (if any),
+    and ``note`` hears why."""
+
+    def __init__(
+        self, vision: OcrEngine, fallback: OcrEngine | None, note: Callable[[str], None]
+    ) -> None:
+        self._vision = vision
+        self._fallback = fallback
+        self._note = note
+
+    def recognise(self, data: bytes, pages: Sequence[int]) -> str:
+        try:
+            return self._vision.recognise(data, pages)
+        except Exception as exc:
+            logger.warning("the vision model could not read a scan", exc_info=True)
+            reason = exc.message if isinstance(exc, LlmError | ApiError) else type(exc).__name__
+            fallback = SELF_HOSTED if self._fallback else NO_FALLBACK
+            self._note(VISION_FAILED.format(reason=reason, fallback=fallback))
+            if self._fallback is None:
+                raise
+            return self._fallback.recognise(data, pages)
+
+
+@dataclass(frozen=True)
 class Passage:
     """A passage that matched, with the citation: the document and its section."""
 
@@ -168,9 +258,11 @@ class DocumentSearchService:
         clock: Clock,
         parser: Callable[[], DocumentParser | None] = lambda: None,
         ocr: Callable[[], OcrEngine | None] = lambda: None,
+        vision: VisionModels | None = None,
     ) -> None:
         self._parser = parser
         self._ocr = ocr
+        self._vision = vision or NoVisionModels()
         self._engine = engine
         self._storage = storage
         self._workspaces = workspaces
@@ -191,6 +283,24 @@ class DocumentSearchService:
         if model is None or (settings.internal_only and not model.is_internal):
             return None
         return model
+
+    def _ocr_engine(
+        self, workspace_id: uuid.UUID, note: Callable[[str], None]
+    ) -> tuple[OcrEngine | None, str | None]:
+        """The engine for this Workspace's scanned pages, and the note to keep if it reads
+        any: the vision model when the Workspace has one and may send it the document (an
+        internal model always may: the policy rule of ``_embedder``), otherwise the
+        self-hosted engine; when that is off too, nothing reads them, and the note says so."""
+        fallback = self._ocr()
+        model = self._vision.current(workspace_id)
+        if model is None:
+            return fallback, None
+        settings = self._ai.document_settings(workspace_id)
+        if model.is_internal or (settings.includes_documents and not settings.internal_only):
+            return _VisionThenSelfHosted(VisionOcr(model.gateway), fallback, note), None
+        if fallback is None:
+            return _Unread(), VISION_REFUSED.format(fallback=NO_FALLBACK)
+        return fallback, VISION_REFUSED.format(fallback=SELF_HOSTED)
 
     # -- indexing ----------------------------------------------------------------------
 
@@ -244,13 +354,17 @@ class DocumentSearchService:
             step("extracting")
             ctx.raise_if_cancelled()
             data = self._storage.get(key)
+            notes: list[str] = []
+            ocr, refused = self._ocr_engine(workspace_id, notes.append)
 
             def reading_scan() -> None:
                 step("ocr")
                 ctx.raise_if_cancelled()
+                if refused:
+                    notes.append(refused)
 
             text, text_status = extract_text(
-                detect(name, data), data, self._parser(), self._ocr(), on_ocr=reading_scan
+                detect(name, data), data, self._parser(), ocr, on_ocr=reading_scan
             )
             with Session(self._engine) as db, db.begin():
                 updated = db.execute(
@@ -258,7 +372,11 @@ class DocumentSearchService:
                     .where(
                         WorkspaceFileRecord.id == file_id, WorkspaceFileRecord.storage_key == key
                     )
-                    .values(extracted_text=text, text_status=text_status)
+                    .values(
+                        extracted_text=text,
+                        text_status=text_status,
+                        index_note=" ".join(notes) or None,
+                    )
                 )
             if updated.rowcount == 0:
                 raise _Superseded

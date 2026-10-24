@@ -7,6 +7,7 @@ protocol. The base URL includes the version prefix (``https://api.openai.com/v1`
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from collections.abc import Iterator, Sequence
@@ -17,6 +18,7 @@ from ..gateway import (
     UNAVAILABLE,
     ChatEvent,
     Done,
+    Image,
     LlmError,
     Message,
     OllamaContext,
@@ -81,6 +83,10 @@ class OpenAICompatibleAdapter:
             raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
         finally:
             response.close()
+
+    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """One user turn with the images, then the prompt; the reply is a chat reply."""
+        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         response = self._post("/embeddings", {"model": model, "input": list(texts)})
@@ -219,6 +225,11 @@ def _wire_tool(tool: ToolSpec) -> dict[str, Any]:
 
 def _wire_message(message: Message) -> dict[str, Any]:
     wire: dict[str, Any] = {"role": message.role, "content": message.content}
+    if message.images:
+        wire["content"] = [
+            *({"type": "image_url", "image_url": {"url": _data_url(i)}} for i in message.images),
+            {"type": "text", "text": message.content or ""},
+        ]
     if message.tool_calls:
         wire["tool_calls"] = [
             {
@@ -233,6 +244,10 @@ def _wire_message(message: Message) -> dict[str, Any]:
     if message.tool_call_id is not None:
         wire["tool_call_id"] = message.tool_call_id
     return wire
+
+
+def _data_url(image: Image) -> str:
+    return f"data:{image.media_type};base64,{base64.b64encode(image.data).decode('ascii')}"
 
 
 def _usage(raw: Any) -> Usage | None:

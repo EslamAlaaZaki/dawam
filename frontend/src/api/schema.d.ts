@@ -7226,7 +7226,7 @@ export interface components {
              */
             name: string;
             /** Roles */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision")[];
             /**
              * Context Window
              * @description Tokens: the admin's figure, or what the server's metadata reported.
@@ -7351,7 +7351,7 @@ export interface components {
              * Roles
              * @description Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere.
              */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision")[];
             /**
              * Workspace Replacements
              * @description Per Workspace and role, the replacement for a role being unticked where the model is the Workspace's default or only model for it.
@@ -7374,7 +7374,7 @@ export interface components {
              * Roles
              * @description Every role the model fills, in any Workspace.
              */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision")[];
             /** Workspaces */
             workspaces: components["schemas"]["LlmModelUsageWorkspace"][];
             /**
@@ -7396,7 +7396,7 @@ export interface components {
              * Roles
              * @description The roles in this Workspace that need a replacement.
              */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision")[];
             /**
              * Internal Only
              * @description Only internal models are accepted.
@@ -7936,6 +7936,8 @@ export interface components {
             light: components["schemas"]["ModelChoice"][];
             /** Embedding */
             embedding: components["schemas"]["ModelChoice"][];
+            /** Vision */
+            vision: components["schemas"]["ModelChoice"][];
         };
         /** MoveLayerRequest */
         MoveLayerRequest: {
@@ -10781,7 +10783,7 @@ export interface components {
         WorkspaceAiSettings: {
             /**
              * Internal Only
-             * @description Every model role (agent, light, embedding) is refused an external provider.
+             * @description Every model role (agent, light, embedding, vision) is refused an external provider.
              */
             internal_only: boolean;
             /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
@@ -10808,6 +10810,8 @@ export interface components {
              * @description The Workspace has indexed documents, so its embedding model is fixed.
              */
             embedding_locked: boolean;
+            /** @description The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them. */
+            vision_model: components["schemas"]["WorkspaceModel"] | null;
             /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
             choices: components["schemas"]["ModelChoices"];
             /**
@@ -10854,6 +10858,11 @@ export interface components {
              * @description A model enabled for the embedding role; changes only while the Workspace has no indexed documents.
              */
             embedding_model_id?: string | null;
+            /**
+             * Vision Model Id
+             * @description A model enabled for the vision role; optional.
+             */
+            vision_model_id?: string | null;
         };
         /** WorkspaceFile */
         WorkspaceFile: {
@@ -10909,6 +10918,11 @@ export interface components {
              * @description Why indexing `failed`; null otherwise.
              */
             index_error: string | null;
+            /**
+             * Index Note
+             * @description Something worth knowing about the last indexing that did not fail it, e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's vision model; null otherwise.
+             */
+            index_note?: string | null;
             /** Updated By */
             updated_by: string | null;
             /**

@@ -2,9 +2,10 @@
 data-sharing level (spec §6.18, stories 160, 161).
 
 Only owners change them (``Action.CHANGE_AI_SETTINGS``); every change is audited. The
-Workspace Models are one embedding model and one or more agent and light models, one of
-each the default, chosen from the models an admin enabled for each Model Role; the gateway
-resolves every call's model from them (``RoleService.gateway_for_role``). The restriction
+Workspace Models are one embedding model, one or more agent and light models, one of
+each the default, and optionally one vision model, chosen from the models an admin enabled
+for each Model Role; the gateway resolves every call's model from them
+(``RoleService.gateway_for_role``). The restriction
 applies to every model role and is enforced in the gateway (``RoleService.metered_gateway``);
 the level is exposed as one ``DataSharingPolicy`` that other modules ask before they put data
 in a prompt.
@@ -30,7 +31,7 @@ from dawam.platform.errors import ApiError
 from .tables import ModelRecord, ProviderRecord, WorkspaceAiSettingsRecord, WorkspaceModelRecord
 
 AUDIT_ENTITY = "workspace_ai_settings"
-ROLES = ("agent", "light", "embedding")
+ROLES = ("agent", "light", "embedding", "vision")
 
 
 class DataSharingLevel(StrEnum):
@@ -73,6 +74,8 @@ class WorkspaceModels:
     """``None``: light tasks use the default agent model."""
     embedding: uuid.UUID | None = None
     """``None``: document search has no embedding model, so it matches text only."""
+    vision: uuid.UUID | None = None
+    """``None``: scanned pages are read by the self-hosted OCR engine."""
 
 
 @dataclass(frozen=True)
@@ -167,6 +170,7 @@ def _models(
         light=ids("light"),
         default_light=default("light"),
         embedding=default("embedding"),
+        vision=default("vision"),
     )
 
 
@@ -199,8 +203,13 @@ def default_model_id(db: Session, workspace_id: uuid.UUID, role: str) -> uuid.UU
 
 def workspace_embedding_model_id(engine: sa.Engine, workspace_id: uuid.UUID) -> uuid.UUID | None:
     """The Workspace's embedding model; ``None``: it has none."""
+    return workspace_model_id(engine, workspace_id, "embedding")
+
+
+def workspace_model_id(engine: sa.Engine, workspace_id: uuid.UUID, role: str) -> uuid.UUID | None:
+    """The Workspace's default model for ``role``; ``None``: it has none."""
     with Session(engine) as db:
-        return default_model_id(db, workspace_id, "embedding")
+        return default_model_id(db, workspace_id, role)
 
 
 def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
@@ -254,6 +263,7 @@ class _Fields:
     light: str
     default_light: str
     embedding: str = "embedding_model_id"
+    vision: str = "vision_model_id"
 
 
 CREATE_FIELDS = _Fields("agent_model_id", "agent_model_id", "light_model_id", "light_model_id")
@@ -303,10 +313,12 @@ def validated_models(
     embedding: uuid.UUID | None,
     fields: _Fields,
     embedding_required: bool,
+    vision: uuid.UUID | None = None,
 ) -> WorkspaceModels:
     """The one check for Workspace Models: every model enabled for its role and tested,
     internal-only respected, one default agent model (required whenever the Workspace may
-    choose one) and one default light model when any light model is chosen."""
+    choose one), one default light model when any light model is chosen and at most one
+    vision model."""
     if internal_only and enabled_models(db, "agent") and not _internal_agent_available(db):
         raise _invalid(
             "An internal-only Workspace needs an agent model on an internal provider.",
@@ -327,12 +339,20 @@ def validated_models(
     )
     if embedding_required and embedding is None and offered_embedding:
         raise _invalid("Choose the embedding model.", fields.embedding, "embedding_model_required")
+    _check_role(
+        db,
+        "vision",
+        (vision,) if vision is not None else (),
+        fields.vision,
+        internal_only=internal_only,
+    )
     return WorkspaceModels(
         agent=agent_ids,
         default_agent=_default(agent_ids, default_agent, fields.default_agent),
         light=light_ids,
         default_light=_default(light_ids, default_light, fields.default_light),
         embedding=embedding,
+        vision=vision,
     )
 
 
@@ -344,6 +364,7 @@ def _store_models(db: Session, workspace_id: uuid.UUID, models: WorkspaceModels)
         *((m, "agent", m == models.default_agent) for m in models.agent),
         *((m, "light", m == models.default_light) for m in models.light),
         *([(models.embedding, "embedding", True)] if models.embedding is not None else []),
+        *([(models.vision, "vision", True)] if models.vision is not None else []),
     ]
     db.add_all(
         WorkspaceModelRecord(workspace_id=workspace_id, model_id=m, role=role, is_default=d)
@@ -479,6 +500,7 @@ class WorkspaceAiService:
         light_model_ids: list[uuid.UUID] | None = None,
         default_light_model_id: uuid.UUID | None = None,
         embedding_model_id: uuid.UUID | None = None,
+        vision_model_id: uuid.UUID | None = None,
     ) -> WorkspaceAiView:
         """Owners only, while the Workspace is active. Replaces the settings and the
         Workspace Models (``validated_models``). The embedding model may change only while
@@ -506,6 +528,7 @@ class WorkspaceAiService:
                 embedding=embedding_model_id,
                 fields=UPDATE_FIELDS,
                 embedding_required=False,
+                vision=vision_model_id,
             )
             if models.embedding != current.embedding and has_indexed_documents(db, workspace_id):
                 raise _invalid(
@@ -584,4 +607,5 @@ def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict
         "light_model_ids": ids(models.light),
         "default_light_model_id": one(models.default_light),
         "embedding_model_id": one(models.embedding),
+        "vision_model_id": one(models.vision),
     }

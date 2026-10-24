@@ -19,6 +19,7 @@ from ..gateway import (
     BAD_REQUEST,
     ChatEvent,
     Done,
+    Image,
     ListingUnsupported,
     LlmError,
     Message,
@@ -76,6 +77,8 @@ class FakeAdapter:
         """What ``list_models`` returns (or raises); ``None``: listing unsupported."""
         self.ollama: OllamaContext | None = None
         """What ``ollama_context`` returns; ``None``: the fake is not an Ollama server."""
+        self.reads_images = True
+        """False: ``vision`` refuses, like a model that cannot read images."""
 
     def script(self, *outcomes: Reply | LlmError) -> FakeAdapter:
         self._script.extend(outcomes)
@@ -115,6 +118,12 @@ class FakeAdapter:
             yield ToolCallEvent(call)
         finish = outcome.finish_reason or ("tool_calls" if outcome.tool_calls else "stop")
         yield Done(outcome.usage, finish)
+
+    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """A ``chat`` call (recorded and scripted alike) whose one user turn has the images."""
+        if not self.reads_images:
+            raise LlmError(BAD_REQUEST, "This model cannot read images.")
+        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         self.calls.append(FakeCall("embed", model, texts=tuple(texts)))

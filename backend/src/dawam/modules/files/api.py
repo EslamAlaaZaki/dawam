@@ -84,6 +84,12 @@ class WorkspaceFile(BaseModel):
         "`embedding`, then `indexed` or `failed`."
     )
     index_error: str | None = Field(description="Why indexing `failed`; null otherwise.")
+    index_note: str | None = Field(
+        default=None,
+        description="Something worth knowing about the last indexing that did not fail it, "
+        "e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's "
+        "vision model; null otherwise.",
+    )
     updated_by: uuid.UUID | None
     updated_at: datetime
 

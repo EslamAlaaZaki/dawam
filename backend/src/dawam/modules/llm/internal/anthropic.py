@@ -7,6 +7,7 @@ so ``embed`` refuses. The base URL includes the version prefix
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -18,6 +19,7 @@ from ..gateway import (
     UNAVAILABLE,
     ChatEvent,
     Done,
+    Image,
     LlmError,
     Message,
     TextDelta,
@@ -101,6 +103,10 @@ class AnthropicAdapter:
         finally:
             response.close()
 
+    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """One user turn with the images, then the prompt; the reply is a chat reply."""
+        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         raise LlmError(BAD_REQUEST, "Anthropic has no embeddings: register an embedding model.")
 
@@ -183,6 +189,14 @@ class AnthropicAdapter:
             raise LlmError(UNAVAILABLE, str(exc)) from None
 
 
+def _image_block(image: Image) -> dict[str, Any]:
+    data = base64.b64encode(image.data).decode("ascii")
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": image.media_type, "data": data},
+    }
+
+
 def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any]]]:
     """System messages become the top-level ``system``; a tool result is a ``user`` block,
     and consecutive ``user`` turns merge (Anthropic wants the results in one message)."""
@@ -200,7 +214,13 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
             if message.content:
                 system.append(message.content)
         elif message.role == "user":
-            add("user", [{"type": "text", "text": message.content or ""}])
+            add(
+                "user",
+                [
+                    *(_image_block(image) for image in message.images),
+                    {"type": "text", "text": message.content or ""},
+                ],
+            )
         elif message.role == "tool":
             add(
                 "user",

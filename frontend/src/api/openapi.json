@@ -22350,7 +22350,8 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision"
               ]
             },
             "type": "array",
@@ -22673,11 +22674,12 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision"
               ]
             },
             "type": "array",
-            "maxItems": 3,
+            "maxItems": 4,
             "title": "Roles",
             "description": "Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere."
           },
@@ -22727,7 +22729,8 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision"
               ]
             },
             "type": "array",
@@ -22776,7 +22779,8 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision"
               ]
             },
             "type": "array",
@@ -23936,13 +23940,21 @@
             },
             "type": "array",
             "title": "Embedding"
+          },
+          "vision": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Vision"
           }
         },
         "type": "object",
         "required": [
           "agent",
           "light",
-          "embedding"
+          "embedding",
+          "vision"
         ],
         "title": "ModelChoices"
       },
@@ -30652,7 +30664,7 @@
           "internal_only": {
             "type": "boolean",
             "title": "Internal Only",
-            "description": "Every model role (agent, light, embedding) is refused an external provider."
+            "description": "Every model role (agent, light, embedding, vision) is refused an external provider."
           },
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel",
@@ -30698,6 +30710,17 @@
             "title": "Embedding Locked",
             "description": "The Workspace has indexed documents, so its embedding model is fixed."
           },
+          "vision_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them."
+          },
           "choices": {
             "$ref": "#/components/schemas/ModelChoices",
             "description": "Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones)."
@@ -30722,6 +30745,7 @@
           "light_features",
           "embedding_model",
           "embedding_locked",
+          "vision_model",
           "choices",
           "internal_agent_available",
           "banner"
@@ -30793,6 +30817,19 @@
             ],
             "title": "Embedding Model Id",
             "description": "A model enabled for the embedding role; changes only while the Workspace has no indexed documents."
+          },
+          "vision_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Model Id",
+            "description": "A model enabled for the vision role; optional."
           }
         },
         "type": "object",
@@ -30865,6 +30902,18 @@
             ],
             "title": "Index Error",
             "description": "Why indexing `failed`; null otherwise."
+          },
+          "index_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Note",
+            "description": "Something worth knowing about the last indexing that did not fail it, e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's vision model; null otherwise."
           },
           "updated_by": {
             "anyOf": [
