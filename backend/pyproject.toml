@@ -30,7 +30,9 @@ dependencies = [
     "regex>=2024.11",
     "tiktoken>=0.8",
     "tokenizers>=0.20",
-    "docling>=2",
+    "docling>=2.142",  # RapidOCR options (native language codes, model folder)
+    "onnxruntime>=1.17,<2",  # RapidOCR's inference backend, for OCR of scanned PDFs
+    "python-bidi>=0.6",  # RapidOCR needs it for right-to-left (Arabic) recognition
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
@@ -55,7 +57,7 @@ pythonpath = ["."]
 markers = [
     "oracle: needs an Oracle container (slow and heavy); run with `pytest -m oracle`",
     "ollama: needs a running Ollama server (DAWAM_OLLAMA_URL); run with `pytest -m ollama`",
-    "docling: runs the real Docling engine on a tiny fixture (model files cached in CI); run with `pytest -m docling`",
+    "docling: runs the real Docling engine (layout parsing, OCR) on a tiny fixture (model files cached in CI); run with `pytest -m docling`",
     "real_model: runs the DW generation evaluation set against a real model (DAWAM_EVAL_URL, DAWAM_EVAL_MODEL); run with `pytest -m real_model` before a release",
 ]
 
