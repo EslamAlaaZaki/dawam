@@ -14,6 +14,7 @@ import sqlalchemy as sa
 from pypdf import PdfReader, PdfWriter
 
 from dawam.job_handlers import default_ocr
+from dawam.modules.files.internal.content import PDF, FileType
 from dawam.modules.files.internal.ocr import OCR_MIN_CHARS_PER_PAGE, DoclingOcr
 from tests.files import test_indexing
 from tests.files.test_files import blank_pdf, docx_bytes, system, text_pdf, upload
@@ -160,3 +161,22 @@ def test_real_docling_with_rapidocr_reads_a_scanned_page():
     markdown = DoclingOcr().recognise(data, [1])
 
     assert "DORMANT" in markdown.upper()
+
+
+class PicturesOnlyParser:
+    """Docling on a scan without OCR: only image placeholders, no text."""
+
+    types = (PDF,)
+
+    def parse(self, file_type: FileType, data: bytes) -> str:
+        return "<!-- image -->\n\n<!-- image -->"
+
+
+def test_image_placeholders_alone_are_no_text(roles: RoleClients, app, ocr, worker):
+    app.state.services.document_parser = PicturesOnlyParser()
+    ocr.fail = True
+    system_id = system(roles)
+    upload(roles, system_id, "scan.pdf", blank_pdf())
+    worker()
+
+    assert listed(roles, system_id)["scan.pdf"]["text_status"] == "no_text_found"

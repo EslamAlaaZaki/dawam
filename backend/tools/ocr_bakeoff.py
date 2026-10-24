@@ -1,5 +1,5 @@
 """The OCR bake-off (#424): read scanned PDFs with each OCR backend and print a Markdown table
-of accuracy and CPU time, for the PR.
+of accuracy, CPU time and wall time, for the PR.
 
     python tools/ocr_bakeoff.py <folder>
 
@@ -15,6 +15,11 @@ import re
 import sys
 import time
 from pathlib import Path
+
+try:
+    import resource
+except ImportError:  # Windows
+    resource = None
 
 from dawam.modules.files.internal.ocr import DoclingOcr, pages_needing_ocr
 
@@ -35,22 +40,34 @@ def _accuracy(found: str, truth: str) -> float:
     return max(0.0, 1 - previous[-1] / max(len(b), 1))
 
 
+def _cpu_seconds() -> float:
+    """CPU time of this process and of its finished children (the Tesseract CLI runs as
+    one); children are not counted on Windows, which has no ``resource``."""
+    seconds = time.process_time()
+    if resource is not None:
+        children = resource.getrusage(resource.RUSAGE_CHILDREN)
+        seconds += children.ru_utime + children.ru_stime
+    return seconds
+
+
 def main(folder: Path) -> None:
     pdfs = sorted(p for p in folder.glob("*.pdf") if p.with_suffix(".txt").exists())
-    print("| Backend | File | Accuracy | CPU seconds |\n| --- | --- | --- | --- |")
+    print("| Backend | File | Accuracy | CPU seconds | Wall seconds |")
+    print("| --- | --- | --- | --- | --- |")
     for backend in ("rapidocr", "tesseract"):
         engine = DoclingOcr(backend)  # type: ignore[arg-type]
         for pdf in pdfs:
             data = pdf.read_bytes()
-            start = time.process_time()
+            cpu, wall = _cpu_seconds(), time.perf_counter()
             try:
                 found = engine.recognise(data, pages_needing_ocr(data))
             except Exception as exc:  # report it and go on with the next file
-                print(f"| {backend} | {pdf.name} | failed: {exc} | |")
+                print(f"| {backend} | {pdf.name} | failed: {exc} | | |")
                 continue
-            seconds = time.process_time() - start
+            cpu, wall = _cpu_seconds() - cpu, time.perf_counter() - wall
             truth = pdf.with_suffix(".txt").read_text(encoding="utf-8")
-            print(f"| {backend} | {pdf.name} | {_accuracy(found, truth):.1%} | {seconds:.1f} |")
+            accuracy = _accuracy(found, truth)
+            print(f"| {backend} | {pdf.name} | {accuracy:.1%} | {cpu:.1f} | {wall:.1f} |")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ if TYPE_CHECKING:
     from .parsing import DocumentParser
 
 logger = logging.getLogger(__name__)
+
+_IMAGE_PLACEHOLDER = re.compile(r"<!--\s*image\s*-->")
+"""Docling's mark for a picture: text made only of these is no text (an unread scan)."""
 
 EXTRACTED_TEXT_MAX_CHARS = 2_000_000
 PDF_MAX_PAGES = 1_000
@@ -166,7 +170,7 @@ def extract_text(
     if ocr is not None and file_type is PDF:
         text = _with_ocr(ocr, data, text, on_ocr)
     text = text.replace("\x00", "").strip()[:EXTRACTED_TEXT_MAX_CHARS]
-    if not text:
+    if not _IMAGE_PLACEHOLDER.sub("", text).strip():
         return None, "no_text_found"
     return text, "extracted"
 
@@ -187,7 +191,7 @@ def _with_ocr(ocr: OcrEngine, data: bytes, text: str, on_ocr: Callable[[], None]
     except Exception:
         logger.warning("OCR failed; keeping the text found without it", exc_info=True)
         return text
-    return recognised if recognised.strip() else text
+    return recognised if _IMAGE_PLACEHOLDER.sub("", recognised).strip() else text
 
 
 def _within_caps(file_type: FileType, data: bytes) -> bool:
