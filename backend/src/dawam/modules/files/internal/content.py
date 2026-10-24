@@ -67,7 +67,14 @@ TEXT_TYPES = (MARKDOWN, TEXT, SQL, YAML, CSV, JSON)
 ALLOWED_TYPES = (PDF, DOCX, XLSX, *TEXT_TYPES, PNG, JPEG, GIF, WEBP)
 """The allow-list. SVG and HTML are deliberately absent: they can carry script."""
 
-_IMAGES = (PNG, JPEG, GIF, WEBP)
+IMAGE_TYPES = _IMAGES = (PNG, JPEG, GIF, WEBP)
+
+
+def is_image(file_type: FileType) -> bool:
+    """Whether the type is a picture: described by a vision model, not read as text."""
+    return file_type in _IMAGES
+
+
 _BY_EXTENSION = {ext: t for t in ALLOWED_TYPES for ext in t.extensions}
 
 

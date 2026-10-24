@@ -31,6 +31,8 @@ Public interface. Other modules import only what is re-exported here:
   ``RegisteredVisionModels``) reads them instead when the ``DocumentAiPolicy`` lets the
   document reach its provider (an internal one always may); otherwise, or when it fails, the
   self-hosted engine does and the file's ``index_note`` says so.
+- ``DocumentSearchService.describe_image``: an uploaded image's description (made on indexing
+  by the Workspace's vision model, under the same policy rule), for the assistant's tool.
 - ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
@@ -72,6 +74,7 @@ from .search import (
     DocumentSearchService,
     EmbeddingModel,
     EmbeddingModels,
+    ImageDescription,
     NoDocumentAi,
     Passage,
     RegisteredEmbeddingModels,
@@ -101,6 +104,7 @@ __all__ = [
     "FileObjectLink",
     "FileRef",
     "FileService",
+    "ImageDescription",
     "LinkService",
     "NoDocumentAi",
     "OcrEngine",

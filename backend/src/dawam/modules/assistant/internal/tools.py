@@ -296,6 +296,10 @@ class _SearchDocuments(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+class _DescribeImage(BaseModel):
+    file_id: uuid.UUID
+
+
 class _ListFiles(BaseModel):
     system_id: uuid.UUID | None = Field(
         default=None,
@@ -1208,6 +1212,11 @@ def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
     ]
 
 
+def _describe_image(ctx: ToolContext, args: _DescribeImage) -> Any:
+    image = ctx.services.documents.describe_image(ctx.user, ctx.workspace_id, args.file_id)
+    return {"file_id": image.file_id, "name": image.name, "description": image.description}
+
+
 def _list_files(ctx: ToolContext, args: _ListFiles) -> Any:
     files = ctx.services.files
     if args.system_id is None:
@@ -1927,6 +1936,16 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _search_documents,
+        level=DataSharingLevel.DOCUMENTS,
+    ),
+    Tool(
+        "describe_image",
+        "Look at an uploaded image (an ERD, a diagram, a report mock-up) and get a text "
+        "description of it. Use a file_id from search_documents or list_files.",
+        _DescribeImage,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _describe_image,
         level=DataSharingLevel.DOCUMENTS,
     ),
     Tool(

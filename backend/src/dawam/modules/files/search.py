@@ -46,8 +46,8 @@ from dawam.platform.storage import FileStorage
 
 from .internal.arabic import normalise, words
 from .internal.chunking import chunk
-from .internal.content import detect, extract_text
-from .internal.ocr import OcrEngine, VisionOcr
+from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
+from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
 
@@ -218,6 +218,21 @@ class _VisionThenSelfHosted:
             return self._fallback.recognise(data, pages)
 
 
+IMAGE_NOT_DESCRIBED = (
+    "The image was not described: the Workspace has no vision model that its data-sharing "
+    "level lets the image reach."
+)
+IMAGE_VISION_FAILED = "The vision model could not describe the image ({reason})."
+
+
+@dataclass(frozen=True)
+class ImageDescription:
+    file_id: uuid.UUID
+    name: str
+    description: str
+    """Markdown the vision model wrote about the image: untrusted text."""
+
+
 @dataclass(frozen=True)
 class Passage:
     """A passage that matched, with the citation: the document and its section."""
@@ -284,6 +299,63 @@ class DocumentSearchService:
             return None
         return model
 
+    def _vision_model(self, workspace_id: uuid.UUID) -> VisionModel | None:
+        """The Workspace's vision model if it may be sent a document's image, else ``None``:
+        the rule of ``_ocr_engine`` (an internal model always may)."""
+        model = self._vision.current(workspace_id)
+        return model if model is not None and self._may_send(workspace_id, model) else None
+
+    def _may_send(self, workspace_id: uuid.UUID, model: VisionModel) -> bool:
+        settings = self._ai.document_settings(workspace_id)
+        return model.is_internal or (settings.includes_documents and not settings.internal_only)
+
+    def _describe(
+        self, workspace_id: uuid.UUID, name: str, mime: str, data: bytes
+    ) -> tuple[str | None, str | None]:
+        """``(text, note)`` for an image: the searchable description (headed with the file's
+        name) or, when it was not described, the note saying why."""
+        model = self._vision_model(workspace_id)
+        if model is None:
+            return None, IMAGE_NOT_DESCRIBED
+        try:
+            description = describe_image(model.gateway, mime, data)
+        except (LlmError, ApiError) as exc:
+            logger.warning("the vision model could not describe an image", exc_info=True)
+            return None, IMAGE_VISION_FAILED.format(reason=exc.message)
+        if not description:
+            return None, IMAGE_VISION_FAILED.format(reason="it said nothing")
+        return f"# Description of {name}\n\n{description}"[:EXTRACTED_TEXT_MAX_CHARS], None
+
+    def describe_image(
+        self, user: User, workspace_id: uuid.UUID, file_id: uuid.UUID
+    ) -> ImageDescription:
+        """What an image shows, for the assistant's ``describe_image`` tool (any member): the
+        description made on indexing, or else a fresh look by the vision model when the
+        Workspace's policy lets the image reach it. Read-only: nothing is stored."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        with Session(self._engine) as db:
+            record = db.get(WorkspaceFileRecord, file_id)
+            if record is None or record.workspace_id != workspace_id:
+                raise ApiError(404, "not_found", "File not found.")
+            name, mime, key, stored = (
+                record.path,
+                record.mime,
+                record.storage_key,
+                record.extracted_text,
+            )
+        if mime not in {t.mime for t in IMAGE_TYPES}:
+            raise ApiError(422, "not_an_image", "The file is not an image.")
+        if stored:
+            return ImageDescription(file_id, name, stored)
+        try:
+            data = self._storage.get(key)
+        except KeyError:
+            raise ApiError(404, "not_found", "File not found.") from None
+        text, note = self._describe(workspace_id, name, mime, data)
+        if text is None:
+            raise ApiError(422, "no_vision", note or IMAGE_NOT_DESCRIBED)
+        return ImageDescription(file_id, name, text)
+
     def _ocr_engine(
         self, workspace_id: uuid.UUID, note: Callable[[str], None]
     ) -> tuple[OcrEngine | None, str | None]:
@@ -295,8 +367,7 @@ class DocumentSearchService:
         model = self._vision.current(workspace_id)
         if model is None:
             return fallback, None
-        settings = self._ai.document_settings(workspace_id)
-        if model.is_internal or (settings.includes_documents and not settings.internal_only):
+        if self._may_send(workspace_id, model):
             return _VisionThenSelfHosted(VisionOcr(model.gateway), fallback, note), None
         if fallback is None:
             return _Unread(), VISION_REFUSED.format(fallback=NO_FALLBACK)
@@ -363,9 +434,18 @@ class DocumentSearchService:
                 if refused:
                     notes.append(refused)
 
-            text, text_status = extract_text(
-                detect(name, data), data, self._parser(), ocr, on_ocr=reading_scan
-            )
+            file_type = detect(name, data)
+            if is_image(file_type):
+                step("ocr")
+                ctx.raise_if_cancelled()
+                text, note = self._describe(workspace_id, name, file_type.mime, data)
+                text_status = "extracted" if text else "none"
+                if note:
+                    notes.append(note)
+            else:
+                text, text_status = extract_text(
+                    file_type, data, self._parser(), ocr, on_ocr=reading_scan
+                )
             with Session(self._engine) as db, db.begin():
                 updated = db.execute(
                     sa.update(WorkspaceFileRecord)
