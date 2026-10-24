@@ -32,6 +32,7 @@ dependencies = [
     "tokenizers>=0.20",
     "docling>=2.142",  # RapidOCR options (native language codes, model folder)
     "onnxruntime>=1.17,<2",  # RapidOCR's inference backend, for OCR of scanned PDFs
+    "python-bidi>=0.6",  # RapidOCR needs it for right-to-left (Arabic) recognition
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
