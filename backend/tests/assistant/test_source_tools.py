@@ -480,8 +480,14 @@ METADATA_TOOLS = {
 LEVELS = [
     ("metadata", METADATA_TOOLS),
     ("profiles", METADATA_TOOLS | {"get_profile"}),
-    ("documents", METADATA_TOOLS | {"get_profile", "search_documents", "read_file"}),
-    ("samples", METADATA_TOOLS | {"get_profile", "search_documents", "read_file"}),
+    (
+        "documents",
+        METADATA_TOOLS | {"get_profile", "search_documents", "read_file", "describe_image"},
+    ),
+    (
+        "samples",
+        METADATA_TOOLS | {"get_profile", "search_documents", "read_file", "describe_image"},
+    ),
 ]
 
 
