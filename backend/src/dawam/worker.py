@@ -24,6 +24,7 @@ from dawam.platform.clock import system_clock
 from dawam.platform.config import Settings
 from dawam.platform.db import create_engine
 from dawam.platform.migrations import is_at_head
+from dawam.platform.tracing import configure_tracing
 
 logger = logging.getLogger("dawam.worker")
 
@@ -64,6 +65,8 @@ def run_pending_jobs(jobs: JobService, settings: Settings, *, stop: threading.Ev
 def run_worker(settings: Settings, *, stop: threading.Event) -> None:
     """Run until ``stop`` is set."""
     engine = create_engine(settings.database_url)
+    if settings.otel_endpoint:
+        configure_tracing(settings)
     logger.info("worker started")
     try:
         if not stop.is_set() and not _database_ready(engine):

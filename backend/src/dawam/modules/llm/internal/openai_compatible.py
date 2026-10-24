@@ -8,6 +8,7 @@ protocol. The base URL includes the version prefix (``https://api.openai.com/v1`
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator, Sequence
 from typing import Any
 
@@ -18,12 +19,14 @@ from ..gateway import (
     Done,
     LlmError,
     Message,
+    OllamaContext,
     TextDelta,
     ToolCall,
     ToolCallEvent,
     ToolSpec,
     Usage,
 )
+from .local_tokens import local_counter
 from .transport import HttpResponse, Transport, TransportError
 from .wire import detail, error_for, json_body
 
@@ -98,6 +101,12 @@ class OpenAICompatibleAdapter:
             raise LlmError(INVALID_RESPONSE, "The provider returned a different number of vectors.")
         return vectors
 
+    def count_tokens(self, model: str, text: str) -> int | None:
+        """Counted on this machine (a vendored tiktoken encoding, or a Hugging Face tokenizer
+        already on local disk); ``None`` when no tokenizer is known. Never a network call."""
+        counter = local_counter(model)
+        return counter(text) if counter else None
+
     def context_window(self, model: str) -> int | None:
         try:
             response = self._send("GET", "/models", None)
@@ -119,6 +128,39 @@ class OpenAICompatibleAdapter:
                     if isinstance(value, int) and not isinstance(value, bool) and value > 0:
                         return value
         return None
+
+    def ollama_context(self, model: str) -> OllamaContext | None:
+        """Ask Ollama's native ``/api/show`` (next to its ``/v1``) for the model's
+        ``num_ctx``; any other server answers 404 or garbage, which means not Ollama."""
+        root = self._base_url.removesuffix("/v1")
+        body = json.dumps({"model": model}).encode("utf-8")
+        try:
+            response = self._transport.request(
+                "POST",
+                root + "/api/show",
+                headers=self._headers(),
+                body=body,
+                timeout=self._timeout,
+            )
+        except TransportError:
+            return None
+        try:
+            if response.status != 200:
+                return None
+            data = json_body(response)
+        except (LlmError, OSError):
+            return None
+        finally:
+            response.close()
+        if not isinstance(data, dict) or "model_info" not in data:
+            return None
+        parameters = data.get("parameters")
+        match = (
+            re.search(r"^\s*num_ctx\s+(\d+)", parameters, re.MULTILINE)
+            if isinstance(parameters, str)
+            else None
+        )
+        return OllamaContext(int(match.group(1)) if match else None)
 
     def list_models(self) -> list[str]:
         response = self._send("GET", "/models", None)
@@ -198,8 +240,18 @@ def _usage(raw: Any) -> Usage | None:
         return None
     prompt, completion = raw.get("prompt_tokens"), raw.get("completion_tokens")
     if isinstance(prompt, int) and isinstance(completion, int):
-        return Usage(prompt, completion)
+        return Usage(prompt, completion, cache_read_tokens=_cached(raw))
     return None
+
+
+def _cached(raw: dict[str, Any]) -> int:
+    """Cached input inside ``prompt_tokens``: OpenAI-style ``prompt_tokens_details`` or
+    DeepSeek's ``prompt_cache_hit_tokens``."""
+    details = raw.get("prompt_tokens_details")
+    value = details.get("cached_tokens") if isinstance(details, dict) else None
+    if not isinstance(value, int) or isinstance(value, bool):
+        value = raw.get("prompt_cache_hit_tokens")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
 def _tool_call(raw: Any) -> ToolCall:

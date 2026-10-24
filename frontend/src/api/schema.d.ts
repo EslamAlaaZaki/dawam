@@ -3703,7 +3703,9 @@ export interface paths {
          * Set Model Roles
          * @description Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
          *     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
-         *     provider's error when the model cannot embed. Unticking a role needs a replacement in each
+         *     provider's error when the model cannot embed. Giving a model the `agent` role needs a
+         *     known context window of at least 32K tokens: 422 `context_window_too_small` otherwise; an
+         *     unknown window is allowed with a `warnings` entry. Unticking a role needs a replacement in each
          *     Workspace where the model is the default or only model for it: 409 `replacement_required`
          *     lists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other
          *     Workspaces just lose it.
@@ -3869,6 +3871,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/budgets/installation/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Installation Cost Budget
+         * @description Set the installation's monthly budget in currency (admins only), beside its token
+         *     budget: whichever is reached first stops AI calls (429 `cost_budget_exhausted` for
+         *     this one). Cost comes from the model price table, so models without a price, or
+         *     priced in another currency, don't count.
+         */
+        put: operations["setLlmInstallationCostBudget"];
+        post?: never;
+        /**
+         * Clear Installation Cost Budget
+         * @description Remove the installation's currency budget (admins only).
+         */
+        delete: operations["clearLlmInstallationCostBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Workspace Cost Budget
+         * @description Set a Workspace's own monthly budget in currency (admins only). 404 `workspace_not_found`.
+         */
+        put: operations["setLlmWorkspaceCostBudget"];
+        post?: never;
+        /**
+         * Clear Workspace Cost Budget
+         * @description Remove a Workspace's own currency budget (admins only).
+         */
+        delete: operations["clearLlmWorkspaceCostBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/llm/usage": {
         parameters: {
             query?: never;
@@ -3885,6 +3938,35 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Prices
+         * @description The model price table (admins only). A model without a row has an unknown cost.
+         */
+        get: operations["getLlmModelPrices"];
+        /**
+         * Set Price
+         * @description Add or replace one model's price (admins only). Usage cost uses it from now on,
+         *     for past calls too: cost is computed from recorded tokens when usage is read.
+         */
+        put: operations["setLlmModelPrice"];
+        post?: never;
+        /**
+         * Clear Price
+         * @description Remove a model's price (admins only): its cost becomes unknown.
+         */
+        delete: operations["clearLlmModelPrice"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4037,6 +4119,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/runs/{run_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rate Answer
+         * @description Rate an answer up or down, with an optional comment. Rating again replaces your
+         *     rating (one per member and answer). Any member who can read the conversation; 404 for
+         *     an unknown run, 409 `workspace_archived`.
+         */
+        put: operations["rateAssistantAnswer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/assistant/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Feedback
+         * @description Members' ratings of answers with the question, answer and tools, newest first
+         *     (Workspace Owners and admins; 403 otherwise).
+         */
+        get: operations["listAssistantFeedback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/assistant/feedback/eval-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Eval Candidates
+         * @description The rated answers as eval-case candidates to review and add to the eval suite
+         *     (Workspace Owners and admins). Only thumbs-down by default; `rating` picks the other.
+         */
+        get: operations["exportAssistantEvalCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/assistant/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Assistant runs across all Workspaces, newest first, at most 100 (admins only). A
+         *     time without a time zone is UTC.
+         */
+        get: operations["listAssistantRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/assistant/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description One run with its step timeline (model calls, tool calls, errors), redacted prompt and
+         *     answer, prompt version and every member's feedback (admins only); 404 if unknown.
+         */
+        get: operations["getAssistantRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
         parameters: {
             query?: never;
@@ -4170,7 +4358,7 @@ export interface components {
          * @description What a user wants to do: one row of the spec's permission matrix (§4.3).
          * @enum {string}
          */
-        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.manage_email";
+        Action: "workspace.create" | "workspace.view" | "workspace.edit" | "workspace.manage_members" | "workspace.transfer_ownership" | "workspace.archive" | "workspace.unarchive" | "workspace.delete" | "workspace.reassign_ownership" | "workspace.leave" | "data_warehouse.set_up" | "workspace.ai_settings" | "assistant.ask" | "assistant.view_feedback" | "data_warehouse.change_platform" | "dw_schema.edit" | "dw_schema.retire_staging" | "objects.delete" | "source_system.create" | "source_system.edit" | "source_system.change_code" | "source_system.extract" | "source_schema.enhance" | "source_system.profile" | "source_system.query" | "source_table.top_n" | "pii.review" | "pii.manage_rules" | "change_set.review" | "job.cancel_own" | "job.cancel_any" | "installation.list_workspaces" | "kpi.edit" | "layer.approve" | "score.manage_settings" | "workspace.require_distinct_approver" | "comment.create" | "file.upload" | "connection.view" | "connection.manage" | "installation.manage_settings" | "installation.manage_users" | "installation.view_security_events" | "installation.view_assistant_runs" | "installation.manage_email";
         /** ActivityActor */
         ActivityActor: {
             /**
@@ -6008,6 +6196,42 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** EvalCaseCandidate */
+        EvalCaseCandidate: {
+            /**
+             * Id
+             * @description `feedback-<run id>`: stable across exports.
+             */
+            id: string;
+            /**
+             * Input
+             * @description The question the member asked.
+             */
+            input: string;
+            /** Observed Answer */
+            observed_answer: string;
+            /**
+             * Expected Tools
+             * @description The tools the run called.
+             */
+            expected_tools: string[];
+            /**
+             * Label
+             * @description Down: a failure to turn into a regression case; up: a keeper.
+             * @enum {string}
+             */
+            label: "up" | "down";
+            /**
+             * Note
+             * @description The member's comment.
+             */
+            note: string | null;
+        };
+        /** EvalCaseCandidates */
+        EvalCaseCandidates: {
+            /** Cases */
+            cases: components["schemas"]["EvalCaseCandidate"][];
+        };
         /** ExtractionStarted */
         ExtractionStarted: {
             /**
@@ -6066,6 +6290,80 @@ export interface components {
              * @description An app path to the object at fault.
              */
             link: string;
+        };
+        /** FeedbackItemOut */
+        FeedbackItemOut: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Member Email */
+            member_email: string | null;
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /** Comment */
+            comment: string | null;
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+            /**
+             * Tools
+             * @description Names of the tools the run called.
+             */
+            tools: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FeedbackList */
+        FeedbackList: {
+            /** Items */
+            items: components["schemas"]["FeedbackItemOut"][];
+        };
+        /** FeedbackOut */
+        FeedbackOut: {
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /** Comment */
+            comment: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FeedbackRequest */
+        FeedbackRequest: {
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /**
+             * Comment
+             * @description Optional: what was good or wrong about the answer.
+             */
+            comment?: string | null;
         };
         /** FieldChange */
         FieldChange: {
@@ -6728,6 +7026,20 @@ export interface components {
             /** Table Count */
             table_count: number;
         };
+        /** LightFeature */
+        LightFeature: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Enabled
+             * @description On: the Workspace has a light model to run it.
+             */
+            enabled: boolean;
+        };
         /** LineageEdge */
         LineageEdge: {
             /**
@@ -6841,6 +7153,50 @@ export interface components {
             installation_monthly_token_budget: number | null;
             /** Workspaces */
             workspaces: components["schemas"]["LlmWorkspaceBudget"][];
+            /** @description Null: unlimited. */
+            installation_monthly_cost_budget: components["schemas"]["LlmCostBudget"] | null;
+            /** Workspace Cost Budgets */
+            workspace_cost_budgets: components["schemas"]["LlmWorkspaceCostBudget"][];
+        };
+        /** LlmCost */
+        LlmCost: {
+            /**
+             * Amounts
+             * @description Cost of the calls whose model has a price, per currency.
+             */
+            amounts: components["schemas"]["LlmCostAmount"][];
+            /**
+             * Unpriced Calls
+             * @description Calls whose model has no price: their cost is unknown, not zero.
+             */
+            unpriced_calls: number;
+        };
+        /** LlmCostAmount */
+        LlmCostAmount: {
+            /** Currency */
+            currency: string;
+            /** Amount */
+            amount: string;
+        };
+        /** LlmCostBudget */
+        LlmCostBudget: {
+            /** Currency */
+            currency: string;
+            /** Amount */
+            amount: string;
+        };
+        /** LlmCostBudgetRequest */
+        LlmCostBudgetRequest: {
+            /**
+             * Currency
+             * @description ISO 4217 code, e.g. `USD`.
+             */
+            currency: string;
+            /**
+             * Amount
+             * @description Per calendar month (UTC). Only calls priced in `currency` count.
+             */
+            amount: number | string;
         };
         /** LlmListedModel */
         LlmListedModel: {
@@ -6910,6 +7266,11 @@ export interface components {
             /** Last Tested At */
             last_tested_at: string | null;
             /**
+             * Warnings
+             * @description Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking.
+             */
+            warnings: string[];
+            /**
              * Created At
              * Format: date-time
              */
@@ -6919,6 +7280,52 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** LlmModelPrice */
+        LlmModelPrice: {
+            /** Model Name */
+            model_name: string;
+            /** Currency */
+            currency: string;
+            /** Input Per Million */
+            input_per_million: string;
+            /** Output Per Million */
+            output_per_million: string;
+            /** Cached Input Per Million */
+            cached_input_per_million: string;
+        };
+        /** LlmModelPriceRequest */
+        LlmModelPriceRequest: {
+            /**
+             * Model Name
+             * @description The model's name, as usage records carry it.
+             */
+            model_name: string;
+            /**
+             * Currency
+             * @description ISO 4217 code, e.g. `USD`.
+             */
+            currency: string;
+            /**
+             * Input Per Million
+             * @description Per million input tokens.
+             */
+            input_per_million: number | string;
+            /**
+             * Output Per Million
+             * @description Per million output tokens.
+             */
+            output_per_million: number | string;
+            /**
+             * Cached Input Per Million
+             * @description Per million input tokens served from the provider's prompt cache.
+             */
+            cached_input_per_million: number | string;
+        };
+        /** LlmModelPrices */
+        LlmModelPrices: {
+            /** Prices */
+            prices: components["schemas"]["LlmModelPrice"][];
         };
         /** LlmModelRemoval */
         LlmModelRemoval: {
@@ -7138,6 +7545,7 @@ export interface components {
              * @description Calls whose tokens DAWAM estimated.
              */
             estimated_calls: number;
+            cost: components["schemas"]["LlmCost"];
         };
         /** LlmUserUsage */
         LlmUserUsage: {
@@ -7172,6 +7580,20 @@ export interface components {
         LlmWorkspaceBudgetRequest: {
             /** Monthly Token Budget */
             monthly_token_budget: number;
+        };
+        /** LlmWorkspaceCostBudget */
+        LlmWorkspaceCostBudget: {
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Workspace Name
+             * @description Null if the Workspace no longer exists.
+             */
+            workspace_name: string | null;
+            budget: components["schemas"]["LlmCostBudget"];
         };
         /** LlmWorkspaceReplacement */
         LlmWorkspaceReplacement: {
@@ -8268,6 +8690,48 @@ export interface components {
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
         };
+        /** RunCostOut */
+        RunCostOut: {
+            /** Amount */
+            amount: string;
+            /**
+             * Currency
+             * @description ISO 4217 code of the model's price.
+             */
+            currency: string;
+        };
+        /** RunDetailOut */
+        RunDetailOut: {
+            run: components["schemas"]["RunSummaryOut"];
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Timeline
+             * @description The run's stored steps, in order.
+             */
+            timeline: components["schemas"]["RunStepOut"][];
+            /** Feedback */
+            feedback: components["schemas"]["RunFeedbackOut"][];
+        };
+        /** RunFeedbackOut */
+        RunFeedbackOut: {
+            /** Member Email */
+            member_email: string | null;
+            /** Rating */
+            rating: string;
+            /** Comment */
+            comment: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RunListOut */
+        RunListOut: {
+            /** Items */
+            items: components["schemas"]["RunSummaryOut"][];
+        };
         /** RunOut */
         RunOut: {
             /**
@@ -8298,6 +8762,101 @@ export interface components {
              * @description The reason to show the member.
              */
             error_message: string | null;
+            /** @description Your own rating of the run's answer, if you gave one. */
+            feedback?: components["schemas"]["FeedbackOut"] | null;
+        };
+        /** RunStepOut */
+        RunStepOut: {
+            /**
+             * Kind
+             * @description `model` (the run's model calls, summed), `tool` (one tool call) or `error`.
+             */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Output Tokens */
+            output_tokens: number | null;
+            cost: components["schemas"]["RunCostOut"] | null;
+            /**
+             * Prompt
+             * @description The member's question as sent, redacted.
+             */
+            prompt: string | null;
+            /**
+             * Output
+             * @description The answer, redacted.
+             */
+            output: string | null;
+            /** Arguments */
+            arguments: {
+                [key: string]: unknown;
+            } | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Message */
+            error_message: string | null;
+        };
+        /** RunSummaryOut */
+        RunSummaryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string | null;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Member Id */
+            member_id: string | null;
+            /** Member Email */
+            member_email: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Prompt Version
+             * @description Id of the prompts the run was given.
+             */
+            prompt_version: string | null;
+            /** Model Name */
+            model_name: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Duration Ms */
+            duration_ms: number;
+            /** @description Null when the model has no price. */
+            cost: components["schemas"]["RunCostOut"] | null;
+            /** Tool Call Count */
+            tool_call_count: number;
+            /** Thumbs Up */
+            thumbs_up: number;
+            /** Thumbs Down */
+            thumbs_down: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** SaveColumnMappingRequest */
         SaveColumnMappingRequest: {
@@ -10234,9 +10793,14 @@ export interface components {
             agent_models: components["schemas"]["WorkspaceModel"][];
             /**
              * Light Models
-             * @description The Workspace's light models; none: light tasks use the default agent model.
+             * @description The Workspace's light models; none: the light-role features are off.
              */
             light_models: components["schemas"]["WorkspaceModel"][];
+            /**
+             * Light Features
+             * @description Each feature that uses the light role, and whether it is on.
+             */
+            light_features: components["schemas"]["LightFeature"][];
             /** @description The Workspace's embedding model; null: document search matches text only. */
             embedding_model: components["schemas"]["WorkspaceModel"] | null;
             /**
@@ -19435,6 +19999,166 @@ export interface operations {
             };
         };
     };
+    setLlmInstallationCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmCostBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmInstallationCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmWorkspaceCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmCostBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmBudgets"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmWorkspaceCostBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getLlmUsage: {
         parameters: {
             query?: {
@@ -19455,6 +20179,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LlmUsage"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmModelPrices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelPrices"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmModelPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelPriceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelPrices"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearLlmModelPrice: {
+        parameters: {
+            query: {
+                model_name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {
@@ -19831,6 +20673,224 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rateAssistantAnswer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAssistantFeedback: {
+        parameters: {
+            query?: {
+                rating?: ("up" | "down") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    exportAssistantEvalCandidates: {
+        parameters: {
+            query?: {
+                rating?: ("up" | "down") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalCaseCandidates"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAssistantRuns: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+                /** @description Only runs answering this member's questions. */
+                member_id?: string | null;
+                /** @description `running`, `completed`, `tool_limit`, `cancelled` or `failed`. */
+                status?: string | null;
+                /** @description Only runs started at or after this time. */
+                started_from?: string | null;
+                /** @description Only runs started before this time. */
+                started_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAssistantRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetailOut"];
+                };
             };
             /** @description Validation error */
             422: {

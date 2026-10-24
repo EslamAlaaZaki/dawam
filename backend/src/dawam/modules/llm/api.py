@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -22,7 +23,15 @@ from .model_removal import (
     release_roles,
     remove_model,
 )
-from .role_service import MAX_BUDGET, RoleService, UsageTotals
+from .role_service import (
+    MAX_BUDGET,
+    MAX_COST_BUDGET,
+    Cost,
+    CostBudget,
+    ModelPrice,
+    RoleService,
+    UsageTotals,
+)
 from .service import (
     API_KEY_MAX_LENGTH,
     DEFAULT_TIMEOUT_SECONDS,
@@ -89,6 +98,11 @@ class LlmModel(BaseModel):
     )
     test_error: str | None
     last_tested_at: datetime | None
+    warnings: list[str] = Field(
+        description="Why the model may not suit its roles, for the admin: an unknown or "
+        "too-small context window for the agent role, and (right after Test connection) "
+        "an Ollama `num_ctx` below the minimum with how to raise it. Not blocking."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -210,6 +224,7 @@ def _model_out(view: ModelView) -> LlmModel:
         test_error_code=view.test_error_code,
         test_error=view.test_error,
         last_tested_at=view.last_tested_at,
+        warnings=list(view.warnings),
         created_at=view.created_at,
         updated_at=view.updated_at,
     )
@@ -345,7 +360,9 @@ def set_model_roles(
 ) -> LlmModel:
     """Set the roles a model fills, any combination (admins only). Ticking `embedding` runs
     an embedding test and stores the vector dimension: 422 `embedding_test_failed` with the
-    provider's error when the model cannot embed. Unticking a role needs a replacement in each
+    provider's error when the model cannot embed. Giving a model the `agent` role needs a
+    known context window of at least 32K tokens: 422 `context_window_too_small` otherwise; an
+    unknown window is allowed with a `warnings` entry. Unticking a role needs a replacement in each
     Workspace where the model is the default or only model for it: 409 `replacement_required`
     lists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other
     Workspaces just lose it."""
@@ -501,9 +518,31 @@ class LlmWorkspaceBudget(BaseModel):
     monthly_token_budget: int
 
 
+class LlmCostBudget(BaseModel):
+    currency: str
+    amount: Decimal
+
+
+class LlmWorkspaceCostBudget(BaseModel):
+    workspace_id: uuid.UUID
+    workspace_name: str | None = Field(description="Null if the Workspace no longer exists.")
+    budget: LlmCostBudget
+
+
 class LlmBudgets(BaseModel):
     installation_monthly_token_budget: int | None = Field(description="Null: unlimited.")
     workspaces: list[LlmWorkspaceBudget]
+    installation_monthly_cost_budget: LlmCostBudget | None = Field(description="Null: unlimited.")
+    workspace_cost_budgets: list[LlmWorkspaceCostBudget]
+
+
+class LlmCostBudgetRequest(BaseModel):
+    currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code, e.g. `USD`.")
+    amount: Decimal = Field(
+        ge=0,
+        le=MAX_COST_BUDGET,
+        description="Per calendar month (UTC). Only calls priced in `currency` count.",
+    )
 
 
 class LlmBudgetRequest(BaseModel):
@@ -518,12 +557,27 @@ class LlmWorkspaceBudgetRequest(BaseModel):
     monthly_token_budget: int = Field(ge=0, le=MAX_BUDGET)
 
 
+class LlmCostAmount(BaseModel):
+    currency: str
+    amount: Decimal
+
+
+class LlmCost(BaseModel):
+    amounts: list[LlmCostAmount] = Field(
+        description="Cost of the calls whose model has a price, per currency."
+    )
+    unpriced_calls: int = Field(
+        description="Calls whose model has no price: their cost is unknown, not zero."
+    )
+
+
 class LlmUsageTotals(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
     calls: int
     estimated_calls: int = Field(description="Calls whose tokens DAWAM estimated.")
+    cost: LlmCost
 
 
 class LlmWorkspaceUsage(BaseModel):
@@ -552,6 +606,16 @@ class LlmUsage(BaseModel):
     users: list[LlmUserUsage]
 
 
+def _cost_out(cost: Cost) -> LlmCost:
+    return LlmCost(
+        amounts=[
+            LlmCostAmount(currency=currency, amount=amount.quantize(Decimal("0.000001")))
+            for currency, amount in sorted(cost.amounts.items())
+        ],
+        unpriced_calls=cost.unpriced_calls,
+    )
+
+
 def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
     return LlmUsageTotals(
         prompt_tokens=totals.prompt_tokens,
@@ -559,14 +623,31 @@ def _totals_out(totals: UsageTotals) -> LlmUsageTotals:
         total_tokens=totals.total_tokens,
         calls=totals.calls,
         estimated_calls=totals.estimated_calls,
+        cost=_cost_out(totals.cost),
     )
+
+
+def _cost_budget_out(budget: CostBudget | None) -> LlmCostBudget | None:
+    return None if budget is None else LlmCostBudget(currency=budget.currency, amount=budget.amount)
 
 
 def _budgets_out(roles: RoleService, workspaces: WorkspaceService) -> LlmBudgets:
     budgets = roles.budgets()
-    names = workspaces.names_by_id(b.workspace_id for b in budgets.workspaces)
+    names = workspaces.names_by_id(
+        [b.workspace_id for b in budgets.workspaces]
+        + [b.workspace_id for b in budgets.workspace_costs]
+    )
     return LlmBudgets(
         installation_monthly_token_budget=budgets.installation,
+        installation_monthly_cost_budget=_cost_budget_out(budgets.installation_cost),
+        workspace_cost_budgets=[
+            LlmWorkspaceCostBudget(
+                workspace_id=b.workspace_id,
+                workspace_name=names.get(b.workspace_id),
+                budget=LlmCostBudget(currency=b.budget.currency, amount=b.budget.amount),
+            )
+            for b in budgets.workspace_costs
+        ],
         workspaces=[
             LlmWorkspaceBudget(
                 workspace_id=b.workspace_id,
@@ -626,6 +707,58 @@ def clear_workspace_budget(
     return Response(status_code=204)
 
 
+@router.put("/budgets/installation/cost", operation_id="setLlmInstallationCostBudget")
+def set_installation_cost_budget(
+    body: LlmCostBudgetRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> LlmBudgets:
+    """Set the installation's monthly budget in currency (admins only), beside its token
+    budget: whichever is reached first stops AI calls (429 `cost_budget_exhausted` for
+    this one). Cost comes from the model price table, so models without a price, or
+    priced in another currency, don't count."""
+    roles.set_installation_cost_budget(CostBudget(body.currency, body.amount))
+    return _budgets_out(roles, workspaces)
+
+
+@router.delete(
+    "/budgets/installation/cost", operation_id="clearLlmInstallationCostBudget", status_code=204
+)
+def clear_installation_cost_budget(_admin: LlmAdmin, roles: RoleServiceDep) -> Response:
+    """Remove the installation's currency budget (admins only)."""
+    roles.set_installation_cost_budget(None)
+    return Response(status_code=204)
+
+
+@router.put("/budgets/workspaces/{workspace_id}/cost", operation_id="setLlmWorkspaceCostBudget")
+def set_workspace_cost_budget(
+    workspace_id: uuid.UUID,
+    body: LlmCostBudgetRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+    workspaces: WorkspaceNamesDep,
+) -> LlmBudgets:
+    """Set a Workspace's own monthly budget in currency (admins only). 404 `workspace_not_found`."""
+    if workspace_id not in workspaces.names_by_id([workspace_id]):
+        raise ApiError(404, "workspace_not_found", "Workspace not found.")
+    roles.set_workspace_cost_budget(workspace_id, CostBudget(body.currency, body.amount))
+    return _budgets_out(roles, workspaces)
+
+
+@router.delete(
+    "/budgets/workspaces/{workspace_id}/cost",
+    operation_id="clearLlmWorkspaceCostBudget",
+    status_code=204,
+)
+def clear_workspace_cost_budget(
+    workspace_id: uuid.UUID, _admin: LlmAdmin, roles: RoleServiceDep
+) -> Response:
+    """Remove a Workspace's own currency budget (admins only)."""
+    roles.clear_workspace_cost_budget(workspace_id)
+    return Response(status_code=204)
+
+
 @router.get("/usage", operation_id="getLlmUsage")
 def get_usage(
     _admin: LlmAdmin,
@@ -668,3 +801,86 @@ def get_usage(
             for u in report.users
         ],
     )
+
+
+PRICE_MAX = Decimal(10**9)
+
+
+class LlmModelPriceRequest(BaseModel):
+    model_name: str = Field(
+        min_length=1,
+        max_length=MODEL_NAME_MAX_LENGTH,
+        description="The model's name, as usage records carry it.",
+    )
+    currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code, e.g. `USD`.")
+    input_per_million: Decimal = Field(ge=0, le=PRICE_MAX, description="Per million input tokens.")
+    output_per_million: Decimal = Field(
+        ge=0, le=PRICE_MAX, description="Per million output tokens."
+    )
+    cached_input_per_million: Decimal = Field(
+        ge=0,
+        le=PRICE_MAX,
+        description="Per million input tokens served from the provider's prompt cache.",
+    )
+
+
+class LlmModelPrice(BaseModel):
+    model_name: str
+    currency: str
+    input_per_million: Decimal
+    output_per_million: Decimal
+    cached_input_per_million: Decimal
+
+
+class LlmModelPrices(BaseModel):
+    prices: list[LlmModelPrice]
+
+
+def _prices_out(roles: RoleService) -> LlmModelPrices:
+    return LlmModelPrices(
+        prices=[
+            LlmModelPrice(
+                model_name=p.model_name,
+                currency=p.currency,
+                input_per_million=p.input,
+                output_per_million=p.output,
+                cached_input_per_million=p.cached_input,
+            )
+            for p in roles.prices()
+        ]
+    )
+
+
+@router.get("/prices", operation_id="getLlmModelPrices")
+def get_prices(_admin: LlmAdmin, roles: RoleServiceDep) -> LlmModelPrices:
+    """The model price table (admins only). A model without a row has an unknown cost."""
+    return _prices_out(roles)
+
+
+@router.put("/prices", operation_id="setLlmModelPrice")
+def set_price(
+    body: LlmModelPriceRequest, _admin: LlmAdmin, roles: RoleServiceDep
+) -> LlmModelPrices:
+    """Add or replace one model's price (admins only). Usage cost uses it from now on,
+    for past calls too: cost is computed from recorded tokens when usage is read."""
+    roles.set_price(
+        ModelPrice(
+            body.model_name,
+            body.currency,
+            body.input_per_million,
+            body.output_per_million,
+            body.cached_input_per_million,
+        )
+    )
+    return _prices_out(roles)
+
+
+@router.delete("/prices", operation_id="clearLlmModelPrice", status_code=204)
+def clear_price(
+    model_name: Annotated[str, Query(min_length=1, max_length=MODEL_NAME_MAX_LENGTH)],
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+) -> Response:
+    """Remove a model's price (admins only): its cost becomes unknown."""
+    roles.clear_price(model_name)
+    return Response(status_code=204)

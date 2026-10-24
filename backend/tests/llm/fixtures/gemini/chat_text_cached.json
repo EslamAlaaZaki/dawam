@@ -1,0 +1,29 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Hello there."
+            }
+          ]
+        },
+        "index": 0,
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 125,
+      "cachedContentTokenCount": 100,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 128
+    },
+    "modelVersion": "test-model"
+  }
+}

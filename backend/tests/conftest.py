@@ -50,6 +50,7 @@ from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
 from tests.docker_pulls import retry_image_pulls
 from tests.helpers import csrf_token, sign_in
+from tests.no_real_model import _no_real_model_calls  # noqa: F401  (autouse guard)
 from tests.roles import RoleClients
 from tests.sample_source import sample_source  # noqa: F401  (fixture for every test)
 from tests.sample_source.oracle import oracle_source  # noqa: F401  (fixture for `oracle` tests)

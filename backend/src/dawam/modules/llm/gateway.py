@@ -85,6 +85,10 @@ class Usage:
     completion_tokens: int
     estimated: bool = False
     """True when DAWAM counted (roughly) because the provider reported nothing."""
+    cache_read_tokens: int = 0
+    """Of ``prompt_tokens``, the part served from the provider's prompt cache."""
+    cache_write_tokens: int = 0
+    """Of ``prompt_tokens``, the part written to the provider's prompt cache."""
 
     @property
     def total_tokens(self) -> int:
@@ -126,6 +130,14 @@ class Capabilities:
     embedding_dimension: int | None = None
 
 
+@dataclass(frozen=True)
+class OllamaContext:
+    """What an Ollama server says about a model: ``num_ctx`` is the context it is
+    configured to run with (``None``: not set, so Ollama's small default applies)."""
+
+    num_ctx: int | None
+
+
 class Adapter(Protocol):
     """One provider family's protocol. Raises ``LlmError`` for every provider failure
     (including unreachable servers) and never retries: the ``Gateway`` does."""
@@ -145,8 +157,12 @@ class Adapter(Protocol):
         """The model's context window from the server's metadata, if it reports one."""
         ...
 
+    # Optional: ``count_tokens(self, model, text) -> int | None`` (the provider's own count of
+    # ``text``; ``None``/absent: not available, the gateway estimates).
     # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
     # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
+    # Optional: ``ollama_context(self, model) -> OllamaContext | None`` (``None``: the
+    # server is not Ollama).
 
 
 def estimate_tokens(text: str) -> int:
@@ -191,6 +207,30 @@ class Gateway:
     def server_context_window(self) -> int | None:
         """The context window the provider's own metadata reports for this model."""
         return self._adapter.context_window(self._model)
+
+    def ollama_context(self) -> OllamaContext | None:
+        """The configured context when the server is Ollama, else ``None`` (also when it
+        cannot be told). Never raises."""
+        reader = getattr(self._adapter, "ollama_context", None)
+        if reader is None:
+            return None
+        try:
+            return reader(self._model)  # type: ignore[no-any-return]
+        except LlmError:
+            return None
+
+    def count_tokens(self, text: str) -> int:
+        """Tokens in ``text``: the provider's own count when its adapter has one, else the
+        chars/4 estimate. Never fails: an unknown model or a down endpoint only costs accuracy."""
+        counter = getattr(self._adapter, "count_tokens", None)
+        if counter is not None and text:
+            try:
+                counted = counter(self._model, text)
+            except Exception:  # a broken tokenizer or endpoint only costs accuracy
+                counted = None
+            if isinstance(counted, int) and not isinstance(counted, bool) and counted >= 0:
+                return counted
+        return estimate_tokens(text)
 
     def chat(
         self,

@@ -14,10 +14,12 @@ call the conversation is fitted to the model's context window (``context.py``).
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Any, Literal, Protocol
 
 from dawam.modules.llm import (
@@ -32,8 +34,18 @@ from dawam.modules.llm import (
     ToolSpec,
 )
 from dawam.platform.errors import ApiError
+from dawam.platform.tracing import tracing
 
-from .context import fit_messages, shorten_result
+from .context import (
+    cap_summary,
+    estimate_tokens,
+    fit_messages,
+    history_drop,
+    prompt_budget,
+    schema_tokens,
+    shorten_result,
+    summary_block,
+)
 from .prompt import quote_data
 from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
 
@@ -47,6 +59,22 @@ RunStatus = Literal["completed", "tool_limit", "cancelled", "failed"]
 LIMIT_MESSAGE = (
     "The tool-call limit for this request is used up. Answer with what you have already found."
 )
+
+
+Summarizer = Callable[[str | None, Sequence[Message]], str | None]
+"""(earlier summary, turns to fold in) -> the new summary; ``None``: could not summarise."""
+
+DIGEST_CHARS = 300
+
+
+def _digest(outcome: ToolOutcome) -> str:
+    """What a later turn may learn of a result: the part kept on the run when there is one
+    (never row values), else the start of the text."""
+    if outcome.saved is not None:
+        text = json.dumps(outcome.saved, default=str)
+    else:
+        text = " ".join(outcome.content.split())
+    return text[:DIGEST_CHARS]
 
 
 class ChatGateway(Protocol):
@@ -90,11 +118,19 @@ class ToolCallRecord:
     duration_ms: int
     result: dict[str, Any] | None = None
     """``ToolOutcome.saved``."""
+    digest: str | None = None
+    """A short digest of the result, so a later turn knows what the call found."""
 
 
 @dataclass(frozen=True)
 class Text:
     text: str
+
+
+TOO_SMALL_MESSAGE = (
+    "The model's context window is too small for the assistant: its instructions and tools "
+    "alone do not fit. Choose a model with a larger window."
+)
 
 
 @dataclass(frozen=True)
@@ -113,7 +149,15 @@ class Finished:
     error_message: str | None = None
 
 
-AgentEvent = Text | ToolFinished | Finished
+@dataclass(frozen=True)
+class Compacted:
+    """The oldest ``turns`` history messages were replaced by ``summary``."""
+
+    summary: str
+    turns: int
+
+
+AgentEvent = Text | ToolFinished | Compacted | Finished
 
 
 @dataclass
@@ -131,6 +175,14 @@ class _Run:
         )
 
 
+def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
+    """``counter`` (the gateway's real count) remembered per text, so a long conversation
+    is counted once per message, not once per model call; none: the chars/4 estimate."""
+    if counter is None:
+        return estimate_tokens
+    return lru_cache(maxsize=2048)(counter)
+
+
 def run_agent(
     gateway: ChatGateway,
     tools: ToolSet,
@@ -141,19 +193,28 @@ def run_agent(
     is_cancelled: Callable[[], bool] = lambda: False,
     timer: Callable[[], float] = time.monotonic,
     delta_poll_seconds: float = 0.0,
+    summary: str | None = None,
+    summarize: Summarizer | None = None,
 ) -> Iterator[AgentEvent]:
-    """Run the conversation ``history`` (ending with the member's message) to an answer."""
+    """Run the conversation ``history`` (ending with the member's message) to an answer.
+
+    ``summary`` stands for turns left out earlier. With ``summarize`` (compaction on), turns
+    that no longer fit the window are summarised into it (and reported as ``Compacted``)
+    instead of being lost; if summarising fails they are dropped as without it."""
     run = _Run()
     capabilities = gateway.capabilities()
     window = capabilities.context_window
     stream = capabilities.streaming is not False
+    count = _cached_counter(getattr(gateway, "count_tokens", None))
     prompted = capabilities.tool_calling is False  # limited mode: tools are described in text
-    messages = [Message("system", system), *history]
+    messages = [Message("system", system + (summary_block(summary) if summary else "")), *history]
     protect_from = len(history)  # the member's latest message
     limit_hit = False
-    specs = {spec.name: spec for spec in tools.specs()}
+    all_specs = list(tools.specs())  # one snapshot: the tool list stays identical per call
+    specs = {spec.name: spec for spec in all_specs}
     known_tools = set(specs)
     retries = 0
+    compaction_tried = summarize is None
     last_poll = timer()
     try:
         while True:
@@ -161,14 +222,34 @@ def run_agent(
                 yield run.finish("cancelled")
                 return
             under_cap = len(run.calls) < max_tool_calls
-            offered = tools.specs() if under_cap else ()
+            offered = all_specs if under_cap else ()
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
-            sent = fit_messages(messages, window, protect_from=protect_from)
-            if prompted and offered:
+            extra = tools_prompt(offered) if prompted and offered else ""
+            reserved = count(extra) if extra else schema_tokens(() if prompted else offered, count)
+            budget = prompt_budget(window)
+            if budget is not None and count(system) + reserved > budget:
+                yield run.finish("failed", "context_window_too_small", TOO_SMALL_MESSAGE)
+                return
+            if not compaction_tried:
+                compaction_tried = True
+                turns = history_drop(
+                    messages, window, protect_from=protect_from, count=count, reserved=reserved
+                )
+                text = summarize(summary, messages[1 : 1 + turns]) if summarize and turns else None
+                if text:
+                    summary = cap_summary(text, window)
+                    del messages[1 : 1 + turns]
+                    protect_from -= turns
+                    messages[0] = Message("system", system + summary_block(summary))
+                    yield Compacted(summary, turns)
+            sent = fit_messages(
+                messages, window, protect_from=protect_from, count=count, reserved=reserved
+            )
+            if extra:
                 head = sent[0]
-                sent[0] = replace(head, content=head.content + "\n\n" + tools_prompt(offered))
+                sent[0] = replace(head, content=head.content + "\n\n" + extra)
             with closing(gateway.chat(sent, () if prompted else offered, stream)) as events:
                 for event in events:
                     # Reading the stop flag is a query: while text streams, not on every delta.
@@ -229,11 +310,19 @@ def run_agent(
                     outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0
                 else:
                     started = timer()
-                    outcome = tools.execute(call.name, call.arguments)
+                    with tracing().tool_call(call.name, call.arguments) as span:
+                        outcome = tools.execute(call.name, call.arguments)
+                        span.result(outcome.status, outcome.content)
                     duration = round((timer() - started) * 1000)
                     executed += 1
                 record = ToolCallRecord(
-                    call.id, call.name, call.arguments, outcome.status, duration, outcome.saved
+                    call.id,
+                    call.name,
+                    call.arguments,
+                    outcome.status,
+                    duration,
+                    outcome.saved,
+                    _digest(outcome),
                 )
                 run.calls.append(record)
                 yield ToolFinished(record)

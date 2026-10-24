@@ -13720,7 +13720,7 @@
           "llm"
         ],
         "summary": "Set Model Roles",
-        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. Unticking a role needs a replacement in each\nWorkspace where the model is the default or only model for it: 409 `replacement_required`\nlists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other\nWorkspaces just lose it.",
+        "description": "Set the roles a model fills, any combination (admins only). Ticking `embedding` runs\nan embedding test and stores the vector dimension: 422 `embedding_test_failed` with the\nprovider's error when the model cannot embed. Giving a model the `agent` role needs a\nknown context window of at least 32K tokens: 422 `context_window_too_small` otherwise; an\nunknown window is allowed with a `warnings` entry. Unticking a role needs a replacement in each\nWorkspace where the model is the default or only model for it: 409 `replacement_required`\nlists them, `replacement_not_allowed` and `embedding_model_indexed` as for removal; other\nWorkspaces just lose it.",
         "operationId": "setLlmModelRoles",
         "parameters": [
           {
@@ -14188,6 +14188,200 @@
         }
       }
     },
+    "/api/v1/admin/llm/budgets/installation/cost": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Installation Cost Budget",
+        "description": "Set the installation's monthly budget in currency (admins only), beside its token\nbudget: whichever is reached first stops AI calls (429 `cost_budget_exhausted` for\nthis one). Cost comes from the model price table, so models without a price, or\npriced in another currency, don't count.",
+        "operationId": "setLlmInstallationCostBudget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmCostBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Installation Cost Budget",
+        "description": "Remove the installation's currency budget (admins only).",
+        "operationId": "clearLlmInstallationCostBudget",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Workspace Cost Budget",
+        "description": "Set a Workspace's own monthly budget in currency (admins only). 404 `workspace_not_found`.",
+        "operationId": "setLlmWorkspaceCostBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmCostBudgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmBudgets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Workspace Cost Budget",
+        "description": "Remove a Workspace's own currency budget (admins only).",
+        "operationId": "clearLlmWorkspaceCostBudget",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/usage": {
       "get": {
         "tags": [
@@ -14227,6 +14421,144 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/prices": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Prices",
+        "description": "The model price table (admins only). A model without a row has an unknown cost.",
+        "operationId": "getLlmModelPrices",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelPrices"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Price",
+        "description": "Add or replace one model's price (admins only). Usage cost uses it from now on,\nfor past calls too: cost is computed from recorded tokens when usage is read.",
+        "operationId": "setLlmModelPrice",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmModelPriceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelPrices"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Clear Price",
+        "description": "Remove a model's price (admins only): its cost becomes unknown.",
+        "operationId": "clearLlmModelPrice",
+        "parameters": [
+          {
+            "name": "model_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Model Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation error",
@@ -14792,6 +15124,429 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/runs/{run_id}/feedback": {
+      "put": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Rate Answer",
+        "description": "Rate an answer up or down, with an optional comment. Rating again replaces your\nrating (one per member and answer). Any member who can read the conversation; 404 for\nan unknown run, 409 `workspace_archived`.",
+        "operationId": "rateAssistantAnswer",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/feedback": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "List Feedback",
+        "description": "Members' ratings of answers with the question, answer and tools, newest first\n(Workspace Owners and admins; 403 otherwise).",
+        "operationId": "listAssistantFeedback",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "up",
+                    "down"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rating"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/feedback/eval-candidates": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Export Eval Candidates",
+        "description": "The rated answers as eval-case candidates to review and add to the eval suite\n(Workspace Owners and admins). Only thumbs-down by default; `rating` picks the other.",
+        "operationId": "exportAssistantEvalCandidates",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "up",
+                    "down"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "down",
+              "title": "Rating"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCaseCandidates"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/assistant/runs": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "List Runs",
+        "description": "Assistant runs across all Workspaces, newest first, at most 100 (admins only). A\ntime without a time zone is UTC.",
+        "operationId": "listAssistantRuns",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only runs answering this member's questions.",
+              "title": "Member Id"
+            },
+            "description": "Only runs answering this member's questions."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`running`, `completed`, `tool_limit`, `cancelled` or `failed`.",
+              "title": "Status"
+            },
+            "description": "`running`, `completed`, `tool_limit`, `cancelled` or `failed`."
+          },
+          {
+            "name": "started_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only runs started at or after this time.",
+              "title": "Started From"
+            },
+            "description": "Only runs started at or after this time."
+          },
+          {
+            "name": "started_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only runs started before this time.",
+              "title": "Started To"
+            },
+            "description": "Only runs started before this time."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/assistant/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Get Run",
+        "description": "One run with its step timeline (model calls, tool calls, errors), redacted prompt and\nanswer, prompt version and every member's feedback (admins only); 404 if unknown.",
+        "operationId": "getAssistantRun",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
       "get": {
         "tags": [
@@ -15250,6 +16005,7 @@
           "data_warehouse.set_up",
           "workspace.ai_settings",
           "assistant.ask",
+          "assistant.view_feedback",
           "data_warehouse.change_platform",
           "dw_schema.edit",
           "dw_schema.retire_staging",
@@ -15279,6 +16035,7 @@
           "installation.manage_settings",
           "installation.manage_users",
           "installation.view_security_events",
+          "installation.view_assistant_runs",
           "installation.manage_email"
         ],
         "title": "Action",
@@ -19363,6 +20120,79 @@
         ],
         "title": "ErrorResponse"
       },
+      "EvalCaseCandidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "`feedback-<run id>`: stable across exports."
+          },
+          "input": {
+            "type": "string",
+            "title": "Input",
+            "description": "The question the member asked."
+          },
+          "observed_answer": {
+            "type": "string",
+            "title": "Observed Answer"
+          },
+          "expected_tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Tools",
+            "description": "The tools the run called."
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Label",
+            "description": "Down: a failure to turn into a regression case; up: a keeper."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "The member's comment."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "input",
+          "observed_answer",
+          "expected_tools",
+          "label",
+          "note"
+        ],
+        "title": "EvalCaseCandidate"
+      },
+      "EvalCaseCandidates": {
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvalCaseCandidate"
+            },
+            "type": "array",
+            "title": "Cases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cases"
+        ],
+        "title": "EvalCaseCandidates"
+      },
       "ExtractionStarted": {
         "properties": {
           "job_id": {
@@ -19476,6 +20306,171 @@
           "link"
         ],
         "title": "FailedCheck"
+      },
+      "FeedbackItemOut": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "member_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Email"
+          },
+          "rating": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools",
+            "description": "Names of the tools the run called."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "conversation_id",
+          "member_email",
+          "rating",
+          "comment",
+          "question",
+          "answer",
+          "tools",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FeedbackItemOut"
+      },
+      "FeedbackList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "FeedbackList"
+      },
+      "FeedbackOut": {
+        "properties": {
+          "rating": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating",
+          "comment",
+          "updated_at"
+        ],
+        "title": "FeedbackOut"
+      },
+      "FeedbackRequest": {
+        "properties": {
+          "rating": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "Optional: what was good or wrong about the answer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating"
+        ],
+        "title": "FeedbackRequest"
       },
       "FieldChange": {
         "properties": {
@@ -20946,6 +21941,35 @@
         ],
         "title": "LayerScore"
       },
+      "LightFeature": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "On: the Workspace has a light model to run it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "description",
+          "enabled"
+        ],
+        "title": "LightFeature"
+      },
       "LineageEdge": {
         "properties": {
           "id": {
@@ -21166,14 +22190,123 @@
             },
             "type": "array",
             "title": "Workspaces"
+          },
+          "installation_monthly_cost_budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmCostBudget"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: unlimited."
+          },
+          "workspace_cost_budgets": {
+            "items": {
+              "$ref": "#/components/schemas/LlmWorkspaceCostBudget"
+            },
+            "type": "array",
+            "title": "Workspace Cost Budgets"
           }
         },
         "type": "object",
         "required": [
           "installation_monthly_token_budget",
-          "workspaces"
+          "workspaces",
+          "installation_monthly_cost_budget",
+          "workspace_cost_budgets"
         ],
         "title": "LlmBudgets"
+      },
+      "LlmCost": {
+        "properties": {
+          "amounts": {
+            "items": {
+              "$ref": "#/components/schemas/LlmCostAmount"
+            },
+            "type": "array",
+            "title": "Amounts",
+            "description": "Cost of the calls whose model has a price, per currency."
+          },
+          "unpriced_calls": {
+            "type": "integer",
+            "title": "Unpriced Calls",
+            "description": "Calls whose model has no price: their cost is unknown, not zero."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amounts",
+          "unpriced_calls"
+        ],
+        "title": "LlmCost"
+      },
+      "LlmCostAmount": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "LlmCostAmount"
+      },
+      "LlmCostBudget": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "LlmCostBudget"
+      },
+      "LlmCostBudgetRequest": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "description": "ISO 4217 code, e.g. `USD`."
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount",
+            "description": "Per calendar month (UTC). Only calls priced in `currency` count."
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "LlmCostBudgetRequest"
       },
       "LlmListedModel": {
         "properties": {
@@ -21333,6 +22466,14 @@
             ],
             "title": "Last Tested At"
           },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -21360,10 +22501,128 @@
           "test_error_code",
           "test_error",
           "last_tested_at",
+          "warnings",
           "created_at",
           "updated_at"
         ],
         "title": "LlmModel"
+      },
+      "LlmModelPrice": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "input_per_million": {
+            "type": "string",
+            "title": "Input Per Million"
+          },
+          "output_per_million": {
+            "type": "string",
+            "title": "Output Per Million"
+          },
+          "cached_input_per_million": {
+            "type": "string",
+            "title": "Cached Input Per Million"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "currency",
+          "input_per_million",
+          "output_per_million",
+          "cached_input_per_million"
+        ],
+        "title": "LlmModelPrice"
+      },
+      "LlmModelPriceRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model Name",
+            "description": "The model's name, as usage records carry it."
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "description": "ISO 4217 code, e.g. `USD`."
+          },
+          "input_per_million": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Input Per Million",
+            "description": "Per million input tokens."
+          },
+          "output_per_million": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Output Per Million",
+            "description": "Per million output tokens."
+          },
+          "cached_input_per_million": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Cached Input Per Million",
+            "description": "Per million input tokens served from the provider's prompt cache."
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "currency",
+          "input_per_million",
+          "output_per_million",
+          "cached_input_per_million"
+        ],
+        "title": "LlmModelPriceRequest"
+      },
+      "LlmModelPrices": {
+        "properties": {
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModelPrice"
+            },
+            "type": "array",
+            "title": "Prices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prices"
+        ],
+        "title": "LlmModelPrices"
       },
       "LlmModelRemoval": {
         "properties": {
@@ -21818,6 +23077,9 @@
             "type": "integer",
             "title": "Estimated Calls",
             "description": "Calls whose tokens DAWAM estimated."
+          },
+          "cost": {
+            "$ref": "#/components/schemas/LlmCost"
           }
         },
         "type": "object",
@@ -21826,7 +23088,8 @@
           "completion_tokens",
           "total_tokens",
           "calls",
-          "estimated_calls"
+          "estimated_calls",
+          "cost"
         ],
         "title": "LlmUsageTotals"
       },
@@ -21933,6 +23196,37 @@
           "monthly_token_budget"
         ],
         "title": "LlmWorkspaceBudgetRequest"
+      },
+      "LlmWorkspaceCostBudget": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name",
+            "description": "Null if the Workspace no longer exists."
+          },
+          "budget": {
+            "$ref": "#/components/schemas/LlmCostBudget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "budget"
+        ],
+        "title": "LlmWorkspaceCostBudget"
       },
       "LlmWorkspaceReplacement": {
         "properties": {
@@ -24272,6 +25566,126 @@
         ],
         "title": "RoutineChange"
       },
+      "RunCostOut": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "ISO 4217 code of the model's price."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "RunCostOut"
+      },
+      "RunDetailOut": {
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/RunSummaryOut"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepOut"
+            },
+            "type": "array",
+            "title": "Timeline",
+            "description": "The run's stored steps, in order."
+          },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/RunFeedbackOut"
+            },
+            "type": "array",
+            "title": "Feedback"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run",
+          "finished_at",
+          "timeline",
+          "feedback"
+        ],
+        "title": "RunDetailOut"
+      },
+      "RunFeedbackOut": {
+        "properties": {
+          "member_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Email"
+          },
+          "rating": {
+            "type": "string",
+            "title": "Rating"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_email",
+          "rating",
+          "comment",
+          "updated_at"
+        ],
+        "title": "RunFeedbackOut"
+      },
+      "RunListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummaryOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RunListOut"
+      },
       "RunOut": {
         "properties": {
           "id": {
@@ -24326,6 +25740,17 @@
             ],
             "title": "Error Message",
             "description": "The reason to show the member."
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your own rating of the run's answer, if you gave one."
           }
         },
         "type": "object",
@@ -24340,6 +25765,294 @@
           "error_message"
         ],
         "title": "RunOut"
+      },
+      "RunStepOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "`model` (the run's model calls, summed), `tool` (one tool call) or `error`."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunCostOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt",
+            "description": "The member's question as sent, redacted."
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output",
+            "description": "The answer, redacted."
+          },
+          "arguments": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arguments"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "status",
+          "duration_ms",
+          "input_tokens",
+          "output_tokens",
+          "cost",
+          "prompt",
+          "output",
+          "arguments",
+          "result",
+          "error_code",
+          "error_message"
+        ],
+        "title": "RunStepOut"
+      },
+      "RunSummaryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "member_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Email"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version",
+            "description": "Id of the prompts the run was given."
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunCostOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the model has no price."
+          },
+          "tool_call_count": {
+            "type": "integer",
+            "title": "Tool Call Count"
+          },
+          "thumbs_up": {
+            "type": "integer",
+            "title": "Thumbs Up"
+          },
+          "thumbs_down": {
+            "type": "integer",
+            "title": "Thumbs Down"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "workspace_name",
+          "conversation_id",
+          "member_id",
+          "member_email",
+          "status",
+          "prompt_version",
+          "model_name",
+          "input_tokens",
+          "output_tokens",
+          "duration_ms",
+          "cost",
+          "tool_call_count",
+          "thumbs_up",
+          "thumbs_down",
+          "started_at"
+        ],
+        "title": "RunSummaryOut"
       },
       "SaveColumnMappingRequest": {
         "properties": {
@@ -28959,7 +30672,15 @@
             },
             "type": "array",
             "title": "Light Models",
-            "description": "The Workspace's light models; none: light tasks use the default agent model."
+            "description": "The Workspace's light models; none: the light-role features are off."
+          },
+          "light_features": {
+            "items": {
+              "$ref": "#/components/schemas/LightFeature"
+            },
+            "type": "array",
+            "title": "Light Features",
+            "description": "Each feature that uses the light role, and whether it is on."
           },
           "embedding_model": {
             "anyOf": [
@@ -28998,6 +30719,7 @@
           "data_sharing_level",
           "agent_models",
           "light_models",
+          "light_features",
           "embedding_model",
           "embedding_locked",
           "choices",

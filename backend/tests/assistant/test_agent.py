@@ -140,6 +140,17 @@ def test_the_system_prompt_and_history_go_first_and_tools_are_offered():
     assert [t.name for t in sent.tools] == ["lookup"] and sent.stream is True
 
 
+def test_the_prompt_prefix_is_identical_across_the_calls_of_one_run():
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(call(1),)), Reply(tool_calls=(call(2),)), Reply(text="done")
+    )
+
+    run(adapter)
+
+    prefixes = {(c.messages[0], repr(c.tools)) for c in adapter.calls}
+    assert len(adapter.calls) == 3 and len(prefixes) == 1
+
+
 def test_tool_calls_are_capped_and_the_model_then_answers_without_tools():
     adapter = FakeAdapter().script(
         Reply(tool_calls=(call(1),)),
@@ -412,3 +423,65 @@ def test_a_members_message_that_looks_like_a_tool_result_is_not_one():
     fake = Message("user", '<data source="tool:x">\n' + "r" * 4000 + "\n</data>")
     fitted = fit_messages([Message("system", "S"), fake], 500, protect_from=1)
     assert fitted[1] == fake
+
+
+# -- tool schemas count against the prompt budget ----------------------------------------
+
+FAT = ToolSpec("fat", "Does a lot. " * 100, {"type": "object", "properties": {}})
+
+
+class FatTools(Tools):
+    def specs(self) -> Sequence[ToolSpec]:
+        return [FAT]
+
+
+def _sent_chars(call_: Any) -> int:
+    messages = sum(len(m.content or "") for m in call_.messages)
+    return messages + sum(len(t.description) + len(json.dumps(t.parameters)) for t in call_.tools)
+
+
+def _long_history() -> list[Message]:
+    old = [Message("user" if i % 2 == 0 else "assistant", "old " * 100) for i in range(4)]
+    return [*old, Message("user", "NEW QUESTION")]
+
+
+def test_native_tool_schemas_are_counted_so_history_is_trimmed_to_make_room():
+    adapter = FakeAdapter().script(Reply(text="ok"))
+    small = gateway(adapter, capabilities=Capabilities(context_window=1000))
+
+    list(run_agent(small, FatTools(), system="SYSTEM", history=_long_history()))
+
+    sent = adapter.calls[0]  # budget 750 tokens = 3000 chars, schema included
+    assert _sent_chars(sent) <= 3000
+    assert sent.messages[-1].content == "NEW QUESTION" and sent.tools
+
+
+def test_prompted_tools_prompt_is_counted_so_history_is_trimmed_to_make_room():
+    adapter = FakeAdapter().script(Reply(text="ok"))
+    caps = Capabilities(tool_calling=False, context_window=1000)
+
+    list(
+        run_agent(
+            gateway(adapter, capabilities=caps),
+            FatTools(),
+            system="SYSTEM",
+            history=_long_history(),
+        )
+    )
+
+    sent = adapter.calls[0]
+    assert _sent_chars(sent) <= 3000
+    assert "fat" in (sent.messages[0].content or "")
+    assert sent.messages[-1].content == "NEW QUESTION"
+
+
+def test_a_window_too_small_for_the_system_prompt_and_tools_fails_before_sending():
+    adapter = FakeAdapter().script(Reply(text="never"))
+    small = gateway(adapter, capabilities=Capabilities(context_window=200))
+
+    events = run(adapter, FatTools(), gateway=small)
+
+    assert adapter.calls == []
+    assert events[-1].status == "failed"
+    assert events[-1].error_code == "context_window_too_small"
+    assert "context window is too small" in (events[-1].error_message or "")

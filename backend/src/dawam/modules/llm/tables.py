@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
@@ -69,6 +70,9 @@ class SettingsRecord(Base):
     """Always 1: there is one row."""
     monthly_token_budget: Mapped[int | None] = mapped_column(sa.BigInteger)
     """Tokens per calendar month (UTC) for the whole installation; null: unlimited."""
+    monthly_cost_budget: Mapped[Decimal | None] = mapped_column(sa.Numeric(18, 6))
+    """Currency budget per calendar month (UTC), in ``cost_budget_currency``; null: unlimited."""
+    cost_budget_currency: Mapped[str | None] = mapped_column(sa.String(3))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
@@ -81,6 +85,19 @@ class WorkspaceBudgetRecord(Base):
         sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
     )
     monthly_token_budget: Mapped[int] = mapped_column(sa.BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class WorkspaceCostBudgetRecord(Base):
+    """A Workspace's own monthly currency budget, beside its token budget."""
+
+    __tablename__ = "llm_workspace_cost_budgets"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    monthly_cost_budget: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    currency: Mapped[str] = mapped_column(sa.String(3))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
@@ -154,3 +171,26 @@ class UsageRecord(Base):
     completion_tokens: Mapped[int]
     estimated: Mapped[bool]
     """True when DAWAM counted (roughly) because the provider reported nothing."""
+    cache_read_tokens: Mapped[int] = mapped_column(server_default="0")
+    """Part of ``prompt_tokens`` served from the provider's prompt cache (budgets count it)."""
+    cache_write_tokens: Mapped[int] = mapped_column(server_default="0")
+
+
+class ModelPriceRecord(Base):
+    """What a model costs per million tokens, keyed by the model name usage records carry.
+    An admin edits it; a model without a row has an unknown cost."""
+
+    __tablename__ = "llm_model_prices"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "input_per_million >= 0 AND output_per_million >= 0 AND cached_input_per_million >= 0",
+            name="non_negative",
+        ),
+    )
+
+    model_name: Mapped[str] = mapped_column(sa.String(MODEL_NAME_MAX_LENGTH), primary_key=True)
+    currency: Mapped[str] = mapped_column(sa.String(3))
+    input_per_million: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    output_per_million: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    cached_input_per_million: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6))
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

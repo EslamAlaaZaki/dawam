@@ -280,10 +280,10 @@ flowchart TD
 
 | Today | Enhancement |
 |---|---|
-| Last 30 messages; past tool calls not replayed | Include compact summaries of past tool results so follow-ups don't repeat calls |
-| Oldest turns dropped when over budget | **Summarise** dropped turns with the light model (compaction) instead of losing them |
-| Token estimate = chars / 4 | Real token counts (provider count-tokens endpoints, or `tiktoken` / HF tokenizers per model) |
-| No prompt caching | **Prompt caching**: Anthropic `cache_control` on the system prompt and tool list, automatic caching on OpenAI/Gemini/DeepSeek; vLLM/SGLang prefix caching for self-hosted. Large cost and latency savings on 25-call runs |
+| Last 30 messages; past tool calls not replayed | Include compact summaries of past tool results so follow-ups don't repeat calls. **Done** ([#354](https://github.com/EslamAlaaZaki/dawam/issues/354)) |
+| Oldest turns dropped when over budget | **Summarise** dropped turns with the light model (compaction) instead of losing them. **Done** ([#354](https://github.com/EslamAlaaZaki/dawam/issues/354)) |
+| Token estimate = chars / 4 | Real token counts (provider count-tokens endpoints, or `tiktoken` / HF tokenizers per model). **Done** ([#352](https://github.com/EslamAlaaZaki/dawam/issues/352)) |
+| No prompt caching | **Prompt caching**: Anthropic `cache_control` on the system prompt and tool list, automatic caching on OpenAI/Gemini/DeepSeek; vLLM/SGLang prefix caching for self-hosted. Large cost and latency savings on 25-call runs. **Done** ([#353](https://github.com/EslamAlaaZaki/dawam/issues/353)) |
 | No long-term memory | **Workspace memory**: facts the team confirms ("`cust_stat` codes: A=active, S=suspended"), naming conventions, preferences, stored as reviewable items (via Change Sets), retrieved by a `recall` tool; quoted as data |
 | No cross-conversation search | Search past shared conversations and job summaries |
 
@@ -321,11 +321,11 @@ So about 7.5K tokens today, and about 11K with every proposed tool, are left out
 **Cost, even when it fits:** the schemas are re-sent on every model call. With about 11K tokens of schemas, a 25-call answer spends about 275K input tokens on schemas alone. This is why prompt caching (§7) matters.
 
 **Fixes, cheapest first:**
-1. **Count the tool schemas (and `tools_prompt`) in the budget** in `fit_messages`: subtract their estimated tokens from the 75% budget before trimming messages.
-2. **Minimum context window for the agent role** (e.g. 32K), checked at "Test connection"; warn about Ollama's small default context and tell admins to raise `num_ctx`.
-3. **Shorten the three largest schemas**: move long guidance from field descriptions into the tool's first-phase result, which is only sent when the tool is used.
+1. **Count the tool schemas (and `tools_prompt`) in the budget** in `fit_messages`: subtract their estimated tokens from the 75% budget before trimming messages. **Done** ([#349](https://github.com/EslamAlaaZaki/dawam/issues/349))
+2. **Minimum context window for the agent role** (e.g. 32K), checked at "Test connection"; warn about Ollama's small default context and tell admins to raise `num_ctx`. **Done** ([#350](https://github.com/EslamAlaaZaki/dawam/issues/350))
+3. **Shorten the three largest schemas**: move long guidance from field descriptions into the tool's first-phase result, which is only sent when the tool is used. **Done** ([#351](https://github.com/EslamAlaaZaki/dawam/issues/351))
 4. **Send fewer tools per call**: tools relevant to the current page or task, or tool search (§6.1), once there are more than about 30 tools.
-5. **Prompt caching** for the system prompt and tool list (§7).
+5. **Prompt caching** for the system prompt and tool list (§7). **Done** ([#353](https://github.com/EslamAlaaZaki/dawam/issues/353))
 6. **Specialist sub-agents** with smaller tool sets, especially for small self-hosted models (§6).
 
 ```mermaid
@@ -345,12 +345,12 @@ flowchart TD
 
 | Area | Today | Enhancement |
 |---|---|---|
-| **Tracing** | run rows (tool calls, tokens, duration) + logs | OpenTelemetry traces with the **GenAI semantic conventions** (spans per model call and tool call); export to **Langfuse** (self-hostable, good for internal-only), Arize Phoenix, or LangSmith |
-| **Admin run explorer** | none | A page listing runs with the full step timeline, prompts (redacted), latencies, tokens, cost and errors |
-| **Cost** | tokens only | Price table per model → cost per run, Workspace and month; budgets in currency |
-| **Evals** | DW generation set (2 cases), Ollama smoke test | More sets: **tool-selection** (right tool, right arguments), **RAG** (recall@k, MRR, faithfulness, citation correctness, Ragas/DeepEval-style), **refusals and safety** (prompt injection in documents), **Arabic** questions; LLM-as-judge with rubrics; run in CI on recorded fakes and nightly on real models |
-| **Prompt management** | prompts are constants | Versioned prompts with an id stored on each run, to compare versions in evals and A/B test |
-| **User feedback** | none | 👍/👎 and a comment on each answer, saved on the run; bad answers become eval cases |
+| **Tracing** | **Done** (#355): OTel GenAI spans per model and tool call over OTLP/HTTP, off unless `DAWAM_OTEL_ENDPOINT` is set. Before: run rows (tool calls, tokens, duration) + logs | OpenTelemetry traces with the **GenAI semantic conventions** (spans per model call and tool call); export to **Langfuse** (self-hostable, good for internal-only), Arize Phoenix, or LangSmith |
+| **Admin run explorer** | **Done** (#423): `/admin/ai-runs`, runs with step timeline, redacted. Before: none | A page listing runs with the full step timeline, prompts (redacted), latencies, tokens, cost and errors |
+| **Cost** | **Done** (#357, #358): price table, cost per Workspace and user in usage, and monthly currency budgets for the installation and each Workspace. Before: tokens only | Price table per model → cost per run, Workspace and month; budgets in currency |
+| **Evals** | **Done** (#359, #360, #361, #362): tool-selection, RAG and safety sets, LLM-as-judge rubrics, manual real-model script, CI guard against real model calls. Not done: Arabic-specific set beyond the Arabic cases inside these sets, nightly real-model run. Before: DW generation set (2 cases), Ollama smoke test | More sets: **tool-selection** (right tool, right arguments), **RAG** (recall@k, MRR, faithfulness, citation correctness, Ragas/DeepEval-style), **refusals and safety** (prompt injection in documents), **Arabic** questions; LLM-as-judge with rubrics; run in CI on recorded fakes and nightly on real models |
+| **Prompt management** | **Done** (#355): `prompt_version` stored on each run. Before: prompts are constants | Versioned prompts with an id stored on each run, to compare versions in evals and A/B test |
+| **User feedback** | **Done** (#356): thumbs and a comment saved per run; admin eval-candidates endpoint. Before: none | 👍/👎 and a comment on each answer, saved on the run; bad answers become eval cases |
 
 ```mermaid
 flowchart LR
@@ -396,15 +396,15 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 |---|---|---|---|---|---|
 | 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR |
 | 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises |
-| 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away |
+| 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
 | 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain |
 | 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable |
-| 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else |
-| 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions |
+| 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
+| 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
 | 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | |
 | 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks |
-| 11 | Conversation compaction + Workspace memory | §7 | Medium | M | |
+| 11 | Conversation compaction + Workspace memory | §7 | Medium | M | Compaction **done** (#354); Workspace memory not yet |
 | 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | |
 | 13 | Planning + self-verification in jobs | §6 | Medium | M | |
 | 14 | Model fallback + cost tables | §6, §8 | Medium | S | |

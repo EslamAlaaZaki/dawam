@@ -110,6 +110,7 @@ Module boundaries (enforced by the repo's module rules, see `modules/README.md`)
 `Gateway(adapter, model=..., capabilities=...)` exposes `chat(messages, tools, stream, json_schema=)`, `embed(texts)`, `capabilities()`, `list_models()` and `server_context_window()`.
 
 - **Retries with exponential backoff** for `rate_limit` and `unavailable` only: up to 3 retries, `0.5s × 2^attempt`, capped at 30 s, honouring the provider's `Retry-After`. A stream is retried **only until its first event**; a stream that has started is never restarted.
+- **Token counts**: `Gateway.count_tokens(text)` uses the adapter's real count and falls back to about 4 characters per token when the model is unknown or the count fails; it never raises. Anthropic (`/messages/count_tokens`) and Gemini (`:countTokens`) use the provider's endpoint. OpenAI and Azure OpenAI models use `tiktoken` with `cl100k_base` and `o200k_base` vendored in `llm/internal/bpe/` (never downloaded). Self-hosted models use a Hugging Face `tokenizer.json` only if it is already in the local cache. Bedrock and anything else use the estimate, and `MeteredGateway` always estimates for internal-only Workspaces.
 - **Token usage**: when the provider sends no usage, it estimates about 4 characters per token for both prompt and completion and marks it `estimated`.
 
 ### 3.3 Adapters (connectors / providers)
@@ -130,6 +131,10 @@ Shared helpers in `llm/internal/wire.py` map HTTP errors into `LlmError` (401/40
 **Plugins:** more adapter kinds can ship as separate Python packages through the entry-point group `dawam.llm_providers`. A plugin cannot replace a built-in kind, and a plugin that fails to load is skipped with a warning.
 
 **Transport:** `llm/internal/transport.py` defines a `Transport` protocol; `UrllibTransport` is the real one. Tests swap in a replaying transport to run the adapter contract suite against recorded responses.
+
+**Prompt caching:** the system prompt and the tool list come first in every request and are byte-identical across the calls of one run (tools are sorted by name and snapshotted once per run). The `anthropic` adapter sends `cache_control: {"type": "ephemeral"}` on the system prompt and on the last tool. OpenAI, Gemini and DeepSeek cache the prefix automatically, so the adapters send nothing extra. Cached input is recorded per call in `llm_usage` (`cache_read_tokens`, `cache_write_tokens`) from what the provider reports (Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`, OpenAI `prompt_tokens_details.cached_tokens`, DeepSeek `prompt_cache_hit_tokens`, Gemini `cachedContentTokenCount`, Bedrock `cacheReadInputTokens` / `cacheWriteInputTokens`). Budgets still count all input tokens: the cached tokens are part of `prompt_tokens`, recorded separately for pricing.
+
+**Self-hosted models:** vLLM and SGLang only reuse the prefix if prefix caching is on. vLLM: start the server with `--enable-prefix-caching` (the default in recent V1 engines). SGLang: RadixAttention prefix caching is on by default; do not start it with `--disable-radix-cache`. Ollama keeps the prompt of the last request loaded, so no setting is needed. These servers do not report cached tokens, so none are recorded.
 
 ### 3.4 Providers, models and "Test connection"
 
@@ -161,11 +166,14 @@ flowchart LR
 
 ### 3.5 Model roles, Workspace Models and budgets
 
-- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; at the time of writing no feature asks for it outside the `llm` module) and `embedding` (document vectors).
+- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3); no fallback to the agent role for that) and `embedding` (document vectors).
+- **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
   - checks the installation's and the Workspace's **monthly token budgets** before every call (429 `token_budget_exhausted`);
   - records tokens per call in `llm_usage` (by Workspace, user and model);
+  - checks the installation's and the Workspace's **monthly currency budgets** after the token budgets (429 `cost_budget_exhausted`); a currency budget counts only calls whose model price is in its currency, so unpriced calls and other currencies don't count; set with `PUT/DELETE /admin/llm/budgets/installation/cost` and `.../workspaces/{id}/cost` (table `llm_workspace_cost_budgets`); concurrent calls can overshoot by design;
+  - emits an OpenTelemetry GenAI span per model call (§11, §12.1);
   - refuses external providers in an **internal-only** Workspace (409 `external_provider_refused`), for every role.
 
 ```mermaid
@@ -342,30 +350,39 @@ flowchart TD
 
 Small self-hosted models have small windows, so before each model call:
 
+0. **Reserve** the tokens of the tool schemas (native mode) or of `tools_prompt` (prompted mode) out of the budget. If the system prompt plus the tools alone exceed it, the run fails before any model call with `context_window_too_small`.
 1. **Each tool result** is cut to 1/6 of the context window (min 200 tokens), with a note saying how much was left out.
-2. If the prompt still exceeds **75% of the window** (the rest is kept for the answer), the **oldest conversation turns** are dropped (a tool call is dropped with its results; the kept history never starts on an assistant or tool turn), and the system prompt gets a note that earlier messages were left out.
+2. If the prompt still exceeds **75% of the window** (the rest is kept for the answer), the **oldest conversation turns** are dropped (a tool call is dropped with its results; the kept history never starts on an assistant or tool turn), and the system prompt gets a note that earlier messages were left out. If a **light model** is assigned, it first **summarises** the dropped turns (see Compaction below).
 3. If it's still too big, the **oldest tool results of the current run** are replaced with a placeholder, always keeping the newest one.
 
 ```mermaid
 flowchart TD
     IN["system + history + current run"] --> W{"Context window known?"}
     W -->|no| OUT(["Send as is"])
-    W -->|yes| B{"Estimated tokens<br/>within 75% of the window?"}
+    W -->|yes| RS["Reserve tool schema tokens"]
+    RS --> TS{"System + tools<br/>fit the budget?"}
+    TS -->|no| FAIL(["Fail: context_window_too_small"])
+    TS -->|yes| B{"Counted tokens<br/>within 75% of the window?"}
     B -->|yes| OUT
     B -->|no| D1["Drop the oldest history turns,<br/>a tool call with its results"]
-    D1 --> N["Add a note to the system prompt"]
+    D1 --> L{"Light model assigned?"}
+    L -->|yes| SM["Summarise dropped turns,<br/>saved on the conversation"]
+    L -->|no| N["Add a note to the system prompt"]
+    SM --> N
     N --> B2{"Fits now?"}
     B2 -->|yes| OUT
     B2 -->|no| D2["Replace the oldest tool results<br/>of this run with a placeholder,<br/>keep the newest"]
     D2 --> OUT
 ```
 
-The member's latest message and the current run's calls are never dropped. Tokens are estimated at about 4 characters per token. With an unknown window nothing is trimmed. On top of that, each tool's own result is capped at 20,000 characters by `tools._json`, which halves the longest lists (marking `truncated: true`) so the result is always valid JSON.
+**Compaction.** The light model (through its metered gateway) summarises the dropped turns. The summary is quoted as data, saved on the conversation (`summary`, `summary_through`), merged forward, and counted in the system message against the budget (capped at 1/6 of the window). With no light model assigned, compaction is off and old turns are simply dropped; a light-model failure, budget refusal or internal-only refusal also falls back to dropping. `GET ai-settings` returns `light_features`, shown as On/Off badges in the AI settings panel.
+
+The member's latest message and the current run's calls are never dropped. Tokens are counted with the run's token counter (real counts where available, otherwise about 4 characters per token); history is counted newest-first and stops at the first turn that doesn't fit. With an unknown window nothing is trimmed. On top of that, each tool's own result is capped at 20,000 characters by `tools._json`, which halves the longest lists (marking `truncated: true`) so the result is always valid JSON.
 
 ### 4.4 Conversation memory
 
 - Conversations and messages live in `assistant_conversations` / messages tables; each answer is a **run** row with its tool calls, token counts, duration, status and error.
-- The **last 30 messages** of the conversation are sent as history with each new message (`HISTORY_MESSAGES`). Past tool calls are not replayed into history; only user and assistant text.
+- The **last 30 messages** of the conversation are sent as history with each new message (`HISTORY_MESSAGES`). Past tool calls are not replayed in full: earlier answers are re-sent with a short redacted digest of their tool calls, quoted as data, so follow-ups don't repeat calls.
 - There is no long-term or vector memory of conversations (see `docs/ai-enhancements.md`). Conversations are private to their starter unless shared with the Workspace (others can read; Owners and Editors can post).
 - Only one run at a time per conversation (409 `run_in_progress`; a run older than 15 minutes stops blocking).
 
@@ -391,7 +408,7 @@ Tool(name, description, arguments: type[BaseModel], kind: "read"|"write",
      level: DataSharingLevel | None = None, chat_only: bool = False)
 ```
 
-- The JSON Schema sent to the model is `arguments.model_json_schema()` (Pydantic).
+- The JSON Schema sent to the model is `arguments.model_json_schema()` (Pydantic). A `compact` flag (set on `generate_dw_schema`, `draft_mappings` and `propose_changes`) drops generated `title` keywords to keep these large schemas short, since schemas are re-sent on every call; long guidance such as the column data-type list lives in the tool's first-phase result.
 - `ToolRegistry` holds the installation's tools; `bind(user, workspace_id, policy, conversation_id, job=)` returns a `BoundTools` (the `ToolSet` for one run).
 - **`specs()`** offers only the tools this user may use right now (policy action + data-sharing level); `start_job` is hidden inside jobs.
 - **`execute()`** checks again regardless of what was offered: unknown tool → `error`; not allowed → `refused`; Pydantic validation failure → `error` with the field problems; `ApiError` 401/403 → `refused`, other → `error`; unexpected exception → logged, generic `error`. Tools never raise into the loop.
@@ -726,10 +743,12 @@ The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/Assistan
 | `DAWAM_ASSISTANT_MAX_TOOL_CALLS` | 25 | tool calls per chat answer |
 | `DAWAM_ASSISTANT_JOB_MAX_TOOL_CALLS` | 150 | tool calls per background job |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | 120 | total source-query seconds per run |
+| `DAWAM_OTEL_ENDPOINT` | unset | OTLP/HTTP collector URL; tracing is off unless set |
+| `DAWAM_OTEL_CAPTURE_CONTENT` | false | also put prompt and tool content on spans (redacted, capped at 8000 characters) |
 | `DAWAM_FAKE_LLM` | false | tests only: every provider becomes the rule-based fake |
 | encryption key | — | seals provider API keys |
 
-Providers, models, roles, budgets, Workspace Models, internal-only and data-sharing levels are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
+Model prices (cost per million tokens, per currency) are set by system admins in the AI settings page (`llm_model_prices`). Providers, models, roles, budgets, Workspace Models, internal-only and data-sharing levels are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
 
 ---
 
@@ -743,7 +762,21 @@ Providers, models, roles, budgets, Workspace Models, internal-only and data-shar
 | Agent loop, prompted mode, JSON Schema checker, context fitting, prompt quoting | `backend/tests/assistant/test_agent.py`, `test_prompted.py`, `test_json_schema.py`, `test_context.py`, `test_prompt.py` | unit tests with the fake |
 | Each tool family | `backend/tests/assistant/test_*` (source tools, documents, KPI links, DW generation, mappings, files, jobs, source query…) | integration tests against Postgres (testcontainers) |
 | Real small model | `backend/tests/assistant/test_ollama.py`, `pytest -m ollama` | CI workflow `.github/workflows/assistant-ollama.yml` runs Ollama with `qwen2.5:1.5b` on PRs touching `assistant/` or `llm/`, weekly and on demand; never blocks a PR |
+| Tool-selection eval set | `backend/tests/assistant/evals/tool_selection/cases.json`, `tool_selection_eval.py` | 36 cases (15 Arabic) replayed from recordings through `Gateway` and `FakeAdapter`; scores the right tool and arguments per prompt version and language; fails below 0.85. Guards the case data and runner, not prompt regressions |
+| Safety eval set | `backend/tests/assistant/evals/safety_eval.py`, `safety/cases.json` | prompt injection in documents and tool results (English and Arabic, `</data>` close attempts); fails on a forbidden tool call, forbidden phrase or text escaping its `<data>` block; runs in CI on the fake |
+| LLM-as-judge rubrics | `evals/judge.py` | quality and faithfulness rubrics with strict JSON verdicts (a bad verdict scores 0) |
+| RAG eval set | `backend/tests/rag_eval/` | English and Arabic corpus with distractors, 15 questions with gold passages; product chunker, hashing `FakeAdapter`; reports recall@3, MRR and citation correctness; fails below 0.9, 0.9 and 1.0 |
+| Manual real-model script | `evals/eval_real.py`, `python -m tests.assistant.evals.eval_real` | needs `DAWAM_EVAL_URL`, `DAWAM_EVAL_MODEL`, `DAWAM_EVAL_API_KEY`; prints tool-selection and safety scores with the prompt version, plus judge averages over the RAG questions; not collected by pytest, no workflow runs it, not yet run against a real model. See `evals/README.md` |
+| No real model calls in CI | `backend/tools/check_workflow_keys.py`, `backend/tests/no_real_model.py` | the `backend` job fails if a workflow sets a provider API key or `secrets.*` reference; an autouse fixture refuses DNS and sockets to provider hosts (localhost allowed; `real_model` tests exempt). A denylist of hostnames, so a raw IP is not caught |
 | DW generation eval set | `backend/tests/assistant/evals/` (`bank_loans.json`, `retail_sales.json`, `dw_generation_eval.py`) | `pytest -m real_model` with `DAWAM_EVAL_URL` / `DAWAM_EVAL_MODEL`; scores a generated Kimball model against a reference (facts and dimensions found, grain, SCD types, measure additivity, star foreign keys); a yardstick before a release |
+
+### 12.1 Observability, cost and feedback
+
+- **Tracing** (`platform/tracing.py`): OpenTelemetry GenAI spans per model call (in `MeteredGateway.chat`) and per tool call, exported over OTLP/HTTP when `DAWAM_OTEL_ENDPOINT` is set. Spans carry metadata only unless `DAWAM_OTEL_CAPTURE_CONTENT` is on. Tool spans are not nested under model spans, and background jobs get spans but no prompt version.
+- **Prompt version:** each run stores `assistant_runs.prompt_version` (`p-<hash>` of the system prompt and the tool specs). It is not in the run API yet.
+- **Cost:** `llm_model_prices` holds currency and input, output and cached-input price per million tokens, keyed by model name. `/admin/llm/usage` returns `cost` on totals, per Workspace and per user, as `amounts` per currency (never summed across currencies) plus `unpriced_calls`. Cost is computed at read time, so a changed price re-costs past calls. An unpriced model shows "Unknown", never zero. Cache-write tokens are billed at the input price. Currency budgets use the same prices (§3.5).
+- **Feedback:** `assistant_run_feedback` stores one `up`/`down` rating and an optional comment per run and member (`PUT .../runs/{run_id}/feedback`; `AnswerFeedback` under each answer, hidden in archived Workspaces). Owners and system admins (`VIEW_AI_FEEDBACK`) list feedback and eval candidates (thumbs-down by default).
+- **Admin run explorer** (`assistant/run_explorer.py`, `assistant/admin_api.py`): `GET /api/v1/admin/assistant/runs` (newest first, up to 100; filters Workspace, member, status, dates) and `.../runs/{run_id}` with a timeline: one model step, one step per tool call, an error step. Admin-only (`VIEW_ASSISTANT_RUNS`), page `/admin/ai-runs`. Question, answer, tool arguments and results, errors and comments are redacted. Runs store summed tokens, so model calls show as one combined step, and cost has no cached-token split.
 
 ---
 
@@ -755,7 +788,9 @@ Providers, models, roles, budgets, Workspace Models, internal-only and data-shar
 | Adapters | `llm/internal/{openai_compatible,anthropic,azure_openai,gemini,bedrock}.py`, `adapters.py`, `transport.py`, `wire.py` |
 | Fakes | `llm/internal/fake.py`, `llm/internal/e2e.py` |
 | Providers / models / probe | `llm/service.py`, `llm/api.py`, `llm/model_removal.py` |
-| Roles, budgets, usage | `llm/role_service.py` |
+| Roles, budgets, usage, model prices | `llm/role_service.py`, `llm/tables.py` (`llm_model_prices`) |
+| Tracing | `platform/tracing.py` |
+| Run explorer, feedback | `assistant/run_explorer.py`, `assistant/admin_api.py`, `assistant/api.py` |
 | Workspace AI settings, data-sharing policy | `llm/workspace_ai.py`, `llm/workspace_ai_api.py` |
 | Agent loop | `assistant/internal/agent.py` |
 | Prompts and quoting | `assistant/internal/prompt.py` |

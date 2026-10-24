@@ -30,7 +30,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { ErrorText, NativeSelect, labelClasses } from "./parts";
+import { ErrorText, NativeSelect, WarningNote, labelClasses } from "./parts";
 import {
   ROLE_LABELS,
   ReplacementDialog,
@@ -85,7 +85,12 @@ const MODEL_COLUMNS: EntityColumn<ModelRow>[] = [
   {
     header: "Test",
     className: "whitespace-normal",
-    cell: ({ model }) => <TestResult model={model} />,
+    cell: ({ model }) => (
+      <>
+        <TestResult model={model} />
+        <ModelWarnings warnings={model.warnings} />
+      </>
+    ),
   },
 ];
 
@@ -132,6 +137,18 @@ function TestResult({ model }: { model: LlmModel }) {
     );
   }
   return <p className="text-sm text-muted-foreground">Not tested yet.</p>;
+}
+
+/** Why a model may not suit its roles: shown under the test result and, right after
+ * "Test connection", with the Ollama `num_ctx` hint that only that call returns. */
+function ModelWarnings({ warnings }: { warnings: string[] }) {
+  return (
+    <>
+      {warnings.map((warning) => (
+        <WarningNote key={warning}>{warning}</WarningNote>
+      ))}
+    </>
+  );
 }
 
 export function LlmProvidersPage() {
@@ -408,6 +425,13 @@ function ModelActions({
         </Button>
       </div>
       {test.isError && <ErrorText>{test.error.message}</ErrorText>}
+      {test.data && (
+        <ModelWarnings
+          warnings={test.data.warnings.filter(
+            (warning) => !model.warnings.includes(warning),
+          )}
+        />
+      )}
       <EditModelDialog model={model} open={editing} onOpenChange={setEditing} />
       <RemoveModelDialog
         model={model}

@@ -335,7 +335,7 @@ ROWS: list[Row] = [
         "/api/v1/admin/llm/models/{model_id}",
         "edit a model's context window (story 155)",
         admin_only(),
-        json=lambda roles: {"context_window": 8192},
+        json=lambda roles: {"context_window": 32768},
     ),
     Row(
         "PUT",
@@ -384,10 +384,57 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/installation/cost",
+        "set the installation's currency budget (roadmap 27.5)",
+        admin_only(),
+        json=lambda roles: {"amount": "10", "currency": "USD"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/budgets/installation/cost",
+        "remove the installation's currency budget (roadmap 27.5)",
+        admin_only(),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost",
+        "set a Workspace's currency budget (roadmap 27.5)",
+        admin_only(),
+        json=lambda roles: {"amount": "10", "currency": "USD"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/budgets/workspaces/{workspace_id}/cost",
+        "remove a Workspace's currency budget (roadmap 27.5)",
+        admin_only(),
+    ),
+    Row(
         "GET",
         "/api/v1/admin/llm/usage",
         "AI usage per Workspace and user (story 162)",
         admin_only(),
+    ),
+    Row("GET", "/api/v1/admin/llm/prices", "see the model price table", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/prices",
+        "set a model's price",
+        admin_only(),
+        json=lambda roles: {
+            "model_name": "m",
+            "currency": "USD",
+            "input_per_million": "1",
+            "output_per_million": "2",
+            "cached_input_per_million": "0.5",
+        },
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/llm/prices",
+        "remove a model's price",
+        admin_only(),
+        query={"model_name": "m"},
     ),
     # User management (stories 14-19, 15a) and the security-event log (story 23).
     Row("GET", "/api/v1/admin/users", "list, search and filter users", admin_only()),
@@ -417,6 +464,8 @@ ROWS: list[Row] = [
         admin_only(),
     ),
     Row("GET", "/api/v1/admin/security-events", "review security events", admin_only()),
+    Row("GET", "/api/v1/admin/assistant/runs", "browse assistant runs", admin_only()),
+    Row("GET", "/api/v1/admin/assistant/runs/{run_id}", "open an assistant run", admin_only()),
     # Every Workspace's metadata, and the orphan rescue (§4.3, stories 21, 22).
     Row(
         "GET",
@@ -687,6 +736,25 @@ ROWS: list[Row] = [
         "Ask the assistant questions (stop a response you may post to: the starter, or an "
         "Owner or Editor in a shared conversation)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/runs/{run_id}/feedback",
+        "Ask the assistant questions (rate an answer in a conversation you can read)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        json=lambda roles: {"rating": "up"},
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/feedback",
+        "View members' feedback on answers (Owners and admins)",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/feedback/eval-candidates",
+        "View members' feedback on answers (export as eval-case candidates)",
+        workspace(admin=True, owner=True, editor=False, viewer=False),
     ),
     # Data Warehouse.
     Row(

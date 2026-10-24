@@ -12,11 +12,18 @@ import {
   type LlmProvider,
 } from "../api/llm";
 import {
+  formatCost,
+  useClearLlmModelPrice,
   useClearWorkspaceBudget,
+  useClearWorkspaceCostBudget,
   useLlmBudgets,
+  useLlmModelPrices,
   useLlmUsage,
   useSetInstallationBudget,
+  useSetInstallationCostBudget,
+  useSetLlmModelPrice,
   useSetWorkspaceBudget,
+  useSetWorkspaceCostBudget,
   type LlmBudgets,
 } from "../api/llmSettings";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
@@ -47,6 +54,7 @@ import {
   NativeSelect,
   PageHead,
   TableCard,
+  WarningNote,
   labelClasses,
   h3Classes,
 } from "./parts";
@@ -66,6 +74,7 @@ export function LlmSettingsPage() {
       />
       <ModelRolesSection />
       <BudgetsSection />
+      <PricesSection />
       <UsageSection />
     </section>
   );
@@ -160,8 +169,9 @@ function ModelRoleRow({
     toast.success(`Roles of ${model.name} saved.`);
   };
   const [roles, setRoles] = useState<LlmModelRole[]>(model.roles);
-  const changed =
-    ROLE_COLUMNS.some(({ role }) => roles.includes(role) !== model.roles.includes(role));
+  const changed = ROLE_COLUMNS.some(
+    ({ role }) => roles.includes(role) !== model.roles.includes(role),
+  );
   const mixed =
     roles.includes("embedding") &&
     (roles.includes("agent") || roles.includes("light"));
@@ -184,9 +194,10 @@ function ModelRoleRow({
             {EMBEDDING_HINT}
           </div>
         )}
-        {save.isError && !asking && (
-          <ErrorText>{save.error.message}</ErrorText>
-        )}
+        {save.isError && !asking && <ErrorText>{save.error.message}</ErrorText>}
+        {model.warnings.map((warning) => (
+          <WarningNote key={warning}>{warning}</WarningNote>
+        ))}
       </TableCell>
       <TableCell>
         {provider.name}{" "}
@@ -259,7 +270,7 @@ function ModelRoleRow({
 function BudgetsSection() {
   return (
     <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5 items-start">
-      <h3 className={h3Classes}>Monthly token budgets</h3>
+      <h3 className={h3Classes}>Monthly budgets</h3>
       <Dialog>
         <DialogTrigger asChild>
           <Button>
@@ -271,7 +282,8 @@ function BudgetsSection() {
           <DialogHeader>
             <DialogTitle>Budget settings</DialogTitle>
             <DialogDescription>
-              Monthly token budgets for the installation and per Workspace.
+              Monthly token and currency budgets for the installation and per
+              Workspace. Whichever is reached first stops AI use.
             </DialogDescription>
           </DialogHeader>
           <BudgetsPanel />
@@ -287,7 +299,12 @@ function BudgetsPanel() {
   const setInstallation = useSetInstallationBudget();
   const setWorkspace = useSetWorkspaceBudget();
   const clear = useClearWorkspaceBudget();
-  const [removing, setRemoving] = useState<LlmBudgets["workspaces"][number] | null>(null);
+  const setInstallationCost = useSetInstallationCostBudget();
+  const setWorkspaceCost = useSetWorkspaceCostBudget();
+  const clearCost = useClearWorkspaceCostBudget();
+  const [removing, setRemoving] = useState<
+    LlmBudgets["workspaces"][number] | null
+  >(null);
   if (budgets.isPending) {
     return <Loading />;
   }
@@ -312,8 +329,40 @@ function BudgetsPanel() {
     });
   }
 
+  function onInstallationCost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const amount = String(data.get("amount") ?? "").trim();
+    setInstallationCost.mutate(
+      amount
+        ? {
+            currency: String(data.get("currency")).trim().toUpperCase(),
+            amount,
+          }
+        : null,
+    );
+  }
+
+  function onWorkspaceCost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setWorkspaceCost.mutate({
+      workspaceId: String(data.get("workspace")),
+      budget: {
+        currency: String(data.get("currency")).trim().toUpperCase(),
+        amount: String(data.get("amount")).trim(),
+      },
+    });
+  }
+
+  const installationCost = budgets.data.installation_monthly_cost_budget;
   const choices = workspaces.data?.pages.flatMap((page) => page.items) ?? [];
-  const failure = setInstallation.error ?? setWorkspace.error;
+  const failure =
+    setInstallation.error ??
+    setWorkspace.error ??
+    setInstallationCost.error ??
+    setWorkspaceCost.error ??
+    clearCost.error;
   return (
     <div className="flex flex-col gap-3.5">
       <form onSubmit={onInstallation} aria-label="Installation budget">
@@ -332,7 +381,9 @@ function BudgetsPanel() {
               type="number"
               min={0}
               key={budgets.data.installation_monthly_token_budget ?? "none"}
-              defaultValue={budgets.data.installation_monthly_token_budget ?? ""}
+              defaultValue={
+                budgets.data.installation_monthly_token_budget ?? ""
+              }
             />
           </label>
         </SettingsCard>
@@ -388,6 +439,101 @@ function BudgetsPanel() {
           </label>
         </SettingsCard>
       </form>
+      <form
+        onSubmit={onInstallationCost}
+        aria-label="Installation currency budget"
+      >
+        <SettingsCard
+          title="Installation currency budget"
+          description="Only calls on models priced in this currency count. Empty amount: unlimited."
+          footer={
+            <Button type="submit" disabled={setInstallationCost.isPending}>
+              Save installation currency budget
+            </Button>
+          }
+        >
+          <label className={labelClasses}>
+            Currency (ISO code)
+            <Input
+              name="currency"
+              required
+              maxLength={3}
+              key={`c-${installationCost?.currency ?? "none"}`}
+              defaultValue={installationCost?.currency ?? "USD"}
+            />
+          </label>
+          <label className={labelClasses}>
+            Amount per month
+            <Input
+              name="amount"
+              type="number"
+              min={0}
+              step="any"
+              key={`a-${installationCost?.amount ?? "none"}`}
+              defaultValue={
+                installationCost ? Number(installationCost.amount) : ""
+              }
+            />
+          </label>
+        </SettingsCard>
+      </form>
+      {budgets.data.workspace_cost_budgets.length > 0 && (
+        <ul
+          aria-label="Workspace currency budgets"
+          className="flex max-w-xl flex-col divide-y divide-border rounded-pill border border-border bg-surface-raised"
+        >
+          {budgets.data.workspace_cost_budgets.map((row) => (
+            <li
+              key={row.workspace_id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span className="tabular-nums">
+                {row.workspace_name ?? row.workspace_id}:{" "}
+                {Number(row.budget.amount)} {row.budget.currency}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                disabled={clearCost.isPending}
+                onClick={() => clearCost.mutate(row.workspace_id)}
+              >
+                Remove currency budget for{" "}
+                {row.workspace_name ?? row.workspace_id}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={onWorkspaceCost} aria-label="Workspace currency budget">
+        <SettingsCard
+          title="Workspace currency budget"
+          footer={
+            <Button type="submit" disabled={setWorkspaceCost.isPending}>
+              Set Workspace currency budget
+            </Button>
+          }
+        >
+          <label className={labelClasses}>
+            Workspace
+            <NativeSelect name="workspace" required defaultValue="">
+              <option value="">Choose a Workspace</option>
+              {choices.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className={labelClasses}>
+            Currency (ISO code)
+            <Input name="currency" required maxLength={3} defaultValue="USD" />
+          </label>
+          <label className={labelClasses}>
+            Amount per month
+            <Input name="amount" type="number" min={0} step="any" required />
+          </label>
+        </SettingsCard>
+      </form>
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(next) => {
@@ -403,9 +549,122 @@ function BudgetsPanel() {
         error={clear.error}
         onConfirm={() =>
           removing &&
-          clear.mutate(removing.workspace_id, { onSuccess: () => setRemoving(null) })
+          clear.mutate(removing.workspace_id, {
+            onSuccess: () => setRemoving(null),
+          })
         }
       />
+      {failure && <ErrorText>{failure.message}</ErrorText>}
+    </div>
+  );
+}
+
+function PricesSection() {
+  const prices = useLlmModelPrices();
+  const setPrice = useSetLlmModelPrice();
+  const clear = useClearLlmModelPrice();
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setPrice.mutate(
+      {
+        model_name: String(data.get("model_name")).trim(),
+        currency: String(data.get("currency")).trim().toUpperCase(),
+        input_per_million: String(data.get("input")),
+        output_per_million: String(data.get("output")),
+        cached_input_per_million: String(data.get("cached")),
+      },
+      { onSuccess: () => form.reset() },
+    );
+  }
+
+  const failure = setPrice.error ?? clear.error;
+  return (
+    <div className="flex flex-col gap-3.5 rounded-pill border border-border bg-surface-raised p-5">
+      <h3 className={h3Classes}>Model prices</h3>
+      <p className="text-muted-foreground">
+        Prices per million tokens turn usage into cost. A model without a price
+        shows its cost as unknown.
+      </p>
+      {prices.isPending && <Loading />}
+      {prices.isError && <ErrorText>Could not load the prices.</ErrorText>}
+      {prices.data && prices.data.prices.length > 0 && (
+        <TableCard>
+          <Table aria-label="Model prices">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Model</TableHead>
+                <TableHead>Currency</TableHead>
+                <TableHead>Input</TableHead>
+                <TableHead>Output</TableHead>
+                <TableHead>Cached input</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {prices.data.prices.map((row) => (
+                <TableRow key={row.model_name}>
+                  <TableCell className="font-mono">{row.model_name}</TableCell>
+                  <TableCell>{row.currency}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {Number(row.input_per_million)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {Number(row.output_per_million)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {Number(row.cached_input_per_million)}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={clear.isPending}
+                      onClick={() => clear.mutate(row.model_name)}
+                    >
+                      Remove price of {row.model_name}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+      )}
+      <form onSubmit={onSubmit} aria-label="Model price">
+        <SettingsCard
+          title="Set a model price"
+          description="Saving a name that is already listed replaces its price."
+          footer={
+            <Button type="submit" disabled={setPrice.isPending}>
+              Save price
+            </Button>
+          }
+        >
+          <label className={labelClasses}>
+            Model name
+            <Input name="model_name" required className="font-mono" />
+          </label>
+          <label className={labelClasses}>
+            Currency (ISO code)
+            <Input name="currency" required maxLength={3} defaultValue="USD" />
+          </label>
+          <label className={labelClasses}>
+            Input price per million tokens
+            <Input name="input" type="number" min={0} step="any" required />
+          </label>
+          <label className={labelClasses}>
+            Output price per million tokens
+            <Input name="output" type="number" min={0} step="any" required />
+          </label>
+          <label className={labelClasses}>
+            Cached input price per million tokens
+            <Input name="cached" type="number" min={0} step="any" required />
+          </label>
+        </SettingsCard>
+      </form>
       {failure && <ErrorText>{failure.message}</ErrorText>}
     </div>
   );
@@ -432,7 +691,8 @@ function UsageSection() {
           <p className="text-muted-foreground">
             {usage.data.month}:{" "}
             {usage.data.totals.total_tokens.toLocaleString("en")} tokens in{" "}
-            {usage.data.totals.calls} calls
+            {usage.data.totals.calls} calls, cost{" "}
+            {formatCost(usage.data.totals.cost)}
             {usage.data.installation_monthly_token_budget !== null &&
               ` (budget ${usage.data.installation_monthly_token_budget.toLocaleString("en")})`}
           </p>
@@ -443,6 +703,7 @@ function UsageSection() {
                   <TableHead>Workspace</TableHead>
                   <TableHead>Tokens</TableHead>
                   <TableHead>Calls</TableHead>
+                  <TableHead>Cost</TableHead>
                   <TableHead>Budget</TableHead>
                 </TableRow>
               </TableHeader>
@@ -456,6 +717,9 @@ function UsageSection() {
                       {row.totals.total_tokens.toLocaleString("en")}
                     </TableCell>
                     <TableCell>{row.totals.calls}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatCost(row.totals.cost)}
+                    </TableCell>
                     <TableCell>
                       {row.monthly_token_budget?.toLocaleString("en") ?? "none"}
                     </TableCell>
@@ -471,6 +735,7 @@ function UsageSection() {
                   <TableHead>User</TableHead>
                   <TableHead>Tokens</TableHead>
                   <TableHead>Calls</TableHead>
+                  <TableHead>Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -483,6 +748,9 @@ function UsageSection() {
                       {row.totals.total_tokens.toLocaleString("en")}
                     </TableCell>
                     <TableCell>{row.totals.calls}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatCost(row.totals.cost)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

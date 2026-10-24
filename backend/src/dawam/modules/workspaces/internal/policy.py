@@ -75,6 +75,9 @@ class Action(StrEnum):
     viewers too; archived Workspaces make the chat read-only; spec §4.3, stories 149, 151).
     Reading conversations needs only ``VIEW_WORKSPACE``. What the assistant may *do* is
     decided per tool, by the action of the tool's own rule (a viewer's chat cannot write)."""
+    VIEW_AI_FEEDBACK = "assistant.view_feedback"
+    """Read the members' ratings of the assistant's answers and export them as eval-case
+    candidates (owners; admins too, member or not)."""
     CHANGE_DW_PLATFORM = "data_warehouse.change_platform"
     """Change the Data Warehouse's target platform after setup (owners only; spec §4.3)."""
     EDIT_DW_SCHEMA = "dw_schema.edit"
@@ -160,6 +163,9 @@ class Action(StrEnum):
     (admins only; spec stories 14-19)."""
     VIEW_SECURITY_EVENTS = "installation.view_security_events"
     """Review the security-event log (admins only; spec story 23)."""
+    VIEW_ASSISTANT_RUNS = "installation.view_assistant_runs"
+    """Browse every Workspace's assistant runs: steps, redacted prompts, tokens, cost and
+    feedback (admins only; run explorer)."""
     MANAGE_EMAIL = "installation.manage_email"
     """Configure SMTP, send a test email and see the links DAWAM could not email
     (admins only; spec story 24, §6.1 "Without SMTP")."""
@@ -215,6 +221,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.MANAGE_EMAIL: _SystemRule(admin_only=True),
     Action.MANAGE_USERS: _SystemRule(admin_only=True),
     Action.VIEW_SECURITY_EVENTS: _SystemRule(admin_only=True),
+    Action.VIEW_ASSISTANT_RUNS: _SystemRule(admin_only=True),
     Action.VIEW_WORKSPACE: _WorkspaceRule(min_role="viewer", state="any"),
     Action.EDIT_WORKSPACE: _WorkspaceRule(min_role="owner"),
     Action.MANAGE_MEMBERS: _WorkspaceRule(min_role="owner"),
@@ -222,6 +229,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.SET_UP_DATA_WAREHOUSE: _WorkspaceRule(min_role="editor"),
     Action.CHANGE_AI_SETTINGS: _WorkspaceRule(min_role="owner"),
     Action.ASK_ASSISTANT: _WorkspaceRule(min_role="viewer"),
+    Action.VIEW_AI_FEEDBACK: _WorkspaceRule(min_role="owner", admin=True, state="any"),
     Action.CHANGE_DW_PLATFORM: _WorkspaceRule(min_role="owner"),
     Action.EDIT_DW_SCHEMA: _WorkspaceRule(min_role="editor"),
     Action.RETIRE_STAGING: _WorkspaceRule(min_role="owner"),

@@ -67,6 +67,14 @@ function settings(
     data_sharing_level: "metadata",
     agent_models: [chosen(BIG, "Big", true), chosen(SMALL, "Small", false)],
     light_models: [chosen(SMALL, "Small", true)],
+    light_features: [
+      {
+        key: "conversation_compaction",
+        name: "Conversation compaction",
+        description: "Summarises the oldest turns.",
+        enabled: true,
+      },
+    ],
     embedding_model: chosen(EMBED, "Embed-1", true),
     embedding_locked: false,
     choices: {
@@ -137,6 +145,34 @@ describe("the Workspace AI settings card", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lists the light-role features, off when no light model is assigned", async () => {
+    const off = settings({
+      light_models: [],
+      light_features: [
+        {
+          key: "conversation_compaction",
+          name: "Conversation compaction",
+          description: "Summarises the oldest turns.",
+          enabled: false,
+        },
+      ],
+    });
+    renderApp(
+      backend("owner", (r) =>
+        r.method === "GET" && r.path === AI ? json(off) : undefined,
+      ),
+      PATH,
+    );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    const features = within(card).getByRole("region", {
+      name: "Light-role features",
+    });
+    expect(features).toHaveTextContent("Conversation compaction");
+    expect(features).toHaveTextContent("Off");
+  });
+
   it("is read-only in an archived Workspace, for owners too", async () => {
     renderApp(
       backend(
@@ -185,7 +221,7 @@ describe("the Workspace AI settings card", () => {
     fireEvent.click(within(agents).getByRole("checkbox", { name: /^Big/ }));
     const lights = within(card).getByRole("group", { name: "Light models" });
     fireEvent.click(within(lights).getByRole("checkbox", { name: /^Small/ }));
-    expect(lights).toHaveTextContent("light tasks use the default agent model");
+    expect(lights).toHaveTextContent("the light-role features are off");
     fireEvent.change(within(card).getByLabelText("Embedding model"), {
       target: { value: "" },
     });

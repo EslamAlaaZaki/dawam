@@ -42,6 +42,7 @@ function model(
     test_error_code: null,
     test_error: null,
     last_tested_at: null,
+    warnings: [],
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
     ...over,
@@ -96,6 +97,14 @@ const BUDGETS: LlmBudgets = {
       monthly_token_budget: 500,
     },
   ],
+  installation_monthly_cost_budget: null,
+  workspace_cost_budgets: [
+    {
+      workspace_id: WORKSPACE,
+      workspace_name: "Core",
+      budget: { currency: "USD", amount: "20.000000" },
+    },
+  ],
 };
 
 const TOTALS = {
@@ -104,6 +113,7 @@ const TOTALS = {
   total_tokens: 100,
   calls: 2,
   estimated_calls: 0,
+  cost: { amounts: [], unpriced_calls: 2 },
 };
 
 const USAGE: LlmUsage = {
@@ -130,6 +140,14 @@ const USAGE: LlmUsage = {
   ],
 };
 
+const PRICE = {
+  model_name: "big",
+  currency: "USD",
+  input_per_million: "3.000000",
+  output_per_million: "15.000000",
+  cached_input_per_million: "0.300000",
+};
+
 function api(extra?: (r: ApiRequest) => Response | undefined) {
   return (r: ApiRequest) => {
     if (r.path === "/api/v1/me") return json(ROOT);
@@ -137,6 +155,7 @@ function api(extra?: (r: ApiRequest) => Response | undefined) {
       return json({ items: [PROVIDER, EXTERNAL] });
     if (r.path === "/api/v1/admin/llm/budgets") return json(BUDGETS);
     if (r.path === "/api/v1/admin/llm/usage") return json(USAGE);
+    if (r.path === "/api/v1/admin/llm/prices") return json({ prices: [PRICE] });
     if (r.path === "/api/v1/admin/workspaces") {
       return json({
         items: [{ id: WORKSPACE, name: "Core" }],
@@ -145,6 +164,17 @@ function api(extra?: (r: ApiRequest) => Response | undefined) {
     }
     return extra?.(r);
   };
+}
+
+/** The page's API with the Local provider holding just `models`. */
+function withModels(
+  models: LlmModel[],
+  extra?: (r: ApiRequest) => Response | undefined,
+) {
+  return (r: ApiRequest) =>
+    r.path === "/api/v1/admin/llm/providers"
+      ? json({ items: [{ ...PROVIDER, models }] })
+      : api(extra)(r);
 }
 
 let clearCookie: () => void;
@@ -174,16 +204,17 @@ describe("AI roles, budgets and usage page", () => {
     expect(big).toHaveTextContent("Passed");
     expect(within(big).getByLabelText("Agent role of big")).toBeChecked();
     expect(within(big).getByLabelText("Light role of big")).not.toBeChecked();
-    expect(screen.getByRole("row", { name: "Roles of fresh" })).toHaveTextContent(
-      "Not tested",
-    );
+    expect(
+      screen.getByRole("row", { name: "Roles of fresh" }),
+    ).toHaveTextContent("Not tested");
   });
 
   it("saves any combination of roles for a model, and hints about embedding", async () => {
     const saved: LlmModel = { ...BIG, roles: ["agent", "light", "embedding"] };
     const requests = renderApp(
       api((r) =>
-        r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
+        r.method === "PUT" &&
+        r.path === `/api/v1/admin/llm/models/${BIG.id}/roles`
           ? json(saved)
           : undefined,
       ),
@@ -200,7 +231,14 @@ describe("AI roles, budgets and usage page", () => {
     );
 
     await waitFor(() =>
-      expect(requests.some((r) => r.path.endsWith("/roles") && r.method === "PUT" && r.path.includes("models"))).toBe(true),
+      expect(
+        requests.some(
+          (r) =>
+            r.path.endsWith("/roles") &&
+            r.method === "PUT" &&
+            r.path.includes("models"),
+        ),
+      ).toBe(true),
     );
     expect(requests.find((r) => r.path.includes("/models/"))?.body).toEqual({
       roles: ["agent", "light", "embedding"],
@@ -231,7 +269,56 @@ describe("AI roles, budgets and usage page", () => {
       within(row).getByRole("button", { name: "Save roles of big" }),
     );
 
-    expect(await within(row).findByText(/no embeddings here/)).toBeInTheDocument();
+    expect(
+      await within(row).findByText(/no embeddings here/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows why a model is rejected for the agent role", async () => {
+    const small = model("5d3a8b1e-0000-4000-8000-0000000000c1", "tiny", {
+      roles: ["light"],
+      context_window: 8192,
+    });
+    renderApp(
+      withModels([small], (r) =>
+        r.method === "PUT" && r.path.includes("/models/")
+          ? json(
+              {
+                error: {
+                  code: "context_window_too_small",
+                  message:
+                    "This model's context window is 8,192 tokens. The agent role needs at least 32K.",
+                },
+              },
+              422,
+            )
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const row = await screen.findByRole("row", { name: "Roles of tiny" });
+    fireEvent.click(within(row).getByLabelText("Agent role of tiny"));
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Save roles of tiny" }),
+    );
+
+    expect(await within(row).findByRole("alert")).toHaveTextContent(
+      "needs at least 32K",
+    );
+  });
+
+  it("shows a model's warning next to its roles", async () => {
+    const unknown = model("5d3a8b1e-0000-4000-8000-0000000000c2", "mystery", {
+      warnings: ["The context window is unknown."],
+    });
+    renderApp(withModels([unknown]), "/admin/llm/settings");
+
+    const row = await screen.findByRole("row", { name: "Roles of mystery" });
+
+    expect(within(row).getByRole("note")).toHaveTextContent(
+      "The context window is unknown.",
+    );
   });
 
   describe("unticking a role a Workspace depends on", () => {
@@ -329,7 +416,9 @@ describe("AI roles, budgets and usage page", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Budget settings" }),
     );
-    const dialog = await screen.findByRole("dialog", { name: "Budget settings" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Budget settings",
+    });
     const installation = await within(dialog).findByLabelText(
       /^Installation \(tokens/,
     );
@@ -344,10 +433,13 @@ describe("AI roles, budgets and usage page", () => {
       monthly_token_budget: 2000,
     });
 
-    fireEvent.change(await within(dialog).findByLabelText("Workspace"), {
+    const tokenForm = within(
+      within(dialog).getByRole("form", { name: "Workspace budget" }),
+    );
+    fireEvent.change(tokenForm.getByLabelText("Workspace"), {
       target: { value: WORKSPACE },
     });
-    fireEvent.change(within(dialog).getByLabelText("Tokens per month"), {
+    fireEvent.change(tokenForm.getByLabelText("Tokens per month"), {
       target: { value: "300" },
     });
     fireEvent.click(
@@ -359,6 +451,75 @@ describe("AI roles, budgets and usage page", () => {
           r.path.endsWith(`/budgets/workspaces/${WORKSPACE}`),
         ),
       ).toBe(true),
+    );
+  });
+
+  it("sets and removes currency budgets beside the token budgets", async () => {
+    const requests = renderApp(
+      api((r) =>
+        r.method === "PUT" || r.method === "DELETE" ? noContent() : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Budget settings" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Budget settings",
+    });
+    const installation = within(
+      await within(dialog).findByRole("form", {
+        name: "Installation currency budget",
+      }),
+    );
+    fireEvent.change(installation.getByLabelText("Currency (ISO code)"), {
+      target: { value: "eur" },
+    });
+    fireEvent.change(installation.getByLabelText("Amount per month"), {
+      target: { value: "50" },
+    });
+    fireEvent.click(
+      installation.getByRole("button", {
+        name: "Save installation currency budget",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.find((r) => r.path.endsWith("/budgets/installation/cost"))
+          ?.body,
+      ).toEqual({ currency: "EUR", amount: "50" }),
+    );
+
+    const workspace = within(
+      within(dialog).getByRole("form", { name: "Workspace currency budget" }),
+    );
+    fireEvent.change(workspace.getByLabelText("Workspace"), {
+      target: { value: WORKSPACE },
+    });
+    fireEvent.change(workspace.getByLabelText("Amount per month"), {
+      target: { value: "7.5" },
+    });
+    fireEvent.click(
+      workspace.getByRole("button", { name: "Set Workspace currency budget" }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) =>
+            r.method === "PUT" &&
+            r.path.endsWith(`/budgets/workspaces/${WORKSPACE}/cost`),
+        )?.body,
+      ).toEqual({ currency: "USD", amount: "7.5" }),
+    );
+
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Remove currency budget for Core",
+      }),
+    );
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "DELETE")).toBe(true),
     );
   });
 
@@ -377,6 +538,91 @@ describe("AI roles, budgets and usage page", () => {
     });
     await waitFor(() =>
       expect(requests.some((r) => r.query.month === "2025-12")).toBe(true),
+    );
+  });
+
+  it("shows cost as unknown, not zero, for a model without a price", async () => {
+    renderApp(api(), "/admin/llm/settings");
+
+    const perWorkspace = await screen.findByRole("table", {
+      name: "Usage per Workspace",
+    });
+    expect(within(perWorkspace).getByText("Unknown")).toBeInTheDocument();
+  });
+
+  it("shows known cost per currency", async () => {
+    const priced = {
+      ...TOTALS,
+      cost: {
+        amounts: [{ currency: "USD", amount: "3.420000" }],
+        unpriced_calls: 0,
+      },
+    };
+    const usage = {
+      ...USAGE,
+      totals: priced,
+      workspaces: [{ ...USAGE.workspaces[0], totals: priced }],
+    };
+    renderApp(
+      (r) => (r.path === "/api/v1/admin/llm/usage" ? json(usage) : api()(r)),
+      "/admin/llm/settings",
+    );
+
+    const perWorkspace = await screen.findByRole("table", {
+      name: "Usage per Workspace",
+    });
+    expect(within(perWorkspace).getByText("3.42 USD")).toBeInTheDocument();
+  });
+
+  it("lists, saves and removes model prices", async () => {
+    const requests = renderApp(
+      api((r) =>
+        r.path === "/api/v1/admin/llm/prices" && r.method !== "GET"
+          ? r.method === "DELETE"
+            ? noContent()
+            : json({ prices: [PRICE] })
+          : undefined,
+      ),
+      "/admin/llm/settings",
+    );
+
+    const table = await screen.findByRole("table", { name: "Model prices" });
+    expect(within(table).getByText("big")).toBeInTheDocument();
+
+    const form = screen.getByRole("form", { name: "Model price" });
+    fireEvent.change(within(form).getByLabelText("Model name"), {
+      target: { value: "small" },
+    });
+    fireEvent.change(within(form).getByLabelText(/^Input price/), {
+      target: { value: "1" },
+    });
+    fireEvent.change(within(form).getByLabelText(/^Output price/), {
+      target: { value: "2" },
+    });
+    fireEvent.change(within(form).getByLabelText(/^Cached input price/), {
+      target: { value: "0.5" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Save price" }));
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (r) =>
+            r.method === "PUT" &&
+            r.path === "/api/v1/admin/llm/prices" &&
+            (r.body as { model_name: string }).model_name === "small",
+        ),
+      ).toBe(true),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove price of big" }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (r) => r.method === "DELETE" && r.query.model_name === "big",
+        ),
+      ).toBe(true),
     );
   });
 });

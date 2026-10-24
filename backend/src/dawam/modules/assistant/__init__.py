@@ -18,14 +18,23 @@ Public interface. Other modules import only what is re-exported here:
   ``build_assistant_service`` assembles the service for both the API and the worker.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/assistant/conversations``,
   ``GET|PATCH .../conversations/{conversation_id}``, ``POST .../conversations/{id}/messages``
-  (answers over Server-Sent Events) and ``POST .../conversations/{id}/stop``.
+  (answers over Server-Sent Events), ``POST .../conversations/{id}/stop``,
+  ``PUT .../conversations/{id}/runs/{run_id}/feedback`` (a member's up/down rating and
+  comment on an answer) and, for Owners and admins, ``GET .../feedback`` and
+  ``GET .../feedback/eval-candidates``; for installation admins, the run explorer:
+  ``GET /admin/assistant/runs`` and ``GET /admin/assistant/runs/{run_id}`` (steps, redacted
+  prompts, tokens, cost, prompt version and feedback).
 
-Owns the ``assistant_conversations``, ``assistant_messages`` and ``assistant_runs`` tables.
+Owns the ``assistant_conversations``, ``assistant_messages``, ``assistant_runs`` and
+``assistant_run_feedback`` tables.
 Imports ``auth``, ``workspaces``, ``jobs``, ``llm``, ``files``, ``kpis``, ``changesets``,
 ``notifications``, ``sources`` and ``warehouse``.
 """
 
-from .api import router
+from fastapi import APIRouter
+
+from .admin_api import router as admin_router
+from .api import router as chat_router
 from .assembly import build_assistant_service
 from .internal.agent import DEFAULT_MAX_JOB_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS
 from .internal.tools import ASSISTANT_JOB, ToolRegistry, ToolServices
@@ -35,6 +44,8 @@ from .service import (
     Completed,
     Conversation,
     ConversationDetail,
+    FeedbackItem,
+    FeedbackView,
     PageContext,
     RunView,
     Sender,
@@ -42,6 +53,10 @@ from .service import (
     ToolCallView,
     readable_conversations,
 )
+
+router = APIRouter()
+router.include_router(chat_router)
+router.include_router(admin_router)
 
 __all__ = [
     "ASSISTANT_JOB",
@@ -52,6 +67,8 @@ __all__ = [
     "Completed",
     "Conversation",
     "ConversationDetail",
+    "FeedbackItem",
+    "FeedbackView",
     "PageContext",
     "RunView",
     "Sender",
