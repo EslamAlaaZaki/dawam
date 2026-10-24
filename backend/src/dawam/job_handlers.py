@@ -122,6 +122,7 @@ def _service_handlers(
     documents = build_document_search(
         runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
     )
+    runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     assistant = build_assistant_service(
         engine,
         settings,

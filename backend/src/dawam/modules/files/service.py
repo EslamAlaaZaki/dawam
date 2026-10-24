@@ -271,14 +271,8 @@ class FileService:
             raise
         if replaced_key is not None:
             self._storage.delete(replaced_key)
-        self._queue_index(workspace_id, view.id)
+        self._search.queue_index(workspace_id, view.id)
         return view
-
-    def _queue_index(self, workspace_id: uuid.UUID, file_id: uuid.UUID) -> None:
-        try:
-            self._search.queue_index(workspace_id, file_id)
-        except Exception:  # the upload stands; a re-index repairs the search index
-            logger.exception("queueing the indexing of document %s failed", file_id)
 
     def _store(
         self,
@@ -356,7 +350,7 @@ class FileService:
             self._storage.delete(key)
             raise
         self._storage.delete(old_key)
-        self._queue_index(workspace_id, view.id)
+        self._search.queue_index(workspace_id, view.id)
         return view
 
     def replace(

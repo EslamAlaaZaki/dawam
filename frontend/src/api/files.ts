@@ -62,7 +62,9 @@ export function useAreaFiles(workspaceId: string, area: FileArea) {
   return useQuery({
     queryKey: filesKey(workspaceId, area),
     refetchInterval: (query) =>
-      query.state.data?.some(isIndexing) ? INDEXING_POLL_MS : false,
+      query.state.status !== "error" && query.state.data?.some(isIndexing)
+        ? INDEXING_POLL_MS
+        : false,
     queryFn: async () => {
       const files: WorkspaceFile[] = [];
       let cursor: string | undefined;
