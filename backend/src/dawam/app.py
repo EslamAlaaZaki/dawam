@@ -21,13 +21,13 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
 from dawam import job_handlers
-from dawam.job_handlers import default_parser
+from dawam.job_handlers import default_ocr, default_parser
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import reject_pending_change_sets
-from dawam.modules.files import DocumentAiPolicy, DocumentParser
+from dawam.modules.files import DocumentAiPolicy, DocumentParser, OcrEngine
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.kpis import kpi_formulas_check, kpis_for_score
 from dawam.modules.llm import (
@@ -92,6 +92,9 @@ class Services:
     document_parser: DocumentParser | None = None
     """Layout-aware parser for indexed documents; ``None`` uses the one the settings name
     (tests pass a fake)."""
+    ocr_engine: OcrEngine | None = None
+    """OCR for the scanned pages of indexed PDFs; ``None`` uses the one the settings name
+    (tests pass a fake)."""
 
 
 def default_services() -> Services:
@@ -119,6 +122,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         llm_adapters=lambda kind, config: (services.llm_adapters or adapter_for)(kind, config),
         document_ai=services.document_ai,
         parser=lambda: services.document_parser or default_parser(settings),
+        ocr=lambda: services.ocr_engine or default_ocr(settings),
     )
 
     # Revocations of a Layer's approval are timed like the change that caused them.
@@ -173,6 +177,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         llm_adapters=services.llm_adapters,
         document_ai=services.document_ai,
         parser=lambda: services.document_parser or default_parser(settings),
+        ocr=lambda: services.ocr_engine or default_ocr(settings),
     )
     # Where uploaded files live (local volume or S3-compatible bucket).
     app.state.storage = create_storage(settings)

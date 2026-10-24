@@ -10,10 +10,12 @@ from __future__ import annotations
 import io
 import logging
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .ocr import OcrEngine
     from .parsing import DocumentParser
 
 logger = logging.getLogger(__name__)
@@ -134,13 +136,20 @@ def detect(filename: str, data: bytes) -> FileType:
 
 
 def extract_text(
-    file_type: FileType, data: bytes, parser: DocumentParser | None = None
+    file_type: FileType,
+    data: bytes,
+    parser: DocumentParser | None = None,
+    ocr: OcrEngine | None = None,
+    on_ocr: Callable[[], None] | None = None,
 ) -> tuple[str | None, str]:
     """``(text, status)``: ``status`` is ``extracted``, ``no_text_found`` (e.g. a scanned
-    PDF, or a document that cannot be read) or ``none`` (images: nothing to extract).
+    PDF without ``ocr``, or a document that cannot be read) or ``none`` (images: nothing to
+    extract).
 
     A ``parser`` that handles the type returns layout-aware Markdown; if it fails, the basic
-    extraction (pypdf, python-docx, openpyxl) is used instead."""
+    extraction (pypdf, python-docx, openpyxl) is used instead. With ``ocr``, a PDF that has
+    pages short of text is read by OCR (after ``on_ocr``); if OCR fails or reads nothing,
+    the text found without it stands."""
     if file_type in _IMAGES:
         return None, "none"
     try:
@@ -154,10 +163,31 @@ def extract_text(
             text = _extract(file_type, data)
     except Exception:
         return None, "no_text_found"
+    if ocr is not None and file_type is PDF:
+        text = _with_ocr(ocr, data, text, on_ocr)
     text = text.replace("\x00", "").strip()[:EXTRACTED_TEXT_MAX_CHARS]
     if not text:
         return None, "no_text_found"
     return text, "extracted"
+
+
+def _with_ocr(ocr: OcrEngine, data: bytes, text: str, on_ocr: Callable[[], None] | None) -> str:
+    from .ocr import pages_needing_ocr
+
+    try:
+        pages = pages_needing_ocr(data)
+    except Exception:
+        return text
+    if not pages:
+        return text
+    if on_ocr is not None:
+        on_ocr()  # outside the try: a cancelled or superseded job stops here
+    try:
+        recognised = ocr.recognise(data, pages)
+    except Exception:
+        logger.warning("OCR failed; keeping the text found without it", exc_info=True)
+        return text
+    return recognised if recognised.strip() else text
 
 
 def _within_caps(file_type: FileType, data: bytes) -> bool:

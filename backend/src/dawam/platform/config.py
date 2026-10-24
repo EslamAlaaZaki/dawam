@@ -82,6 +82,10 @@ class Settings(DatabaseSettings):
     document_parser: Literal["docling", "basic"] = "docling"
     """How uploaded PDF, DOCX and XLSX files are read for indexing: ``docling`` keeps headings,
     reading order and tables (Markdown); ``basic`` is plain text (pypdf, python-docx, openpyxl)."""
+    document_ocr: Literal["rapidocr", "tesseract", "off"] = "rapidocr"
+    """How the scanned pages of uploaded PDFs are read (Docling with this OCR backend):
+    ``rapidocr`` (PP-OCR models, CPU), ``tesseract`` (needs the ``tesseract`` binary with the
+    ``ara`` and ``eng`` languages) or ``off`` (a scan stays ``no_text_found``)."""
     run_migrations_on_startup: bool = True
 
     worker_poll_seconds: float = 5.0

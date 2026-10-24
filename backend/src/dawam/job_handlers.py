@@ -20,11 +20,13 @@ from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
     INDEX_JOB,
     REINDEX_JOB,
+    DoclingOcr,
     DoclingParser,
     DocumentAiPolicy,
     DocumentParser,
     DocumentSearchService,
     NoDocumentAi,
+    OcrEngine,
     RegisteredEmbeddingModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
@@ -63,6 +65,16 @@ def default_parser(settings: Settings) -> DocumentParser | None:
     return _docling() if settings.document_parser == "docling" else None
 
 
+@functools.cache
+def _docling_ocr(backend: str) -> DoclingOcr:
+    return DoclingOcr(backend)  # type: ignore[arg-type]  # one converter per process
+
+
+def default_ocr(settings: Settings) -> OcrEngine | None:
+    """The OCR engine the settings name; ``None`` leaves scanned pages unread."""
+    return None if settings.document_ocr == "off" else _docling_ocr(settings.document_ocr)
+
+
 def build_document_search(
     runner: JobRunner,
     engine: sa.Engine,
@@ -72,6 +84,7 @@ def build_document_search(
     llm_adapters: AdapterFactory | None = None,
     document_ai: DocumentAiPolicy | None = None,
     parser: Callable[[], DocumentParser | None] | None = None,
+    ocr: Callable[[], OcrEngine | None] | None = None,
 ) -> DocumentSearchService:
     """The document search service, as the API and the worker build it. Until the
     Workspace AI settings exist, ``document_ai`` defaults to ``NoDocumentAi``: documents
@@ -93,7 +106,8 @@ def build_document_search(
         jobs=runner,
         storage=create_storage(settings),
         clock=clock,
-        parser=parser or default_parser(settings),
+        parser=parser or (lambda: default_parser(settings)),
+        ocr=ocr or (lambda: default_ocr(settings)),
     )
 
 
@@ -105,6 +119,7 @@ def _service_handlers(
     llm_adapters: AdapterFactory | None,
     document_ai: DocumentAiPolicy | None,
     parser: Callable[[], DocumentParser | None] | None,
+    ocr: Callable[[], OcrEngine | None] | None,
 ) -> dict[str, JobHandler]:
     snapshots = SnapshotService(
         engine,
@@ -143,6 +158,7 @@ def _service_handlers(
         llm_adapters=llm_adapters,
         document_ai=document_ai,
         parser=parser,
+        ocr=ocr,
     )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     assistant = build_assistant_service(
@@ -175,11 +191,14 @@ def register_job_handlers(
     llm_adapters: AdapterFactory | None = None,
     document_ai: DocumentAiPolicy | None = None,
     parser: Callable[[], DocumentParser | None] | None = None,
+    ocr: Callable[[], OcrEngine | None] | None = None,
 ) -> None:
     """Register every handler on ``runner``. A type the runner already has is left alone:
     tests build several apps on one shared runner, and the first app's handlers serve all."""
     handlers = {
-        **_service_handlers(runner, engine, settings, clock, llm_adapters, document_ai, parser),
+        **_service_handlers(
+            runner, engine, settings, clock, llm_adapters, document_ai, parser, ocr
+        ),
         **JOB_HANDLERS,
     }
     for job_type, handler in handlers.items():
