@@ -32,6 +32,8 @@ dependencies = [
     "tokenizers>=0.20",
     "docling>=2.142",  # RapidOCR options (native language codes, model folder)
     "python-bidi>=0.6",  # RapidOCR needs it for right-to-left (Arabic) recognition
+    "pypdfium2>=4",  # renders scanned pages for the vision model (also Docling's renderer)
+    "pillow>=10",  # encodes the rendered pages as PNG
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]

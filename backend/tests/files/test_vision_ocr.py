@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from dawam.modules.files.search import VISION_REFUSED
+from dawam.modules.files.search import NO_FALLBACK, SELF_HOSTED, VISION_REFUSED
 from dawam.modules.llm import LlmError, Reply, Usage
 from tests.files import test_indexing
 from tests.files.test_files import blank_pdf, system, text_pdf, upload
@@ -114,7 +114,7 @@ def test_otherwise_the_self_hosted_engine_reads_it_and_the_file_says_so(
 
     done = listed(roles, system_id)["scan.pdf"]
     assert done["index_status"] == "indexed"
-    assert done["index_note"] == VISION_REFUSED
+    assert done["index_note"] == VISION_REFUSED.format(fallback=SELF_HOSTED)
     assert ocr.pages == [[1]]
     assert vision_calls(fake_llm)[before:] == []
     assert [p["document"] for p in search(roles, "servers")] == ["scan.pdf"]
@@ -132,7 +132,8 @@ def test_internal_only_keeps_the_scan_away_from_an_external_vision_model(
 
     assert vision_calls(fake_llm)[before:] == []
     assert ocr.pages == [[1]]
-    assert listed(roles, system_id)["scan.pdf"]["index_note"] == VISION_REFUSED
+    note = listed(roles, system_id)["scan.pdf"]["index_note"]
+    assert note == VISION_REFUSED.format(fallback=SELF_HOSTED)
 
 
 def test_a_pdf_with_enough_text_needs_no_ocr_and_gets_no_note(
@@ -213,3 +214,42 @@ def test_the_note_is_cleared_when_the_file_is_indexed_again(
     worker()
 
     assert listed(roles, system_id)["scan.pdf"]["index_note"] is None
+
+
+@pytest.fixture
+def no_self_hosted_ocr(app):
+    """``document_ocr=off``: no self-hosted engine to fall back to."""
+    app.state.services.ocr_engine = None
+    app.state.settings.document_ocr = "off"
+
+
+def test_without_a_self_hosted_engine_a_refused_scan_is_unread_and_the_file_says_so(
+    roles: RoleClients, no_self_hosted_ocr, fake_llm, worker
+):
+    use_vision(roles, internal=False)
+    before = len(vision_calls(fake_llm))
+    system_id = system(roles)
+    upload(roles, system_id, "scan.pdf", blank_pdf())
+    upload(roles, system_id, "typed.pdf", text_pdf(LONG_LINE))
+    worker()
+
+    files = listed(roles, system_id)
+    assert vision_calls(fake_llm)[before:] == []
+    assert files["scan.pdf"]["index_status"] == "indexed"
+    assert files["scan.pdf"]["text_status"] == "no_text_found"
+    assert files["scan.pdf"]["index_note"] == VISION_REFUSED.format(fallback=NO_FALLBACK)
+    assert files["typed.pdf"]["index_note"] is None
+
+
+def test_without_a_self_hosted_engine_a_failed_vision_call_says_the_scan_is_unread(
+    roles: RoleClients, no_self_hosted_ocr, fake_llm, worker
+):
+    use_vision(roles, internal=True)
+    fake_llm.script(LlmError("bad_request", "The model refused the image."))
+    system_id = system(roles)
+    upload(roles, system_id, "scan.pdf", blank_pdf())
+    worker()
+
+    done = listed(roles, system_id)["scan.pdf"]
+    assert done["index_status"] == "indexed" and done["text_status"] == "no_text_found"
+    assert NO_FALLBACK in done["index_note"]

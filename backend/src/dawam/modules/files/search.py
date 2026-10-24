@@ -180,11 +180,18 @@ class RegisteredVisionModels:
 
 VISION_REFUSED = (
     "The Workspace's data-sharing level does not let documents reach its vision model's "
-    "provider, so the self-hosted OCR engine read the scanned pages."
+    "provider, so {fallback}."
 )
 VISION_FAILED = "The vision model could not read the scanned pages ({reason}), so {fallback}."
 SELF_HOSTED = "the self-hosted OCR engine read the scanned pages"
 NO_FALLBACK = "the scanned pages were not read (the self-hosted OCR engine is off)"
+
+
+class _Unread:
+    """No engine may read the scans: they keep the text they have (none, for a scan)."""
+
+    def recognise(self, data: bytes, pages: Sequence[int]) -> str:
+        return ""
 
 
 class _VisionThenSelfHosted:
@@ -283,7 +290,7 @@ class DocumentSearchService:
         """The engine for this Workspace's scanned pages, and the note to keep if it reads
         any: the vision model when the Workspace has one and may send it the document (an
         internal model always may: the policy rule of ``_embedder``), otherwise the
-        self-hosted engine (with no note when it is off: then nothing reads the scans)."""
+        self-hosted engine; when that is off too, nothing reads them, and the note says so."""
         fallback = self._ocr()
         model = self._vision.current(workspace_id)
         if model is None:
@@ -291,7 +298,9 @@ class DocumentSearchService:
         settings = self._ai.document_settings(workspace_id)
         if model.is_internal or (settings.includes_documents and not settings.internal_only):
             return _VisionThenSelfHosted(VisionOcr(model.gateway), fallback, note), None
-        return fallback, VISION_REFUSED if fallback else None
+        if fallback is None:
+            return _Unread(), VISION_REFUSED.format(fallback=NO_FALLBACK)
+        return fallback, VISION_REFUSED.format(fallback=SELF_HOSTED)
 
     # -- indexing ----------------------------------------------------------------------
 
