@@ -8,9 +8,10 @@ Tests fake the port, so the default run never loads Docling or its model files.
 from __future__ import annotations
 
 import io
+import threading
 from typing import Protocol
 
-from .content import DOCX, PDF, XLSX, FileType
+from .content import DOCX, PDF, PDF_MAX_PAGES, XLSX, FileType
 
 
 class DocumentParser(Protocol):
@@ -30,6 +31,7 @@ class DoclingParser:
 
     def __init__(self) -> None:
         self._converter = None
+        self._lock = threading.Lock()  # the converter is shared by worker threads
 
     def _convert(self):
         if self._converter is None:
@@ -47,5 +49,8 @@ class DoclingParser:
         from docling.datamodel.base_models import DocumentStream
 
         name = f"document{file_type.extensions[0]}"
-        result = self._convert().convert(DocumentStream(name=name, stream=io.BytesIO(data)))
-        return result.document.export_to_markdown()
+        with self._lock:
+            result = self._convert().convert(
+                DocumentStream(name=name, stream=io.BytesIO(data)), max_num_pages=PDF_MAX_PAGES
+            )
+            return result.document.export_to_markdown()

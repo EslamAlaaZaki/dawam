@@ -45,12 +45,16 @@ jobs:
         run: pytest --shard ${{ matrix.shard }}/4
       # The real Docling engine on a tiny fixture, once (shard 1). Model files are cached,
       # keyed on the Docling version, so they are not downloaded on every run.
+      - name: Docling version (cache key)
+        if: matrix.shard == 1
+        id: docling
+        run: echo "pin=$(grep -o '"docling[^"]*"' pyproject.toml | tr -d '"')" >> "$GITHUB_OUTPUT"
       - name: Cache Docling models
         if: matrix.shard == 1
         uses: actions/cache@v4
         with:
-          path: ~/.cache/docling
-          key: docling-models-${{ hashFiles('backend/pyproject.toml') }}
+          path: ~/.cache/huggingface
+          key: docling-models-${{ steps.docling.outputs.pin }}
       - name: Real Docling engine test
         if: matrix.shard == 1
         run: pytest -m docling tests/files/test_layout_parsing.py

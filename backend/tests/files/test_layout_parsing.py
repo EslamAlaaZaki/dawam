@@ -11,6 +11,7 @@ import pytest
 import sqlalchemy as sa
 from docx import Document
 
+from dawam.modules.files.internal import content
 from dawam.modules.files.internal.content import DOCX, PDF, TEXT, FileType
 from dawam.modules.files.internal.parsing import DoclingParser
 from tests.files import test_indexing
@@ -108,6 +109,71 @@ def test_a_crashing_parser_falls_back_to_the_basic_extraction(roles: RoleClients
 
     assert listed(roles, system_id)["loans.pdf"]["index_status"] == "indexed"
     assert "Dormant accounts" in "".join(sections(roles).values())
+
+
+def test_a_document_over_a_work_cap_skips_the_parser(
+    roles: RoleClients, parser, worker, monkeypatch
+):
+    monkeypatch.setattr(content, "DOCX_MAX_PARAGRAPHS", 3)
+    document = Document()
+    for n in range(10):
+        document.add_paragraph(f"para{n}")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    system_id = system(roles)
+    upload(roles, system_id, "big.docx", buffer.getvalue())
+    worker()
+
+    assert parser.seen == []  # the basic extraction read it, and stopped at the cap
+    assert listed(roles, system_id)["big.docx"]["index_status"] == "indexed"
+    assert "para9" not in "".join(sections(roles).values())
+
+
+def layout_pdf() -> bytes:
+    """A one-page PDF: a large bold heading, a sentence, and a ruled 2x2 table."""
+    lines = [
+        "BT /F2 28 Tf 72 720 Td (Status codes) Tj ET",
+        "BT /F1 12 Tf 72 680 Td (Codes of the loans ledger.) Tj ET",
+    ]
+    for x in (72, 222, 372):
+        lines.append(f"{x} 630 m {x} 540 l S")
+    for y in (630, 585, 540):
+        lines.append(f"72 {y} m 372 {y} l S")
+    cells = [("Code", 80, 605), ("Meaning", 230, 605), ("D", 80, 560), ("Dormant", 230, 560)]
+    lines += [f"BT /F1 12 Tf {x} {y} Td ({t}) Tj ET" for t, x, y in cells]
+    stream = "\n".join(lines).encode()
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    for offset in offsets:
+        out += b"%010d 00000 n \n" % offset
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
+        len(objects) + 1,
+        xref,
+    )
+    return bytes(out)
+
+
+@pytest.mark.docling
+def test_real_docling_keeps_a_heading_and_a_table_in_a_pdf():
+    """The PDF layout path for real (needs the layout models, cached in CI)."""
+    markdown = DoclingParser().parse(PDF, layout_pdf())
+
+    assert "# Status codes" in markdown
+    assert "| Code" in markdown and "Dormant" in markdown
 
 
 @pytest.mark.docling
