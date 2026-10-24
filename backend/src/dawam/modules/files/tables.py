@@ -29,6 +29,11 @@ class WorkspaceFileRecord(Base):
         sa.CheckConstraint(
             "text_status IN ('none', 'extracted', 'no_text_found')", name="text_status"
         ),
+        sa.CheckConstraint(
+            "index_status IN ('queued', 'extracting', 'ocr', 'chunking', 'embedding', "
+            "'indexed', 'failed')",
+            name="index_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -50,7 +55,12 @@ class WorkspaceFileRecord(Base):
     extracted_text: Mapped[str | None] = mapped_column(sa.Text())
     text_status: Mapped[str] = mapped_column(sa.String(16))
     """``none`` (nothing to extract, e.g. an image), ``extracted`` or ``no_text_found``
-    (e.g. a scanned PDF)."""
+    (e.g. a scanned PDF). Set by the ``index_document`` job, so ``none`` until it ran."""
+    index_status: Mapped[str] = mapped_column(sa.String(16), default="queued")
+    """Where the ``index_document`` job is: ``queued``, ``extracting``, ``ocr``,
+    ``chunking``, ``embedding``, then ``indexed`` or ``failed``."""
+    index_error: Mapped[str | None] = mapped_column(sa.Text())
+    """Why indexing ``failed``; ``None`` otherwise."""
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )

@@ -90,7 +90,7 @@ def after_change_set(
         for change in applied.changes:
             if change.entity_type == "file":
                 try:
-                    documents.index_file(applied.workspace_id, uuid.UUID(str(change.entity_id)))
+                    documents.queue_index(applied.workspace_id, uuid.UUID(str(change.entity_id)))
                 except Exception:  # the save stands; a re-index repairs the search index
                     logging.getLogger(__name__).exception("indexing document failed")
         propagation_hook(user, applied)

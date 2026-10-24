@@ -17,6 +17,7 @@ import sqlalchemy as sa
 from dawam.modules.assistant import ASSISTANT_JOB, build_assistant_service
 from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
+    INDEX_JOB,
     REINDEX_JOB,
     DocumentAiPolicy,
     DocumentSearchService,
@@ -76,6 +77,7 @@ def build_document_search(
             providers, RoleService(engine, providers=providers, clock=clock), engine
         ),
         jobs=runner,
+        storage=create_storage(settings),
         clock=clock,
     )
 
@@ -120,6 +122,7 @@ def _service_handlers(
     documents = build_document_search(
         runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
     )
+    runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     assistant = build_assistant_service(
         engine,
         settings,
@@ -136,6 +139,7 @@ def _service_handlers(
         PROFILE_JOB: profiling.run_profiling,
         PII_SCAN_JOB: pii_scans.run_scan,
         INFER_JOB: relationships.run_inference,
+        INDEX_JOB: documents.run_index,
         REINDEX_JOB: documents.run_reindex,
     }
 

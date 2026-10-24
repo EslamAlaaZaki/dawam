@@ -19,7 +19,10 @@ Public interface. Other modules import only what is re-exported here:
 - ``DocumentSearchService``: indexes uploaded documents (Postgres full-text with Arabic
   normalisation; pgvector embeddings only when the Workspace's ``DocumentAiPolicy`` lets
   documents reach the embedding model), searches them hybrid with cited passages, and
-  re-indexes on demand (the ``reindex_documents`` job, ``REINDEX_JOB``).
+  re-indexes on demand (the ``reindex_documents`` job, ``REINDEX_JOB``). An upload or
+  replacement returns at once with ``index_status`` ``queued``; the ``index_document`` job
+  (``INDEX_JOB``) extracts the text and indexes it, moving the file through ``extracting``,
+  ``ocr``, ``chunking`` and ``embedding`` to ``indexed``, or to ``failed`` with ``index_error``.
 - ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
@@ -52,6 +55,7 @@ from .handlers import FileContentHandler
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .search import (
+    INDEX_JOB,
     REINDEX_JOB,
     DocumentAiPolicy,
     DocumentAiSettings,
@@ -69,6 +73,7 @@ router.include_router(_files_router)
 router.include_router(_links_router)
 
 __all__ = [
+    "INDEX_JOB",
     "REINDEX_JOB",
     "DocumentAiPolicy",
     "DocumentAiSettings",

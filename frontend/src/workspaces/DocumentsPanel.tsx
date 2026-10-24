@@ -17,6 +17,7 @@ import {
 import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
 import { PageHeader } from "../components/PageHeader";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
@@ -47,6 +48,37 @@ const TEXT_STATUS: Record<string, string> = {
   no_text_found: "No text found",
   none: "—",
 };
+
+const INDEX_STATUS: Record<string, string> = {
+  queued: "Queued",
+  extracting: "Extracting",
+  ocr: "Reading scans",
+  chunking: "Chunking",
+  embedding: "Embedding",
+  indexed: "Indexed",
+  failed: "Failed",
+};
+
+function IndexStatus({ file }: { file: WorkspaceFile }) {
+  const label = INDEX_STATUS[file.index_status] ?? file.index_status;
+  if (file.index_status === "failed") {
+    return (
+      <div className="flex flex-col gap-1">
+        <Badge variant="danger">{label}</Badge>
+        {file.index_error && (
+          <span className="text-xs text-muted-foreground">
+            {file.index_error}
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <Badge variant={file.index_status === "indexed" ? "success" : "neutral"}>
+      {label}
+    </Badge>
+  );
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) {
@@ -221,6 +253,7 @@ export function DocumentsPanel({
                 <TableHead scope="col">Type</TableHead>
                 <TableHead scope="col">Size</TableHead>
                 <TableHead scope="col">Text</TableHead>
+                <TableHead scope="col">Indexing</TableHead>
                 <TableHead scope="col">Author</TableHead>
                 <TableHead scope="col">Updated</TableHead>
                 {canEdit && <TableHead scope="col">Actions</TableHead>}
@@ -244,6 +277,9 @@ export function DocumentsPanel({
                   <TableCell>{formatSize(file.size)}</TableCell>
                   <TableCell>
                     {TEXT_STATUS[file.text_status] ?? file.text_status}
+                  </TableCell>
+                  <TableCell>
+                    <IndexStatus file={file} />
                   </TableCell>
                   <TableCell>
                     {(file.updated_by && authors.get(file.updated_by)) || "—"}

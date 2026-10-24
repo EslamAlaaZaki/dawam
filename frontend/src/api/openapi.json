@@ -30847,7 +30847,24 @@
           "text_status": {
             "type": "string",
             "title": "Text Status",
-            "description": "`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image)."
+            "description": "`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image, or a file whose text is not extracted yet)."
+          },
+          "index_status": {
+            "type": "string",
+            "title": "Index Status",
+            "description": "Where indexing for search is: `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`."
+          },
+          "index_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Error",
+            "description": "Why indexing `failed`; null otherwise."
           },
           "updated_by": {
             "anyOf": [
@@ -30878,6 +30895,8 @@
           "mime",
           "size",
           "text_status",
+          "index_status",
+          "index_error",
           "updated_by",
           "updated_at"
         ],

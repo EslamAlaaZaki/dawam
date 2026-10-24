@@ -57,7 +57,7 @@ def test_data_files_are_accepted_and_keep_their_text(roles: RoleClients):
     ]:
         response = upload(roles, system_id, name, data)
         assert response.status_code == 201, (name, response.text)
-        assert response.json()["text_status"] == "extracted"
+        assert stored(roles.app, response.json()["id"])[1] == "extracted"
 
 
 def test_an_editor_edits_a_text_file_in_place(roles: RoleClients):
