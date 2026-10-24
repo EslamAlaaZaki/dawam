@@ -10896,9 +10896,19 @@ export interface components {
             size: number;
             /**
              * Text Status
-             * @description `extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image).
+             * @description `extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image, or a file whose text is not extracted yet).
              */
             text_status: string;
+            /**
+             * Index Status
+             * @description Where indexing for search is: `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`.
+             */
+            index_status: string;
+            /**
+             * Index Error
+             * @description Why indexing `failed`; null otherwise.
+             */
+            index_error: string | null;
             /** Updated By */
             updated_by: string | null;
             /**

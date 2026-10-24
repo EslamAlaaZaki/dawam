@@ -96,6 +96,8 @@ const SAD: WorkspaceFile = {
   mime: "application/pdf",
   size: 2048,
   text_status: "no_text_found",
+  index_status: "indexed",
+  index_error: null,
   updated_by: ADA.id,
   updated_at: "2026-01-05T09:00:00Z",
 };
@@ -153,6 +155,39 @@ describe("a Source System's Documents folder", () => {
     expect(
       screen.getByText("Only owners and editors can upload documents."),
     ).toBeInTheDocument();
+  });
+
+  it("shows each file's indexing status, with the error of a failed one", async () => {
+    renderApp(
+      backend("viewer", [
+        SAD,
+        {
+          ...SAD,
+          id: NOTES_ID,
+          name: "queued.md",
+          index_status: "queued",
+        },
+        {
+          ...SAD,
+          id: "55555555-5555-4555-8555-555555555555",
+          name: "broken.pdf",
+          index_status: "failed",
+          index_error: "parser exploded",
+        },
+      ]),
+      FOLDER,
+    );
+
+    await screen.findByRole("link", { name: "sad.pdf" });
+    expect(screen.getByRole("row", { name: /sad\.pdf/ })).toHaveTextContent(
+      "Indexed",
+    );
+    expect(screen.getByRole("row", { name: /queued\.md/ })).toHaveTextContent(
+      "Queued",
+    );
+    const failed = screen.getByRole("row", { name: /broken\.pdf/ });
+    expect(failed).toHaveTextContent("Failed");
+    expect(failed).toHaveTextContent("parser exploded");
   });
 
   it("lets an editor upload a document", async () => {

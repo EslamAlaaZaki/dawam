@@ -47,11 +47,22 @@ export function fileDownloadUrl(workspaceId: string, fileId: string): string {
   return `/api/v1/workspaces/${workspaceId}/files/${fileId}/download`;
 }
 
-/** Every file of the file area, ordered by name (all pages). */
+/** Whether a file's indexing job is still to finish (it ends as `indexed` or `failed`). */
+export function isIndexing(file: WorkspaceFile): boolean {
+  return file.index_status !== "indexed" && file.index_status !== "failed";
+}
+
+/** How often the file list is fetched again while a file is still being indexed. */
+const INDEXING_POLL_MS = 2000;
+
+/** Every file of the file area, ordered by name (all pages). Refreshes while any file is
+ * still being indexed. */
 export function useAreaFiles(workspaceId: string, area: FileArea) {
   const client = useApiClient();
   return useQuery({
     queryKey: filesKey(workspaceId, area),
+    refetchInterval: (query) =>
+      query.state.data?.some(isIndexing) ? INDEXING_POLL_MS : false,
     queryFn: async () => {
       const files: WorkspaceFile[] = [];
       let cursor: string | undefined;

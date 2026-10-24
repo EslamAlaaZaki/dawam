@@ -76,8 +76,14 @@ class WorkspaceFile(BaseModel):
     mime: str = Field(description="The type found in the content, not the one the client sent.")
     size: int = Field(description="Bytes.")
     text_status: str = Field(
-        description="`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image)."
+        description="`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image, "
+        "or a file whose text is not extracted yet)."
     )
+    index_status: str = Field(
+        description="Where indexing for search is: `queued`, `extracting`, `ocr`, `chunking`, "
+        "`embedding`, then `indexed` or `failed`."
+    )
+    index_error: str | None = Field(description="Why indexing `failed`; null otherwise.")
     updated_by: uuid.UUID | None
     updated_at: datetime
 

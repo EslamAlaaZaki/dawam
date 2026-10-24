@@ -157,7 +157,7 @@ def test_an_editor_uploads_a_document_and_its_text_is_extracted(
     assert body["kind"] == "uploaded"
     assert body["owner_kind"] == "source_system"
     assert body["owner_id"] == system_id
-    assert body["text_status"] == "extracted"
+    assert body["index_status"] == "queued"  # the job runs after the upload returns
     assert body["updated_by"] == str(roles.user("editor").id)
     text, status, _ = stored(roles.app, body["id"])
     assert status == "extracted"
@@ -168,7 +168,7 @@ def test_a_scanned_pdf_is_marked_no_text_found(roles: RoleClients):
     response = upload(roles, system(roles), "scan.pdf", blank_pdf())
 
     assert response.status_code == 201
-    assert response.json()["text_status"] == "no_text_found"
+    assert stored(roles.app, response.json()["id"])[1] == "no_text_found"
     assert stored(roles.app, response.json()["id"])[0] is None
 
 
@@ -177,7 +177,7 @@ def test_an_image_is_stored_without_extraction(roles: RoleClients):
 
     assert response.status_code == 201
     assert response.json()["mime"] == "image/png"
-    assert response.json()["text_status"] == "none"
+    assert stored(roles.app, response.json()["id"])[1] == "none"
 
 
 def test_any_member_downloads_a_file_as_an_attachment(roles: RoleClients):

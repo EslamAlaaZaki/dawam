@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -25,7 +25,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
-from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
+from dawam.modules.jobs import Job, JobCancelledError, JobContext, JobRunner, JobService
 from dawam.modules.llm import (
     LlmError,
     MeteredGateway,
@@ -37,14 +37,18 @@ from dawam.modules.sources import hidden_source_system_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
+from dawam.platform.storage import FileStorage
 
 from .internal.arabic import normalise, words
 from .internal.chunking import chunk
+from .internal.content import detect, extract_text
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
 
 REINDEX_JOB = "reindex_documents"
+INDEX_JOB = "index_document"
+INDEX_ERROR_MAX_LENGTH = 1000
 EMBED_BATCH = 32
 CANDIDATES = 20
 """How many passages each ranking contributes before they are fused."""
@@ -154,9 +158,11 @@ class DocumentSearchService:
         ai: DocumentAiPolicy,
         embeddings: EmbeddingModels,
         jobs: JobRunner,
+        storage: FileStorage,
         clock: Clock,
     ) -> None:
         self._engine = engine
+        self._storage = storage
         self._workspaces = workspaces
         self._ai = ai
         self._embeddings = embeddings
@@ -178,18 +184,92 @@ class DocumentSearchService:
 
     # -- indexing ----------------------------------------------------------------------
 
-    def index_file(self, workspace_id: uuid.UUID, file_id: uuid.UUID) -> int:
+    def queue_index(self, workspace_id: uuid.UUID, file_id: uuid.UUID) -> None:
+        """Queue the ``index_document`` job for a file whose bytes were just stored (the
+        caller checked the right to change the file). The job is dropped if the file has
+        been replaced by then: the newer bytes have their own job."""
+        with Session(self._engine) as db:
+            key = db.scalar(
+                sa.select(WorkspaceFileRecord.storage_key).where(
+                    WorkspaceFileRecord.id == file_id,
+                    WorkspaceFileRecord.workspace_id == workspace_id,
+                )
+            )
+        if key is None:
+            return
+        self._jobs.submit(
+            workspace_id,
+            INDEX_JOB,
+            {"workspace_id": str(workspace_id), "file_id": str(file_id), "key": key},
+            title="Index document",
+            created_by=None,  # a per-file status shows the outcome; no notification per file
+        )
+
+    def run_index(self, params: Mapping[str, Any], ctx: JobContext) -> None:
+        """The ``index_document`` job handler: extract the text, then chunk, embed and
+        store the passages, reporting the file's ``index_status`` at each step. A failure
+        is kept on the file (``index_error``) and fails the job; other files are unaffected."""
+        workspace_id, file_id = uuid.UUID(params["workspace_id"]), uuid.UUID(params["file_id"])
+        with Session(self._engine) as db:
+            record = db.get(WorkspaceFileRecord, file_id)
+            if record is None or record.storage_key != params["key"]:
+                return  # deleted or replaced since this job was queued
+            name = record.path
+        try:
+            self._set_index_status(file_id, "extracting")
+            ctx.raise_if_cancelled()
+            data = self._storage.get(params["key"])
+            text, text_status = extract_text(detect(name, data), data)
+            with Session(self._engine) as db, db.begin():
+                db.execute(
+                    sa.update(WorkspaceFileRecord)
+                    .where(WorkspaceFileRecord.id == file_id)
+                    .values(extracted_text=text, text_status=text_status)
+                )
+            ctx.raise_if_cancelled()
+            self.index_file(
+                workspace_id, file_id, on_stage=lambda stage: self._set_index_status(file_id, stage)
+            )
+        except JobCancelledError:
+            self._set_index_status(file_id, "failed", "Indexing was cancelled.")
+            raise
+        except Exception as exc:
+            self._set_index_status(
+                file_id, "failed", (str(exc) or type(exc).__name__)[:INDEX_ERROR_MAX_LENGTH]
+            )
+            raise
+        self._set_index_status(file_id, "indexed")
+
+    def _set_index_status(self, file_id: uuid.UUID, status: str, error: str | None = None) -> None:
+        with Session(self._engine) as db, db.begin():
+            db.execute(
+                sa.update(WorkspaceFileRecord)
+                .where(WorkspaceFileRecord.id == file_id)
+                .values(index_status=status, index_error=error)
+            )
+
+    def index_file(
+        self,
+        workspace_id: uuid.UUID,
+        file_id: uuid.UUID,
+        *,
+        on_stage: Callable[[str], None] | None = None,
+    ) -> int:
         """(Re)build the passages of one file; the number of passages. Full-text always,
         embeddings only when ``_embedder`` allows. A provider failure leaves the file
-        full-text only (a re-index retries)."""
+        full-text only (a re-index retries). ``on_stage`` hears ``chunking`` and, when
+        the passages are embedded, ``embedding``."""
+        stage = on_stage or (lambda _: None)
         with Session(self._engine) as db:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
+        stage("chunking")
         chunks = chunk(text) if text else []
 
         vectors: list[list[float]] | None = None
         model = self._embedder(workspace_id) if chunks else None
         if model is not None:
+            stage("embedding")
             try:
                 vectors = []
                 for start in range(0, len(chunks), EMBED_BATCH):
