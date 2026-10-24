@@ -48,7 +48,7 @@ jobs:
       - name: Docling version (cache key)
         if: matrix.shard == 1
         id: docling
-        run: echo "pin=$(grep -o '"docling[^"]*"' pyproject.toml | tr -d '"')" >> "$GITHUB_OUTPUT"
+        run: echo "pin=$(grep -m1 -o '"docling[<>=~!][^"]*"' pyproject.toml | tr -d '"')" >> "$GITHUB_OUTPUT"
       - name: Cache Docling models
         if: matrix.shard == 1
         uses: actions/cache@v4
