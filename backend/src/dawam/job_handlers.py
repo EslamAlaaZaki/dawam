@@ -56,23 +56,27 @@ def build_change_set_handlers(settings: Settings | None = None) -> ObjectHandler
 
 
 @functools.cache
-def _docling() -> DoclingParser:
-    return DoclingParser()  # one converter per process: loading its models is slow
+def _docling(accelerator: str) -> DoclingParser:
+    return DoclingParser(accelerator)  # type: ignore[arg-type]  # one converter per process
 
 
 def default_parser(settings: Settings) -> DocumentParser | None:
     """The layout-aware parser the settings name; ``None`` keeps the basic extraction."""
-    return _docling() if settings.document_parser == "docling" else None
+    if settings.document_parser != "docling":
+        return None
+    return _docling(settings.document_accelerator)
 
 
 @functools.cache
-def _docling_ocr(backend: str) -> DoclingOcr:
-    return DoclingOcr(backend)  # type: ignore[arg-type]  # one converter per process
+def _docling_ocr(accelerator: str) -> DoclingOcr:
+    return DoclingOcr(accelerator)  # type: ignore[arg-type]  # one converter per process
 
 
 def default_ocr(settings: Settings) -> OcrEngine | None:
     """The OCR engine the settings name; ``None`` leaves scanned pages unread."""
-    return None if settings.document_ocr == "off" else _docling_ocr(settings.document_ocr)
+    if settings.document_ocr == "off":
+        return None
+    return _docling_ocr(settings.document_accelerator)
 
 
 def build_document_search(

@@ -25,8 +25,9 @@ Public interface. Other modules import only what is re-exported here:
   ``ocr``, ``chunking`` and ``embedding`` to ``indexed``, or to ``failed`` with ``index_error``.
 - ``DocumentParser`` / ``DoclingParser``: the layout-aware parsing port and its Docling engine;
   PDF, DOCX and XLSX are parsed to Markdown (headings, reading order, tables) before chunking.
-- ``OcrEngine`` / ``DoclingOcr``: the OCR port and its Docling engine (RapidOCR by default,
-  Tesseract as the fallback); a PDF's pages with too little text are read by OCR (stage ``ocr``).
+- ``OcrEngine`` / ``DoclingOcr``: the OCR port and its Docling engine (RapidOCR, on the CPU
+  or an NVIDIA GPU: setting ``document_accelerator``); a PDF's pages with too little text
+  are read by OCR (stage ``ocr``).
 - ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and

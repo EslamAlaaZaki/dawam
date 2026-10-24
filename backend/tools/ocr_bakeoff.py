@@ -1,12 +1,12 @@
-"""The OCR bake-off (#424): read scanned PDFs with each OCR backend and print a Markdown table
+"""The OCR bake-off (#424): read scanned PDFs with the OCR engine and print a Markdown table
 of accuracy, CPU time and wall time, for the PR.
 
     python tools/ocr_bakeoff.py <folder>
 
 ``<folder>`` holds scanned PDFs, each with the true text next to it (``page.pdf`` and
 ``page.txt``). Accuracy is ``1 - character error rate`` against that text, with whitespace
-and Markdown markup collapsed. Needs Docling and, for Tesseract, the ``tesseract`` binary
-with the ``ara`` and ``eng`` languages.
+and Markdown markup collapsed. Needs Docling. ``DAWAM_DOCUMENT_ACCELERATOR`` is not read:
+the engine runs on the GPU when one is visible (``auto``).
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ def _accuracy(found: str, truth: str) -> float:
 
 
 def _cpu_seconds() -> float:
-    """CPU time of this process and of its finished children (the Tesseract CLI runs as
-    one); children are not counted on Windows, which has no ``resource``."""
+    """CPU time of this process and of its finished children; children are not counted on
+    Windows, which has no ``resource``."""
     seconds = time.process_time()
     if resource is not None:
         children = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -54,8 +54,7 @@ def main(folder: Path) -> None:
     pdfs = sorted(p for p in folder.glob("*.pdf") if p.with_suffix(".txt").exists())
     print("| Backend | File | Accuracy | CPU seconds | Wall seconds |")
     print("| --- | --- | --- | --- | --- |")
-    for backend in ("rapidocr", "tesseract"):
-        engine = DoclingOcr(backend)  # type: ignore[arg-type]
+    for backend, engine in [("rapidocr", DoclingOcr())]:
         for pdf in pdfs:
             data = pdf.read_bytes()
             cpu, wall = _cpu_seconds(), time.perf_counter()

@@ -11,6 +11,7 @@ import io
 import threading
 from typing import Protocol
 
+from .accelerator import DocumentAccelerator, pdf_pipeline_options
 from .content import DOCX, PDF, PDF_MAX_PAGES, XLSX, FileType
 
 
@@ -29,17 +30,17 @@ class DoclingParser:
 
     types = (PDF, DOCX, XLSX)
 
-    def __init__(self) -> None:
+    def __init__(self, accelerator: DocumentAccelerator = "auto") -> None:
+        self.accelerator = accelerator
         self._converter = None
         self._lock = threading.Lock()  # the converter is shared by worker threads
 
     def _convert(self):
         if self._converter is None:
             from docling.datamodel.base_models import InputFormat
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
             from docling.document_converter import DocumentConverter, PdfFormatOption
 
-            options = PdfPipelineOptions(do_ocr=False, do_table_structure=True)
+            options = pdf_pipeline_options(self.accelerator, "Docling parsing")
             self._converter = DocumentConverter(
                 format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
             )
