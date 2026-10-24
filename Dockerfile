@@ -35,13 +35,28 @@ RUN mkdir -p src/dawam && touch src/dawam/__init__.py \
        fi
 
 # Layout and table models, and RapidOCR's English and Arabic models (DoclingOcr reads each
-# scanned page once per language), read from DOCLING_ARTIFACTS_PATH at runtime.
+# scanned page once per language), read from DOCLING_ARTIFACTS_PATH at runtime. Only the
+# ones pdf_pipeline_options pins are kept (Heron on transformers, TableFormer accurate): the
+# download also fetches Heron's ONNX export and TableFormer fast, removed in this same layer
+# (`rm -r`, not -f, so a changed download layout fails the build).
 RUN docling-tools models download layout tableformer rapidocr \
       --rapidocr-backend-lang onnxruntime:en --rapidocr-backend-lang onnxruntime:arabic \
       -o "$DOCLING_ARTIFACTS_PATH" \
+    && cd "$DOCLING_ARTIFACTS_PATH" \
+    && rm -r docling-project--docling-layout-heron-onnx \
+             docling-project--docling-models/model_artifacts/tableformer/fast \
+    && rm -rf */.cache \
     && chmod -R a+rX /opt/dawam \
     && rm -rf /root/.cache
 ENV HF_HUB_OFFLINE=1
+
+# Fonts for the PDF renderer (pdfium): a PDF that names a font without embedding it (e.g.
+# Helvetica) renders without glyphs on a fontless image, and the layout model then reads its
+# text as a picture. Liberation is metric-compatible with Helvetica/Times/Courier; DejaVu
+# covers Arabic.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-liberation fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY backend/src ./src
 RUN pip install --no-deps . && rm -rf src

@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from pypdf import PdfReader, PdfWriter
 
 from dawam.job_handlers import default_ocr, default_parser
-from dawam.modules.files.internal.accelerator import accelerator_device
+from dawam.modules.files.internal.accelerator import accelerator_device, pdf_pipeline_options
 from dawam.modules.files.internal.content import PDF, FileType
 from dawam.modules.files.internal.ocr import OCR_MIN_CHARS_PER_PAGE, DoclingOcr, best_reading
 from dawam.modules.files.internal.parsing import DoclingParser
@@ -246,3 +246,20 @@ def test_each_page_keeps_the_language_pass_that_read_it_most_confidently():
 
     assert best_reading([english, arabic]) == f"Dormant accounts\n\n{ARABIC}\n\ntyped"
     assert best_reading([arabic]) == f"## ^ ^ 1 U\n\n{ARABIC}\n\ntyped"
+
+
+def test_the_pipelines_pin_the_models_bundled_in_the_image():
+    """The Dockerfile bundles only Heron (transformers) and TableFormer accurate: a Docling
+    upgrade that changes its defaults must not switch to a model the image lacks."""
+    from docling.datamodel.object_detection_engine_options import ObjectDetectionEngineType
+    from docling.datamodel.pipeline_options import RapidOcrOptions, TableFormerMode
+
+    for options in (
+        pdf_pipeline_options("cpu", "parsing"),
+        pdf_pipeline_options("cpu", "OCR", ocr_options=RapidOcrOptions(lang=["en"])),
+    ):
+        layout = options.layout_options
+        assert layout.model_spec.repo_id == "docling-project/docling-layout-heron"
+        assert layout.engine_options.engine_type == ObjectDetectionEngineType.TRANSFORMERS
+        assert options.table_structure_options.mode == TableFormerMode.ACCURATE
+        assert options.accelerator_options.device == "cpu"

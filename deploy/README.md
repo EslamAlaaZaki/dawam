@@ -265,7 +265,7 @@ docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml exec worker pyt
 ```
 
 The worker also logs the device when it first parses a document
-(`OCR (Docling + RapidOCR) runs on cuda`). `DAWAM_DOCUMENT_ACCELERATOR` picks the
+(`... runs on cuda (document_accelerator=auto)`). `DAWAM_DOCUMENT_ACCELERATOR` picks the
 device: `auto` (default: the GPU when one is visible, else the CPU), `cpu`, or `cuda`
 (falls back to the CPU, with a warning, when no GPU is visible). The `cuda` image also
 runs without a GPU, on the CPU.

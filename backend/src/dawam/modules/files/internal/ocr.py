@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
-from .accelerator import DocumentAccelerator, accelerator_options
+from .accelerator import DocumentAccelerator, pdf_pipeline_options
 from .content import PDF_MAX_PAGES
 
 OCR_MIN_CHARS_PER_PAGE = 50
@@ -104,19 +104,14 @@ class DoclingOcr:
     def _convert(self) -> list[Any]:
         if self._converters is None:
             from docling.datamodel.base_models import InputFormat
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
             from docling.document_converter import DocumentConverter, PdfFormatOption
 
-            accelerator = accelerator_options(self.accelerator, "OCR (Docling + RapidOCR)")
             self._converters = [
                 DocumentConverter(
                     format_options={
                         InputFormat.PDF: PdfFormatOption(
-                            pipeline_options=PdfPipelineOptions(
-                                do_ocr=True,
-                                do_table_structure=True,
-                                ocr_options=ocr,
-                                accelerator_options=accelerator,
+                            pipeline_options=pdf_pipeline_options(
+                                self.accelerator, f"OCR (Docling + RapidOCR, {ocr.lang[0]})", ocr
                             )
                         )
                     }
