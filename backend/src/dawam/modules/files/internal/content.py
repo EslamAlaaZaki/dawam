@@ -8,8 +8,15 @@ file's extension; only types on the allow-list get through.
 from __future__ import annotations
 
 import io
+import logging
 import zipfile
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .parsing import DocumentParser
+
+logger = logging.getLogger(__name__)
 
 EXTRACTED_TEXT_MAX_CHARS = 2_000_000
 PDF_MAX_PAGES = 1_000
@@ -126,13 +133,25 @@ def detect(filename: str, data: bytes) -> FileType:
     return found
 
 
-def extract_text(file_type: FileType, data: bytes) -> tuple[str | None, str]:
+def extract_text(
+    file_type: FileType, data: bytes, parser: DocumentParser | None = None
+) -> tuple[str | None, str]:
     """``(text, status)``: ``status`` is ``extracted``, ``no_text_found`` (e.g. a scanned
-    PDF, or a document that cannot be read) or ``none`` (images: nothing to extract)."""
+    PDF, or a document that cannot be read) or ``none`` (images: nothing to extract).
+
+    A ``parser`` that handles the type returns layout-aware Markdown; if it fails, the basic
+    extraction (pypdf, python-docx, openpyxl) is used instead."""
     if file_type in _IMAGES:
         return None, "none"
     try:
-        text = _extract(file_type, data)
+        if parser is not None and file_type in parser.types:
+            try:
+                text = parser.parse(file_type, data)
+            except Exception:
+                logger.warning("layout-aware parsing failed; using basic extraction", exc_info=True)
+                text = _extract(file_type, data)
+        else:
+            text = _extract(file_type, data)
     except Exception:
         return None, "no_text_found"
     text = text.replace("\x00", "").strip()[:EXTRACTED_TEXT_MAX_CHARS]

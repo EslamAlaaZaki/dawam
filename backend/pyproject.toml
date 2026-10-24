@@ -30,6 +30,7 @@ dependencies = [
     "regex>=2024.11",
     "tiktoken>=0.8",
     "tokenizers>=0.20",
+    "docling>=2",
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
@@ -49,11 +50,12 @@ packages = ["src/dawam"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -m 'not oracle and not ollama and not real_model'"
+addopts = "-ra -m 'not oracle and not ollama and not real_model and not docling'"
 pythonpath = ["."]
 markers = [
     "oracle: needs an Oracle container (slow and heavy); run with `pytest -m oracle`",
     "ollama: needs a running Ollama server (DAWAM_OLLAMA_URL); run with `pytest -m ollama`",
+    "docling: runs the real Docling engine on a tiny fixture (model files cached in CI); run with `pytest -m docling`",
     "real_model: runs the DW generation evaluation set against a real model (DAWAM_EVAL_URL, DAWAM_EVAL_MODEL); run with `pytest -m real_model` before a release",
 ]
 

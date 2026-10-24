@@ -21,12 +21,13 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
 from dawam import job_handlers
+from dawam.job_handlers import default_parser
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import reject_pending_change_sets
-from dawam.modules.files import DocumentAiPolicy
+from dawam.modules.files import DocumentAiPolicy, DocumentParser
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.kpis import kpi_formulas_check, kpis_for_score
 from dawam.modules.llm import (
@@ -88,6 +89,9 @@ class Services:
     document_ai: DocumentAiPolicy | None = None
     """What each Workspace lets documents share with a model; ``None``: nothing (full-text
     search only) until the Workspace AI settings exist."""
+    document_parser: DocumentParser | None = None
+    """Layout-aware parser for indexed documents; ``None`` uses the one the settings name
+    (tests pass a fake)."""
 
 
 def default_services() -> Services:
@@ -114,6 +118,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         # Looked up when a job runs: tests swap in a fake provider after the app is built.
         llm_adapters=lambda kind, config: (services.llm_adapters or adapter_for)(kind, config),
         document_ai=services.document_ai,
+        parser=lambda: services.document_parser or default_parser(settings),
     )
 
     # Revocations of a Layer's approval are timed like the change that caused them.
@@ -167,6 +172,7 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         services.clock,
         llm_adapters=services.llm_adapters,
         document_ai=services.document_ai,
+        parser=lambda: services.document_parser or default_parser(settings),
     )
     # Where uploaded files live (local volume or S3-compatible bucket).
     app.state.storage = create_storage(settings)

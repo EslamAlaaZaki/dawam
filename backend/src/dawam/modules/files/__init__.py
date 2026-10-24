@@ -23,6 +23,8 @@ Public interface. Other modules import only what is re-exported here:
   replacement returns at once with ``index_status`` ``queued``; the ``index_document`` job
   (``INDEX_JOB``) extracts the text and indexes it, moving the file through ``extracting``,
   ``ocr``, ``chunking`` and ``embedding`` to ``indexed``, or to ``failed`` with ``index_error``.
+- ``DocumentParser`` / ``DoclingParser``: the layout-aware parsing port and its Docling engine;
+  PDF, DOCX and XLSX are parsed to Markdown (headings, reading order, tables) before chunking.
 - ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
@@ -52,6 +54,7 @@ from fastapi import APIRouter
 from .api import router as _files_router
 from .deletion import FileRef, SystemFiles, purge_system_files, system_files
 from .handlers import FileContentHandler
+from .internal.parsing import DoclingParser, DocumentParser
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .search import (
@@ -75,8 +78,10 @@ router.include_router(_links_router)
 __all__ = [
     "INDEX_JOB",
     "REINDEX_JOB",
+    "DoclingParser",
     "DocumentAiPolicy",
     "DocumentAiSettings",
+    "DocumentParser",
     "DocumentSearchService",
     "EmbeddingModel",
     "EmbeddingModels",

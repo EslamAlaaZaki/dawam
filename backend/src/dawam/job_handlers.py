@@ -10,7 +10,8 @@ built on the app's database, settings and clock.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import functools
+from collections.abc import Callable, Mapping
 
 import sqlalchemy as sa
 
@@ -19,7 +20,9 @@ from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
     INDEX_JOB,
     REINDEX_JOB,
+    DoclingParser,
     DocumentAiPolicy,
+    DocumentParser,
     DocumentSearchService,
     NoDocumentAi,
     RegisteredEmbeddingModels,
@@ -50,6 +53,16 @@ def build_change_set_handlers(settings: Settings | None = None) -> ObjectHandler
     return change_set_handlers(settings)
 
 
+@functools.cache
+def _docling() -> DoclingParser:
+    return DoclingParser()  # one converter per process: loading its models is slow
+
+
+def default_parser(settings: Settings) -> DocumentParser | None:
+    """The layout-aware parser the settings name; ``None`` keeps the basic extraction."""
+    return _docling() if settings.document_parser == "docling" else None
+
+
 def build_document_search(
     runner: JobRunner,
     engine: sa.Engine,
@@ -58,6 +71,7 @@ def build_document_search(
     *,
     llm_adapters: AdapterFactory | None = None,
     document_ai: DocumentAiPolicy | None = None,
+    parser: Callable[[], DocumentParser | None] | None = None,
 ) -> DocumentSearchService:
     """The document search service, as the API and the worker build it. Until the
     Workspace AI settings exist, ``document_ai`` defaults to ``NoDocumentAi``: documents
@@ -79,6 +93,7 @@ def build_document_search(
         jobs=runner,
         storage=create_storage(settings),
         clock=clock,
+        parser=parser or default_parser(settings),
     )
 
 
@@ -89,6 +104,7 @@ def _service_handlers(
     clock: Clock,
     llm_adapters: AdapterFactory | None,
     document_ai: DocumentAiPolicy | None,
+    parser: Callable[[], DocumentParser | None] | None,
 ) -> dict[str, JobHandler]:
     snapshots = SnapshotService(
         engine,
@@ -120,7 +136,13 @@ def _service_handlers(
         clock=clock,
     )
     documents = build_document_search(
-        runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
+        runner,
+        engine,
+        settings,
+        clock,
+        llm_adapters=llm_adapters,
+        document_ai=document_ai,
+        parser=parser,
     )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     assistant = build_assistant_service(
@@ -152,11 +174,12 @@ def register_job_handlers(
     clock: Clock,
     llm_adapters: AdapterFactory | None = None,
     document_ai: DocumentAiPolicy | None = None,
+    parser: Callable[[], DocumentParser | None] | None = None,
 ) -> None:
     """Register every handler on ``runner``. A type the runner already has is left alone:
     tests build several apps on one shared runner, and the first app's handlers serve all."""
     handlers = {
-        **_service_handlers(runner, engine, settings, clock, llm_adapters, document_ai),
+        **_service_handlers(runner, engine, settings, clock, llm_adapters, document_ai, parser),
         **JOB_HANDLERS,
     }
     for job_type, handler in handlers.items():
