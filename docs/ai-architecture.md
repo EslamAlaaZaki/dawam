@@ -435,7 +435,9 @@ flowchart TD
 
 - A `ToolContext` per run holds the user, Workspace, services, data-sharing policy, a **source-query time budget** (default 120 s per run), proposal collection for jobs, and the run's count-query evidence.
 
-### 6.2 The tool catalogue (26 tools)
+### 6.2 The tool catalogue (25 tools)
+
+There are 26 tools.
 
 **Read: catalog, profiling, lineage, scoring**
 

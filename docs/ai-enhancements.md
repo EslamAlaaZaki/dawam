@@ -208,7 +208,7 @@ flowchart TD
 |---|---|---|
 | **Planning** | none: the model improvises | Plan-then-execute for jobs: a `write_plan` / `update_plan` (todo list) tool, the plan shown in the job UI; re-plan after failures |
 | **Self-verification** | none built in | After generation, automatically call `run_validation` / `get_score`, fix and retry (bounded), "reflection" before the final answer |
-| **Multi-agent** | one agent with 25 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
+| **Multi-agent** | one agent with 26 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
 | **Tool selection** | all allowed tools sent every turn | **Dynamic tool loading / tool search**: send a short list plus a `find_tools` tool; big win for small models and token cost |
 | **Parallel tools** | calls in one turn run one after another | Run independent **read** tools concurrently (thread pool), keep writes sequential |
 | **Ask the member** | jobs can't ask; chats just answer | An `ask_member` interrupt: the run pauses (checkpointed), the question shows in the chat, the answer resumes it |
@@ -302,7 +302,7 @@ flowchart TD
 | Part | Today | With all tools proposed in §6 |
 |---|---|---|
 | System prompt (`SYSTEM_PROMPT`, 1,186 chars; jobs add 405) | ~300 tokens | ~350 tokens (adds the date) |
-| Tool schemas (25 tools, 29,945 chars) | **~7,500 tokens** | **~10,500–11,000 tokens** (about 12 small new tools at roughly 200–300 tokens each) |
+| Tool schemas (26 tools) | **~7,500 tokens** | **~10,500–11,000 tokens** (about 12 small new tools at roughly 200–300 tokens each) |
 
 The three largest schemas, `generate_dw_schema` (4,923 chars), `draft_mappings` (3,416) and `propose_changes` (3,267), are about a third of the total. The median tool is about 700 chars.
 
