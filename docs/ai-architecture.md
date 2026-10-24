@@ -14,7 +14,7 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 | **LangGraph?** | **No.** The agent loop is a hand-written Python generator (`assistant/internal/agent.py`, about 250 lines). |
 | **LlamaIndex, Haystack, Semantic Kernel, CrewAI, AutoGen?** | **No.** |
 | **Vendor SDKs (`openai`, `anthropic`, `boto3` for Bedrock, `google-genai`)?** | **No.** Every provider is called over raw HTTP with the Python standard library (`urllib.request`). `boto3` is an optional dependency, used only for S3 file storage, never for Bedrock. |
-| **OCR in the RAG pipeline?** | **No.** PDFs are read with `pypdf`'s text extraction. A scanned (image-only) PDF yields no text and is marked `no_text_found`. Uploaded images (PNG, JPEG, GIF, WebP) are stored but never read: no OCR and no vision model. |
+| **OCR in the RAG pipeline?** | **Yes.** PDF, DOCX and XLSX are parsed by Docling (headings and tables kept). Scanned PDF pages are read by OCR: the Workspace's `vision` model when the data-sharing policy allows, else a self-hosted Docling + RapidOCR engine (English and Arabic). Uploaded images (PNG, JPEG, GIF, WebP) are described by the vision model. Indexing runs as a background job with a per-file status. With no OCR engine and no vision model allowed, a scan is marked `no_text_found`. |
 | **Vector database?** | **PostgreSQL + `pgvector`** (Docker image `pgvector/pgvector:pg16`), in the same database as the app. No separate vector store. |
 | **Retrieval type?** | **Hybrid:** Postgres full-text search (`tsvector`, GIN index) plus pgvector cosine distance, merged with **Reciprocal Rank Fusion**. |
 | **Agent style?** | One ReAct-style **tool-calling loop**: the model calls tools, gets results, and repeats until it answers or hits a tool-call cap. It is a single agent, not a multi-agent graph. Long tasks run as background jobs on the same loop. |
@@ -33,7 +33,8 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 | HTTP to model providers | `urllib.request` (standard library), behind a `Transport` port |
 | Schemas for tool arguments | Pydantic v2 (`model_json_schema()` produces the JSON Schema sent to the model) |
 | SQL parsing (AI source-query guard, lineage, transpiling) | `sqlglot` |
-| Document text extraction | `pypdf` (PDF), `python-docx` (DOCX), `openpyxl` (XLSX), strict UTF-8 for text types |
+| Document text extraction | Docling (PDF, DOCX, XLSX → Markdown), with `pypdf`, `python-docx` and `openpyxl` as the fallback; strict UTF-8 for text types |
+| OCR | RapidOCR (PP-OCR on ONNX Runtime) through Docling, self-hosted; or the Workspace's vision model through the gateway |
 | Crypto for provider auth | `cryptography` (RS256 JWT for Google service accounts); SigV4 for AWS is written by hand with `hmac`/`hashlib` |
 | Secret storage | API keys sealed with `SecretBox` (encryption key from settings), never returned by the API |
 | Background jobs | DB-backed queue (`SELECT ... FOR UPDATE SKIP LOCKED`), worker process `python -m dawam worker` |
@@ -62,7 +63,7 @@ flowchart TD
     AD --> A6["plugin entry point"]
     A1 & A2 & A3 & A4 & A5 & A6 --> TR["UrllibTransport"] --> P(["Model provider over HTTPS"])
 
-    LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>25 tools"]
+    LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>26 tools"]
     TOOLS --> AUTHZ{"Policy action allowed?<br/>Data-sharing level allowed?"}
     AUTHZ -->|no| REF["refused result"]
     AUTHZ -->|yes| SL["Service layer<br/>same one the REST API uses"]
@@ -166,7 +167,7 @@ flowchart LR
 
 ### 3.5 Model roles, Workspace Models and budgets
 
-- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3); no fallback to the agent role for that) and `embedding` (document vectors).
+- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3); no fallback to the agent role for that) and `embedding` (document vectors) and `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it.
 - **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
@@ -199,7 +200,7 @@ flowchart TD
 |---|---|
 | `metadata` | schemas, names, descriptions, KPIs, lineage, scores |
 | `profiles` | + profile statistics (null share, distinct counts, lengths, patterns) |
-| `documents` | + document text (enables `search_documents`, `read_file`, and **embedding** documents) |
+| `documents` | + document text (enables `search_documents`, `read_file`, `describe_image`, and **embedding** documents; also sending page and image bytes to a non-internal vision model) |
 | `samples` | + real values: top-N values, min/max, and `run_source_query` (see ADR 0002) |
 
 Tools declare the level they need; the tool registry hides and refuses tools above the Workspace's level.
@@ -436,6 +437,8 @@ flowchart TD
 
 ### 6.2 The tool catalogue (25 tools)
 
+There are 26 tools.
+
 **Read: catalog, profiling, lineage, scoring**
 
 | Tool | What it does | Needs |
@@ -458,6 +461,7 @@ flowchart TD
 | Tool | What it does | Needs |
 |---|---|---|
 | `search_documents` | Hybrid search over uploaded documents; each passage names its document and section (§8) | `documents` |
+| `describe_image` | What an uploaded image (ERD, diagram, mock-up) shows: its description from indexing, or a fresh one by the vision model (§8.1) | `documents` |
 | `list_files` | List files in a Source System's or the DW's file area | view |
 | `read_file` | Read a text file or document's extracted text (max 15,000 characters) | `documents` |
 
@@ -574,45 +578,65 @@ Internal-only Workspaces (default when the installation has a tested internal ag
 
 ### 8.1 Ingestion
 
+Uploading a file stores its bytes and queues an `index_document` background job; the upload returns at once. The job moves the file's `index_status` through `queued → extracting → ocr → chunking → embedding → indexed`, or `failed` with the error kept in `index_error`. The `ocr` stage is entered only when a scanned page or an image is actually sent to a reader. The Documents panel shows the status per file. A job for bytes that were replaced in the meantime is dropped (it checks the file's `storage_key`), and a job that is cancelled or whose worker is lost fails the file instead of leaving it `queued`.
+
 ```mermaid
 flowchart TD
     U["Upload, or an accepted file Change Set"] --> D{"Type from the bytes<br/>matches the extension<br/>and is on the allow-list?"}
     D -->|no| REJ(["422: not allowed"])
-    D -->|yes| T{"File type"}
-    T -->|PDF| X1["pypdf extract_text<br/>max 1,000 pages"]
-    T -->|DOCX| X2["python-docx<br/>paragraphs + table rows"]
-    T -->|XLSX| X3["openpyxl<br/>'## sheet' + tab-joined rows"]
+    D -->|yes| Q["Store the bytes, queue the<br/>index_document job: status queued"]
+    Q --> T{"File type<br/>(status extracting)"}
+    T -->|"PDF, DOCX, XLSX"| P["Docling: Markdown with headings,<br/>reading order, tables"]
+    P -->|"fails, or over the caps"| X1["Basic extraction:<br/>pypdf, python-docx, openpyxl"]
     T -->|"MD, TXT, SQL, YAML, CSV, JSON"| X4["UTF-8 decode"]
-    T -->|"PNG, JPEG, GIF, WebP"| X5["Not read: status none<br/>no OCR, no vision"]
-    X1 & X2 & X3 & X4 --> TXT{"Any text?"}
-    TXT -->|"no, e.g. a scanned PDF"| NT(["status no_text_found<br/>not searchable"])
-    TXT -->|yes| STORE["Store file + extracted_text<br/>max 2,000,000 chars"]
-    STORE --> IDX["index_file, synchronously after upload"]
-    IDX --> CH["chunk: split at headings,<br/>pack paragraphs to ~1,000 chars"]
+    T -->|"PNG, JPEG, GIF, WebP"| IMG{"Workspace vision model<br/>that the policy lets<br/>the image reach?"}
+    IMG -->|yes| DESC["status ocr: vision model describes it;<br/>the description is the text"]
+    IMG -->|"no, or it failed"| NONE(["status none, not searchable;<br/>index_note says why"])
+    P & X1 --> SC{"PDF pages with under<br/>50 characters of text?"}
+    SC -->|no| TXT
+    SC -->|yes| OCR{"OCR engine"}
+    OCR -->|"vision model allowed"| VM["status ocr: page images through<br/>MeteredGateway, vision role"]
+    OCR -->|"no vision model,<br/>or not allowed"| SH["status ocr: self-hosted<br/>Docling + RapidOCR, English and Arabic"]
+    OCR -->|"self-hosted engine off"| TXT
+    VM -->|"call failed"| SH
+    VM & SH --> TXT{"Any text?"}
+    X4 & DESC --> TXT
+    TXT -->|"no, e.g. an unread scan"| NT(["status no_text_found<br/>not searchable"])
+    TXT -->|yes| STORE["Store extracted_text<br/>max 2,000,000 chars"]
+    STORE --> CH["status chunking: split at headings,<br/>pack paragraphs to ~1,000 chars"]
     CH --> NORM["Arabic normalisation"]
     NORM --> FTS["document_chunks row<br/>search_vector tsvector, GIN index"]
     CH --> POL{"Level >= documents,<br/>tested embedding model,<br/>internal-only respected?"}
     POL -->|no| FTO(["Full-text only:<br/>nothing sent to a model"])
-    POL -->|yes| EMB["Embed in batches of 32<br/>through MeteredGateway"]
+    POL -->|yes| EMB["status embedding: batches of 32<br/>through MeteredGateway"]
     EMB -->|"provider or budget failure"| FTO
     EMB -->|ok| VEC["Store embedding, model id,<br/>dimension in pgvector"]
+    FTO & VEC --> DONE(["status indexed"])
 ```
 
 **Type detection** (`files/internal/content.py`): the type comes from the bytes (magic numbers; the ZIP structure for DOCX/XLSX; strict UTF-8 for text) and must match the file extension. Allow-list: PDF, DOCX, XLSX, Markdown, TXT, SQL, YAML, CSV, JSON, PNG, JPEG, GIF, WebP. SVG and HTML are refused (they can carry script). Zip-bomb limits: 5,000 entries, 300 MB uncompressed.
 
-**Text extraction:**
+**Text extraction** (`extract_text`): PDF, DOCX and XLSX go to the layout-aware parser first; the basic libraries are the fallback.
 
 | Type | Library | How |
 |---|---|---|
-| PDF | `pypdf` | `page.extract_text()` per page, max 1,000 pages; an encrypted PDF is tried with an empty password |
-| DOCX | `python-docx` | paragraphs, then table rows joined with tabs; max 50,000 each |
-| XLSX | `openpyxl` (read-only, computed values) | `## <sheet name>` heading, then tab-joined rows; max 200,000 rows / 2,000,000 cells |
+| PDF, DOCX, XLSX | **Docling** (`internal/parsing.py`: `DocumentParser` port, `DoclingParser`) | Markdown that keeps headings, reading order and tables (as Markdown tables), so the chunker (§8.2) gets real sections. One shared converter per worker process. The page, paragraph, row and cell caps below are checked before Docling runs; a file over them, or a parse failure, falls back to basic extraction. Docling's own OCR is off here. `document_parser=basic` skips Docling. |
+| PDF (fallback) | `pypdf` | `page.extract_text()` per page, max 1,000 pages; an encrypted PDF is tried with an empty password |
+| DOCX (fallback) | `python-docx` | paragraphs, then table rows joined with tabs; max 50,000 each |
+| XLSX (fallback) | `openpyxl` (read-only, computed values) | `## <sheet name>` heading, then tab-joined rows; max 200,000 rows / 2,000,000 cells |
 | Text types | — | UTF-8 (BOM tolerated) |
-| Images | — | **not read** (status `none`) |
+| Images | vision model (optional) | a description, see below; with no usable vision model the status is `none` |
 
-Extracted text is capped at 2,000,000 characters. A file with no extractable text gets status `no_text_found` and is not searchable.
+Extracted text is capped at 2,000,000 characters. Text made only of Docling's image marks counts as no text. A file with no extractable text gets status `no_text_found` and is not searchable.
 
-> **No OCR.** A scanned PDF or a photographed document produces no text, so it never reaches the index. Supporting it would need a new OCR or vision-model step in `extract_text`.
+**OCR of scanned PDFs** (`internal/ocr.py`, `OcrEngine` port). After parsing, a PDF page with under 50 characters of its own text is treated as a scan (a PDF with more than 200 such pages, or over the page cap, is left alone). Two engines sit behind the port:
+
+- **Self-hosted:** `DoclingOcr`, Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or an NVIDIA GPU). RapidOCR has no recognizer that reads both scripts, so each page is read once for English and once for Arabic, and the reading with the higher mean confidence is kept. Pages that have their own text keep it. This is the default; `document_ocr=off` disables it.
+- **Vision model:** `VisionOcr` renders each scanned page at 150 dpi and sends it, one page per call, to the Workspace's `vision` model through the `MeteredGateway` (budgets, usage and internal-only apply), asking for the page as Markdown. The prompt tells the model to ignore instructions written on the page, and the reply is untrusted text like any document text.
+
+Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested vision model **and** the policy lets the document reach its provider (an internal provider always does; an external one needs level `documents` or above and a Workspace that is not internal-only), the vision model reads the scans. Otherwise, or if the vision call fails (budget, provider error), the self-hosted engine reads them. If that is off too, the scan stays unread. Whenever the choice was not the plain one, the file's `index_note` says why (for example "…does not let documents reach its vision model's provider, so the self-hosted OCR engine read the scanned pages."), and the note is shown with the file. If OCR fails altogether, the text found without it stands. The device for Docling and RapidOCR is the `document_accelerator` setting (`auto`, `cpu`, `cuda`); the backend image is built for CPU or CUDA and bundles the pinned layout and table models, so nothing is downloaded at run time. These engine choices are environment settings and code constants for now; there is no Document AI settings page yet (`ai-enhancements.md` §5), and the self-hosted engine is still to be confirmed by the OCR bake-off (#450).
+
+**Images and diagrams** (`describe_image` in `internal/ocr.py`). An uploaded PNG, JPEG, GIF or WebP is sent to the vision model under the same policy rule as scans, with a prompt that asks for tables, columns, keys, relationships, boxes, arrows and labels (ERDs, architecture diagrams, report mock-ups). The reply, headed `# Description of <file name>`, is stored as the file's `extracted_text`, so it is chunked, indexed and found by `search_documents` like any document text. With no usable vision model, or if the call fails, the image stays unread (`none`) and the `index_note` says why. The assistant's **`describe_image(file_id)`** tool (level `documents`) returns the stored description or, when there is none, asks the vision model afresh if the policy allows (nothing is stored). It answers 422 `no_vision` when it cannot, and 422 `not_an_image` for other files. The description reaches the model as quoted data like all retrieved text.
 
 ### 8.2 Chunking (`files/internal/chunking.py`)
 

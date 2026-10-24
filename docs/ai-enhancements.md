@@ -68,7 +68,7 @@ flowchart LR
 ## 2. Document ingestion: OCR, layout and images
 
 ### Today
-`pypdf` text only. Scanned PDFs → `no_text_found`. Images aren't read. Tables in PDFs come out as loose text. Indexing runs synchronously in the upload request.
+Shipped in Epic 21 (#363, #424, #425, #364, #426): indexing runs as a background job with a per-file status; PDF, DOCX and XLSX are parsed by Docling into Markdown that keeps headings and tables; scanned PDF pages are read by OCR (a self-hosted Docling + RapidOCR engine, or the Workspace's vision model); uploaded images are described by the vision model; the agent has a `describe_image` tool. How it works now: `ai-architecture.md` §8.1. What did not ship: the Document AI settings page (§5), so the parser, OCR engine and thresholds are still environment settings and code constants, and the OCR engine bake-off (#450), which will confirm or change the engine choice.
 
 ### 2.1 OCR
 
@@ -84,14 +84,22 @@ flowchart LR
 
 **Recommendation:** add an `OcrEngine` port in `files/internal/` with two implementations to start: a self-hosted one (PaddleOCR or Docling) for internal-only installs, and a **vision-model** one that calls a new gateway role `vision` (so budgets and internal-only apply). Run OCR only when `pypdf` returns no or very little text per page.
 
+**Done** (#424, #425). The port is `OcrEngine` (`files/internal/ocr.py`). The self-hosted engine is Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or NVIDIA GPU), read once per language (English, Arabic) keeping the more confident reading per page; Tesseract and PaddleOCR were not built. The `vision` role is a gateway role like `embedding`, with its own Workspace Model, Test connection and adapter support. OCR runs only on pages with under 50 characters of their own text. Whether RapidOCR stays the self-hosted engine is for the bake-off (#450) to settle.
+
 ### 2.2 Layout-aware parsing
 Replace per-page `extract_text()` with a parser that keeps **headings, reading order and tables** (Docling, Marker or Unstructured), output as Markdown. Our heading-based chunker then gets real sections, and tables stay intact as Markdown tables.
+
+**Done** (#364) for PDF, DOCX and XLSX, with Docling. Table-aware chunking and chunk overlap (§3) are not built.
 
 ### 2.3 Images and diagrams
 Data teams upload **ERD screenshots, architecture diagrams and report mock-ups**. A vision model can describe them ("table `orders` has FK `customer_id` → `customers.id`") and that description becomes searchable text, linked to the image. A new tool such as `describe_image(file_id)` would let the agent look on demand.
 
+**Done** (#426). An uploaded image is described on indexing and the description is its searchable text; the agent's `describe_image` tool returns it, or asks the vision model afresh when there is none.
+
 ### 2.4 Async ingestion
 Move `index_file` from the upload request to a job (`index_document`), with a per-file status: `queued → extracting → ocr → chunking → embedding → indexed | failed`. OCR and embeddings are too slow for a request.
+
+**Done** (#363) as the `index_document` job and `files.index_status`, with one extra column, `index_note`, added by #425. The diagram below is the original design; it differs from what shipped in these ways: the self-hosted engine is Docling + RapidOCR, there are no contextual headers, and image descriptions are made at the `ocr` stage. See `ai-architecture.md` §8.1 for the shipped flow.
 
 ```mermaid
 flowchart TD
@@ -200,7 +208,7 @@ flowchart TD
 |---|---|---|
 | **Planning** | none: the model improvises | Plan-then-execute for jobs: a `write_plan` / `update_plan` (todo list) tool, the plan shown in the job UI; re-plan after failures |
 | **Self-verification** | none built in | After generation, automatically call `run_validation` / `get_score`, fix and retry (bounded), "reflection" before the final answer |
-| **Multi-agent** | one agent with 25 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
+| **Multi-agent** | one agent with 26 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
 | **Tool selection** | all allowed tools sent every turn | **Dynamic tool loading / tool search**: send a short list plus a `find_tools` tool; big win for small models and token cost |
 | **Parallel tools** | calls in one turn run one after another | Run independent **read** tools concurrently (thread pool), keep writes sequential |
 | **Ask the member** | jobs can't ask; chats just answer | An `ask_member` interrupt: the run pauses (checkpointed), the question shows in the chat, the answer resumes it |
@@ -294,7 +302,7 @@ flowchart TD
 | Part | Today | With all tools proposed in §6 |
 |---|---|---|
 | System prompt (`SYSTEM_PROMPT`, 1,186 chars; jobs add 405) | ~300 tokens | ~350 tokens (adds the date) |
-| Tool schemas (25 tools, 29,945 chars) | **~7,500 tokens** | **~10,500–11,000 tokens** (about 12 small new tools at roughly 200–300 tokens each) |
+| Tool schemas (26 tools) | **~7,500 tokens** | **~10,500–11,000 tokens** (about 12 small new tools at roughly 200–300 tokens each) |
 
 The three largest schemas, `generate_dw_schema` (4,923 chars), `draft_mappings` (3,416) and `propose_changes` (3,267), are about a third of the total. The median tool is about 700 chars.
 
@@ -394,15 +402,15 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 
 | # | Item | Section | Impact | Effort | Notes |
 |---|---|---|---|---|---|
-| 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR |
-| 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises |
+| 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR. **Done** (#363) |
+| 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises. **Done** (#424, #425); engine bake-off open (#450) |
 | 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
 | 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain |
 | 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable |
 | 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
 | 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
-| 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | |
+| 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | Parsing **done** (#364); table-aware chunking and overlap not yet |
 | 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks |
 | 11 | Conversation compaction + Workspace memory | §7 | Medium | M | Compaction **done** (#354); Workspace memory not yet |
 | 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | |
@@ -411,7 +419,7 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | Only after 6–8 are in place |
 | 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | |
 | 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | |
-| 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2 |
+| 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2. **Done** (#426) |
 | 19 | Discovery tools: `workspace_overview`, KPI and DW search | §6.1 | High | S | Quick win; do in Phase 1 |
 | 20 | Current date (Gregorian + Hijri) in the system prompt | §6.2 | Medium | S | Quick win; do in Phase 1 |
 | 21 | `query_file` with DuckDB over uploaded CSV/XLSX | §6.2 | Medium | M | Safer than a Python sandbox |
