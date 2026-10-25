@@ -60,12 +60,13 @@ def embed_calls(fake_llm) -> int:
     return len([c for c in fake_llm.calls if c.kind == "embed"])
 
 
-def two_documents(roles: RoleClients, fake_llm) -> None:
+def two_documents(roles: RoleClients, fake_llm) -> str:
     sid = system(roles)
     fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])
     upload_ok(roles, sid, "ledger.md", "# Ledger\nPostings are booked daily.")
     fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
     upload_ok(roles, sid, "risk.md", "# Risk\nExposure is reviewed quarterly.")
+    return sid
 
 
 def test_changing_the_model_rebuilds_the_vectors_with_full_text_search_meanwhile(
@@ -162,3 +163,26 @@ def test_a_reindex_finishes_a_rebuild_left_behind(roles, fake_llm, app, jobs, wo
 
     assert {str(m) for m, _ in chunk_rows(app)} == {second}
     assert ai_settings(roles)["embedding_rebuilding"] is False
+
+
+def test_a_rebuild_whose_job_is_cancelled_while_queued_still_switches(
+    roles, fake_llm, app, jobs, worker
+):
+    register_embedding_model(roles, internal=True, name="bge-small")
+    sid = two_documents(roles, fake_llm)
+    second = register_embedding_model(roles, internal=True, name="bge-large", use=False)
+    jobs.inline = False
+    assert choose(roles, second).status_code == 200
+    listed = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/jobs")
+    [job] = [j for j in listed.json()["items"] if j["title"] == "Re-embed documents"]
+
+    cancelled = roles.client("owner").post(f"/api/v1/jobs/{job['id']}/cancel")
+
+    assert cancelled.status_code == 200, cancelled.text
+    assert ai_settings(roles)["embedding_rebuilding"] is False
+    assert chunk_rows(app) == [(None, None), (None, None)]  # the old model's vectors are gone
+    # Vector search is back on, for the new model: a new document is found by meaning.
+    upload_ok(roles, sid, "new.md", "# Audit\nControls are tested yearly.")
+    worker()
+    assert {str(m) for m, _ in chunk_rows(app) if m} == {second}
+    assert [p["document"] for p in search(roles, "zzz").json()["items"]] == ["new.md"]
