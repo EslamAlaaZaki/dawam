@@ -111,6 +111,24 @@ def test_arabic_text_is_found_whatever_the_diacritics_and_letter_forms(roles, po
     assert ya.status_code == 200 and ya.json()["items"] == []
 
 
+def test_word_forms_match_their_stems_in_arabic_and_english(roles, policy):
+    sid = system(roles)
+    upload_ok(
+        roles,
+        sid,
+        "forms.md",
+        "# Billing\nThe customer reported invoices created yesterday.\n\n"
+        "# المدارس\nزارت المدرّسات المدارس والمعلمون.",  # noqa: RUF001
+    )
+
+    for query in ("customers report", "creating invoice", "reporting"):
+        found = search(roles, query).json()["items"]
+        assert [p["section"] for p in found] == ["Billing"], query
+    for query in ("المدرسة", "والمدرسون"):
+        found = search(roles, query).json()["items"]
+        assert [p["section"] for p in found] == ["المدارس"], query
+
+
 def test_results_are_cited_passages_and_any_member_may_search(roles, policy):
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "# Ledger\nPostings are booked daily.\n\n# Risk\nNothing.")

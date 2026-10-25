@@ -159,7 +159,8 @@ class DocumentChunkRecord(Base):
     """One sentence from the light model saying where the passage comes from; ``None``: the
     feature was off. Indexed and embedded with ``content``, never shown as the passage."""
     search_text: Mapped[str] = mapped_column(sa.Text())
-    """``context_header`` and ``content`` after Arabic normalisation: what full-text search
+    """``context_header`` and ``content`` after Arabic normalisation and light stemming
+    (Arabic and English): what full-text search
     indexes."""
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR, sa.Computed("to_tsvector('simple', search_text)", persisted=True)

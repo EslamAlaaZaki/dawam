@@ -50,7 +50,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
-from .internal.arabic import language, normalise, words
+from .internal.arabic import language, stemmed, stems
 from .internal.chunking import Chunk
 from .internal.content import (
     ALLOWED_TYPES,
@@ -751,7 +751,7 @@ class DocumentSearchService:
                     section=piece.chunk.section,
                     content=piece.chunk.text,
                     context_header=headers[ordinal] or None,
-                    search_text=normalise(indexed[ordinal]),
+                    search_text=stemmed(indexed[ordinal]),
                     parent_ordinal=piece.parent,
                     parent_content=piece.parent_text,
                     document_type=kind,
@@ -913,7 +913,7 @@ class DocumentSearchService:
         """The passages that best match ``query``, any member, best first. Full-text and,
         where the passages were embedded, vector rankings are fused."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
-        terms = words(query)
+        terms = stems(query)
         if not terms:
             return []
         scope = " AND f.owner_id = :system_id" if system_id else ""
@@ -926,7 +926,7 @@ class DocumentSearchService:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
             queries = [query, *self._variants(workspace_id, query)]
-            term_sets = [t for t in (words(q) for q in queries) if t]
+            term_sets = [t for t in (stems(q) for q in queries) if t]
             embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
                 "SELECT c.id FROM document_chunks c "
