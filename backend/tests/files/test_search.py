@@ -467,3 +467,52 @@ def test_a_passage_indexed_before_parents_existed_is_still_returned(roles, polic
         "Old",
         "legacy ledger wording",
     )
+
+
+def set_chunking_strategy(roles: RoleClients, strategy: str):
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
+    current = owner.get(path).json()
+    return owner.put(
+        path,
+        json={
+            "internal_only": current["internal_only"],
+            "data_sharing_level": current["data_sharing_level"],
+            "chunking_strategy": strategy,
+        },
+    )
+
+
+def test_the_chunking_strategy_is_a_workspace_setting_owners_choose(roles, policy):
+    path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
+    assert roles.client("owner").get(path).json()["chunking_strategy"] == "headings"
+
+    assert set_chunking_strategy(roles, "recursive").json()["chunking_strategy"] == "recursive"
+    assert roles.client("viewer").get(path).json()["chunking_strategy"] == "recursive"
+    assert set_chunking_strategy(roles, "bogus").status_code == 422
+
+
+def test_semantic_chunking_embeds_sentences_and_splits_where_the_topic_changes(
+    roles, policy, fake_llm, app, monkeypatch
+):
+    # The fake gives one vector per call; a batch of one makes it one per text.
+    monkeypatch.setattr("dawam.modules.files.search.EMBED_BATCH", 1)
+    register_embedding_model(roles, internal=True)
+    assert set_chunking_strategy(roles, "semantic").status_code == 200
+    sid = system(roles)
+    cats, stocks = [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]
+    fake_llm.script_embeddings(cats, cats, stocks, stocks)  # one per sentence
+    fake_llm.script_embeddings(cats, stocks)  # one per passage
+
+    upload_ok(
+        roles,
+        sid,
+        "mix.md",
+        "# Mix\nCats purr softly. Cats nap all day. Stocks fell sharply. Stocks rose again.",
+    )
+
+    contents = [r[0] for r in chunk_rows(app, "content")]
+    assert contents == [
+        "Cats purr softly. Cats nap all day.",
+        "Stocks fell sharply. Stocks rose again.",
+    ]
