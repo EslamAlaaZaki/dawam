@@ -30,7 +30,8 @@ def context_header(
     the call fails."""
     user = "\n\n".join(
         [
-            f"Document: {document}\nSection: {section}",
+            _quote("document-name", document),
+            _quote("section-title", section),
             _quote("document-start", excerpt[:DOCUMENT_EXCERPT_CHARS]),
             _quote("passage", passage),
         ]

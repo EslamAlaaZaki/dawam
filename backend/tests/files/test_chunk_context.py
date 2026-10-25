@@ -64,7 +64,10 @@ def test_a_chunk_carries_the_light_models_header_and_is_found_by_it(
     assert listed(roles, system_id)["loans.md"]["index_status"] == "indexed"
     assert headers(roles) == [HEADER]
     [call] = light_calls(fake_llm)
-    assert 'source="passage"' in call.messages[1].content
+    prompt = call.messages[1].content
+    assert 'source="passage"' in prompt
+    assert '<data source="document-name">\nloans.md\n</data>' in prompt
+    assert '<data source="section-title">\nStatus codes\n</data>' in prompt
     assert [p["document"] for p in search(roles, "dictionary")] == ["loans.md"]
     [hit] = search(roles, "dictionary")
     assert hit["text"] == DOC.decode().split("\n\n", 1)[1]  # the passage itself is unchanged
