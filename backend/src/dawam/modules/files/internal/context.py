@@ -3,8 +3,7 @@ comes from, so that it is found and embedded with that context."""
 
 from __future__ import annotations
 
-from dawam.modules.llm import Message, MeteredGateway
-from dawam.modules.llm.gateway import TextDelta
+from dawam.modules.llm import Message, MeteredGateway, TextDelta
 
 HEADER_MAX_CHARS = 300
 DOCUMENT_EXCERPT_CHARS = 4000
