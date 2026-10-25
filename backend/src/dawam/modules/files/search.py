@@ -45,8 +45,9 @@ from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
 from .internal.arabic import normalise, words
-from .internal.chunking import chunk
+from .internal.chunking import Chunk, chunk
 from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
+from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
@@ -222,6 +223,47 @@ IMAGE_NOT_DESCRIBED = (
     "The image was not described: the Workspace has no vision model that its data-sharing "
     "level lets the image reach."
 )
+
+
+@dataclass(frozen=True)
+class LightModel:
+    is_internal: bool
+    gateway: MeteredGateway
+
+
+class LightModels(Protocol):
+    def current(self, workspace_id: uuid.UUID) -> LightModel | None:
+        """The Workspace's light model, or ``None``: it has none (no fallback to the agent)."""
+        ...
+
+
+class NoLightModels:
+    def current(self, workspace_id: uuid.UUID) -> LightModel | None:
+        return None
+
+
+class RegisteredLightModels:
+    """The Workspace's default light model, one of its Workspace Models (optional)."""
+
+    def __init__(self, providers: ProviderService, roles: RoleService, engine: sa.Engine) -> None:
+        self._providers = providers
+        self._roles = roles
+        self._engine = engine
+
+    def current(self, workspace_id: uuid.UUID) -> LightModel | None:
+        chosen = workspace_model_id(self._engine, workspace_id, "light")
+        if chosen is None:
+            return None
+        for provider in self._providers.list_providers():
+            for model in provider.models:
+                if model.id == chosen and "light" in model.roles:
+                    gateway = self._roles.metered_gateway(
+                        model.id, "light", workspace_id=workspace_id
+                    )
+                    return LightModel(provider.is_internal, gateway)
+        return None
+
+
 IMAGE_VISION_FAILED = "The vision model could not describe the image ({reason})."
 
 
@@ -274,7 +316,9 @@ class DocumentSearchService:
         parser: Callable[[], DocumentParser | None] = lambda: None,
         ocr: Callable[[], OcrEngine | None] = lambda: None,
         vision: VisionModels | None = None,
+        light: LightModels | None = None,
     ) -> None:
+        self._light = light or NoLightModels()
         self._parser = parser
         self._ocr = ocr
         self._vision = vision or NoVisionModels()
@@ -304,6 +348,40 @@ class DocumentSearchService:
         the rule of ``_ocr_engine`` (an internal model always may)."""
         model = self._vision.current(workspace_id)
         return model if model is not None and self._may_send(workspace_id, model) else None
+
+    def _light_model(self, workspace_id: uuid.UUID) -> LightModel | None:
+        """The light model that writes passage context, or ``None`` (the feature is off): the
+        Workspace has none, or the data level / internal-only keeps documents from it."""
+        model = self._light.current(workspace_id)
+        if model is None:
+            return None
+        settings = self._ai.document_settings(workspace_id)
+        if settings.internal_only and not model.is_internal:
+            return None
+        if not (model.is_internal or settings.includes_documents):
+            return None
+        return model
+
+    def _headers(
+        self, workspace_id: uuid.UUID, name: str, text: str, chunks: Sequence[Chunk]
+    ) -> list[str]:
+        """The context sentence of each passage (empty where there is none). All empty when
+        the feature is off. A failing call costs only the headers (the file still indexes)."""
+        model = self._light_model(workspace_id) if chunks else None
+        if model is None:
+            return [""] * len(chunks)
+        headers: list[str] = []
+        failing = False
+        for piece in chunks:
+            header = ""
+            if not failing:
+                try:
+                    header = context_header(model.gateway, name, piece.section, text, piece.text)
+                except (LlmError, ApiError) as exc:
+                    logger.warning("passage context failed, indexing without it: %s", exc)
+                    failing = True  # likely the same for the rest: stop spending calls
+            headers.append(header)
+        return headers
 
     def _may_send(self, workspace_id: uuid.UUID, model: VisionModel) -> bool:
         settings = self._ai.document_settings(workspace_id)
@@ -525,8 +603,11 @@ class DocumentSearchService:
         with Session(self._engine) as db:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
+            name = record.path if record else ""
         stage("chunking")
         chunks = chunk(text) if text else []
+        headers = self._headers(workspace_id, name, text or "", chunks)
+        indexed = [f"{h}\n{c.text}" if h else c.text for h, c in zip(headers, chunks, strict=True)]
 
         vectors: list[list[float]] | None = None
         model = self._embedder(workspace_id) if chunks else None
@@ -537,7 +618,7 @@ class DocumentSearchService:
             try:
                 vectors = []
                 for start in range(0, len(chunks), EMBED_BATCH):
-                    batch = [c.text for c in chunks[start : start + EMBED_BATCH]]
+                    batch = indexed[start : start + EMBED_BATCH]
                     vectors.extend(model.gateway.embed(batch))
             except (LlmError, ApiError) as exc:
                 _unless_other_api_error(exc)
@@ -560,7 +641,8 @@ class DocumentSearchService:
                     ordinal=ordinal,
                     section=piece.section,
                     content=piece.text,
-                    search_text=normalise(piece.text),
+                    context_header=headers[ordinal] or None,
+                    search_text=normalise(indexed[ordinal]),
                 )
                 db.add(row)
                 if model is not None and vectors is not None and ordinal < len(vectors):
