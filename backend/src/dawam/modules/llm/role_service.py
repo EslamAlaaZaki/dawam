@@ -39,6 +39,7 @@ from .gateway import (
     estimate_prompt_tokens,
     estimate_tokens,
 )
+from .internal.local_tokens import local_counter
 from .service import ProviderService
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
@@ -258,6 +259,11 @@ class MeteredGateway:
         """Like ``Gateway.count_tokens``; an internal-only Workspace never reaches an
         external provider's count endpoint, so it gets the estimate."""
         return estimate_tokens(text) if self._refuse_external else self._gateway.count_tokens(text)
+
+    def local_token_counter(self) -> Callable[[str], int] | None:
+        """Counts this model's tokens on this machine (a local tokenizer), or ``None`` when
+        none is known. Never a network call, never metered."""
+        return local_counter(self._model_name)
 
     def chat(
         self,
