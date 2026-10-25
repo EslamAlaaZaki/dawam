@@ -68,7 +68,7 @@ flowchart LR
 ## 2. Document ingestion: OCR, layout and images
 
 ### Today
-Shipped in Epic 21 (#363, #424, #425, #364, #426): indexing runs as a background job with a per-file status; PDF, DOCX and XLSX are parsed by Docling into Markdown that keeps headings and tables; scanned PDF pages are read by OCR (a self-hosted Docling + RapidOCR engine, or the Workspace's vision model); uploaded images are described by the vision model; the agent has a `describe_image` tool. How it works now: `ai-architecture.md` §8.1. What did not ship: the Document AI settings page (§5), so the parser, OCR engine and thresholds are still environment settings and code constants, and the OCR engine bake-off (#450), which will confirm or change the engine choice.
+Shipped in Epic 21 (#363, #424, #425, #364, #426): indexing runs as a background job with a per-file status; PDF, DOCX and XLSX are parsed by Docling into Markdown that keeps headings and tables; scanned PDF pages are read by OCR (a self-hosted Docling + RapidOCR engine, or the Workspace's vision model); uploaded images are described by the vision model; the agent has a `describe_image` tool. How it works now: `ai-architecture.md` §8.1. What did not ship: the Document AI settings page (§5), so the parser, OCR engine and thresholds are still environment settings and code constants.
 
 ### 2.1 OCR
 
@@ -84,7 +84,7 @@ Shipped in Epic 21 (#363, #424, #425, #364, #426): indexing runs as a background
 
 **Recommendation:** add an `OcrEngine` port in `files/internal/` with two implementations to start: a self-hosted one (PaddleOCR or Docling) for internal-only installs, and a **vision-model** one that calls a new gateway role `vision` (so budgets and internal-only apply). Run OCR only when `pypdf` returns no or very little text per page.
 
-**Done** (#424, #425). The port is `OcrEngine` (`files/internal/ocr.py`). The self-hosted engine is Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or NVIDIA GPU), read once per language (English, Arabic) keeping the more confident reading per page; Tesseract and PaddleOCR were not built. The `vision` role is a gateway role like `embedding`, with its own Workspace Model, Test connection and adapter support. OCR runs only on pages with under 50 characters of their own text. Whether RapidOCR stays the self-hosted engine is for the bake-off (#450) to settle.
+**Done** (#424, #425). The port is `OcrEngine` (`files/internal/ocr.py`). The self-hosted engine is Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or NVIDIA GPU), read once per language (English, Arabic) keeping the more confident reading per page; Tesseract and PaddleOCR were not built. The `vision` role is a gateway role like `embedding`, with its own Workspace Model, Test connection and adapter support. OCR runs only on pages with under 50 characters of their own text. RapidOCR stays the self-hosted engine (maintainer decision; the bake-off, #450, was dropped).
 
 ### 2.2 Layout-aware parsing
 Replace per-page `extract_text()` with a parser that keeps **headings, reading order and tables** (Docling, Marker or Unstructured), output as Markdown. Our heading-based chunker then gets real sections, and tables stay intact as Markdown tables.
@@ -403,7 +403,7 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | # | Item | Section | Impact | Effort | Notes |
 |---|---|---|---|---|---|
 | 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR. **Done** (#363) |
-| 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises. **Done** (#424, #425); engine bake-off open (#450) |
+| 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises. **Done** (#424, #425); RapidOCR kept, bake-off dropped (#450) |
 | 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
 | 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain |
 | 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable |
