@@ -2,7 +2,7 @@
 document-search results).
 
 Revision ID: b5e9c3a7d216
-Revises: d3b9f4a6e251
+Revises: e5a1c8d7b362
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "b5e9c3a7d216"
-down_revision: str | Sequence[str] | None = "d3b9f4a6e251"
+down_revision: str | Sequence[str] | None = "e5a1c8d7b362"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
