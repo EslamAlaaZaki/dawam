@@ -87,6 +87,12 @@ LIGHT_FEATURES = (
         "Prepends a one-sentence context to each document passage before it is embedded and "
         "full-text indexed.",
     ),
+    (
+        "query_rewriting",
+        "Query rewriting",
+        "Searches documents with a few rewordings of the question, including its Arabic or "
+        "English translation, and fuses the results.",
+    ),
 )
 """The features that use the light role; each light-role ticket adds its own entry. They are
 all off while the Workspace has no light model."""
