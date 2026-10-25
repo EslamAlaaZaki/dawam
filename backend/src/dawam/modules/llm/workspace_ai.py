@@ -90,6 +90,8 @@ class WorkspaceAiSettings:
     updated_at: datetime | None
     chunking_strategy: str = DEFAULT_CHUNKING_STRATEGY
     """How documents are cut into passages (``CHUNKING_STRATEGIES``)."""
+    auto_retrieve: bool = False
+    """The first message of a conversation carries the top document passages."""
 
     @property
     def policy(self) -> DataSharingPolicy:
@@ -194,6 +196,7 @@ def load_settings(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
         models=models,
         updated_at=record.updated_at,
         chunking_strategy=record.chunking_strategy,
+        auto_retrieve=record.auto_retrieve,
     )
 
 
@@ -426,6 +429,7 @@ def new_workspace_settings(
         internal_only=_internal_agent_available(db),
         data_sharing_level=DataSharingLevel.METADATA.value,
         chunking_strategy=DEFAULT_CHUNKING_STRATEGY,
+        auto_retrieve=False,
         updated_at=at,
     )
 
@@ -553,6 +557,7 @@ class WorkspaceAiService:
         embedding_model_id: uuid.UUID | None = None,
         vision_model_id: uuid.UUID | None = None,
         chunking_strategy: str | None = None,
+        auto_retrieve: bool | None = None,
     ) -> WorkspaceAiView:
         """Owners only, while the Workspace is active. Replaces the settings and the
         Workspace Models (``validated_models``). Changing the embedding model of a Workspace
@@ -596,6 +601,8 @@ class WorkspaceAiService:
             record.data_sharing_level = data_sharing_level.value
             if chunking_strategy is not None:
                 record.chunking_strategy = chunking_strategy
+            if auto_retrieve is not None:
+                record.auto_retrieve = auto_retrieve
             record.updated_at = now
             _store_models(db, workspace_id, models)
             if reembed and self._on_embedding_changed is not None:
@@ -662,6 +669,7 @@ def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict
         "internal_only": record.internal_only,
         "data_sharing_level": record.data_sharing_level,
         "chunking_strategy": record.chunking_strategy,
+        "auto_retrieve": record.auto_retrieve,
         "agent_model_ids": ids(models.agent),
         "default_agent_model_id": one(models.default_agent),
         "light_model_ids": ids(models.light),
