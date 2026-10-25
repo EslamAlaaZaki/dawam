@@ -430,7 +430,7 @@ def test_search_documents_cites_the_document_and_section_at_the_documents_level(
     status, seen = use(roles, fake_llm, "search_documents", query="settlement runs")
 
     assert status == "ok"
-    [passage, *_] = payload(seen)
+    [passage, *_] = payload(seen)["passages"]
     assert passage["document"] == "design.md" and passage["section"]
     assert "Settlement runs nightly" in passage["text"]
     assert file_id in passage["link"] and passage["file_id"] == file_id
@@ -443,9 +443,20 @@ def test_search_documents_filters_by_metadata_through_the_gateway(roles, model, 
     _, kept = use(roles, fake_llm, "search_documents", query="settlement", document_type="md")
     _, dropped = use(roles, fake_llm, "search_documents", query="settlement", document_type="pdf")
 
-    [passage] = payload(kept)
+    [passage] = payload(kept)["passages"]
     assert passage["document_type"] == "md" and passage["language"] == "en"
-    assert payload(dropped) == []
+    assert payload(dropped)["passages"] == []
+
+
+def test_search_documents_reports_nothing_relevant_when_nothing_matches(
+    roles, model, fake_llm, source
+):
+    upload(roles, source, "design.md", "# Settlement\nSettlement runs nightly.")
+    level(roles, "documents")
+
+    _, seen = use(roles, fake_llm, "search_documents", query="zebra")
+
+    assert payload(seen)["passages"] == [] and "Nothing relevant" in payload(seen)["note"]
 
 
 def test_search_documents_is_refused_below_the_documents_level(roles, model, fake_llm, source):
