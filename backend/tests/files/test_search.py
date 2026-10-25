@@ -13,6 +13,7 @@ import pytest
 import sqlalchemy as sa
 
 from dawam.modules.files import DocumentAiSettings
+from dawam.modules.files.search import vector_ranking_sql
 from tests.files.test_files import system, upload
 from tests.roles import RoleClients
 
@@ -208,11 +209,8 @@ def test_the_first_use_of_an_embedding_model_creates_its_hnsw_index_and_queries_
 
     name = f"ix_document_chunks_hnsw_{uuid.UUID(model_id).hex}_4"
     probe = "[0.0,1.0,0.0,0.0]"
-    sql = (
-        "SELECT id FROM document_chunks "
-        f"WHERE embedding_model_id = '{model_id}' AND embedding_dimension = 4 "
-        f"ORDER BY (embedding::vector(4)) <=> CAST('{probe}' AS vector(4)) LIMIT 20"
-    )
+    sql = vector_ranking_sql(uuid.UUID(model_id), 4)  # the production query, real binds
+    binds = {"w": roles.workspace_id, "v": probe}
     with app.state.engine.connect() as conn:
         indexes = (
             conn.execute(
@@ -222,14 +220,15 @@ def test_the_first_use_of_an_embedding_model_creates_its_hnsw_index_and_queries_
             .all()
         )
         assert len(indexes) == 1 and "USING hnsw" in indexes[0]
-        indexed = conn.execute(sa.text(sql)).scalars().all()
+        indexed = conn.execute(sa.text(sql), binds).scalars().all()
         conn.execute(sa.text("SET enable_seqscan = off"))
-        plan = "\n".join(conn.execute(sa.text("EXPLAIN " + sql)).scalars())
+        plan = "\n".join(conn.execute(sa.text("EXPLAIN " + sql), binds).scalars())
         conn.execute(sa.text("RESET enable_seqscan"))
         # The exact scan: the same ranking without the cast, so the index cannot serve it.
         scanned = (
             conn.execute(
-                sa.text(sql.replace("(embedding::vector(4))", "(embedding::text)::vector"))
+                sa.text(sql.replace("(c.embedding::vector(4))", "(c.embedding::text)::vector")),
+                binds,
             )
             .scalars()
             .all()

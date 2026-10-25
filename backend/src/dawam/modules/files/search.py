@@ -736,21 +736,26 @@ class DocumentSearchService:
             _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
             return []
-        dimension = len(vector)
-        # The cast and the predicate are those of the model's HNSW index (see
-        # ``ensure_vector_index``); a literal model id lets the planner prove the predicate.
-        cast = f"vector({dimension})" if 0 < dimension <= HNSW_MAX_DIMENSION else "vector"
-        column = f"(c.embedding::{cast})" if cast != "vector" else "c.embedding"
         return list(
             db.scalars(
-                sa.text(
-                    "SELECT c.id FROM document_chunks c "
-                    "JOIN workspace_files f ON f.id = c.file_id "
-                    f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model.id}' "
-                    "AND c.embedding_dimension = :d" + scope + " "
-                    f"ORDER BY {column} <=> CAST(:v AS {cast}), c.id "
-                    f"LIMIT {CANDIDATES}"
-                ),
-                {**params, "d": dimension, "v": _vector_literal(vector)},
+                sa.text(vector_ranking_sql(model.id, len(vector), scope)),
+                {**params, "v": _vector_literal(vector)},
             )
         )
+
+
+def vector_ranking_sql(model_id: uuid.UUID, dimension: int, scope: str = "") -> str:
+    """The vector query. Its cast and predicate are those of the model's HNSW index (see
+    ``ensure_vector_index``); the model id and dimension are literals so the planner can prove
+    the index predicate even under a generic plan. The UUID type and the int are the injection
+    guard for those literals. Binds: ``:w`` (workspace), ``:v`` (query vector), plus the scope's."""
+    cast = f"vector({dimension})" if 0 < dimension <= HNSW_MAX_DIMENSION else "vector"
+    column = f"(c.embedding::{cast})" if cast != "vector" else "c.embedding"
+    return (
+        "SELECT c.id FROM document_chunks c "
+        "JOIN workspace_files f ON f.id = c.file_id "
+        f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model_id}' "
+        f"AND c.embedding_dimension = {int(dimension)}{scope} "
+        f"ORDER BY {column} <=> CAST(:v AS {cast}) "
+        f"LIMIT {CANDIDATES}"
+    )
