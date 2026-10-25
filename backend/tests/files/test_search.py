@@ -420,6 +420,55 @@ def test_whitespace_only_text_is_not_embedded(roles, policy, fake_llm, app):
     assert [c for c in fake_llm.calls if c.kind == "embed" and c.texts != ("ping",)] == []
 
 
+def test_search_matches_small_children_but_returns_their_parent_section_once(roles, policy, app):
+    sid = system(roles)
+    filler = "Postings are booked and reconciled every day. " * 20  # ~900 characters
+    text = f"# Ledger\n\nalpha {filler}\n\nmiddle {filler}\n\nomega {filler}"
+    upload_ok(roles, sid, "ledger.md", text)
+    assert len(chunk_rows(app, "id")) > 1  # several children were embedded and indexed
+
+    items = search(roles, "alpha omega").json()["items"]
+
+    assert len(items) == 1  # two children matched, their parent is returned once
+    assert items[0]["section"] == "Ledger"
+    assert "alpha" in items[0]["text"] and "omega" in items[0]["text"]
+    assert "middle" in items[0]["text"]
+    assert items[0]["document"] == "ledger.md"
+
+
+def test_limit_counts_distinct_parents_not_matching_children(roles, policy):
+    sid = system(roles)
+    filler = "Postings are booked and reconciled every day. " * 20  # one passage of its own
+    strong = "\n\n".join(f"ledger ledger ledger ledger {filler}" for _ in range(4))
+    # Six parents of four strong children are 24 children: more than the first candidate
+    # pool holds, and only five parents. The pool must grow to reach seven.
+    sections = [f"# Strong {n}\n\n{strong}" for n in range(6)]
+    sections += [f"# Weak {n}\n\nledger {filler}" for n in range(2)]
+    upload_ok(roles, sid, "big.md", "\n\n".join(sections))
+
+    items = search(roles, "ledger", limit=7).json()["items"]
+
+    assert len({i["section"] for i in items}) == len(items) == 7
+    assert all(i["document"] == "big.md" for i in items)
+
+
+def test_a_passage_indexed_before_parents_existed_is_still_returned(roles, policy, app):
+    sid = system(roles)
+    upload_ok(roles, sid, "old.md", "# Old\n\nlegacy ledger wording")
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text("UPDATE document_chunks SET parent_ordinal = NULL, parent_content = NULL")
+        )
+
+    [hit] = search(roles, "legacy").json()["items"]
+
+    assert (hit["document"], hit["section"], hit["text"]) == (
+        "old.md",
+        "Old",
+        "legacy ledger wording",
+    )
+
+
 def set_chunking_strategy(roles: RoleClients, strategy: str):
     owner = roles.client("owner")
     path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"

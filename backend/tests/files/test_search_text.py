@@ -187,3 +187,31 @@ def test_an_oversized_header_falls_back_to_prose_within_the_bound():
 
     assert chunks
     assert all(_words(c.text) <= 60 for c in chunks)
+
+
+def test_a_table_kept_whole_in_a_parent_is_cut_into_children_by_whole_rows():
+    from dawam.modules.files.internal.parents import chunk_with_parents
+
+    rows = [f"| row{n} | {'value ' * 30}|" for n in range(25)]
+    table = "\n".join(["| name | note |", "| --- | --- |", *rows])
+
+    children = chunk_with_parents(f"# Rates\n\n{table}")
+
+    assert len({c.parent for c in children}) == 1  # one parent holds the whole table
+    assert len(children) > 1
+    for child in children:
+        lines = child.chunk.text.splitlines()
+        assert lines[:2] == ["| name | note |", "| --- | --- |"]
+        assert all(line in rows for line in lines[2:])  # no row is cut
+
+
+def test_parents_never_span_pages_and_children_keep_the_page():
+    from dawam.modules.files.internal.chunking import PAGE_BREAK
+    from dawam.modules.files.internal.parents import chunk_with_parents
+
+    pages = PAGE_BREAK.join(f"# Report\n\nfirst words of page {n}\n\nmore text" for n in (1, 2))
+
+    children = chunk_with_parents(pages)
+
+    assert [(c.chunk.page, c.parent) for c in children] == [(1, 0), (2, 1)]
+    assert all(f"page {c.chunk.page}" in c.parent_text for c in children)

@@ -51,7 +51,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
 from .internal.arabic import language, normalise, words
-from .internal.chunking import Chunk, chunk
+from .internal.chunking import Chunk
 from .internal.content import (
     ALLOWED_TYPES,
     EXTRACTED_TEXT_MAX_CHARS,
@@ -62,6 +62,7 @@ from .internal.content import (
 )
 from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
+from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
 
@@ -72,6 +73,7 @@ INDEX_JOB = "index_document"
 INDEX_ERROR_MAX_LENGTH = 1000
 EMBED_BATCH = 32
 CANDIDATES = 20
+MAX_POOL_GROWTH = 8  # how far the pool may grow to find ``limit`` distinct parents
 """How many passages each ranking contributes before they are fused."""
 RRF_K = 60
 DEFAULT_LIMIT = 10
@@ -369,7 +371,9 @@ def _embed_all(gateway: Any, texts: list[str]) -> list[list[float]]:
 
 def _chunks(text: str, counter: Any, strategy: str, embed: Any) -> list[Any]:
     options: dict[str, Any] = {"strategy": strategy, "embed": embed}
-    return chunk(text, counter, **options) if counter else chunk(text, **options)
+    if counter:
+        return chunk_with_parents(text, counter, **options)
+    return chunk_with_parents(text, **options)
 
 
 def _vector_literal(vector: Sequence[float]) -> str:
@@ -696,8 +700,11 @@ class DocumentSearchService:
             chunks = _chunks(text or "", counter, "recursive", None)
         if not chunks:
             model = None
-        headers = self._headers(workspace_id, name, text or "", chunks)
-        indexed = [f"{h}\n{c.text}" if h else c.text for h, c in zip(headers, chunks, strict=True)]
+        headers = self._headers(workspace_id, name, text or "", [c.chunk for c in chunks])
+        indexed = [
+            f"{h}\n{c.chunk.text}" if h else c.chunk.text
+            for h, c in zip(headers, chunks, strict=True)
+        ]
 
         vectors: list[list[float]] | None = None
         if before_embedding is not None:
@@ -734,14 +741,16 @@ class DocumentSearchService:
                     file_id=file_id,
                     workspace_id=workspace_id,
                     ordinal=ordinal,
-                    section=piece.section,
-                    content=piece.text,
+                    section=piece.chunk.section,
+                    content=piece.chunk.text,
                     context_header=headers[ordinal] or None,
                     search_text=normalise(indexed[ordinal]),
+                    parent_ordinal=piece.parent,
+                    parent_content=piece.parent_text,
                     document_type=kind,
-                    language=language(piece.text),
-                    page=piece.page,
-                    sheet=piece.section if kind == "xlsx" else None,
+                    language=language(piece.chunk.text),
+                    page=piece.chunk.page,
+                    sheet=piece.chunk.section if kind == "xlsx" else None,
                     tags=folders,
                 )
                 db.add(row)
@@ -909,68 +918,76 @@ class DocumentSearchService:
             if hidden:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
-            ranked: list[list[uuid.UUID]] = [
-                list(
-                    db.scalars(
-                        sa.text(
-                            "SELECT c.id FROM document_chunks c "
-                            "JOIN workspace_files f ON f.id = c.file_id, "
-                            "to_tsquery('simple', :q) q "
-                            "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
-                            "ORDER BY ts_rank_cd(c.search_vector, q) DESC, c.id "
-                            f"LIMIT {CANDIDATES}"
-                        ),
-                        {**params, "q": " | ".join(f"'{term}'" for term in terms)},
-                    )
-                )
-            ]
-            vector_ranking = self._vector_ranking(db, workspace_id, user.id, query, scope, params)
-            if vector_ranking:
-                ranked.append(vector_ranking)
-
-            scores: dict[uuid.UUID, float] = {}
-            for ranking in ranked:
-                for position, chunk_id in enumerate(ranking):
-                    scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
-            best = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))[:limit]
-            rows = {
-                row.id: row
-                for row in db.execute(
-                    sa.select(
-                        DocumentChunkRecord.id,
-                        DocumentChunkRecord.section,
-                        DocumentChunkRecord.content,
-                        DocumentChunkRecord.document_type,
-                        DocumentChunkRecord.language,
-                        DocumentChunkRecord.page,
-                        DocumentChunkRecord.sheet,
-                        DocumentChunkRecord.tags,
-                        WorkspaceFileRecord.id.label("file_id"),
-                        WorkspaceFileRecord.path,
-                        WorkspaceFileRecord.owner_id,
-                    )
-                    .join(
-                        WorkspaceFileRecord, WorkspaceFileRecord.id == DocumentChunkRecord.file_id
-                    )
-                    .where(DocumentChunkRecord.id.in_(best))
-                )
-            }
-        return [
-            Passage(
-                file_id=rows[cid].file_id,
-                document=rows[cid].path,
-                section=rows[cid].section,
-                text=rows[cid].content,
-                score=scores[cid],
-                source_system_id=rows[cid].owner_id,
-                document_type=rows[cid].document_type,
-                language=rows[cid].language,
-                page=rows[cid].page,
-                sheet=rows[cid].sheet,
-                tags=tuple(rows[cid].tags),
+            embedded = self._embed_query(db, workspace_id, user.id, query)
+            fts = sa.text(
+                "SELECT c.id FROM document_chunks c "
+                "JOIN workspace_files f ON f.id = c.file_id, "
+                "to_tsquery('simple', :q) q "
+                "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
+                "ORDER BY ts_rank_cd(c.search_vector, q) DESC, c.id "
+                "LIMIT :pool"
             )
-            for cid in best
-        ]
+            # Several matching children share one parent, so the candidate pool grows
+            # until it holds ``limit`` distinct parents or the rankings run dry.
+            pool = CANDIDATES
+            while True:
+                ranked: list[list[uuid.UUID]] = [
+                    list(
+                        db.scalars(
+                            fts,
+                            {
+                                **params,
+                                "q": " | ".join(f"'{term}'" for term in terms),
+                                "pool": pool,
+                            },
+                        )
+                    )
+                ]
+                if embedded is not None:
+                    model, vector = embedded
+                    ranked.append(
+                        list(
+                            db.scalars(
+                                sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
+                                {**params, "v": _vector_literal(vector)},
+                            )
+                        )
+                    )
+                scores: dict[uuid.UUID, float] = {}
+                for ranking in ranked:
+                    for position, chunk_id in enumerate(ranking):
+                        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
+                ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
+                rows = {
+                    row.id: row
+                    for row in db.execute(
+                        sa.select(
+                            DocumentChunkRecord.id,
+                            DocumentChunkRecord.section,
+                            DocumentChunkRecord.content,
+                            DocumentChunkRecord.parent_ordinal,
+                            DocumentChunkRecord.parent_content,
+                            DocumentChunkRecord.document_type,
+                            DocumentChunkRecord.language,
+                            DocumentChunkRecord.page,
+                            DocumentChunkRecord.sheet,
+                            DocumentChunkRecord.tags,
+                            WorkspaceFileRecord.id.label("file_id"),
+                            WorkspaceFileRecord.path,
+                            WorkspaceFileRecord.owner_id,
+                        )
+                        .join(
+                            WorkspaceFileRecord,
+                            WorkspaceFileRecord.id == DocumentChunkRecord.file_id,
+                        )
+                        .where(DocumentChunkRecord.id.in_(ordered))
+                    )
+                }
+                passages = self._parents(ordered, rows, scores)
+                full = any(len(r) >= pool for r in ranked)
+                if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
+                    return passages[:limit]
+                pool *= 2
 
     @staticmethod
     def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:
@@ -995,35 +1012,54 @@ class DocumentSearchService:
             params["f_tag"] = filters.tag.casefold()
         return scope
 
-    def _vector_ranking(
-        self,
-        db: Session,
-        workspace_id: uuid.UUID,
-        user_id: uuid.UUID,
-        query: str,
-        scope: str,
-        params: dict[str, Any],
-    ) -> list[uuid.UUID]:
+    @staticmethod
+    def _parents(
+        ordered: list[uuid.UUID], rows: Mapping[uuid.UUID, Any], scores: Mapping[uuid.UUID, float]
+    ) -> list[Passage]:
+        """Children are matched; a parent is returned once, at its best child's rank."""
+        passages: list[Passage] = []
+        seen: set[tuple[uuid.UUID, int]] = set()
+        for cid in ordered:
+            row = rows[cid]
+            if row.parent_ordinal is not None:
+                if (row.file_id, row.parent_ordinal) in seen:
+                    continue
+                seen.add((row.file_id, row.parent_ordinal))
+            passages.append(
+                Passage(
+                    file_id=row.file_id,
+                    document=row.path,
+                    section=row.section,
+                    text=row.parent_content or row.content,
+                    score=scores[cid],
+                    source_system_id=row.owner_id,
+                    document_type=row.document_type,
+                    language=row.language,
+                    page=row.page,
+                    sheet=row.sheet,
+                    tags=tuple(row.tags),
+                )
+            )
+        return passages
+
+    def _embed_query(self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str):
         if db.get(EmbeddingRebuildRecord, workspace_id) is not None:
-            return []  # the vectors are being rebuilt for a new model: text only meanwhile
+            return None  # the vectors are being rebuilt for a new model: text only meanwhile
         model = self._embedder(workspace_id, user_id)
         if model is None:
-            return []
+            return None
         try:
             [vector] = model.gateway.embed([query])
         except (LlmError, ApiError) as exc:
             _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
-            return []
-        return list(
-            db.scalars(
-                sa.text(vector_ranking_sql(model.id, len(vector), scope)),
-                {**params, "v": _vector_literal(vector)},
-            )
-        )
+            return None
+        return model, vector
 
 
-def vector_ranking_sql(model_id: uuid.UUID, dimension: int, scope: str = "") -> str:
+def vector_ranking_sql(
+    model_id: uuid.UUID, dimension: int, scope: str = "", pool: int = CANDIDATES
+) -> str:
     """The vector query. Its cast and predicate are those of the model's HNSW index (see
     ``ensure_vector_index``); the model id and dimension are literals so the planner can prove
     the index predicate even under a generic plan. The UUID type and the int are the injection
@@ -1036,5 +1072,5 @@ def vector_ranking_sql(model_id: uuid.UUID, dimension: int, scope: str = "") -> 
         f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model_id}' "
         f"AND c.embedding_dimension = {int(dimension)}{scope} "
         f"ORDER BY {column} <=> CAST(:v AS {cast}) "
-        f"LIMIT {CANDIDATES}"
+        f"LIMIT {int(pool)}"
     )
