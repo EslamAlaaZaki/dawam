@@ -107,7 +107,7 @@ class EmbeddingModels(Protocol):
 
 
 class RegisteredEmbeddingModels:
-    """The Workspace's own embedding model, one of its Workspace Models (ADR 0005). A
+    """The Workspace's own embedding model, one of its Workspace Models (ADR 0006). A
     Workspace without one has no embedding model: search then matches text only."""
 
     def __init__(
