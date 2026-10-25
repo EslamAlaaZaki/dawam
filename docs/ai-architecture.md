@@ -703,7 +703,8 @@ flowchart TD
     QE --> VR["Vector ranking<br/>cosine distance, same model and dimension<br/>top 20"]
     FT & VR & SKIP --> SC["Scope: Workspace, optional Source System,<br/>metadata filters, hide soft-deleted systems"]
     SC --> RRF["Reciprocal Rank Fusion<br/>score = sum of 1 / (60 + rank)"]
-    RRF --> PAR["Small to big: child passages replaced<br/>by their parent section, once each"]\n    PAR --> TOP["Top 10 passages"]
+    RRF --> PAR["Small to big: child passages replaced<br/>by their parent section, once each"]
+    PAR --> TOP["Top 10 passages"]
     TOP --> OUT["Passages with document + section<br/>quoted as data for the model"]
     OUT --> ANS["Model answers and cites<br/>document and section links"]
 ```
