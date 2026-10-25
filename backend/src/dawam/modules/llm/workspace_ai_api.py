@@ -109,6 +109,10 @@ class WorkspaceAiSettings(BaseModel):
         "embedding similarity of neighbouring sentences drops). Applies to documents indexed "
         "from now on; re-index to apply it to the others."
     )
+    auto_retrieve: bool = Field(
+        description="On: the first message of an assistant conversation carries the top 3 "
+        "document passages for it, quoted as data (needs the `documents` level)."
+    )
     agent_models: list[WorkspaceModel] = Field(
         description="The Workspace's agent models; the default answers unless a message "
         "names another."
@@ -151,6 +155,9 @@ class WorkspaceAiSettingsRequest(BaseModel):
     data_sharing_level: DataSharingLevel
     chunking_strategy: ChunkingStrategy | None = Field(
         default=None, description="Left out: keeps the current strategy."
+    )
+    auto_retrieve: bool | None = Field(
+        default=None, description="Left out: keeps the current value."
     )
     agent_model_ids: list[uuid.UUID] = Field(
         default_factory=list,
@@ -207,6 +214,7 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
         chunking_strategy=settings.chunking_strategy,
+        auto_retrieve=settings.auto_retrieve,
         agent_models=[_chosen(m) for m in view.chosen["agent"]],
         light_models=[_chosen(m) for m in view.chosen["light"]],
         light_features=[
@@ -258,6 +266,7 @@ def set_ai_settings(
             internal_only=body.internal_only,
             data_sharing_level=body.data_sharing_level,
             chunking_strategy=body.chunking_strategy,
+            auto_retrieve=body.auto_retrieve,
             agent_model_ids=body.agent_model_ids if agents else list(current.agent),
             default_agent_model_id=(
                 body.default_agent_model_id
