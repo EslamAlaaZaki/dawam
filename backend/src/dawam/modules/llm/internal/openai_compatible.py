@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import re
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -106,6 +107,32 @@ class OpenAICompatibleAdapter:
         if len(vectors) != len(texts):
             raise LlmError(INVALID_RESPONSE, "The provider returned a different number of vectors.")
         return vectors
+
+    def rerank(self, model: str, query: str, documents: Sequence[str]) -> list[float]:
+        """``POST /rerank`` (Cohere, Jina, vLLM and TEI-style servers): the relevance score of
+        each document, in the order they were sent."""
+        response = self._post(
+            "/rerank", {"model": model, "query": query, "documents": list(documents)}
+        )
+        try:
+            data = json_body(response)
+        except OSError:
+            raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+        finally:
+            response.close()
+        scores: dict[int, float] = {}
+        try:
+            for row in data["results"]:
+                score = row["relevance_score"] if "relevance_score" in row else row["score"]
+                value = float(score)
+                if not math.isfinite(value):
+                    raise ValueError("score is not finite")
+                scores[int(row["index"])] = value
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise LlmError(INVALID_RESPONSE, "The provider's rerank reply was malformed.") from None
+        if set(scores) != set(range(len(documents))):
+            raise LlmError(INVALID_RESPONSE, "The provider scored a different set of documents.")
+        return [scores[i] for i in range(len(documents))]
 
     def count_tokens(self, model: str, text: str) -> int | None:
         """Counted on this machine (a vendored tiktoken encoding, or a Hugging Face tokenizer
