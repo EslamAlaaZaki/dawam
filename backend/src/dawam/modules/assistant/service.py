@@ -989,9 +989,15 @@ def _with_passages(messages: list[Message], tools: Any) -> list[Message]:
         "search_documents",
         {"query": (first.content or "")[:500], "limit": AUTO_RETRIEVE_PASSAGES},
     )
-    if outcome.status != "ok" or outcome.content.strip() in ("", "[]"):
+    if outcome.status != "ok":
         return messages
-    passages = quote_data("auto-retrieved:documents", outcome.content)
+    try:
+        found = json.loads(outcome.content).get("passages")
+    except (ValueError, AttributeError):
+        return messages
+    if not found:
+        return messages
+    passages = quote_data("auto-retrieved:documents", json.dumps(found, ensure_ascii=False))
     note = "Passages found automatically for this message:\n" + passages
     return [replace(first, content=f"{first.content}\n\n{note}")]
 
