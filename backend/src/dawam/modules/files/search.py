@@ -64,6 +64,7 @@ from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
+from .internal.query_rewrite import query_variants
 from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
@@ -945,7 +946,9 @@ class DocumentSearchService:
             if hidden:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
-            embedded = self._embed_query(db, workspace_id, user.id, query)
+            queries = [query, *self._variants(workspace_id, query)]
+            term_sets = [t for t in (words(q) for q in queries) if t]
+            embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
                 "SELECT c.id, ts_rank_cd(c.search_vector, q) AS signal FROM document_chunks c "
                 "JOIN workspace_files f ON f.id = c.file_id, "
@@ -959,35 +962,47 @@ class DocumentSearchService:
             grow = 1
             while True:
                 fts_pool = tune.fts_candidates * grow
-                ranked: list[list[tuple[uuid.UUID, float]]] = [
-                    _signals(
-                        db.execute(
-                            fts,
-                            {
-                                **params,
-                                "q": " | ".join(f"'{term}'" for term in terms),
-                                "pool": fts_pool,
-                            },
-                        )
-                    )
-                ]
                 vector_pool = tune.vector_candidates * grow
-                weights = [tune.fts_weight]
-                floors = [tune.min_text_rank]
-                if embedded is not None:
-                    model, vector = embedded
-                    weights.append(tune.vector_weight)
-                    floors.append(tune.min_vector_similarity)
+                # One ranking per query variant (full-text) and per vector, each with the
+                # weight, floor and pool size of its kind.
+                ranked: list[list[tuple[uuid.UUID, float]]] = []
+                weights: list[float] = []
+                floors: list[float] = []
+                pools: list[int] = []
+                for term_set in term_sets:
                     ranked.append(
                         _signals(
                             db.execute(
-                                sa.text(
-                                    vector_ranking_sql(model.id, len(vector), scope, vector_pool)
-                                ),
-                                {**params, "v": _vector_literal(vector)},
+                                fts,
+                                {
+                                    **params,
+                                    "q": " | ".join(f"'{term}'" for term in term_set),
+                                    "pool": fts_pool,
+                                },
                             )
                         )
                     )
+                    weights.append(tune.fts_weight)
+                    floors.append(tune.min_text_rank)
+                    pools.append(fts_pool)
+                if embedded is not None:
+                    model, vectors = embedded
+                    for vector in vectors:
+                        ranked.append(
+                            _signals(
+                                db.execute(
+                                    sa.text(
+                                        vector_ranking_sql(
+                                            model.id, len(vector), scope, vector_pool
+                                        )
+                                    ),
+                                    {**params, "v": _vector_literal(vector)},
+                                )
+                            )
+                        )
+                        weights.append(tune.vector_weight)
+                        floors.append(tune.min_vector_similarity)
+                        pools.append(vector_pool)
                 scores: dict[uuid.UUID, float] = {}
                 relevant: set[uuid.UUID] = set()
                 for ranking, weight, floor in zip(ranked, weights, floors, strict=True):
@@ -1026,10 +1041,9 @@ class DocumentSearchService:
                 passages = self._parents(ordered, rows, scores)
                 # A ranking that ran into the floor has nothing more to give: growing the pool
                 # would only add passages below it.
-                pools = [fts_pool, vector_pool]
                 full = any(
                     len(r) >= size and r[-1][1] >= floor
-                    for r, size, floor in zip(ranked, pools, floors, strict=False)
+                    for r, size, floor in zip(ranked, pools, floors, strict=True)
                 )
                 if len(passages) >= limit or not full or grow >= MAX_POOL_GROWTH:
                     return self._diversify(passages, limit, tune)
@@ -1116,19 +1130,35 @@ class DocumentSearchService:
             )
         return passages
 
-    def _embed_query(self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str):
+    def _variants(self, workspace_id: uuid.UUID, query: str) -> list[str]:
+        """Other phrasings of ``query`` from the light model; none when the feature is off
+        (no light model, or the data level / internal-only keeps the query from it) or the
+        call fails: the query is then searched as typed."""
+        model = self._light_model(workspace_id)
+        if model is None:
+            return []
+        try:
+            return query_variants(model.gateway, query)
+        except (LlmError, ApiError) as exc:
+            _unless_other_api_error(exc)
+            logger.warning("query rewriting failed, searching as typed: %s", exc)
+            return []
+
+    def _embed_queries(
+        self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, queries: list[str]
+    ):
         if db.get(EmbeddingRebuildRecord, workspace_id) is not None:
             return None  # the vectors are being rebuilt for a new model: text only meanwhile
         model = self._embedder(workspace_id, user_id)
         if model is None:
             return None
         try:
-            [vector] = model.gateway.embed([query])
+            vectors = model.gateway.embed(queries)
         except (LlmError, ApiError) as exc:
             _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
             return None
-        return model, vector
+        return model, vectors
 
 
 def _signals(rows: Any) -> list[tuple[uuid.UUID, float]]:
