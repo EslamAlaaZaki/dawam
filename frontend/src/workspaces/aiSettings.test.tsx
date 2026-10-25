@@ -77,7 +77,7 @@ function settings(
       },
     ],
     embedding_model: chosen(EMBED, "Embed-1", true),
-    embedding_locked: false,
+    embedding_rebuilding: false,
     vision_model: null,
     choices: {
       agent: [
@@ -309,11 +309,11 @@ describe("the Workspace AI settings card", () => {
     expect(card).toHaveTextContent("only internal models are offered");
   });
 
-  it("keeps the embedding model fixed once documents are indexed", async () => {
+  it("says while the documents are embedded again with a new model", async () => {
     renderApp(
       backend("owner", (r) =>
         r.method === "GET" && r.path === AI
-          ? json(settings({ embedding_locked: true }))
+          ? json(settings({ embedding_rebuilding: true }))
           : undefined,
       ),
       PATH,
@@ -322,9 +322,9 @@ describe("the Workspace AI settings card", () => {
     await openSettings("AI");
     const card = await screen.findByRole("form", { name: "AI settings" });
     const picker = within(card).getByLabelText("Embedding model");
-    expect(picker).toBeDisabled();
+    expect(picker).toBeEnabled();
     expect(picker).toHaveValue(EMBED);
-    expect(card).toHaveTextContent("this Workspace has indexed documents");
+    expect(card).toHaveTextContent("being embedded again with this model");
   });
 
   it("shows why a choice was refused", async () => {
