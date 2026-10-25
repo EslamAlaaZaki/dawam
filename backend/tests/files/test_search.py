@@ -433,3 +433,34 @@ def test_search_matches_small_children_but_returns_their_parent_section_once(rol
     assert items[0]["section"] == "Ledger"
     assert "alpha" in items[0]["text"] and "omega" in items[0]["text"]
     assert "middle" in items[0]["text"]
+    assert items[0]["document"] == "ledger.md"
+
+
+def test_limit_counts_distinct_parents_not_matching_children(roles, policy):
+    sid = system(roles)
+    filler = "Postings are booked and reconciled every day. " * 20
+    for n in range(3):  # each file: one parent section of several children, all matching
+        body = "\n\n".join(f"ledger {filler}" for _ in range(4))
+        upload_ok(roles, sid, f"doc{n}.md", f"# Section {n}\n\n{body}")
+
+    items = search(roles, "ledger", limit=3).json()["items"]
+
+    assert sorted(i["section"] for i in items) == ["Section 0", "Section 1", "Section 2"]
+    assert len({i["document"] for i in items}) == 3
+
+
+def test_a_passage_indexed_before_parents_existed_is_still_returned(roles, policy, app):
+    sid = system(roles)
+    upload_ok(roles, sid, "old.md", "# Old\n\nlegacy ledger wording")
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text("UPDATE document_chunks SET parent_ordinal = NULL, parent_content = NULL")
+        )
+
+    [hit] = search(roles, "legacy").json()["items"]
+
+    assert (hit["document"], hit["section"], hit["text"]) == (
+        "old.md",
+        "Old",
+        "legacy ledger wording",
+    )

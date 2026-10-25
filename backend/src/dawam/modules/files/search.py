@@ -58,6 +58,7 @@ INDEX_JOB = "index_document"
 INDEX_ERROR_MAX_LENGTH = 1000
 EMBED_BATCH = 32
 CANDIDATES = 20
+MAX_POOL_GROWTH = 8  # how far the pool may grow to find ``limit`` distinct parents
 """How many passages each ranking contributes before they are fused."""
 RRF_K = 60
 DEFAULT_LIMIT = 10
@@ -674,50 +675,77 @@ class DocumentSearchService:
             if hidden:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
-            ranked: list[list[uuid.UUID]] = [
-                list(
-                    db.scalars(
-                        sa.text(
-                            "SELECT c.id FROM document_chunks c "
-                            "JOIN workspace_files f ON f.id = c.file_id, "
-                            "to_tsquery('simple', :q) q "
-                            "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
-                            "ORDER BY ts_rank_cd(c.search_vector, q) DESC, c.id "
-                            f"LIMIT {CANDIDATES}"
-                        ),
-                        {**params, "q": " | ".join(f"'{term}'" for term in terms)},
+            embedded = self._embed_query(workspace_id, user.id, query)
+            fts = sa.text(
+                "SELECT c.id FROM document_chunks c "
+                "JOIN workspace_files f ON f.id = c.file_id, "
+                "to_tsquery('simple', :q) q "
+                "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
+                "ORDER BY ts_rank_cd(c.search_vector, q) DESC, c.id "
+                "LIMIT :pool"
+            )
+            # Several matching children share one parent, so the candidate pool grows
+            # until it holds ``limit`` distinct parents or the rankings run dry.
+            pool = CANDIDATES
+            while True:
+                ranked: list[list[uuid.UUID]] = [
+                    list(
+                        db.scalars(
+                            fts,
+                            {
+                                **params,
+                                "q": " | ".join(f"'{term}'" for term in terms),
+                                "pool": pool,
+                            },
+                        )
                     )
-                )
-            ]
-            vector_ranking = self._vector_ranking(db, workspace_id, user.id, query, scope, params)
-            if vector_ranking:
-                ranked.append(vector_ranking)
+                ]
+                if embedded is not None:
+                    model, vector = embedded
+                    ranked.append(
+                        list(
+                            db.scalars(
+                                sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
+                                {**params, "v": _vector_literal(vector)},
+                            )
+                        )
+                    )
+                scores: dict[uuid.UUID, float] = {}
+                for ranking in ranked:
+                    for position, chunk_id in enumerate(ranking):
+                        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
+                ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
+                rows = {
+                    row.id: row
+                    for row in db.execute(
+                        sa.select(
+                            DocumentChunkRecord.id,
+                            DocumentChunkRecord.section,
+                            DocumentChunkRecord.content,
+                            DocumentChunkRecord.parent_ordinal,
+                            DocumentChunkRecord.parent_content,
+                            WorkspaceFileRecord.id.label("file_id"),
+                            WorkspaceFileRecord.path,
+                            WorkspaceFileRecord.owner_id,
+                        )
+                        .join(
+                            WorkspaceFileRecord,
+                            WorkspaceFileRecord.id == DocumentChunkRecord.file_id,
+                        )
+                        .where(DocumentChunkRecord.id.in_(ordered))
+                    )
+                }
+                passages = self._parents(ordered, rows, scores)
+                full = any(len(r) >= pool for r in ranked)
+                if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
+                    return passages[:limit]
+                pool *= 2
 
-            scores: dict[uuid.UUID, float] = {}
-            for ranking in ranked:
-                for position, chunk_id in enumerate(ranking):
-                    scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
-            ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
-            rows = {
-                row.id: row
-                for row in db.execute(
-                    sa.select(
-                        DocumentChunkRecord.id,
-                        DocumentChunkRecord.section,
-                        DocumentChunkRecord.content,
-                        DocumentChunkRecord.parent_ordinal,
-                        DocumentChunkRecord.parent_content,
-                        WorkspaceFileRecord.id.label("file_id"),
-                        WorkspaceFileRecord.path,
-                        WorkspaceFileRecord.owner_id,
-                    )
-                    .join(
-                        WorkspaceFileRecord, WorkspaceFileRecord.id == DocumentChunkRecord.file_id
-                    )
-                    .where(DocumentChunkRecord.id.in_(ordered))
-                )
-            }
-        # Children are matched; their parent section is returned, once, at its best child's rank.
+    @staticmethod
+    def _parents(
+        ordered: list[uuid.UUID], rows: Mapping[uuid.UUID, Any], scores: Mapping[uuid.UUID, float]
+    ) -> list[Passage]:
+        """Children are matched; a parent is returned once, at its best child's rank."""
         passages: list[Passage] = []
         seen: set[tuple[uuid.UUID, int]] = set()
         for cid in ordered:
@@ -736,35 +764,24 @@ class DocumentSearchService:
                     source_system_id=row.owner_id,
                 )
             )
-        return passages[:limit]
+        return passages
 
-    def _vector_ranking(
-        self,
-        db: Session,
-        workspace_id: uuid.UUID,
-        user_id: uuid.UUID,
-        query: str,
-        scope: str,
-        params: dict[str, Any],
-    ) -> list[uuid.UUID]:
+    def _embed_query(self, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str):
         model = self._embedder(workspace_id, user_id)
         if model is None:
-            return []
+            return None
         try:
             [vector] = model.gateway.embed([query])
         except (LlmError, ApiError) as exc:
             _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
-            return []
-        return list(
-            db.scalars(
-                sa.text(vector_ranking_sql(model.id, len(vector), scope)),
-                {**params, "v": _vector_literal(vector)},
-            )
-        )
+            return None
+        return model, vector
 
 
-def vector_ranking_sql(model_id: uuid.UUID, dimension: int, scope: str = "") -> str:
+def vector_ranking_sql(
+    model_id: uuid.UUID, dimension: int, scope: str = "", pool: int = CANDIDATES
+) -> str:
     """The vector query. Its cast and predicate are those of the model's HNSW index (see
     ``ensure_vector_index``); the model id and dimension are literals so the planner can prove
     the index predicate even under a generic plan. The UUID type and the int are the injection
@@ -777,5 +794,5 @@ def vector_ranking_sql(model_id: uuid.UUID, dimension: int, scope: str = "") -> 
         f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model_id}' "
         f"AND c.embedding_dimension = {int(dimension)}{scope} "
         f"ORDER BY {column} <=> CAST(:v AS {cast}) "
-        f"LIMIT {CANDIDATES}"
+        f"LIMIT {int(pool)}"
     )
