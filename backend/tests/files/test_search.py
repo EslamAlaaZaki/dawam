@@ -418,3 +418,18 @@ def test_whitespace_only_text_is_not_embedded(roles, policy, fake_llm, app):
     upload_ok(roles, sid, "blank.md", "  \n\n  ")
 
     assert [c for c in fake_llm.calls if c.kind == "embed" and c.texts != ("ping",)] == []
+
+
+def test_search_matches_small_children_but_returns_their_parent_section_once(roles, policy, app):
+    sid = system(roles)
+    filler = "Postings are booked and reconciled every day. " * 20  # ~900 characters
+    text = f"# Ledger\n\nalpha {filler}\n\nmiddle {filler}\n\nomega {filler}"
+    upload_ok(roles, sid, "ledger.md", text)
+    assert len(chunk_rows(app, "id")) > 1  # several children were embedded and indexed
+
+    items = search(roles, "alpha omega").json()["items"]
+
+    assert len(items) == 1  # two children matched, their parent is returned once
+    assert items[0]["section"] == "Ledger"
+    assert "alpha" in items[0]["text"] and "omega" in items[0]["text"]
+    assert "middle" in items[0]["text"]

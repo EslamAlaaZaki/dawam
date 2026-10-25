@@ -45,9 +45,9 @@ from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
 from .internal.arabic import normalise, words
-from .internal.chunking import chunk
 from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
+from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
 
@@ -554,7 +554,9 @@ class DocumentSearchService:
         # Passage size is measured in the embedding model's own tokens, counted locally
         # (never a provider call); without a local tokenizer the estimate is used.
         counter = model.gateway.local_token_counter() if model else None
-        chunks = chunk(text or "", counter) if counter else chunk(text or "")
+        chunks = (
+            chunk_with_parents(text or "", counter) if counter else chunk_with_parents(text or "")
+        )
         if not chunks:
             model = None
 
@@ -566,7 +568,7 @@ class DocumentSearchService:
             try:
                 vectors = []
                 for start in range(0, len(chunks), EMBED_BATCH):
-                    batch = [c.text for c in chunks[start : start + EMBED_BATCH]]
+                    batch = [c.chunk.text for c in chunks[start : start + EMBED_BATCH]]
                     vectors.extend(model.gateway.embed(batch))
             except (LlmError, ApiError) as exc:
                 _unless_other_api_error(exc)
@@ -593,9 +595,11 @@ class DocumentSearchService:
                     file_id=file_id,
                     workspace_id=workspace_id,
                     ordinal=ordinal,
-                    section=piece.section,
-                    content=piece.text,
-                    search_text=normalise(piece.text),
+                    section=piece.chunk.section,
+                    content=piece.chunk.text,
+                    search_text=normalise(piece.chunk.text),
+                    parent_ordinal=piece.parent,
+                    parent_content=piece.parent_text,
                 )
                 db.add(row)
                 if model is not None and vectors is not None and ordinal < len(vectors):
@@ -693,7 +697,7 @@ class DocumentSearchService:
             for ranking in ranked:
                 for position, chunk_id in enumerate(ranking):
                     scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
-            best = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))[:limit]
+            ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
             rows = {
                 row.id: row
                 for row in db.execute(
@@ -701,6 +705,8 @@ class DocumentSearchService:
                         DocumentChunkRecord.id,
                         DocumentChunkRecord.section,
                         DocumentChunkRecord.content,
+                        DocumentChunkRecord.parent_ordinal,
+                        DocumentChunkRecord.parent_content,
                         WorkspaceFileRecord.id.label("file_id"),
                         WorkspaceFileRecord.path,
                         WorkspaceFileRecord.owner_id,
@@ -708,20 +714,29 @@ class DocumentSearchService:
                     .join(
                         WorkspaceFileRecord, WorkspaceFileRecord.id == DocumentChunkRecord.file_id
                     )
-                    .where(DocumentChunkRecord.id.in_(best))
+                    .where(DocumentChunkRecord.id.in_(ordered))
                 )
             }
-        return [
-            Passage(
-                file_id=rows[cid].file_id,
-                document=rows[cid].path,
-                section=rows[cid].section,
-                text=rows[cid].content,
-                score=scores[cid],
-                source_system_id=rows[cid].owner_id,
+        # Children are matched; their parent section is returned, once, at its best child's rank.
+        passages: list[Passage] = []
+        seen: set[tuple[uuid.UUID, int]] = set()
+        for cid in ordered:
+            row = rows[cid]
+            if row.parent_ordinal is not None:
+                if (row.file_id, row.parent_ordinal) in seen:
+                    continue
+                seen.add((row.file_id, row.parent_ordinal))
+            passages.append(
+                Passage(
+                    file_id=row.file_id,
+                    document=row.path,
+                    section=row.section,
+                    text=row.parent_content or row.content,
+                    score=scores[cid],
+                    source_system_id=row.owner_id,
+                )
             )
-            for cid in best
-        ]
+        return passages[:limit]
 
     def _vector_ranking(
         self,

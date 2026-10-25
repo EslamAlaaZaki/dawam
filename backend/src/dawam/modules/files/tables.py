@@ -164,3 +164,8 @@ class DocumentChunkRecord(Base):
     """The model that made ``embedding`` (no foreign key: a model may be deleted, which
     only makes the chunk stale)."""
     embedding_dimension: Mapped[int | None]
+    parent_ordinal: Mapped[int | None]
+    """Small-to-big retrieval: the position, within the file, of the larger parent section
+    this passage was cut from. Passages sharing it are returned as their parent, once."""
+    parent_content: Mapped[str | None] = mapped_column(sa.Text())
+    """The parent section's text; ``None`` for a passage indexed before parents existed."""
