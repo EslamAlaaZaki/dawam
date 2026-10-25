@@ -231,6 +231,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     # A new Workspace gets its AI settings (llm) as it is created: workspaces cannot import llm.
     app.state.on_workspace_created = on_workspace_created
+    # A new embedding model (llm) has the documents embedded again (files): llm cannot import files.
+    app.state.on_embedding_model_changed = app.state.document_search.start_reembed
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)
