@@ -166,6 +166,7 @@ def _service_handlers(
         ocr=ocr,
     )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
+    runner.on_abandoned(REINDEX_JOB, documents.abandon_reindex)
     assistant = build_assistant_service(
         engine,
         settings,
