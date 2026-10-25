@@ -102,3 +102,28 @@ def test_a_large_table_splits_by_rows_and_repeats_the_header():
 
 def test_pipes_without_a_rule_row_stay_prose():
     assert len(chunk("| a | b |\n| c | d |")) == 1
+
+
+def test_a_wide_row_is_cut_so_every_part_stays_within_the_bound():
+    wide = "| 1 | " + "word " * 100 + "|"
+    table = "\n".join(["| id | name |", "| --- | --- |", wide, "| 2 | b |"])
+
+    chunks = chunk(table, _words, target=40, maximum=60)
+
+    assert len(chunks) > 2
+    assert all(_words(c.text) <= 60 for c in chunks)
+    assert all(c.text.startswith("| id | name |\n| --- | --- |\n") for c in chunks)
+
+
+def test_a_table_without_rows_emits_no_header_only_passage():
+    assert chunk("| id | name |\n| --- | --- |") == []
+
+
+def test_an_oversized_header_falls_back_to_prose_within_the_bound():
+    header = "| " + " | ".join(f"col{i}" for i in range(80)) + " |"
+    table = "\n".join([header, "| --- | --- |", "| 1 | 2 |"])
+
+    chunks = chunk(table, _words, target=40, maximum=60)
+
+    assert chunks
+    assert all(_words(c.text) <= 60 for c in chunks)

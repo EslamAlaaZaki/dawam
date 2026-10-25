@@ -93,21 +93,24 @@ def _blocks(lines: list[str]) -> list[tuple[bool, list[str]]]:
     return blocks
 
 
-def _table_parts(rows: list[str], maximum: int, count: TokenCounter) -> list[str]:
-    """A table as one text, or split by rows into texts that each start with the header."""
+def _table_parts(rows: list[str], maximum: int, count: TokenCounter) -> list[str] | None:
+    """A table as one text, or split by rows into texts that each start with the header and
+    stay within ``maximum``. Empty for a table without rows; ``None`` when the header alone
+    is too big to repeat, so the caller treats the table as prose."""
+    header, body = rows[:2], rows[2:]
+    if not body:
+        return []
     whole = "\n".join(rows)
     if count(whole) <= maximum:
         return [whole]
-    header, body = rows[:2], rows[2:]
+    room = maximum - count("\n".join(header))
+    if room <= 0:
+        return None
     parts: list[list[str]] = []
-    used = 0
-    for row in body:
-        size = count(row)
-        if not parts or used + size > maximum:
+    for row in (piece for r in body for piece in _split_long(r, room, count)):
+        if not parts or count("\n".join([*header, *parts[-1], row])) > maximum:
             parts.append([])
-            used = count("\n".join(header))
         parts[-1].append(row)
-        used += size
     return ["\n".join([*header, *part]) for part in parts]
 
 
@@ -137,10 +140,11 @@ def chunk(
         current_tokens = 0
         fresh = True  # ``current`` holds at most the overlap of the previous passage
         for is_table, block in _blocks(lines):
-            if is_table:
+            parts = _table_parts(block, maximum, count) if is_table else None
+            if parts is not None:
                 if not fresh:
                     chunks.append(Chunk(name, current))
-                chunks.extend(Chunk(name, part) for part in _table_parts(block, maximum, count))
+                chunks.extend(Chunk(name, part) for part in parts)
                 current, current_tokens, fresh = "", 0, True
                 continue
             paragraphs = [p.strip() for p in re.split(r"\n\s*\n", "\n".join(block)) if p.strip()]
