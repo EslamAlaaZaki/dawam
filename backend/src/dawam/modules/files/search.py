@@ -15,6 +15,10 @@ rule covers scanned pages: their images go to the Workspace's vision model only 
 policy would let the document's text reach that provider (an internal one always may);
 otherwise, or when the vision model fails, the self-hosted OCR engine reads them and the
 file's ``index_note`` says so.
+
+When a Workspace's embedding model changes, its documents are embedded again (ADR 0006,
+``start_reembed``): search matches text only until the ``reindex_documents`` job switches
+to the new vectors, in one transaction, so results never mix two models.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
@@ -49,7 +54,7 @@ from .internal.chunking import chunk
 from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parsing import DocumentParser
-from .tables import DocumentChunkRecord, WorkspaceFileRecord
+from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +107,7 @@ class EmbeddingModels(Protocol):
 
 
 class RegisteredEmbeddingModels:
-    """The Workspace's own embedding model, one of its Workspace Models (ADR 0005). A
+    """The Workspace's own embedding model, one of its Workspace Models (ADR 0006). A
     Workspace without one has no embedding model: search then matches text only."""
 
     def __init__(
@@ -303,6 +308,7 @@ class DocumentSearchService:
         self._ocr = ocr
         self._vision = vision or NoVisionModels()
         self._engine = engine
+        self._clock = clock
         self._storage = storage
         self._workspaces = workspaces
         self._ai = ai
@@ -617,19 +623,63 @@ class DocumentSearchService:
     def start_reindex(self, user: User, workspace_id: uuid.UUID) -> Job:
         """Queue a ``reindex_documents`` job: every document of the Workspace is indexed
         again with the current embedding model and policy (owners and editors). Run it
-        after the embedding model or its dimension changes."""
+        after the embedding model or its dimension changes. A re-embed left unfinished
+        (its job lost) is taken over: this job switches to the new vectors instead."""
         self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
-        return self._jobs.submit(
+        with Session(self._engine) as db, db.begin():
+            params = {"workspace_id": str(workspace_id)}
+            if db.get(EmbeddingRebuildRecord, workspace_id, with_for_update=True) is not None:
+                params["rebuild_id"] = str(self._mark_rebuild(db, workspace_id))
+            return self._jobs.submit(
+                workspace_id,
+                REINDEX_JOB,
+                params,
+                title="Re-index documents",
+                created_by=user.id,
+                db=db,
+            )
+
+    def start_reembed(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        """The ``EmbeddingModelChangedHook`` (ADR 0006), inside the transaction that changes
+        the Workspace's embedding model: from then on search matches text only, and a
+        ``reindex_documents`` job builds the new vectors, then switches to them at once. A
+        rebuild already running is superseded: only the newest one switches."""
+        rebuild_id = self._mark_rebuild(db, workspace_id)
+        self._jobs.submit(
             workspace_id,
             REINDEX_JOB,
-            {"workspace_id": str(workspace_id)},
-            title="Re-index documents",
-            created_by=user.id,
+            {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)},
+            title="Re-embed documents",
+            created_by=actor_id,
+            db=db,
         )
 
+    def _mark_rebuild(self, db: Session, workspace_id: uuid.UUID) -> uuid.UUID:
+        rebuild_id = uuid.uuid4()
+        db.execute(
+            insert(EmbeddingRebuildRecord)
+            .values(workspace_id=workspace_id, rebuild_id=rebuild_id, started_at=self._clock())
+            .on_conflict_do_update(
+                index_elements=[EmbeddingRebuildRecord.workspace_id],
+                set_={"rebuild_id": rebuild_id, "started_at": self._clock()},
+            )
+        )
+        return rebuild_id
+
     def run_reindex(self, params: Mapping[str, Any], ctx: JobContext) -> None:
-        """The ``reindex_documents`` job handler."""
+        """The ``reindex_documents`` job handler. With a ``rebuild_id`` (a re-embed), it
+        stops once a newer rebuild supersedes it, and however it ends it switches the
+        Workspace to the new vectors (``_switch``)."""
         workspace_id = uuid.UUID(params["workspace_id"])
+        rebuild = uuid.UUID(params["rebuild_id"]) if "rebuild_id" in params else None
+        try:
+            self._reindex(workspace_id, rebuild, ctx)
+        finally:
+            if rebuild is not None:
+                with Session(self._engine) as db, db.begin():
+                    self._switch(db, workspace_id, rebuild)
+
+    def _reindex(self, workspace_id: uuid.UUID, rebuild: uuid.UUID | None, ctx: JobContext) -> None:
         with Session(self._engine) as db:
             file_ids = list(
                 db.scalars(
@@ -641,9 +691,55 @@ class DocumentSearchService:
             )
         for done, file_id in enumerate(file_ids, start=1):
             ctx.raise_if_cancelled()
+            if rebuild is not None and not self._rebuild_current(workspace_id, rebuild):
+                ctx.log("A newer change of the embedding model took over; stopping.")
+                return
             count = self.index_file(workspace_id, file_id)
             ctx.log(f"Indexed {count} passages of document {done} of {len(file_ids)}.")
             ctx.progress(done * 100 // len(file_ids))
+
+    def _rebuild_current(self, workspace_id: uuid.UUID, rebuild: uuid.UUID) -> bool:
+        with Session(self._engine) as db:
+            return (
+                db.scalar(
+                    sa.select(EmbeddingRebuildRecord.rebuild_id).where(
+                        EmbeddingRebuildRecord.workspace_id == workspace_id
+                    )
+                )
+                == rebuild
+            )
+
+    def _switch(self, db: Session, workspace_id: uuid.UUID, rebuild: uuid.UUID) -> None:
+        """End the rebuild ``rebuild`` unless a newer one superseded it: in one transaction,
+        drop every vector not made by the current embedding model (a document that failed
+        to embed stays text only) and let search use vectors again."""
+        ended = db.execute(
+            sa.delete(EmbeddingRebuildRecord).where(
+                EmbeddingRebuildRecord.workspace_id == workspace_id,
+                EmbeddingRebuildRecord.rebuild_id == rebuild,
+            )
+        )
+        if ended.rowcount == 0:
+            return
+        model = self._embedder(workspace_id)
+        db.execute(
+            sa.update(DocumentChunkRecord)
+            .where(
+                DocumentChunkRecord.workspace_id == workspace_id,
+                DocumentChunkRecord.embedding_model_id.is_not(None),
+                DocumentChunkRecord.embedding_model_id.is_distinct_from(
+                    model.id if model else None
+                ),
+            )
+            .values(embedding=None, embedding_model_id=None, embedding_dimension=None)
+        )
+
+    def abandon_reindex(self, db: Session, params: Mapping[str, Any], reason: str) -> None:
+        """The jobs module's hook for a ``reindex_documents`` job that ended without running
+        (cancelled while queued, or its worker lost): a re-embed still switches, so search
+        does not stay text only."""
+        if "rebuild_id" in params:
+            self._switch(db, uuid.UUID(params["workspace_id"]), uuid.UUID(params["rebuild_id"]))
 
     # -- searching ---------------------------------------------------------------------
 
@@ -732,6 +828,8 @@ class DocumentSearchService:
         scope: str,
         params: dict[str, Any],
     ) -> list[uuid.UUID]:
+        if db.get(EmbeddingRebuildRecord, workspace_id) is not None:
+            return []  # the vectors are being rebuilt for a new model: text only meanwhile
         model = self._embedder(workspace_id, user_id)
         if model is None:
             return []

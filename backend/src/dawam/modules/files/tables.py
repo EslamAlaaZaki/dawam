@@ -164,3 +164,18 @@ class DocumentChunkRecord(Base):
     """The model that made ``embedding`` (no foreign key: a model may be deleted, which
     only makes the chunk stale)."""
     embedding_dimension: Mapped[int | None]
+
+
+class EmbeddingRebuildRecord(Base):
+    """A Workspace whose documents are being embedded again with its new embedding model
+    (ADR 0006). While the row exists, search matches text only; the ``reindex_documents``
+    job whose ``rebuild_id`` it holds deletes it when it switches to the new vectors."""
+
+    __tablename__ = "document_embedding_rebuilds"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    rebuild_id: Mapped[uuid.UUID]
+    """The rebuild that switches; a newer change or re-index replaces it."""
+    started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
