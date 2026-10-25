@@ -14,7 +14,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -58,6 +58,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TITLE = "New conversation"
 HISTORY_MESSAGES = 30
 """The most recent turns sent to the model with a new message."""
+AUTO_RETRIEVE_PASSAGES = 3
+"""How many passages the first message of a conversation carries when auto-retrieve is on."""
 COMPACTION_HISTORY_MESSAGES = 200
 """With compaction on, the turns after the summary that are loaded: the window, not this
 count, decides how many of them are sent and how many are summarised."""
@@ -715,11 +717,15 @@ class AssistantService:
                 self._set_prompt_version(
                     started.run_id, prompt_version(SYSTEM_PROMPT, tools.specs())
                 )
+                messages = history.messages
+                first = len(messages) == 1 and history.summary is None
+                if first and self._ai.settings(workspace_id).auto_retrieve:
+                    messages = _with_passages(messages, tools)
                 for event in run_agent(
                     gateway,
                     tools,
                     system=_system_prompt(context),
-                    history=history.messages,
+                    history=messages,
                     max_tool_calls=self._max_tool_calls,
                     is_cancelled=lambda: self._cancel_requested(started.run_id),
                     timer=self._timer,
@@ -972,6 +978,22 @@ class AssistantService:
             if record is not None and (record.summary_through or 0) < through:
                 record.summary = summary
                 record.summary_through = through
+
+
+def _with_passages(messages: list[Message], tools: Any) -> list[Message]:
+    """The member's first message followed by the top passages for it, quoted as data. The
+    search runs as the member through the bound tools, so the data-sharing level and the
+    member's access apply; a refusal, an error or no match leaves the message as it is."""
+    [first] = messages
+    outcome = tools.execute(
+        "search_documents",
+        {"query": (first.content or "")[:500], "limit": AUTO_RETRIEVE_PASSAGES},
+    )
+    if outcome.status != "ok" or outcome.content.strip() in ("", "[]"):
+        return messages
+    passages = quote_data("auto-retrieved:documents", outcome.content)
+    note = "Passages found automatically for this message:\n" + passages
+    return [replace(first, content=f"{first.content}\n\n{note}")]
 
 
 @dataclass(frozen=True)

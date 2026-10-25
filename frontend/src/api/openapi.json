@@ -30839,6 +30839,11 @@
             "title": "Chunking Strategy",
             "description": "How documents are cut into passages: `headings` (sections, the default), `recursive` (paragraphs, then sentences, then words) or `semantic` (split where the embedding similarity of neighbouring sentences drops). Applies to documents indexed from now on; re-index to apply it to the others."
           },
+          "auto_retrieve": {
+            "type": "boolean",
+            "title": "Auto Retrieve",
+            "description": "On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level)."
+          },
           "agent_models": {
             "items": {
               "$ref": "#/components/schemas/WorkspaceModel"
@@ -30921,6 +30926,7 @@
           "internal_only",
           "data_sharing_level",
           "chunking_strategy",
+          "auto_retrieve",
           "agent_models",
           "light_models",
           "light_features",
@@ -30959,6 +30965,18 @@
             ],
             "title": "Chunking Strategy",
             "description": "Left out: keeps the current strategy."
+          },
+          "auto_retrieve": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Retrieve",
+            "description": "Left out: keeps the current value."
           },
           "agent_model_ids": {
             "items": {

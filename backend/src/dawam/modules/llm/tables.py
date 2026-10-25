@@ -126,6 +126,8 @@ class WorkspaceAiSettingsRecord(Base):
     data_sharing_level: Mapped[str] = mapped_column(sa.String(16))
     chunking_strategy: Mapped[str] = mapped_column(sa.String(16), server_default="headings")
     """How documents are cut into passages: ``headings``, ``recursive`` or ``semantic``."""
+    auto_retrieve: Mapped[bool] = mapped_column(server_default=sa.false())
+    """On: the first message of a conversation carries the top document passages."""
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
