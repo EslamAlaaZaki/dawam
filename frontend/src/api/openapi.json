@@ -30670,6 +30670,16 @@
             "$ref": "#/components/schemas/DataSharingLevel",
             "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
           },
+          "chunking_strategy": {
+            "type": "string",
+            "enum": [
+              "headings",
+              "recursive",
+              "semantic"
+            ],
+            "title": "Chunking Strategy",
+            "description": "How documents are cut into passages: `headings` (sections, the default), `recursive` (paragraphs, then sentences, then words) or `semantic` (split where the embedding similarity of neighbouring sentences drops). Applies to documents indexed from now on; re-index to apply it to the others."
+          },
           "agent_models": {
             "items": {
               "$ref": "#/components/schemas/WorkspaceModel"
@@ -30740,6 +30750,7 @@
         "required": [
           "internal_only",
           "data_sharing_level",
+          "chunking_strategy",
           "agent_models",
           "light_models",
           "light_features",
@@ -30760,6 +30771,23 @@
           },
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel"
+          },
+          "chunking_strategy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "headings",
+                  "recursive",
+                  "semantic"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunking Strategy",
+            "description": "Left out: keeps the current strategy."
           },
           "agent_model_ids": {
             "items": {

@@ -112,6 +112,10 @@ class WorkspaceAiSettingsRecord(Base):
             "data_sharing_level IN ('metadata', 'profiles', 'documents', 'samples')",
             name="data_sharing_level",
         ),
+        sa.CheckConstraint(
+            "chunking_strategy IN ('headings', 'recursive', 'semantic')",
+            name="chunking_strategy",
+        ),
     )
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -120,6 +124,8 @@ class WorkspaceAiSettingsRecord(Base):
     internal_only: Mapped[bool]
     """True: the gateway refuses every external provider for every model role."""
     data_sharing_level: Mapped[str] = mapped_column(sa.String(16))
+    chunking_strategy: Mapped[str] = mapped_column(sa.String(16), server_default="headings")
+    """How documents are cut into passages: ``headings``, ``recursive`` or ``semantic``."""
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
