@@ -10,10 +10,15 @@ import pytest
 from openpyxl import Workbook
 from pypdf import PdfReader, PdfWriter
 
-from tests.files.test_files import system, text_pdf
+from tests.files.test_files import system, text_pdf, upload
 from tests.files.test_search import policy, search, upload_ok  # noqa: F401
 
 NEEDLE = "settlement ledger"
+
+
+def upload_bytes(roles, system_id: str, name: str, data: bytes) -> None:
+    response = upload(roles, system_id, name, data)
+    assert response.status_code == 201, response.text
 
 
 def two_page_pdf() -> bytes:
@@ -40,8 +45,8 @@ def corpus(roles, policy):  # noqa: F811
     sid = system(roles)
     upload_ok(roles, sid, "notes.md", "# Notes\nThe settlement ledger is booked daily.")
     upload_ok(roles, sid, "ar.md", "# دفتر\nدفتر الأستاذ settlement ledger يقيد يوميا بالتفصيل.")
-    upload_ok(roles, sid, "spec.pdf", two_page_pdf())
-    upload_ok(roles, sid, "codes.xlsx", two_sheet_xlsx())
+    upload_bytes(roles, sid, "spec.pdf", two_page_pdf())
+    upload_bytes(roles, sid, "codes.xlsx", two_sheet_xlsx())
     return sid
 
 
