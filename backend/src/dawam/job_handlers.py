@@ -28,6 +28,7 @@ from dawam.modules.files import (
     NoDocumentAi,
     OcrEngine,
     RegisteredEmbeddingModels,
+    RegisteredLightModels,
     RegisteredVisionModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
@@ -108,6 +109,7 @@ def build_document_search(
         ai=document_ai or NoDocumentAi(),
         embeddings=RegisteredEmbeddingModels(providers, roles, engine),
         vision=RegisteredVisionModels(providers, roles, engine),
+        light=RegisteredLightModels(providers, roles, engine),
         jobs=runner,
         storage=create_storage(settings),
         clock=clock,
