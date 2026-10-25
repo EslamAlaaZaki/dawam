@@ -1,7 +1,7 @@
 """Add the Workspace's chunking strategy for document indexing.
 
 Revision ID: a7d3f9b1c405
-Revises: c8e2a5f7d104
+Revises: a7c3e9f1b204
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a7d3f9b1c405"
-down_revision: str | Sequence[str] | None = "c8e2a5f7d104"
+down_revision: str | Sequence[str] | None = "a7c3e9f1b204"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
