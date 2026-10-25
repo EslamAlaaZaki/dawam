@@ -80,6 +80,27 @@ DEFAULT_LIMIT = 10
 
 
 @dataclass(frozen=True)
+class SearchTuning:
+    """How rankings are fused and trimmed. Code constants for now; they become admin
+    settings with the Document AI settings (24.1)."""
+
+    fts_weight: float = 1.0
+    vector_weight: float = 1.0
+    rrf_k: int = RRF_K
+    fts_candidates: int = CANDIDATES
+    vector_candidates: int = CANDIDATES
+    mmr_lambda: float = 0.7
+    """1.0 is pure relevance; lower values trade it for variety."""
+    same_document_similarity: float = 0.3
+    """How alike two passages of one document (other sections) count for MMR."""
+    min_score: float = 0.01
+    """The fused (weighted RRF) score a passage needs; below it, it is not returned."""
+
+
+DEFAULT_TUNING = SearchTuning()
+
+
+@dataclass(frozen=True)
 class DocumentAiSettings:
     """What a Workspace's AI settings say about documents."""
 
@@ -902,9 +923,12 @@ class DocumentSearchService:
         system_id: uuid.UUID | None = None,
         limit: int = DEFAULT_LIMIT,
         filters: PassageFilters | None = None,
+        tuning: SearchTuning | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
-        where the passages were embedded, vector rankings are fused."""
+        where the passages were embedded, vector rankings are fused (weighted RRF), passages
+        below the relevance floor are dropped and the rest are diversified (MMR)."""
+        tune = tuning or DEFAULT_TUNING
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         terms = words(query)
         if not terms:
@@ -929,8 +953,9 @@ class DocumentSearchService:
             )
             # Several matching children share one parent, so the candidate pool grows
             # until it holds ``limit`` distinct parents or the rankings run dry.
-            pool = CANDIDATES
+            grow = 1
             while True:
+                fts_pool = tune.fts_candidates * grow
                 ranked: list[list[uuid.UUID]] = [
                     list(
                         db.scalars(
@@ -938,26 +963,36 @@ class DocumentSearchService:
                             {
                                 **params,
                                 "q": " | ".join(f"'{term}'" for term in terms),
-                                "pool": pool,
+                                "pool": fts_pool,
                             },
                         )
                     )
                 ]
+                vector_pool = tune.vector_candidates * grow
+                weights = [tune.fts_weight]
                 if embedded is not None:
                     model, vector = embedded
+                    weights.append(tune.vector_weight)
                     ranked.append(
                         list(
                             db.scalars(
-                                sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
+                                sa.text(
+                                    vector_ranking_sql(model.id, len(vector), scope, vector_pool)
+                                ),
                                 {**params, "v": _vector_literal(vector)},
                             )
                         )
                     )
                 scores: dict[uuid.UUID, float] = {}
-                for ranking in ranked:
+                for ranking, weight in zip(ranked, weights, strict=True):
                     for position, chunk_id in enumerate(ranking):
-                        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
-                ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
+                        scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (
+                            tune.rrf_k + position + 1
+                        )
+                ordered = sorted(
+                    (cid for cid in scores if scores[cid] >= tune.min_score),
+                    key=lambda cid: (-scores[cid], str(cid)),
+                )
                 rows = {
                     row.id: row
                     for row in db.execute(
@@ -984,10 +1019,40 @@ class DocumentSearchService:
                     )
                 }
                 passages = self._parents(ordered, rows, scores)
-                full = any(len(r) >= pool for r in ranked)
-                if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
-                    return passages[:limit]
-                pool *= 2
+                full = len(ranked[0]) >= fts_pool or (
+                    len(ranked) > 1 and len(ranked[1]) >= vector_pool
+                )
+                if len(passages) >= limit or not full or grow >= MAX_POOL_GROWTH:
+                    return self._diversify(passages, limit, tune)
+                grow *= 2
+
+    @staticmethod
+    def _diversify(passages: list[Passage], limit: int, tune: SearchTuning) -> list[Passage]:
+        """Maximal marginal relevance: pick ``limit`` passages, each the best trade between its
+        relevance and how little it repeats what is already picked (same section: fully
+        alike; same document, another section: a little)."""
+        if len(passages) <= 1 or tune.mmr_lambda >= 1.0:
+            return passages[:limit]
+        top = passages[0].score or 1.0
+        remaining = list(passages)
+        picked: list[Passage] = []
+
+        def similarity(a: Passage, b: Passage) -> float:
+            if a.file_id != b.file_id:
+                return 0.0
+            return 1.0 if a.section == b.section else tune.same_document_similarity
+
+        while remaining and len(picked) < limit:
+            best = max(
+                remaining,
+                key=lambda p: (
+                    tune.mmr_lambda * (p.score / top)
+                    - (1 - tune.mmr_lambda) * max((similarity(p, q) for q in picked), default=0.0)
+                ),
+            )
+            picked.append(best)
+            remaining.remove(best)
+        return picked
 
     @staticmethod
     def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:

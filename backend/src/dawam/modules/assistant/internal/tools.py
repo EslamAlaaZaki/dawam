@@ -1209,6 +1209,12 @@ def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
         limit=args.limit,
         filters=PassageFilters(args.document_type, args.language, args.page, args.sheet, args.tag),
     )
+    if not passages:
+        return {
+            "passages": [],
+            "note": "Nothing relevant found in the documents for this query. Say so; do not "
+            "guess an answer from them.",
+        }
     return [
         {
             "file_id": p.file_id,

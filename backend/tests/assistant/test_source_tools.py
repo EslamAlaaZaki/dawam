@@ -445,7 +445,23 @@ def test_search_documents_filters_by_metadata_through_the_gateway(roles, model, 
 
     [passage] = payload(kept)
     assert passage["document_type"] == "md" and passage["language"] == "en"
-    assert payload(dropped) == []
+    assert payload(dropped)["passages"] == []
+
+
+def test_search_documents_reports_nothing_relevant_below_the_relevance_floor(
+    roles, model, fake_llm, source, monkeypatch
+):
+    from dawam.modules.files import search as search_module
+
+    upload(roles, source, "design.md", "# Settlement\nSettlement runs nightly.")
+    level(roles, "documents")
+    _, found = use(roles, fake_llm, "search_documents", query="settlement")
+    assert len(payload(found)) == 1
+    monkeypatch.setattr(search_module, "DEFAULT_TUNING", search_module.SearchTuning(min_score=1.0))
+
+    _, weak = use(roles, fake_llm, "search_documents", query="settlement")
+
+    assert payload(weak)["passages"] == [] and "Nothing relevant" in payload(weak)["note"]
 
 
 def test_search_documents_is_refused_below_the_documents_level(roles, model, fake_llm, source):

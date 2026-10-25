@@ -452,6 +452,53 @@ def test_limit_counts_distinct_parents_not_matching_children(roles, policy):
     assert all(i["document"] == "big.md" for i in items)
 
 
+def test_results_from_one_section_are_diversified_by_mmr(roles, policy, monkeypatch):
+    from dawam.modules.files import search as search_module
+
+    sid = system(roles)
+    filler = "Postings are booked and reconciled every day. " * 20
+    strong = "ledger ledger ledger ledger"
+    sections = "\n\n".join(f"# Part {n}\n\n{strong} {filler}" for n in range(3))
+    upload_ok(roles, sid, "a.md", sections)
+    upload_ok(roles, sid, "b.md", f"# Beta\n\nledger ledger {filler}")
+    upload_ok(roles, sid, "c.md", f"# Gamma\n\nledger {filler}")
+
+    def documents(lam: float) -> list[str]:
+        monkeypatch.setattr(
+            search_module, "DEFAULT_TUNING", search_module.SearchTuning(mmr_lambda=lam)
+        )
+        return [i["document"] for i in search(roles, "ledger", limit=3).json()["items"]]
+
+    relevance = documents(1.0)
+    diverse = documents(0.3)
+
+    assert relevance == ["a.md"] * 3  # by relevance alone, one document's sections fill it
+    assert sorted(diverse) == ["a.md", "b.md", "c.md"]
+
+
+def test_fusion_weights_decide_which_ranking_leads(roles, policy, fake_llm, monkeypatch):
+    from dawam.modules.files import search as search_module
+
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+    fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])
+    upload_ok(roles, sid, "text.md", "# Text\nledger ledger ledger ledger")
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+    upload_ok(roles, sid, "meaning.md", "# Meaning\nledger")
+
+    def first(**weights: float) -> str:
+        monkeypatch.setattr(
+            search_module,
+            "DEFAULT_TUNING",
+            search_module.SearchTuning(mmr_lambda=1.0, **weights),
+        )
+        fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+        return search(roles, "ledger").json()["items"][0]["document"]
+
+    assert first(fts_weight=5.0, vector_weight=0.1) == "text.md"
+    assert first(fts_weight=0.1, vector_weight=5.0) == "meaning.md"
+
+
 def test_a_passage_indexed_before_parents_existed_is_still_returned(roles, policy, app):
     sid = system(roles)
     upload_ok(roles, sid, "old.md", "# Old\n\nlegacy ledger wording")
