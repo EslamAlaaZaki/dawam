@@ -15,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .chunking import PAGE_BREAK
+
 if TYPE_CHECKING:
     from .ocr import OcrEngine
     from .parsing import DocumentParser
@@ -270,6 +272,8 @@ def _extract(file_type: FileType, data: bytes) -> str:
         for number, page in enumerate(reader.pages):
             if number >= PDF_MAX_PAGES or out.full:
                 break
+            if number:
+                out.add(PAGE_BREAK)
             out.add(page.extract_text() or "")
     elif file_type is DOCX:
         from docx import Document

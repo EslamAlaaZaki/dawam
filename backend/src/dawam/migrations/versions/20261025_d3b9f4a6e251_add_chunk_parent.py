@@ -1,7 +1,7 @@
 """Small-to-big retrieval: a passage knows the parent section it was cut from.
 
 Revision ID: d3b9f4a6e251
-Revises: a9d4e7b2c615
+Revises: d3a7b9e2c5f1
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d3b9f4a6e251"
-down_revision: str | Sequence[str] | None = "a9d4e7b2c615"
+down_revision: str | Sequence[str] | None = "d3a7b9e2c5f1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

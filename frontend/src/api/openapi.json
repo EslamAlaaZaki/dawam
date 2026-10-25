@@ -12497,6 +12497,97 @@
               "default": 10,
               "title": "Limit"
             }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this type, e.g. `pdf`.",
+              "title": "Document Type"
+            },
+            "description": "Only this type, e.g. `pdf`."
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only `ar` or `en` passages.",
+              "title": "Language"
+            },
+            "description": "Only `ar` or `en` passages."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this PDF page.",
+              "title": "Page"
+            },
+            "description": "Only this PDF page."
+          },
+          {
+            "name": "sheet",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this worksheet.",
+              "title": "Sheet"
+            },
+            "description": "Only this worksheet."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only documents with this label.",
+              "title": "Tag"
+            },
+            "description": "Only documents with this label."
           }
         ],
         "responses": {
@@ -19451,6 +19542,62 @@
             "type": "string",
             "format": "uuid",
             "title": "Source System Id"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type",
+            "description": "`pdf`, `xlsx`, `md`..."
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "`ar` or `en`."
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page",
+            "description": "The page of a PDF passage."
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet",
+            "description": "The worksheet of a spreadsheet passage."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Labels: the document's folders."
           }
         },
         "type": "object",

@@ -49,9 +49,16 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
-from .internal.arabic import normalise, words
+from .internal.arabic import language, normalise, words
 from .internal.chunking import Chunk
-from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
+from .internal.content import (
+    ALLOWED_TYPES,
+    EXTRACTED_TEXT_MAX_CHARS,
+    IMAGE_TYPES,
+    detect,
+    extract_text,
+    is_image,
+)
 from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parents import chunk_with_parents
@@ -292,6 +299,22 @@ class Passage:
     text: str
     score: float
     source_system_id: uuid.UUID
+    document_type: str | None = None
+    language: str | None = None
+    page: int | None = None
+    sheet: str | None = None
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PassageFilters:
+    """Narrow a search by what is stored per passage; every field set must match."""
+
+    document_type: str | None = None
+    language: str | None = None
+    page: int | None = None
+    sheet: str | None = None
+    tag: str | None = None
 
 
 def _unless_other_api_error(exc: Exception) -> None:
@@ -303,6 +326,14 @@ def _unless_other_api_error(exc: Exception) -> None:
 
 class _Superseded(Exception):
     """The file was replaced (or deleted) while its index job ran."""
+
+
+_TYPE_BY_MIME = {t.mime: t.name for t in ALLOWED_TYPES}
+
+
+def _tags(path: str) -> list[str]:
+    """The labels of a document: the lower-cased folders of its path."""
+    return list(dict.fromkeys(p.casefold() for p in path.split("/")[:-1] if p))
 
 
 HNSW_MAX_DIMENSION = 2000
@@ -635,6 +666,8 @@ class DocumentSearchService:
         with Session(self._engine) as db:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
+            kind = _TYPE_BY_MIME.get(record.mime) if record else None
+            folders = _tags(record.path) if record else []
             name = record.path if record else ""
         stage("chunking")
         model = self._embedder(workspace_id) if text and text.strip() else None
@@ -693,6 +726,11 @@ class DocumentSearchService:
                     search_text=normalise(indexed[ordinal]),
                     parent_ordinal=piece.parent,
                     parent_content=piece.parent_text,
+                    document_type=kind,
+                    language=language(piece.chunk.text),
+                    page=piece.chunk.page,
+                    sheet=piece.chunk.section if kind == "xlsx" else None,
+                    tags=folders,
                 )
                 db.add(row)
                 if model is not None and vectors is not None and ordinal < len(vectors):
@@ -842,6 +880,7 @@ class DocumentSearchService:
         *,
         system_id: uuid.UUID | None = None,
         limit: int = DEFAULT_LIMIT,
+        filters: PassageFilters | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
         where the passages were embedded, vector rankings are fused."""
@@ -851,6 +890,7 @@ class DocumentSearchService:
             return []
         scope = " AND f.owner_id = :system_id" if system_id else ""
         params: dict[str, Any] = {"w": workspace_id, "system_id": system_id}
+        scope += self._filter_scope(filters, params)
         with Session(self._engine) as db:
             # A soft-deleted Source System's documents are hidden until it is purged.
             hidden = hidden_source_system_ids(db, workspace_id)
@@ -906,6 +946,11 @@ class DocumentSearchService:
                             DocumentChunkRecord.content,
                             DocumentChunkRecord.parent_ordinal,
                             DocumentChunkRecord.parent_content,
+                            DocumentChunkRecord.document_type,
+                            DocumentChunkRecord.language,
+                            DocumentChunkRecord.page,
+                            DocumentChunkRecord.sheet,
+                            DocumentChunkRecord.tags,
                             WorkspaceFileRecord.id.label("file_id"),
                             WorkspaceFileRecord.path,
                             WorkspaceFileRecord.owner_id,
@@ -922,6 +967,29 @@ class DocumentSearchService:
                 if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
                     return passages[:limit]
                 pool *= 2
+
+    @staticmethod
+    def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:
+        """The SQL conditions (on chunk ``c``) for ``filters``, binding their values."""
+        if filters is None:
+            return ""
+        scope = ""
+        if filters.document_type:
+            scope += " AND c.document_type = :f_type"
+            params["f_type"] = filters.document_type.casefold()
+        if filters.language:
+            scope += " AND c.language = :f_language"
+            params["f_language"] = filters.language.casefold()
+        if filters.page is not None:
+            scope += " AND c.page = :f_page"
+            params["f_page"] = filters.page
+        if filters.sheet:
+            scope += " AND c.sheet = :f_sheet"
+            params["f_sheet"] = filters.sheet
+        if filters.tag:
+            scope += " AND :f_tag = ANY(c.tags)"
+            params["f_tag"] = filters.tag.casefold()
+        return scope
 
     @staticmethod
     def _parents(
@@ -944,6 +1012,11 @@ class DocumentSearchService:
                     text=row.parent_content or row.content,
                     score=scores[cid],
                     source_system_id=row.owner_id,
+                    document_type=row.document_type,
+                    language=row.language,
+                    page=row.page,
+                    sheet=row.sheet,
+                    tags=tuple(row.tags),
                 )
             )
         return passages

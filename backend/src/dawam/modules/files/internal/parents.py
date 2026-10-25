@@ -41,5 +41,7 @@ def chunk_with_parents(text: str, count: TokenCounter = estimate_tokens) -> list
         for child in chunk(
             parent.text, count, target=TARGET_TOKENS, maximum=MAX_TOKENS, overlap=OVERLAP_TOKENS
         ):
-            children.append(ChildChunk(Chunk(parent.section, child.text), index, parent.text))
+            children.append(
+                ChildChunk(Chunk(parent.section, child.text, parent.page), index, parent.text)
+            )
     return children
