@@ -64,6 +64,7 @@ from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
+from .internal.query_rewrite import query_variants
 from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
@@ -918,7 +919,9 @@ class DocumentSearchService:
             if hidden:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
-            embedded = self._embed_query(db, workspace_id, user.id, query)
+            queries = [query, *self._variants(workspace_id, query)]
+            term_sets = [t for t in (words(q) for q in queries) if t]
+            embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
                 "SELECT c.id FROM document_chunks c "
                 "JOIN workspace_files f ON f.id = c.file_id, "
@@ -937,22 +940,24 @@ class DocumentSearchService:
                             fts,
                             {
                                 **params,
-                                "q": " | ".join(f"'{term}'" for term in terms),
+                                "q": " | ".join(f"'{term}'" for term in term_set),
                                 "pool": pool,
                             },
                         )
                     )
+                    for term_set in term_sets
                 ]
                 if embedded is not None:
-                    model, vector = embedded
-                    ranked.append(
-                        list(
-                            db.scalars(
-                                sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
-                                {**params, "v": _vector_literal(vector)},
+                    model, vectors = embedded
+                    for vector in vectors:
+                        ranked.append(
+                            list(
+                                db.scalars(
+                                    sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
+                                    {**params, "v": _vector_literal(vector)},
+                                )
                             )
                         )
-                    )
                 scores: dict[uuid.UUID, float] = {}
                 for ranking in ranked:
                     for position, chunk_id in enumerate(ranking):
@@ -1042,19 +1047,35 @@ class DocumentSearchService:
             )
         return passages
 
-    def _embed_query(self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str):
+    def _variants(self, workspace_id: uuid.UUID, query: str) -> list[str]:
+        """Other phrasings of ``query`` from the light model; none when the feature is off
+        (no light model, or the data level / internal-only keeps the query from it) or the
+        call fails: the query is then searched as typed."""
+        model = self._light_model(workspace_id)
+        if model is None:
+            return []
+        try:
+            return query_variants(model.gateway, query)
+        except (LlmError, ApiError) as exc:
+            _unless_other_api_error(exc)
+            logger.warning("query rewriting failed, searching as typed: %s", exc)
+            return []
+
+    def _embed_queries(
+        self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, queries: list[str]
+    ):
         if db.get(EmbeddingRebuildRecord, workspace_id) is not None:
             return None  # the vectors are being rebuilt for a new model: text only meanwhile
         model = self._embedder(workspace_id, user_id)
         if model is None:
             return None
         try:
-            [vector] = model.gateway.embed([query])
+            vectors = model.gateway.embed(queries)
         except (LlmError, ApiError) as exc:
             _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
             return None
-        return model, vector
+        return model, vectors
 
 
 def vector_ranking_sql(
