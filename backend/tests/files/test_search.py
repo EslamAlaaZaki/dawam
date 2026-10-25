@@ -124,7 +124,7 @@ def test_word_forms_match_their_stems_in_arabic_and_english(roles, policy):
     for query in ("customers report", "creating invoice", "reporting"):
         found = search(roles, query).json()["items"]
         assert [p["section"] for p in found] == ["Billing"], query
-    for query in ("المدرسة", "والمدرسون"):  # noqa: RUF001
+    for query in ("المدرسة", "والمدرسون"):
         found = search(roles, query).json()["items"]
         assert [p["section"] for p in found] == ["المدارس"], query
 

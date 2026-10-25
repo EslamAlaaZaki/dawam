@@ -67,23 +67,23 @@ def _stem_arabic(word: str) -> str:
 
 def _stem_english(word: str) -> str:
     if len(word) <= 3:
-        return word
+        return word[:-1] if len(word) == 3 and word.endswith("e") else word  # use -> us
     if word.endswith("ies") and len(word) > 4:
         word = word[:-3] + "y"
     elif word.endswith(("sses", "ches", "shes", "xes", "zes")):
         word = word[:-2]
     elif word.endswith("s") and not word.endswith(("ss", "us", "is")):
         word = word[:-1]
-    for suffix in ("ing", "ed"):
+    for suffix, shortest in (("ing", 2), ("ed", 2)):
         root = word[: -len(suffix)]
-        if word.endswith(suffix) and len(root) >= 3 and any(c in _VOWELS for c in root):
+        if word.endswith(suffix) and len(root) >= shortest and any(c in _VOWELS for c in root):
             word = root
             if len(word) > 3 and word[-1] == word[-2] and word[-1] not in "lsz" + _VOWELS:
                 word = word[:-1]
             break
     if word.endswith("y") and len(word) > 3:
         word = word[:-1] + "i"
-    if word.endswith("e") and len(word) > 3:
+    if word.endswith("e") and len(word) >= 3:
         word = word[:-1]
     return word
 
