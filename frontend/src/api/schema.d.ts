@@ -10820,6 +10820,11 @@ export interface components {
              */
             chunking_strategy: "headings" | "recursive" | "semantic";
             /**
+             * Auto Retrieve
+             * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level).
+             */
+            auto_retrieve: boolean;
+            /**
              * Agent Models
              * @description The Workspace's agent models; the default answers unless a message names another.
              */
@@ -10869,6 +10874,11 @@ export interface components {
              * @description Left out: keeps the current strategy.
              */
             chunking_strategy?: ("headings" | "recursive" | "semantic") | null;
+            /**
+             * Auto Retrieve
+             * @description Left out: keeps the current value.
+             */
+            auto_retrieve?: boolean | null;
             /**
              * Agent Model Ids
              * @description Models enabled for the agent role; required when there is any to choose.
