@@ -435,9 +435,9 @@ flowchart TD
 
 - A `ToolContext` per run holds the user, Workspace, services, data-sharing policy, a **source-query time budget** (default 120 s per run), proposal collection for jobs, and the run's count-query evidence.
 
-### 6.2 The tool catalogue (25 tools)
+### 6.2 The tool catalogue (27 tools)
 
-There are 26 tools.
+There are 27 tools.
 
 **Read: catalog, profiling, lineage, scoring**
 
@@ -450,6 +450,7 @@ There are 26 tools.
 | `get_relationships` | Inferred relationships with confidence and evidence | view |
 | `get_pii_findings` | Columns that look personal, with category and status; never values | review PII |
 | `get_lineage` | Column-level lineage up- or downstream (edge kinds `value`, `uses`, `lookup`, `kpi`), capped at 200 nodes | view |
+| `explore_graph` | One object's neighbours at most 2 hops away: lineage, KPI links, a source column's relationships (with `system_id`) and the documents that mention it (those only at `documents`); capped at 100 nodes. Adds to `get_lineage`, `get_relationships` and `search_documents` (#379) | view |
 | `get_score` | Rule-based DW design score (0–100), grade, per-Layer scores, failed checks with fix hints | view |
 | `explain_check` | Explain one failed score check | ask assistant |
 | `evaluate_dw` | Advisory evaluation of a DW Layer: read it, then store findings (never changes the score) | ask assistant |

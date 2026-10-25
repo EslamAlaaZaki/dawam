@@ -72,7 +72,7 @@ def provider_service(request: Request) -> ProviderService:
 
 ProviderServiceDep = Annotated[ProviderService, Depends(provider_service)]
 
-ModelRole = Literal["agent", "light", "embedding", "vision"]
+ModelRole = Literal["agent", "light", "embedding", "vision", "rerank"]
 
 
 class LlmModel(BaseModel):

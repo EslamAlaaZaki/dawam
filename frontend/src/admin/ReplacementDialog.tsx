@@ -15,9 +15,10 @@ export const ROLE_LABELS: Record<Role, string> = {
   light: "Light",
   embedding: "Embedding",
   vision: "Vision",
+  rerank: "Rerank",
 };
 
-/** Vision is optional: a Workspace losing its vision model needs no replacement. */
+/** Vision and rerank are optional: a Workspace losing either model needs no replacement. */
 const REPLACEMENT_KEY: Partial<
   Record<Role, "agent_model_id" | "light_model_id" | "embedding_model_id">
 > = {

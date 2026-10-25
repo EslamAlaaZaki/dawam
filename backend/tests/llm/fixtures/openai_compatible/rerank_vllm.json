@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "id": "rerank-92b5a2a1b1c94b7d8c2a9e6f1a3d4c5e",
+    "model": "BAAI/bge-reranker-v2-m3",
+    "usage": {
+      "total_tokens": 31
+    },
+    "results": [
+      {
+        "index": 1,
+        "document": {
+          "text": "b"
+        },
+        "relevance_score": 0.9998
+      },
+      {
+        "index": 0,
+        "document": {
+          "text": "a"
+        },
+        "relevance_score": 0.0017
+      }
+    ]
+  }
+}

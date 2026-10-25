@@ -1,0 +1,16 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "results": [
+      {
+        "index": 0,
+        "relevance_score": Infinity
+      },
+      {
+        "index": 1,
+        "relevance_score": 0.5
+      }
+    ]
+  }
+}

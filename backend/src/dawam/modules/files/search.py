@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 import sqlalchemy as sa
@@ -64,6 +64,8 @@ from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
+from .internal.query_rewrite import query_variants
+from .internal.rerank import NoRerankModels, RerankModels
 from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,9 @@ MAX_POOL_GROWTH = 8  # how far the pool may grow to find ``limit`` distinct pare
 """How many passages each ranking contributes before they are fused."""
 RRF_K = 60
 DEFAULT_LIMIT = 10
+RERANK_TOP_N = 30
+"""How many of the fused top passages the rerank model rescores."""
+RERANK_DOC_CHARS = 4000
 
 
 @dataclass(frozen=True)
@@ -393,25 +398,27 @@ def _match_boosts(query: str, terms: Sequence[str]) -> tuple[str, dict[str, str]
 
 
 def _promote_exact(
-    db: Session, ordered: list[uuid.UUID], params: Mapping[str, Any], scope: str, pool: int
-) -> list[uuid.UUID]:
-    """``ordered`` with the passages that hold a query identifier moved to the front (stable),
-    so vector-only hits fused above them cannot bury an exact name match."""
-    if "ids" not in params:
-        return ordered
-    exact = set(
-        db.scalars(
+    db: Session, passages: list[Passage], params: Mapping[str, Any], scope: str
+) -> list[Passage]:
+    """``passages`` with those holding a query identifier moved to the front (stable), so
+    fused vector hits or a reranker cannot bury an exact name match."""
+    if "ids" not in params or not passages:
+        return passages
+    exact = {
+        (row.file_id, row.text)
+        for row in db.execute(
             sa.text(
-                "SELECT c.id FROM document_chunks c "
-                "JOIN workspace_files f ON f.id = c.file_id "
+                "SELECT c.file_id, COALESCE(c.parent_content, c.content) AS text "
+                "FROM document_chunks c JOIN workspace_files f ON f.id = c.file_id "
                 "WHERE c.workspace_id = :w AND c.search_vector @@ to_tsquery('simple', :ids)"
                 + scope
-                + " LIMIT :pool"
             ),
-            {**params, "pool": pool},
+            params,
         )
-    )
-    return [c for c in ordered if c in exact] + [c for c in ordered if c not in exact]
+    }
+    return [p for p in passages if (p.file_id, p.text) in exact] + [
+        p for p in passages if (p.file_id, p.text) not in exact
+    ]
 
 
 def _vector_literal(vector: Sequence[float]) -> str:
@@ -433,7 +440,9 @@ class DocumentSearchService:
         ocr: Callable[[], OcrEngine | None] = lambda: None,
         vision: VisionModels | None = None,
         light: LightModels | None = None,
+        rerank: RerankModels | None = None,
     ) -> None:
+        self._rerank_models = rerank or NoRerankModels()
         self._light = light or NoLightModels()
         self._parser = parser
         self._ocr = ocr
@@ -956,9 +965,11 @@ class DocumentSearchService:
             if hidden:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
-            embedded = self._embed_query(db, workspace_id, user.id, query)
             boosts, boost_params = _match_boosts(query, terms)
             params.update(boost_params)
+            queries = [query, *self._variants(workspace_id, query)]
+            term_sets = [t for t in (stems(q) for q in queries) if t]
+            embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
                 "SELECT c.id FROM document_chunks c "
                 "JOIN workspace_files f ON f.id = c.file_id, "
@@ -977,28 +988,29 @@ class DocumentSearchService:
                             fts,
                             {
                                 **params,
-                                "q": " | ".join(f"'{term}'" for term in terms),
+                                "q": " | ".join(f"'{term}'" for term in term_set),
                                 "pool": pool,
                             },
                         )
                     )
+                    for term_set in term_sets
                 ]
                 if embedded is not None:
-                    model, vector = embedded
-                    ranked.append(
-                        list(
-                            db.scalars(
-                                sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
-                                {**params, "v": _vector_literal(vector)},
+                    model, vectors = embedded
+                    for vector in vectors:
+                        ranked.append(
+                            list(
+                                db.scalars(
+                                    sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
+                                    {**params, "v": _vector_literal(vector)},
+                                )
                             )
                         )
-                    )
                 scores: dict[uuid.UUID, float] = {}
                 for ranking in ranked:
                     for position, chunk_id in enumerate(ranking):
                         scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
                 ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
-                ordered = _promote_exact(db, ordered, params, scope, pool)
                 rows = {
                     row.id: row
                     for row in db.execute(
@@ -1027,8 +1039,38 @@ class DocumentSearchService:
                 passages = self._parents(ordered, rows, scores)
                 full = any(len(r) >= pool for r in ranked)
                 if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
-                    return passages[:limit]
+                    reranked = self._rerank(workspace_id, user.id, query, passages)
+                    return _promote_exact(db, reranked, params, scope)[:limit]
                 pool *= 2
+
+    def _rerank(
+        self, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str, passages: list[Passage]
+    ) -> list[Passage]:
+        """Reorder the fused top passages by the Workspace's rerank model, best first, each
+        passage's score becoming the model's. Without a rerank model, one the data-sharing
+        level (an internal model always may) or internal-only setting keeps from the
+        documents, or when the call fails or the
+        budget is used up, the fused order stands."""
+        settings = self._ai.document_settings(workspace_id)
+        model = self._rerank_models.current(workspace_id, user_id)
+        if (
+            len(passages) < 2
+            or model is None
+            or not (model.is_internal or settings.includes_documents)
+            or (settings.internal_only and not model.is_internal)
+        ):
+            return passages
+        top, rest = passages[:RERANK_TOP_N], passages[RERANK_TOP_N:]
+        try:
+            scores = model.gateway.rerank(query, [p.text[:RERANK_DOC_CHARS] for p in top])
+        except (LlmError, ApiError) as exc:
+            _unless_other_api_error(exc)
+            logger.warning("reranking failed, keeping the fused order: %s", exc)
+            return passages
+        if len(scores) != len(top):
+            return passages
+        reranked = sorted(zip(top, scores, strict=True), key=lambda pair: -pair[1])
+        return [replace(p, score=s) for p, s in reranked] + rest
 
     @staticmethod
     def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:
@@ -1083,19 +1125,35 @@ class DocumentSearchService:
             )
         return passages
 
-    def _embed_query(self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str):
+    def _variants(self, workspace_id: uuid.UUID, query: str) -> list[str]:
+        """Other phrasings of ``query`` from the light model; none when the feature is off
+        (no light model, or the data level / internal-only keeps the query from it) or the
+        call fails: the query is then searched as typed."""
+        model = self._light_model(workspace_id)
+        if model is None:
+            return []
+        try:
+            return query_variants(model.gateway, query)
+        except (LlmError, ApiError) as exc:
+            _unless_other_api_error(exc)
+            logger.warning("query rewriting failed, searching as typed: %s", exc)
+            return []
+
+    def _embed_queries(
+        self, db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, queries: list[str]
+    ):
         if db.get(EmbeddingRebuildRecord, workspace_id) is not None:
             return None  # the vectors are being rebuilt for a new model: text only meanwhile
         model = self._embedder(workspace_id, user_id)
         if model is None:
             return None
         try:
-            [vector] = model.gateway.embed([query])
+            vectors = model.gateway.embed(queries)
         except (LlmError, ApiError) as exc:
             _unless_other_api_error(exc)
             logger.warning("query embedding failed, searching full-text only: %s", exc)
             return None
-        return model, vector
+        return model, vectors
 
 
 def vector_ranking_sql(

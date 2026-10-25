@@ -65,6 +65,7 @@ class ModelChoices(BaseModel):
     light: list[ModelChoice]
     embedding: list[ModelChoice]
     vision: list[ModelChoice]
+    rerank: list[ModelChoice]
 
 
 class LightFeature(BaseModel):
@@ -86,6 +87,12 @@ LIGHT_FEATURES = (
         "Prepends a one-sentence context to each document passage before it is embedded and "
         "full-text indexed.",
     ),
+    (
+        "query_rewriting",
+        "Query rewriting",
+        "Searches documents with a few rewordings of the question, including its Arabic or "
+        "English translation, and fuses the results.",
+    ),
 )
 """The features that use the light role; each light-role ticket adds its own entry. They are
 all off while the Workspace has no light model."""
@@ -96,8 +103,8 @@ ChunkingStrategy = Literal["headings", "recursive", "semantic"]
 
 class WorkspaceAiSettings(BaseModel):
     internal_only: bool = Field(
-        description="Every model role (agent, light, embedding, vision) is refused an external "
-        "provider."
+        description="Every model role (agent, light, embedding, vision, rerank) is refused an "
+        "external provider."
     )
     data_sharing_level: DataSharingLevel = Field(
         description="What the AI may see, cumulative: `metadata` < `profiles` < `documents` "
@@ -108,6 +115,10 @@ class WorkspaceAiSettings(BaseModel):
         "`recursive` (paragraphs, then sentences, then words) or `semantic` (split where the "
         "embedding similarity of neighbouring sentences drops). Applies to documents indexed "
         "from now on; re-index to apply it to the others."
+    )
+    auto_retrieve: bool = Field(
+        description="On: the first message of an assistant conversation carries the top 3 "
+        "document passages for it, quoted as data (needs the `documents` level)."
     )
     agent_models: list[WorkspaceModel] = Field(
         description="The Workspace's agent models; the default answers unless a message "
@@ -131,6 +142,12 @@ class WorkspaceAiSettings(BaseModel):
         "data-sharing level allows sending documents to its provider (an internal one always "
         "may); null, or not allowed: the self-hosted OCR engine reads them."
     )
+    rerank_model: WorkspaceModel | None = Field(
+        description="The Workspace's rerank model, which reorders the top document-search "
+        "results by relevance when the data-sharing level allows sending documents to its "
+        "provider (an internal one always may); null, or not allowed: results keep their "
+        "fused order."
+    )
     choices: ModelChoices = Field(
         description="Per role, the tested models an admin enabled for it, for an owner to choose "
         "from (an internal-only Workspace takes only internal ones)."
@@ -152,6 +169,9 @@ class WorkspaceAiSettingsRequest(BaseModel):
     chunking_strategy: ChunkingStrategy | None = Field(
         default=None, description="Left out: keeps the current strategy."
     )
+    auto_retrieve: bool | None = Field(
+        default=None, description="Left out: keeps the current value."
+    )
     agent_model_ids: list[uuid.UUID] = Field(
         default_factory=list,
         description="Models enabled for the agent role; required when there is any to choose.",
@@ -172,6 +192,9 @@ class WorkspaceAiSettingsRequest(BaseModel):
     )
     vision_model_id: uuid.UUID | None = Field(
         default=None, description="A model enabled for the vision role; optional."
+    )
+    rerank_model_id: uuid.UUID | None = Field(
+        default=None, description="A model enabled for the rerank role; optional."
     )
 
 
@@ -196,6 +219,7 @@ def _choices(choices: dict[str, list[ApprovedModel]]) -> ModelChoices:
         light=[_choice(m) for m in choices["light"]],
         embedding=[_choice(m) for m in choices["embedding"]],
         vision=[_choice(m) for m in choices["vision"]],
+        rerank=[_choice(m) for m in choices["rerank"]],
     )
 
 
@@ -203,10 +227,12 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     settings = view.settings
     embedding = view.chosen["embedding"]
     vision = view.chosen["vision"]
+    rerank = view.chosen["rerank"]
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
         chunking_strategy=settings.chunking_strategy,
+        auto_retrieve=settings.auto_retrieve,
         agent_models=[_chosen(m) for m in view.chosen["agent"]],
         light_models=[_chosen(m) for m in view.chosen["light"]],
         light_features=[
@@ -218,6 +244,7 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
         embedding_model=_chosen(embedding[0]) if embedding else None,
         embedding_rebuilding=view.embedding_rebuilding,
         vision_model=_chosen(vision[0]) if vision else None,
+        rerank_model=_chosen(rerank[0]) if rerank else None,
         choices=_choices(view.choices),
         internal_agent_available=view.internal_agent_available,
         banner=view.banner,
@@ -258,6 +285,7 @@ def set_ai_settings(
             internal_only=body.internal_only,
             data_sharing_level=body.data_sharing_level,
             chunking_strategy=body.chunking_strategy,
+            auto_retrieve=body.auto_retrieve,
             agent_model_ids=body.agent_model_ids if agents else list(current.agent),
             default_agent_model_id=(
                 body.default_agent_model_id
@@ -274,6 +302,7 @@ def set_ai_settings(
                 body.embedding_model_id if "embedding_model_id" in sent else current.embedding
             ),
             vision_model_id=body.vision_model_id if "vision_model_id" in sent else current.vision,
+            rerank_model_id=body.rerank_model_id if "rerank_model_id" in sent else current.rerank,
         )
     )
 

@@ -45,13 +45,15 @@ class Reply:
 @dataclass(frozen=True)
 class FakeCall:
     kind: str
-    """``chat`` or ``embed``."""
+    """``chat``, ``embed`` or ``rerank``."""
     model: str
     messages: tuple[Message, ...] = ()
     tools: tuple[ToolSpec, ...] = ()
     stream: bool = False
     json_schema: dict[str, Any] | None = None
     texts: tuple[str, ...] = ()
+    query: str | None = None
+    """For ``rerank``: the query; the documents are in ``texts``."""
 
 
 class FakeAdapter:
@@ -77,6 +79,7 @@ class FakeAdapter:
         """What ``list_models`` returns (or raises); ``None``: listing unsupported."""
         self.ollama: OllamaContext | None = None
         """What ``ollama_context`` returns; ``None``: the fake is not an Ollama server."""
+        self._rerank_script: deque[list[float] | LlmError] = deque()
         self.reads_images = True
         """False: ``vision`` refuses, like a model that cannot read images."""
 
@@ -86,6 +89,12 @@ class FakeAdapter:
 
     def script_embeddings(self, *vectors: list[float]) -> FakeAdapter:
         self._script.extend(vectors)
+        return self
+
+    def script_rerank(self, *outcomes: list[float] | LlmError) -> FakeAdapter:
+        """Queue the scores (one per document) or error of the next ``rerank`` calls; with
+        nothing queued the documents keep their order."""
+        self._rerank_script.extend(outcomes)
         return self
 
     # -- Adapter ---------------------------------------------------------------------
@@ -135,6 +144,15 @@ class FakeAdapter:
                 return [outcome for _ in texts]
             raise AssertionError("the fake provider's script holds a reply, not an embedding")
         return [[0.1] * self.dimension for _ in texts]
+
+    def rerank(self, model: str, query: str, documents: Sequence[str]) -> list[float]:
+        self.calls.append(FakeCall("rerank", model, texts=tuple(documents), query=query))
+        if self._rerank_script:
+            outcome = self._rerank_script.popleft()
+            if isinstance(outcome, LlmError):
+                raise outcome
+            return list(outcome)
+        return [float(len(documents) - i) for i in range(len(documents))]
 
     def context_window(self, model: str) -> int | None:
         return self.window
