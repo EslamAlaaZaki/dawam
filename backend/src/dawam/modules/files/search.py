@@ -392,6 +392,28 @@ def _match_boosts(query: str, terms: Sequence[str]) -> tuple[str, dict[str, str]
     return boosts, params
 
 
+def _promote_exact(
+    db: Session, ordered: list[uuid.UUID], params: Mapping[str, Any], scope: str, pool: int
+) -> list[uuid.UUID]:
+    """``ordered`` with the passages that hold a query identifier moved to the front (stable),
+    so vector-only hits fused above them cannot bury an exact name match."""
+    if "ids" not in params:
+        return ordered
+    exact = set(
+        db.scalars(
+            sa.text(
+                "SELECT c.id FROM document_chunks c "
+                "JOIN workspace_files f ON f.id = c.file_id "
+                "WHERE c.workspace_id = :w AND c.search_vector @@ to_tsquery('simple', :ids)"
+                + scope
+                + " LIMIT :pool"
+            ),
+            {**params, "pool": pool},
+        )
+    )
+    return [c for c in ordered if c in exact] + [c for c in ordered if c not in exact]
+
+
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
@@ -976,6 +998,7 @@ class DocumentSearchService:
                     for position, chunk_id in enumerate(ranking):
                         scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
                 ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
+                ordered = _promote_exact(db, ordered, params, scope, pool)
                 rows = {
                     row.id: row
                     for row in db.execute(
