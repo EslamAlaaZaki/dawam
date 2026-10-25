@@ -526,10 +526,13 @@ class DocumentSearchService:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
         stage("chunking")
-        chunks = chunk(text) if text else []
+        model = self._embedder(workspace_id) if text else None
+        # Passage size is measured in the embedding model's own tokens (estimated without one).
+        chunks = chunk(text, model.gateway.count_tokens) if model else chunk(text or "")
+        if not chunks:
+            model = None
 
         vectors: list[list[float]] | None = None
-        model = self._embedder(workspace_id) if chunks else None
         if before_embedding is not None:
             before_embedding()
         if model is not None:
