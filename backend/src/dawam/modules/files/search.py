@@ -920,7 +920,7 @@ class DocumentSearchService:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
             queries = [query, *self._variants(workspace_id, query)]
-            term_sets = [t for t in (words(q) for q in queries) if t]
+            term_sets = [t for t in (stems(q) for q in queries) if t]
             embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
                 "SELECT c.id FROM document_chunks c "
