@@ -97,10 +97,10 @@ function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
       <dd>
         {settings.embedding_model?.name ??
           "None: document search matches text only"}
-        {settings.embedding_locked && (
+        {settings.embedding_rebuilding && (
           <span className="text-muted-foreground">
             {" "}
-            (fixed: documents are indexed)
+            (re-embedding documents)
           </span>
         )}
       </dd>
@@ -233,7 +233,6 @@ function OwnerForm({
         Embedding model
         <NativeSelect
           value={embedding}
-          disabled={settings.embedding_locked}
           onChange={(event) => setEmbedding(event.target.value)}
         >
           <option value={NONE}>None: document search matches text only</option>
@@ -245,10 +244,15 @@ function OwnerForm({
           ))}
         </NativeSelect>
       </label>
-      {settings.embedding_locked && (
+      {settings.embedding_rebuilding ? (
         <Hint>
-          Fixed: this Workspace has indexed documents, and changing the model
-          would need them indexed again.
+          The documents are being embedded again with this model. Until that
+          finishes, document search matches text only.
+        </Hint>
+      ) : (
+        <Hint>
+          Changing the model embeds indexed documents again in the background;
+          document search matches text only until that finishes.
         </Hint>
       )}
       <label className={labelClasses}>

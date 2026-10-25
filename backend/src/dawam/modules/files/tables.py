@@ -154,8 +154,12 @@ class DocumentChunkRecord(Base):
     ordinal: Mapped[int]
     section: Mapped[str] = mapped_column(sa.String(SECTION_MAX_LENGTH))
     content: Mapped[str] = mapped_column(sa.Text())
+    context_header: Mapped[str | None] = mapped_column(sa.Text())
+    """One sentence from the light model saying where the passage comes from; ``None``: the
+    feature was off. Indexed and embedded with ``content``, never shown as the passage."""
     search_text: Mapped[str] = mapped_column(sa.Text())
-    """``content`` after Arabic normalisation: what full-text search indexes."""
+    """``context_header`` and ``content`` after Arabic normalisation: what full-text search
+    indexes."""
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR, sa.Computed("to_tsvector('simple', search_text)", persisted=True)
     )
@@ -169,3 +173,18 @@ class DocumentChunkRecord(Base):
     this passage was cut from. Passages sharing it are returned as their parent, once."""
     parent_content: Mapped[str | None] = mapped_column(sa.Text())
     """The parent section's text; ``None`` for a passage indexed before parents existed."""
+
+
+class EmbeddingRebuildRecord(Base):
+    """A Workspace whose documents are being embedded again with its new embedding model
+    (ADR 0006). While the row exists, search matches text only; the ``reindex_documents``
+    job whose ``rebuild_id`` it holds deletes it when it switches to the new vectors."""
+
+    __tablename__ = "document_embedding_rebuilds"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    rebuild_id: Mapped[uuid.UUID]
+    """The rebuild that switches; a newer change or re-index replaces it."""
+    started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
