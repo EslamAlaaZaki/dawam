@@ -438,15 +438,18 @@ def test_search_matches_small_children_but_returns_their_parent_section_once(rol
 
 def test_limit_counts_distinct_parents_not_matching_children(roles, policy):
     sid = system(roles)
-    filler = "Postings are booked and reconciled every day. " * 20
-    for n in range(3):  # each file: one parent section of several children, all matching
-        body = "\n\n".join(f"ledger {filler}" for _ in range(4))
-        upload_ok(roles, sid, f"doc{n}.md", f"# Section {n}\n\n{body}")
+    filler = "Postings are booked and reconciled every day. " * 20  # one passage of its own
+    strong = "\n\n".join(f"ledger ledger ledger ledger {filler}" for _ in range(4))
+    # Six parents of four strong children are 24 children: more than the first candidate
+    # pool holds, and only five parents. The pool must grow to reach seven.
+    sections = [f"# Strong {n}\n\n{strong}" for n in range(6)]
+    sections += [f"# Weak {n}\n\nledger {filler}" for n in range(2)]
+    upload_ok(roles, sid, "big.md", "\n\n".join(sections))
 
-    items = search(roles, "ledger", limit=3).json()["items"]
+    items = search(roles, "ledger", limit=7).json()["items"]
 
-    assert sorted(i["section"] for i in items) == ["Section 0", "Section 1", "Section 2"]
-    assert len({i["document"] for i in items}) == 3
+    assert len({i["section"] for i in items}) == len(items) == 7
+    assert all(i["document"] == "big.md" for i in items)
 
 
 def test_a_passage_indexed_before_parents_existed_is_still_returned(roles, policy, app):
