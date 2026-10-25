@@ -5929,6 +5929,31 @@ export interface components {
              * Format: uuid
              */
             source_system_id: string;
+            /**
+             * Document Type
+             * @description `pdf`, `xlsx`, `md`...
+             */
+            document_type?: string | null;
+            /**
+             * Language
+             * @description `ar` or `en`.
+             */
+            language?: string | null;
+            /**
+             * Page
+             * @description The page of a PDF passage.
+             */
+            page?: number | null;
+            /**
+             * Sheet
+             * @description The worksheet of a spreadsheet passage.
+             */
+            sheet?: string | null;
+            /**
+             * Tags
+             * @description Labels: the document's folders.
+             */
+            tags?: string[];
         };
         /** DocumentSearchResults */
         DocumentSearchResults: {
@@ -18853,6 +18878,16 @@ export interface operations {
                 /** @description Only this Source System. */
                 system_id?: string | null;
                 limit?: number;
+                /** @description Only this type, e.g. `pdf`. */
+                document_type?: string | null;
+                /** @description Only `ar` or `en` passages. */
+                language?: string | null;
+                /** @description Only this PDF page. */
+                page?: number | null;
+                /** @description Only this worksheet. */
+                sheet?: string | null;
+                /** @description Only documents with this label. */
+                tag?: string | null;
             };
             header?: never;
             path: {
