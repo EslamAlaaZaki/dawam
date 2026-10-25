@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from dawam.modules.files.internal.arabic import normalise, words
+from dawam.modules.files.internal.arabic import normalise, stem, stemmed, stems, words
 from dawam.modules.files.internal.chunking import MAX_TOKENS, chunk, estimate_tokens
 
 
@@ -215,3 +215,22 @@ def test_parents_never_span_pages_and_children_keep_the_page():
 
     assert [(c.chunk.page, c.parent) for c in children] == [(1, 0), (2, 1)]
     assert all(f"page {c.chunk.page}" in c.parent_text for c in children)
+
+
+def test_english_and_arabic_word_forms_share_a_stem():
+    for forms in (
+        ["customer", "customers"],
+        ["create", "created", "creating", "creates"],
+        ["report", "reports", "reported", "reporting"],
+        ["run", "runs", "running"],
+        ["policy", "policies"],
+        ["المدرسة", "مدرسة", "المدرسات", "مدرسون", "والمدرسين"],
+        ["العميل", "عميل", "العميلان"],
+    ):
+        assert len({stem(normalise(w)) for w in forms}) == 1, forms
+
+
+def test_stemming_leaves_short_words_digits_and_codes_alone():
+    assert stem("gas") == "gas" and stem("بيت") == "بيت" and stem("inv2024") == "inv2024"
+    assert stemmed("The Customers ordered INV-100") == "the customer order inv-100"
+    assert stems("Customers, customer، المدرسة") == ["customer", "مدرس"]
