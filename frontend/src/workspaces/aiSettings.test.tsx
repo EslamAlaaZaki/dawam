@@ -67,6 +67,7 @@ function settings(
     internal_only: false,
     data_sharing_level: "metadata",
     chunking_strategy: "headings",
+    auto_retrieve: false,
     agent_models: [chosen(BIG, "Big", true), chosen(SMALL, "Small", false)],
     light_models: [chosen(SMALL, "Small", true)],
     light_features: [
