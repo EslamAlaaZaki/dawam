@@ -167,7 +167,7 @@ flowchart LR
 
 ### 3.5 Model roles, Workspace Models and budgets
 
-- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3); no fallback to the agent role for that) and `embedding` (document vectors) and `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it.
+- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3) and passage context headers (§8.2); no fallback to the agent role for those) and `embedding` (document vectors) and `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it.
 - **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
@@ -603,14 +603,17 @@ flowchart TD
     X4 & DESC --> TXT
     TXT -->|"no, e.g. an unread scan"| NT(["status no_text_found<br/>not searchable"])
     TXT -->|yes| STORE["Store extracted_text<br/>max 2,000,000 chars"]
-    STORE --> CH["status chunking: split at headings,<br/>pack paragraphs to ~1,000 chars"]
-    CH --> NORM["Arabic normalisation"]
-    NORM --> FTS["document_chunks row<br/>search_vector tsvector, GIN index"]
+    STORE --> CH["status chunking: parent sections of ~1,000 tokens,<br/>cut by the Workspace strategy into child passages<br/>of ~250 tokens with overlap; tables kept whole"]
+    CH --> HDR{"Light model the<br/>policy lets the text reach?"}
+    HDR -->|yes| CTX["One-sentence context header<br/>per passage"]
+    HDR -->|no| NORM
+    CTX --> NORM["Arabic normalisation<br/>of header + passage"]
+    NORM --> FTS["document_chunks row + metadata<br/>search_vector tsvector, GIN index"]
     CH --> POL{"Level >= documents,<br/>tested embedding model,<br/>internal-only respected?"}
     POL -->|no| FTO(["Full-text only:<br/>nothing sent to a model"])
     POL -->|yes| EMB["status embedding: batches of 32<br/>through MeteredGateway"]
     EMB -->|"provider or budget failure"| FTO
-    EMB -->|ok| VEC["Store embedding, model id,<br/>dimension in pgvector"]
+    EMB -->|ok| VEC["Store embedding, model id,<br/>dimension in pgvector;<br/>create the model's HNSW index if missing"]
     FTO & VEC --> DONE(["status indexed"])
 ```
 
@@ -640,16 +643,23 @@ Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested visio
 
 ### 8.2 Chunking (`files/internal/chunking.py`)
 
-- Structure-aware: the text is split into **sections** at Markdown headings (`#`…`######`); text before any heading is "Part N". XLSX sheets become sections through the `## <sheet>` lines.
-- Each section is split on blank lines into paragraphs, which are packed into passages of about **1,000 characters** (target); a single paragraph longer than **1,500** characters is hard-split.
-- No overlap between chunks. Each chunk keeps its `section` name (max 200 characters) as its **citation**.
+- Structure-aware: the text is split into **sections** at Markdown headings (`#`…`######`); text before any heading is "Part N". XLSX sheets become sections through the `## <sheet>` lines. A PDF's pages are separated by a form feed in the extracted text; a passage never spans two pages and records its `page`.
+- **Size in tokens** (#365), counted locally with the embedding model's own tokenizer (no provider call; without one, about four characters a token). A passage targets **250** tokens and never exceeds **375**; consecutive passages of a section share about **40** tokens of **overlap** (a passage's tail starts the next), never across a page. These are code constants until the Document AI settings page exists.
+- **Strategy** (#367), a per-Workspace setting (`chunking_strategy` in the Workspace AI settings, owner-editable; it applies to documents indexed from then on, a re-index applies it to the others): `headings` (default; a section's paragraphs are packed), `recursive` (paragraphs, then lines, sentences and words, cutting only what is too long) and `semantic` (sentences, with a new passage where the embedding similarity of neighbouring sentences drops below 0.5; it embeds the sentences through the Workspace's embedding model and behaves as `recursive` when there is none or the call returns the wrong count). The size limits hold for every strategy.
+- **Tables** (#366): a Markdown table is never mixed with prose. It is one passage, or, over 375 tokens, split by rows into passages that each repeat the header rows. A table whose header alone is too big is treated as prose.
+- **Parent/child, small to big** (#368, `internal/parents.py`): the text is first cut into **parent** sections of about 1,000 tokens (at most 1,500, no overlap); each parent is then cut into the child passages above. Children are what is embedded and matched; search returns the parent (§8.4). Each child stores its parent's position and text. The Workspace strategy cuts the parents (for `semantic`, at topic changes, falling back to `recursive` if the embedding call fails); the children are cut by size with the Workspace strategy, except that `semantic` children use `recursive`, since a semantic parent already ends where the topic changes.
+- **Contextual header** (#369, `internal/context.py`): when the Workspace has a `light` model that the data level and internal-only setting let documents reach, it writes one sentence (max 30 words, stored max 300 characters) for each passage from the document name, section, the first 4,000 characters of the document and the passage. The header is stored in `context_header` and is prepended to the passage for **full-text indexing and embedding** only; `content` stays as written. If a call fails, indexing goes on without headers for the rest of the file. With no light model the feature is off.
+- Each chunk keeps its `section` name (max 200 characters) as its **citation**.
 
 ### 8.3 Indexing (`files/search.py`, table `document_chunks`)
 
 | Column | Purpose |
 |---|---|
 | `content` | the passage as written |
-| `search_text` | the passage after **Arabic normalisation** |
+| `context_header` | the light model's one-sentence context, or empty (#369) |
+| `parent_ordinal`, `parent_content` | the parent section the passage was cut from, and its text; empty for a passage indexed before parents existed (#368) |
+| `document_type`, `language`, `page`, `sheet`, `tags` | metadata (#370): file type, `ar`/`en` detected from the passage, PDF page, XLSX sheet, and the lower-cased folders of the file's path |
+| `search_text` | the header and passage after **Arabic normalisation** |
 | `search_vector` | `tsvector` generated column: `to_tsvector('simple', search_text)`, **GIN index** |
 | `embedding` | pgvector `vector` with **no fixed dimension** (so any embedding model works) |
 | `embedding_model_id`, `embedding_dimension` | which model made the vector; search only compares vectors of the current model and dimension |
@@ -663,9 +673,11 @@ Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested visio
 
 Otherwise the Workspace gets **full-text search only** and no document text is sent to any model. An embedding failure (provider down, budget used up) leaves the file full-text only; a re-index fixes it. Embedding calls go through the `MeteredGateway`, so they count against budgets.
 
-**Embedding model choice** (ADR 0005): set per Workspace at creation; it can be changed until the Workspace has indexed documents, then it's fixed, because vectors from different models aren't comparable. A `reindex_documents` background job rebuilds every passage of a Workspace.
+**Embedding model choice** (ADR 0006, which supersedes ADR 0005): an owner can change a Workspace's embedding model at any time. Vectors from different models aren't comparable, so when the Workspace has indexed documents the change starts a `reindex_documents` background job (#372) that embeds every document again. While it runs, search for that Workspace is **full-text only** (an `document_embedding_rebuilds` row switches the vector ranking off). When the job ends, however it ends, one transaction drops every vector not made by the new model and turns vector search back on, so results never mix models. A document whose embedding fails stays full-text only until a re-index. A newer change or a manual re-index supersedes a running rebuild: only the newest one switches. A model cannot be removed while a Workspace has documents indexed with it.
 
-There is no ANN index (HNSW/IVFFlat) on `embedding`, since the column has no fixed dimension: vector search is an exact scan over the Workspace's candidate rows.
+**Recommended embedders for Arabic + English:** a multilingual model, such as `bge-m3`, `multilingual-e5-large`, `jina-embeddings-v3`, OpenAI `text-embedding-3-large` or Cohere `embed-multilingual-v3`. Prefer these for Arabic + English documents. DAWAM does not enforce this; the model is the owner's choice.
+
+**Vector indexes** (#371, `ensure_vector_index`). The `embedding` column has no fixed dimension, so each embedding model gets its own **partial HNSW index** on a cast, created (if missing) when its first vectors are stored: `USING hnsw ((embedding::vector(N)) vector_cosine_ops) WHERE embedding_model_id = '<id>' AND embedding_dimension = N`, named `ix_document_chunks_hnsw_<model id>_<N>`. The vector query uses the same cast and predicate (the model id and dimension are literals in the SQL), so the planner picks the index. pgvector limits HNSW on `vector` to **2,000** dimensions; a model with wider vectors has no index and is searched by exact scan, as before. `halfvec` and tunable `m`, `ef_construction` and `ef_search` were not built.
 
 ### 8.4 Retrieval: hybrid search with Reciprocal Rank Fusion
 
@@ -675,9 +687,10 @@ There is no ANN index (HNSW/IVFFlat) on `embedding`, since the column has no fix
 2. Normalise the query and split it into distinct words.
 3. **Full-text ranking:** `to_tsquery('simple', 'w1' | 'w2' | …)` (OR of the words), `ts_rank_cd` order, top **20**.
 4. **Vector ranking** (only if the embedder is allowed): embed the query with the same model, then `ORDER BY embedding <=> query_vector` (**cosine distance**) over passages with the same model id and dimension, top **20**.
-5. Both are scoped to the Workspace, optionally one Source System's documents, and exclude soft-deleted Source Systems.
-6. **Fuse** with RRF: `score = Σ 1 / (60 + rank)` over the rankings; keep the top `limit` (default 10).
-7. Return `Passage(file_id, document, section, text, score, source_system_id)`.
+5. Both are scoped to the Workspace, optionally one Source System's documents, and exclude soft-deleted Source Systems. Optional **metadata filters** (#370, `PassageFilters`) narrow both rankings: `document_type`, `language` (`ar`/`en`), `page`, `sheet`, `tag` (a folder of the file's path); every filter set must match. The `search_documents` tool takes them as arguments, and the file search API as query parameters.
+6. **Fuse** with RRF: `score = Σ 1 / (60 + rank)` over the rankings.
+7. **Small to big** (#368): rankings hold child passages; the result is their **parent** section's text, once per parent, at its best child's rank. Several children share a parent, so the candidate pool (20 per ranking) grows, up to 8 times, until `limit` distinct parents are found or the rankings run out. A passage indexed before parents existed is returned as itself. Keep the top `limit` (default 10).
+8. Return `Passage(file_id, document, section, text, score, source_system_id, document_type, language, page, sheet, tags)`.
 
 ```mermaid
 flowchart TD
@@ -688,9 +701,10 @@ flowchart TD
     EQ -->|no| SKIP["No vector ranking"]
     EQ -->|yes| QE["Embed the query<br/>same model"]
     QE --> VR["Vector ranking<br/>cosine distance, same model and dimension<br/>top 20"]
-    FT & VR & SKIP --> SC["Scope: Workspace, optional Source System,<br/>hide soft-deleted systems"]
+    FT & VR & SKIP --> SC["Scope: Workspace, optional Source System,<br/>metadata filters, hide soft-deleted systems"]
     SC --> RRF["Reciprocal Rank Fusion<br/>score = sum of 1 / (60 + rank)"]
-    RRF --> TOP["Top 10 passages"]
+    RRF --> PAR["Small to big: child passages replaced<br/>by their parent section, once each"]
+    PAR --> TOP["Top 10 passages"]
     TOP --> OUT["Passages with document + section<br/>quoted as data for the model"]
     OUT --> ANS["Model answers and cites<br/>document and section links"]
 ```
@@ -823,11 +837,11 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | Tools | `assistant/internal/tools.py` |
 | Conversations, runs, jobs | `assistant/service.py`, `assistant/api.py`, `assistant/assembly.py`, `assistant/tables.py` |
 | RAG: extraction | `files/internal/content.py` |
-| RAG: chunking | `files/internal/chunking.py` |
+| RAG: chunking | `files/internal/chunking.py`, `files/internal/parents.py`, `files/internal/context.py` |
 | RAG: Arabic normalisation | `files/internal/arabic.py` |
 | RAG: indexing and hybrid search | `files/search.py`, `files/tables.py` (`DocumentChunkRecord`) |
 | Source-query guard | `sources/source_query_service.py`, `sources/internal/query_guard.py`, `query_guard_catalog.py` |
 | PII validators and redaction | `platform/pii_validators.py`, `sources/internal/pii*.py` |
 | Worker and jobs | `worker.py`, `job_handlers.py`, `modules/jobs/` |
 | Frontend | `frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx` |
-| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |
+| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |

@@ -89,7 +89,7 @@ Shipped in Epic 21 (#363, #424, #425, #364, #426): indexing runs as a background
 ### 2.2 Layout-aware parsing
 Replace per-page `extract_text()` with a parser that keeps **headings, reading order and tables** (Docling, Marker or Unstructured), output as Markdown. Our heading-based chunker then gets real sections, and tables stay intact as Markdown tables.
 
-**Done** (#364) for PDF, DOCX and XLSX, with Docling. Table-aware chunking and chunk overlap (§3) are not built.
+**Done** (#364) for PDF, DOCX and XLSX, with Docling. Table-aware chunking and chunk overlap (§3) shipped in Epic 22 (#366, #365).
 
 ### 2.3 Images and diagrams
 Data teams upload **ERD screenshots, architecture diagrams and report mock-ups**. A vision model can describe them ("table `orders` has FK `customer_id` → `customers.id`") and that description becomes searchable text, linked to the image. A new tool such as `describe_image(file_id)` would let the agent look on demand.
@@ -127,14 +127,14 @@ flowchart TD
 
 | Today | Enhancement |
 |---|---|
-| Fixed ~1,000-char target, 1,500 hard split, no overlap | Configurable size and **overlap**, measured in **tokens** of the embedding model |
-| Heading-based sections only | Strategies: heading-aware (today), recursive, **semantic** (split where embedding similarity drops), table-aware (a table is one chunk, with its header repeated) |
-| Chunk = what's retrieved | **Parent/child ("small-to-big")**: embed small chunks, return their parent section to the model |
-| No chunk context | **Contextual retrieval**: prepend a one-sentence context ("From the Loans data dictionary, section Status codes…"), written by the light model, before embedding and full-text indexing |
-| No metadata filters beyond Source System | Metadata per chunk: document type, language, page number, sheet, tags; filterable in the tool |
-| No ANN index (vector column has no fixed dimension) | Per-model **partial HNSW indexes** with a fixed-dimension cast (e.g. `CREATE INDEX ... USING hnsw ((embedding::vector(1024)) vector_cosine_ops) WHERE embedding_model_id = '...'`), or `halfvec` to save memory; needed once Workspaces have many documents |
-| Embedding model fixed after indexing (ADR 0005) | The deferred **re-embed on change** job: build new vectors in the background, search full-text meanwhile, then switch |
-| Generic embedding model | Recommend **multilingual** embedders for Arabic + English: `bge-m3`, `multilingual-e5-large`, `jina-embeddings-v3`, OpenAI `text-embedding-3-large`, Cohere `embed-multilingual-v3` |
+| Fixed ~1,000-char target, 1,500 hard split, no overlap | Configurable size and **overlap**, measured in **tokens** of the embedding model. **Done** ([#365](https://github.com/EslamAlaaZaki/dawam/issues/365)): 250 target, 375 max, 40 overlap, counted with the model's own tokenizer; code constants, not yet settings |
+| Heading-based sections only | Strategies: heading-aware (today), recursive, **semantic** (split where embedding similarity drops), table-aware (a table is one chunk, with its header repeated). **Done**: table-aware ([#366](https://github.com/EslamAlaaZaki/dawam/issues/366)); recursive and semantic as a per-Workspace setting ([#367](https://github.com/EslamAlaaZaki/dawam/issues/367)) |
+| Chunk = what's retrieved | **Parent/child ("small-to-big")**: embed small chunks, return their parent section to the model. **Done** ([#368](https://github.com/EslamAlaaZaki/dawam/issues/368)): parents of ~1,000 tokens, children of ~250 |
+| No chunk context | **Contextual retrieval**: prepend a one-sentence context ("From the Loans data dictionary, section Status codes…"), written by the light model, before embedding and full-text indexing. **Done** ([#369](https://github.com/EslamAlaaZaki/dawam/issues/369)); off without a light model |
+| No metadata filters beyond Source System | Metadata per chunk: document type, language, page number, sheet, tags; filterable in the tool. **Done** ([#370](https://github.com/EslamAlaaZaki/dawam/issues/370)); tags are the file's folders |
+| No ANN index (vector column has no fixed dimension) | Per-model **partial HNSW indexes** with a fixed-dimension cast (e.g. `CREATE INDEX ... USING hnsw ((embedding::vector(1024)) vector_cosine_ops) WHERE embedding_model_id = '...'`), or `halfvec` to save memory; needed once Workspaces have many documents. **Done** ([#371](https://github.com/EslamAlaaZaki/dawam/issues/371)) with the `vector` cast up to 2,000 dimensions; `halfvec` not built |
+| Embedding model fixed after indexing (ADR 0005) | The deferred **re-embed on change** job: build new vectors in the background, search full-text meanwhile, then switch. **Done** ([#372](https://github.com/EslamAlaaZaki/dawam/issues/372), ADR 0006) |
+| Generic embedding model | Recommend **multilingual** embedders for Arabic + English (documented in `ai-architecture.md` §8.3): `bge-m3`, `multilingual-e5-large`, `jina-embeddings-v3`, OpenAI `text-embedding-3-large`, Cohere `embed-multilingual-v3` |
 
 ---
 
@@ -410,15 +410,15 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
 | 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
-| 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | Parsing **done** (#364); table-aware chunking and overlap not yet |
-| 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks |
+| 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | Parsing **done** (#364); table-aware chunking **done** (#366); overlap **done** (#365) |
+| 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks. **Done** (#371) |
 | 11 | Conversation compaction + Workspace memory | §7 | Medium | M | Compaction **done** (#354); Workspace memory not yet |
-| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | |
+| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | Contextual headers **done** (#369); titles and query rewriting not yet |
 | 13 | Planning + self-verification in jobs | §6 | Medium | M | |
 | 14 | Model fallback + cost tables | §6, §8 | Medium | S | |
 | 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | Only after 6–8 are in place |
 | 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | |
-| 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | |
+| 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | **Done** (#372); ADR 0006 supersedes 0005 |
 | 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2. **Done** (#426) |
 | 19 | Discovery tools: `workspace_overview`, KPI and DW search | §6.1 | High | S | Quick win; do in Phase 1 |
 | 20 | Current date (Gregorian + Hijri) in the system prompt | §6.2 | Medium | S | Quick win; do in Phase 1 |
