@@ -1,7 +1,7 @@
 """add the contextual header of a document chunk (#369).
 
 Revision ID: a9d4e7b2c615
-Revises: c8e2a5f7d104
+Revises: a7c3e9f1b204
 Create Date: 2026-10-25 10:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a9d4e7b2c615"
-down_revision: str | Sequence[str] | None = "c8e2a5f7d104"
+down_revision: str | Sequence[str] | None = "a7c3e9f1b204"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
