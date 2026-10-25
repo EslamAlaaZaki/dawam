@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 
+from dawam.modules.files.internal.query_rewrite import parse_variants
 from dawam.modules.llm import LlmError, Reply
 from tests.files import test_indexing
 from tests.files.test_chunk_context import light_calls, use_light
@@ -65,3 +66,35 @@ def test_a_failing_light_model_searches_as_typed(
 
     fake_llm.script(LlmError("bad_request", "nope"))
     assert [p["document"] for p in search(roles, "default")] == ["loans.md"]
+
+
+def test_an_exhausted_token_budget_searches_as_typed(
+    roles: RoleClients, admin_client, fake_llm, worker
+):
+    use_light(roles, admin_client)
+    system_id = system(roles)
+    fake_llm.script(Reply(text="header"))
+    upload(roles, system_id, "loans.md", DOC)
+    worker()
+    budget = roles.client("admin").put(
+        "/api/v1/admin/llm/budgets/installation", json={"monthly_token_budget": 0}
+    )
+    assert budget.status_code == 200, budget.text
+    fake_llm.calls.clear()
+
+    assert [p["document"] for p in search(roles, "default")] == ["loans.md"]
+    assert light_calls(fake_llm) == []
+
+
+def test_parsing_keeps_the_hyde_line_beyond_three_rewordings():
+    text = "one a\ntwo b\nthree c\nfour d\nANSWER: five e"
+    assert parse_variants(text, "q") == ["one a", "two b", "three c", "five e"]
+
+
+def test_parsing_drops_the_query_and_duplicates_ignoring_case_and_spacing():
+    text = "- Loan  DEFAULT\nloan default\n  What is  default\n\nwhat is default\n"
+    assert parse_variants(text, "loan default") == ["What is default"]
+
+
+def test_parsing_takes_only_the_first_hyde_line_and_strips_its_prefix():
+    assert parse_variants("answer: first\nANSWER: second", "q") == ["first"]
