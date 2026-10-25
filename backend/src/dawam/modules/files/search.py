@@ -526,9 +526,11 @@ class DocumentSearchService:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
         stage("chunking")
-        model = self._embedder(workspace_id) if text else None
-        # Passage size is measured in the embedding model's own tokens (estimated without one).
-        chunks = chunk(text, model.gateway.count_tokens) if model else chunk(text or "")
+        model = self._embedder(workspace_id) if text and text.strip() else None
+        # Passage size is measured in the embedding model's own tokens, counted locally
+        # (never a provider call); without a local tokenizer the estimate is used.
+        counter = model.gateway.local_token_counter() if model else None
+        chunks = chunk(text or "", counter) if counter else chunk(text or "")
         if not chunks:
             model = None
 
