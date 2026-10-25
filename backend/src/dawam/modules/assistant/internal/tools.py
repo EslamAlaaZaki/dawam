@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
-from dawam.modules.files import DocumentSearchService, FileService
+from dawam.modules.files import DocumentSearchService, FileService, PassageFilters
 from dawam.modules.jobs import JobService
 from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.lineage import LineageService
@@ -293,6 +293,11 @@ class _SearchDocuments(BaseModel):
     system_id: uuid.UUID | None = Field(
         default=None, description="Only this Source System's documents."
     )
+    document_type: str | None = Field(default=None, description="Only this type, e.g. pdf, xlsx.")
+    language: str | None = Field(default=None, description="Only ar or en passages.")
+    page: int | None = Field(default=None, ge=1, description="Only this PDF page.")
+    sheet: str | None = Field(default=None, description="Only this worksheet.")
+    tag: str | None = Field(default=None, description="Only documents in this folder.")
     limit: int = Field(default=5, ge=1, le=20)
 
 
@@ -1197,7 +1202,12 @@ def _evaluate_dw(ctx: ToolContext, args: _EvaluateDw) -> Any:
 
 def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
     passages = ctx.services.documents.search(
-        ctx.user, ctx.workspace_id, args.query, system_id=args.system_id, limit=args.limit
+        ctx.user,
+        ctx.workspace_id,
+        args.query,
+        system_id=args.system_id,
+        limit=args.limit,
+        filters=PassageFilters(args.document_type, args.language, args.page, args.sheet, args.tag),
     )
     return [
         {
@@ -1205,6 +1215,10 @@ def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
             "document": p.document,
             "section": p.section,
             "text": p.text,
+            "document_type": p.document_type,
+            "language": p.language,
+            "page": p.page,
+            "sheet": p.sheet,
             "source_system_id": p.source_system_id,
             "link": f"?folder=systems/{p.source_system_id}/documents&file={p.file_id}",
         }

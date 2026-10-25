@@ -44,9 +44,16 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
-from .internal.arabic import normalise, words
+from .internal.arabic import language, normalise, words
 from .internal.chunking import chunk
-from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
+from .internal.content import (
+    ALLOWED_TYPES,
+    EXTRACTED_TEXT_MAX_CHARS,
+    IMAGE_TYPES,
+    detect,
+    extract_text,
+    is_image,
+)
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, WorkspaceFileRecord
@@ -243,6 +250,22 @@ class Passage:
     text: str
     score: float
     source_system_id: uuid.UUID
+    document_type: str | None = None
+    language: str | None = None
+    page: int | None = None
+    sheet: str | None = None
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PassageFilters:
+    """Narrow a search by what is stored per passage; every field set must match."""
+
+    document_type: str | None = None
+    language: str | None = None
+    page: int | None = None
+    sheet: str | None = None
+    tag: str | None = None
 
 
 def _unless_other_api_error(exc: Exception) -> None:
@@ -254,6 +277,14 @@ def _unless_other_api_error(exc: Exception) -> None:
 
 class _Superseded(Exception):
     """The file was replaced (or deleted) while its index job ran."""
+
+
+_TYPE_BY_MIME = {t.mime: t.name for t in ALLOWED_TYPES}
+
+
+def _tags(path: str) -> list[str]:
+    """The labels of a document: the lower-cased folders of its path."""
+    return list(dict.fromkeys(p.casefold() for p in path.split("/")[:-1] if p))
 
 
 def _vector_literal(vector: Sequence[float]) -> str:
@@ -525,6 +556,8 @@ class DocumentSearchService:
         with Session(self._engine) as db:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
+            kind = _TYPE_BY_MIME.get(record.mime) if record else None
+            folders = _tags(record.path) if record else []
         stage("chunking")
         chunks = chunk(text) if text else []
 
@@ -561,6 +594,11 @@ class DocumentSearchService:
                     section=piece.section,
                     content=piece.text,
                     search_text=normalise(piece.text),
+                    document_type=kind,
+                    language=language(piece.text),
+                    page=piece.page,
+                    sheet=piece.section if kind == "xlsx" else None,
+                    tags=folders,
                 )
                 db.add(row)
                 if model is not None and vectors is not None and ordinal < len(vectors):
@@ -620,6 +658,7 @@ class DocumentSearchService:
         *,
         system_id: uuid.UUID | None = None,
         limit: int = DEFAULT_LIMIT,
+        filters: PassageFilters | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
         where the passages were embedded, vector rankings are fused."""
@@ -629,6 +668,7 @@ class DocumentSearchService:
             return []
         scope = " AND f.owner_id = :system_id" if system_id else ""
         params: dict[str, Any] = {"w": workspace_id, "system_id": system_id}
+        scope += self._filter_scope(filters, params)
         with Session(self._engine) as db:
             # A soft-deleted Source System's documents are hidden until it is purged.
             hidden = hidden_source_system_ids(db, workspace_id)
@@ -666,6 +706,11 @@ class DocumentSearchService:
                         DocumentChunkRecord.id,
                         DocumentChunkRecord.section,
                         DocumentChunkRecord.content,
+                        DocumentChunkRecord.document_type,
+                        DocumentChunkRecord.language,
+                        DocumentChunkRecord.page,
+                        DocumentChunkRecord.sheet,
+                        DocumentChunkRecord.tags,
                         WorkspaceFileRecord.id.label("file_id"),
                         WorkspaceFileRecord.path,
                         WorkspaceFileRecord.owner_id,
@@ -684,9 +729,37 @@ class DocumentSearchService:
                 text=rows[cid].content,
                 score=scores[cid],
                 source_system_id=rows[cid].owner_id,
+                document_type=rows[cid].document_type,
+                language=rows[cid].language,
+                page=rows[cid].page,
+                sheet=rows[cid].sheet,
+                tags=tuple(rows[cid].tags),
             )
             for cid in best
         ]
+
+    @staticmethod
+    def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:
+        """The SQL conditions (on chunk ``c``) for ``filters``, binding their values."""
+        if filters is None:
+            return ""
+        scope = ""
+        if filters.document_type:
+            scope += " AND c.document_type = :f_type"
+            params["f_type"] = filters.document_type.casefold()
+        if filters.language:
+            scope += " AND c.language = :f_language"
+            params["f_language"] = filters.language.casefold()
+        if filters.page is not None:
+            scope += " AND c.page = :f_page"
+            params["f_page"] = filters.page
+        if filters.sheet:
+            scope += " AND c.sheet = :f_sheet"
+            params["f_sheet"] = filters.sheet
+        if filters.tag:
+            scope += " AND :f_tag = ANY(c.tags)"
+            params["f_tag"] = filters.tag.casefold()
+        return scope
 
     def _vector_ranking(
         self,
