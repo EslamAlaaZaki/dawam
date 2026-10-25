@@ -1,7 +1,7 @@
 """Stem the full-text column: Arabic and English word forms meet their stems.
 
 Revision ID: e4b8a1c6d937
-Revises: e5a1c8d7b362
+Revises: b5e9c3a7d216
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e4b8a1c6d937"
-down_revision: str | Sequence[str] | None = "e5a1c8d7b362"
+down_revision: str | Sequence[str] | None = "b5e9c3a7d216"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
