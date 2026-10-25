@@ -75,3 +75,30 @@ def test_overlap_never_crosses_a_section():
 
     assert [c.section for c in chunks] == ["A", "B"]
     assert "alpha" not in chunks[1].text
+
+
+def _table(rows: int) -> str:
+    body = (f"| {i} | item{i} |" for i in range(rows))
+    return "\n".join(["| id | name |", "| --- | --- |", *body])
+
+
+def test_a_small_table_is_one_passage_apart_from_prose():
+    table = _table(3)
+
+    chunks = chunk(f"before text\n{table}\nafter text")
+
+    assert [c.text for c in chunks] == ["before text", table, "after text"]
+
+
+def test_a_large_table_splits_by_rows_and_repeats_the_header():
+    chunks = chunk(_table(60), _words, target=40, maximum=60)
+
+    assert len(chunks) > 2
+    assert all(c.text.splitlines()[:2] == ["| id | name |", "| --- | --- |"] for c in chunks)
+    assert all(_words(c.text) <= 60 for c in chunks)
+    rows = [line for c in chunks for line in c.text.splitlines()[2:]]
+    assert rows == _table(60).splitlines()[2:]
+
+
+def test_pipes_without_a_rule_row_stay_prose():
+    assert len(chunk("| a | b |\n| c | d |")) == 1
