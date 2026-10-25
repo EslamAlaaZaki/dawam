@@ -120,3 +120,11 @@ def test_the_semantic_strategy_without_an_embedder_is_recursive():
     text = "Cats purr softly. Stocks fell sharply."
 
     assert chunk(text, _words, strategy="semantic") == chunk(text, _words, strategy="recursive")
+
+
+def test_the_semantic_strategy_falls_back_to_recursive_when_vectors_do_not_match_sentences():
+    text = "Cats purr softly. Stocks fell sharply."
+
+    chunks = chunk(text, _words, strategy="semantic", embed=lambda texts: [[1.0, 0.0]])
+
+    assert chunks == chunk(text, _words, strategy="recursive")

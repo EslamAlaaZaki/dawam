@@ -83,15 +83,18 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b, strict=False)) / norm if norm else 0.0
 
 
-def _semantic_blocks(paragraphs: list[str], embed: Embedder) -> list[list[str]]:
+def _semantic_blocks(paragraphs: list[str], embed: Embedder) -> list[list[str]] | None:
     """The sentences of ``paragraphs`` in blocks, a new block where the embedding similarity
-    to the previous sentence drops below ``SEMANTIC_BREAK_SIMILARITY``."""
+    to the previous sentence drops below ``SEMANTIC_BREAK_SIMILARITY``. ``None``: ``embed``
+    returned a different number of vectors than sentences, so the caller falls back."""
     sentences = [s.strip() for p in paragraphs for s in _SENTENCE.split(p) if s.strip()]
     if len(sentences) < 2:
         return [sentences]
     vectors = embed(sentences)
+    if len(vectors) != len(sentences):
+        return None
     groups = [[sentences[0]]]
-    for sentence, before, after in zip(sentences[1:], vectors, vectors[1:], strict=False):
+    for sentence, before, after in zip(sentences[1:], vectors[:-1], vectors[1:], strict=True):
         if _cosine(before, after) < SEMANTIC_BREAK_SIMILARITY:
             groups.append([])
         groups[-1].append(sentence)
@@ -143,8 +146,11 @@ def chunk(
             continue
         name = title or f"Part {len(chunks) + 1}"
         limit = maximum - overlap
+        blocks = None
         if strategy == "semantic" and embed is not None:
             blocks = _semantic_blocks(paragraphs, embed)  # a topic change ends a passage
+        if blocks is not None:
+            pass
         elif strategy in ("recursive", "semantic"):
             blocks = [[u for p in paragraphs for u in _recursive_units(p, target, count)]]
         else:
