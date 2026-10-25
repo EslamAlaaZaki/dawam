@@ -8,6 +8,13 @@ from dawam.modules.files.internal.arabic import normalise, words
 from dawam.modules.files.internal.chunking import MAX_TOKENS, chunk, estimate_tokens
 
 
+def test_a_passage_never_spans_a_page_and_overlap_does_not_cross_one():
+    pieces = chunk("alpha " * 400 + "\f" + "omega " * 400)
+
+    assert {c.page for c in pieces} == {1, 2}
+    assert all(("alpha" in c.text) != ("omega" in c.text) for c in pieces)
+
+
 def test_diacritics_are_removed_and_letter_forms_unified():
     assert normalise("مُدَرِّسَة") == normalise("مدرسه")
     assert normalise("أحمد إبراهيم آمن") == "احمد ابراهيم امن"

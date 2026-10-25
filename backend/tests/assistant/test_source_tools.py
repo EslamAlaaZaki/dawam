@@ -436,6 +436,18 @@ def test_search_documents_cites_the_document_and_section_at_the_documents_level(
     assert file_id in passage["link"] and passage["file_id"] == file_id
 
 
+def test_search_documents_filters_by_metadata_through_the_gateway(roles, model, fake_llm, source):
+    upload(roles, source, "design.md", "# Settlement\nSettlement runs nightly.")
+    level(roles, "documents")
+
+    _, kept = use(roles, fake_llm, "search_documents", query="settlement", document_type="md")
+    _, dropped = use(roles, fake_llm, "search_documents", query="settlement", document_type="pdf")
+
+    [passage] = payload(kept)
+    assert passage["document_type"] == "md" and passage["language"] == "en"
+    assert payload(dropped) == []
+
+
 def test_search_documents_is_refused_below_the_documents_level(roles, model, fake_llm, source):
     upload(roles, source, "design.md", "# Settlement\nSettlement runs nightly.")
 

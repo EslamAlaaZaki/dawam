@@ -50,9 +50,17 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage
 
-from .internal.arabic import normalise, words
-from .internal.chunking import chunk
-from .internal.content import EXTRACTED_TEXT_MAX_CHARS, IMAGE_TYPES, detect, extract_text, is_image
+from .internal.arabic import language, normalise, words
+from .internal.chunking import Chunk, chunk
+from .internal.content import (
+    ALLOWED_TYPES,
+    EXTRACTED_TEXT_MAX_CHARS,
+    IMAGE_TYPES,
+    detect,
+    extract_text,
+    is_image,
+)
+from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parsing import DocumentParser
 from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
@@ -228,6 +236,47 @@ IMAGE_NOT_DESCRIBED = (
     "The image was not described: the Workspace has no vision model that its data-sharing "
     "level lets the image reach."
 )
+
+
+@dataclass(frozen=True)
+class LightModel:
+    is_internal: bool
+    gateway: MeteredGateway
+
+
+class LightModels(Protocol):
+    def current(self, workspace_id: uuid.UUID) -> LightModel | None:
+        """The Workspace's light model, or ``None``: it has none (no fallback to the agent)."""
+        ...
+
+
+class NoLightModels:
+    def current(self, workspace_id: uuid.UUID) -> LightModel | None:
+        return None
+
+
+class RegisteredLightModels:
+    """The Workspace's default light model, one of its Workspace Models (optional)."""
+
+    def __init__(self, providers: ProviderService, roles: RoleService, engine: sa.Engine) -> None:
+        self._providers = providers
+        self._roles = roles
+        self._engine = engine
+
+    def current(self, workspace_id: uuid.UUID) -> LightModel | None:
+        chosen = workspace_model_id(self._engine, workspace_id, "light")
+        if chosen is None:
+            return None
+        for provider in self._providers.list_providers():
+            for model in provider.models:
+                if model.id == chosen and "light" in model.roles:
+                    gateway = self._roles.metered_gateway(
+                        model.id, "light", workspace_id=workspace_id
+                    )
+                    return LightModel(provider.is_internal, gateway)
+        return None
+
+
 IMAGE_VISION_FAILED = "The vision model could not describe the image ({reason})."
 
 
@@ -249,6 +298,22 @@ class Passage:
     text: str
     score: float
     source_system_id: uuid.UUID
+    document_type: str | None = None
+    language: str | None = None
+    page: int | None = None
+    sheet: str | None = None
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PassageFilters:
+    """Narrow a search by what is stored per passage; every field set must match."""
+
+    document_type: str | None = None
+    language: str | None = None
+    page: int | None = None
+    sheet: str | None = None
+    tag: str | None = None
 
 
 def _unless_other_api_error(exc: Exception) -> None:
@@ -260,6 +325,14 @@ def _unless_other_api_error(exc: Exception) -> None:
 
 class _Superseded(Exception):
     """The file was replaced (or deleted) while its index job ran."""
+
+
+_TYPE_BY_MIME = {t.mime: t.name for t in ALLOWED_TYPES}
+
+
+def _tags(path: str) -> list[str]:
+    """The labels of a document: the lower-cased folders of its path."""
+    return list(dict.fromkeys(p.casefold() for p in path.split("/")[:-1] if p))
 
 
 HNSW_MAX_DIMENSION = 2000
@@ -317,7 +390,9 @@ class DocumentSearchService:
         parser: Callable[[], DocumentParser | None] = lambda: None,
         ocr: Callable[[], OcrEngine | None] = lambda: None,
         vision: VisionModels | None = None,
+        light: LightModels | None = None,
     ) -> None:
+        self._light = light or NoLightModels()
         self._parser = parser
         self._ocr = ocr
         self._vision = vision or NoVisionModels()
@@ -348,6 +423,40 @@ class DocumentSearchService:
         the rule of ``_ocr_engine`` (an internal model always may)."""
         model = self._vision.current(workspace_id)
         return model if model is not None and self._may_send(workspace_id, model) else None
+
+    def _light_model(self, workspace_id: uuid.UUID) -> LightModel | None:
+        """The light model that writes passage context, or ``None`` (the feature is off): the
+        Workspace has none, or the data level / internal-only keeps documents from it."""
+        model = self._light.current(workspace_id)
+        if model is None:
+            return None
+        settings = self._ai.document_settings(workspace_id)
+        if settings.internal_only and not model.is_internal:
+            return None
+        if not (model.is_internal or settings.includes_documents):
+            return None
+        return model
+
+    def _headers(
+        self, workspace_id: uuid.UUID, name: str, text: str, chunks: Sequence[Chunk]
+    ) -> list[str]:
+        """The context sentence of each passage (empty where there is none). All empty when
+        the feature is off. A failing call costs only the headers (the file still indexes)."""
+        model = self._light_model(workspace_id) if chunks else None
+        if model is None:
+            return [""] * len(chunks)
+        headers: list[str] = []
+        failing = False
+        for piece in chunks:
+            header = ""
+            if not failing:
+                try:
+                    header = context_header(model.gateway, name, piece.section, text, piece.text)
+                except (LlmError, ApiError) as exc:
+                    logger.warning("passage context failed, indexing without it: %s", exc)
+                    failing = True  # likely the same for the rest: stop spending calls
+            headers.append(header)
+        return headers
 
     def _may_send(self, workspace_id: uuid.UUID, model: VisionModel) -> bool:
         settings = self._ai.document_settings(workspace_id)
@@ -569,6 +678,9 @@ class DocumentSearchService:
         with Session(self._engine) as db:
             record = db.get(WorkspaceFileRecord, file_id)
             text = record.extracted_text if record and record.workspace_id == workspace_id else None
+            kind = _TYPE_BY_MIME.get(record.mime) if record else None
+            folders = _tags(record.path) if record else []
+            name = record.path if record else ""
         stage("chunking")
         model = self._embedder(workspace_id) if text and text.strip() else None
         # Passage size is measured in the embedding model's own tokens, counted locally
@@ -584,6 +696,8 @@ class DocumentSearchService:
             chunks = _chunks(text or "", counter, "recursive", None)
         if not chunks:
             model = None
+        headers = self._headers(workspace_id, name, text or "", chunks)
+        indexed = [f"{h}\n{c.text}" if h else c.text for h, c in zip(headers, chunks, strict=True)]
 
         vectors: list[list[float]] | None = None
         if before_embedding is not None:
@@ -593,7 +707,7 @@ class DocumentSearchService:
             try:
                 vectors = []
                 for start in range(0, len(chunks), EMBED_BATCH):
-                    batch = [c.text for c in chunks[start : start + EMBED_BATCH]]
+                    batch = indexed[start : start + EMBED_BATCH]
                     vectors.extend(model.gateway.embed(batch))
             except (LlmError, ApiError) as exc:
                 _unless_other_api_error(exc)
@@ -622,7 +736,13 @@ class DocumentSearchService:
                     ordinal=ordinal,
                     section=piece.section,
                     content=piece.text,
-                    search_text=normalise(piece.text),
+                    context_header=headers[ordinal] or None,
+                    search_text=normalise(indexed[ordinal]),
+                    document_type=kind,
+                    language=language(piece.text),
+                    page=piece.page,
+                    sheet=piece.section if kind == "xlsx" else None,
+                    tags=folders,
                 )
                 db.add(row)
                 if model is not None and vectors is not None and ordinal < len(vectors):
@@ -772,6 +892,7 @@ class DocumentSearchService:
         *,
         system_id: uuid.UUID | None = None,
         limit: int = DEFAULT_LIMIT,
+        filters: PassageFilters | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
         where the passages were embedded, vector rankings are fused."""
@@ -781,6 +902,7 @@ class DocumentSearchService:
             return []
         scope = " AND f.owner_id = :system_id" if system_id else ""
         params: dict[str, Any] = {"w": workspace_id, "system_id": system_id}
+        scope += self._filter_scope(filters, params)
         with Session(self._engine) as db:
             # A soft-deleted Source System's documents are hidden until it is purged.
             hidden = hidden_source_system_ids(db, workspace_id)
@@ -818,6 +940,11 @@ class DocumentSearchService:
                         DocumentChunkRecord.id,
                         DocumentChunkRecord.section,
                         DocumentChunkRecord.content,
+                        DocumentChunkRecord.document_type,
+                        DocumentChunkRecord.language,
+                        DocumentChunkRecord.page,
+                        DocumentChunkRecord.sheet,
+                        DocumentChunkRecord.tags,
                         WorkspaceFileRecord.id.label("file_id"),
                         WorkspaceFileRecord.path,
                         WorkspaceFileRecord.owner_id,
@@ -836,9 +963,37 @@ class DocumentSearchService:
                 text=rows[cid].content,
                 score=scores[cid],
                 source_system_id=rows[cid].owner_id,
+                document_type=rows[cid].document_type,
+                language=rows[cid].language,
+                page=rows[cid].page,
+                sheet=rows[cid].sheet,
+                tags=tuple(rows[cid].tags),
             )
             for cid in best
         ]
+
+    @staticmethod
+    def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:
+        """The SQL conditions (on chunk ``c``) for ``filters``, binding their values."""
+        if filters is None:
+            return ""
+        scope = ""
+        if filters.document_type:
+            scope += " AND c.document_type = :f_type"
+            params["f_type"] = filters.document_type.casefold()
+        if filters.language:
+            scope += " AND c.language = :f_language"
+            params["f_language"] = filters.language.casefold()
+        if filters.page is not None:
+            scope += " AND c.page = :f_page"
+            params["f_page"] = filters.page
+        if filters.sheet:
+            scope += " AND c.sheet = :f_sheet"
+            params["f_sheet"] = filters.sheet
+        if filters.tag:
+            scope += " AND :f_tag = ANY(c.tags)"
+            params["f_tag"] = filters.tag.casefold()
+        return scope
 
     def _vector_ranking(
         self,

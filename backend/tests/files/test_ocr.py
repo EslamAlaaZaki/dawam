@@ -94,7 +94,8 @@ def test_a_pdf_with_enough_text_on_every_page_skips_ocr(roles: RoleClients, ocr,
 
     assert ocr.pages == []
     assert listed(roles, system_id)["typed.pdf"]["index_status"] == "indexed"
-    assert [p["document"] for p in search(roles, "dormant")] == ["typed.pdf"]
+    # a passage never spans pages, so each page's text is its own passage
+    assert {p["document"] for p in search(roles, "dormant")} == {"typed.pdf"}
 
 
 def test_only_the_pages_short_of_text_are_handed_to_ocr(roles: RoleClients, ocr, worker):

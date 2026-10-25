@@ -1,8 +1,10 @@
 """Cutting a document's text into passages that can be cited.
 
 A passage belongs to a *section*: the nearest Markdown heading above it, otherwise
-"Part N". Long sections are split on paragraph breaks into passages of about
-``TARGET_TOKENS`` tokens, never more than ``MAX_TOKENS``. Size is measured in tokens of
+"Part N". A PDF's pages are separated by ``PAGE_BREAK`` in the extracted text; a passage
+never spans two pages (nor does overlap cross one) and records the page it is on.
+Long sections are split on paragraph breaks into passages of about ``TARGET_TOKENS`` tokens,
+never more than ``MAX_TOKENS``. Size is measured in tokens of
 the Workspace's embedding model (``count``); consecutive passages of a section share
 about ``OVERLAP_TOKENS`` tokens, so a sentence cut at a boundary is whole in one of them.
 
@@ -33,6 +35,8 @@ SEMANTIC_BREAK_SIMILARITY = 0.5
 """Neighbouring sentences less similar than this start a new passage."""
 DEFAULT_STRATEGY = "headings"
 STRATEGIES = ("headings", "recursive", "semantic")
+PAGE_BREAK = "\f"
+"""Between the pages of a paged document (a PDF) in its extracted text."""
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _SENTENCE = re.compile(r"(?<=[.!?؟])\s+|\n+")
 _SEPARATORS = (r"\n\s*\n", r"\n", r"(?<=[.!?؟])\s+")  # then words, in ``_split_long``
@@ -54,6 +58,8 @@ def estimate_tokens(text: str) -> int:
 class Chunk:
     section: str
     text: str
+    page: int | None = None
+    """The 1-based page, for a paged document; ``None`` otherwise."""
 
 
 def _split_long(paragraph: str, limit: int, count: TokenCounter) -> list[str]:
@@ -200,16 +206,21 @@ def chunk(
     tokens in the embedding model's own tokenizer. ``semantic`` needs ``embed`` (texts to
     vectors) and otherwise behaves as ``recursive``."""
     overlap = max(0, min(overlap, maximum // 2))
-    sections: list[tuple[str | None, list[str]]] = [(None, [])]
-    for line in text.splitlines():
-        heading = _HEADING.match(line)
-        if heading:
-            sections.append((heading.group(1)[:SECTION_MAX_CHARS], []))
-        else:
-            sections[-1][1].append(line)
+    paged = PAGE_BREAK in text
+    sections: list[tuple[str | None, list[str], int | None]] = [(None, [], 1 if paged else None)]
+    for number, page_text in enumerate(text.split(PAGE_BREAK), start=1):
+        page = number if paged else None
+        if number > 1:  # a new page continues the section it began in
+            sections.append((sections[-1][0], [], page))
+        for line in page_text.splitlines():
+            heading = _HEADING.match(line)
+            if heading:
+                sections.append((heading.group(1)[:SECTION_MAX_CHARS], [], page))
+            else:
+                sections[-1][1].append(line)
 
     chunks: list[Chunk] = []
-    for title, lines in sections:
+    for title, lines, page in sections:
         name = title or f"Part {len(chunks) + 1}"
         limit = maximum - overlap
         current = ""
@@ -219,20 +230,20 @@ def chunk(
             parts = _table_parts(block, maximum, count) if is_table else None
             if parts is not None:
                 if not fresh:
-                    chunks.append(Chunk(name, current))
-                chunks.extend(Chunk(name, part) for part in parts)
+                    chunks.append(Chunk(name, current, page))
+                chunks.extend(Chunk(name, part, page) for part in parts)
                 current, current_tokens, fresh = "", 0, True
                 continue
             paragraphs = [p.strip() for p in re.split(r"\n\s*\n", "\n".join(block)) if p.strip()]
             blocks = _prose_blocks(paragraphs, strategy, embed, target, count)
             for index, units in enumerate(blocks):
                 if index and not fresh:  # a topic change ends the passage
-                    chunks.append(Chunk(name, current))
+                    chunks.append(Chunk(name, current, page))
                     current, current_tokens, fresh = "", 0, True
                 for paragraph in (s for p in units for s in _split_long(p, limit, count)):
                     size = count(paragraph)
                     if not fresh and current_tokens + size > target:
-                        chunks.append(Chunk(name, current))
+                        chunks.append(Chunk(name, current, page))
                         current = _tail(current, overlap, count)
                         current_tokens = count(current) if current else 0
                         fresh = True
@@ -240,5 +251,5 @@ def chunk(
                     current_tokens += size
                     fresh = False
         if not fresh:
-            chunks.append(Chunk(name, current))
+            chunks.append(Chunk(name, current, page))
     return chunks

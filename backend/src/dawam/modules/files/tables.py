@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import UserDefinedType
 
@@ -142,6 +142,7 @@ class DocumentChunkRecord(Base):
     __table_args__ = (
         sa.Index("ix_document_chunks_search_vector", "search_vector", postgresql_using="gin"),
         sa.Index("ix_document_chunks_workspace_id", "workspace_id"),
+        sa.Index("ix_document_chunks_tags", "tags", postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -154,11 +155,25 @@ class DocumentChunkRecord(Base):
     ordinal: Mapped[int]
     section: Mapped[str] = mapped_column(sa.String(SECTION_MAX_LENGTH))
     content: Mapped[str] = mapped_column(sa.Text())
+    context_header: Mapped[str | None] = mapped_column(sa.Text())
+    """One sentence from the light model saying where the passage comes from; ``None``: the
+    feature was off. Indexed and embedded with ``content``, never shown as the passage."""
     search_text: Mapped[str] = mapped_column(sa.Text())
-    """``content`` after Arabic normalisation: what full-text search indexes."""
+    """``context_header`` and ``content`` after Arabic normalisation: what full-text search
+    indexes."""
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR, sa.Computed("to_tsvector('simple', search_text)", persisted=True)
     )
+    document_type: Mapped[str | None] = mapped_column(sa.String(16))
+    """The file's type (``pdf``, ``xlsx``, ``md``...) when it was indexed."""
+    language: Mapped[str | None] = mapped_column(sa.String(8))
+    """``ar`` or ``en``, by the script of the passage; ``None`` if it has no letters."""
+    page: Mapped[int | None]
+    """The 1-based page of a PDF passage; ``None`` for other documents."""
+    sheet: Mapped[str | None] = mapped_column(sa.String(SECTION_MAX_LENGTH))
+    """The worksheet of a spreadsheet passage; ``None`` for other documents."""
+    tags: Mapped[list[str]] = mapped_column(ARRAY(sa.Text()), default=list, server_default="{}")
+    """Lower-case labels: the folders of the document's path."""
     embedding: Mapped[list[float] | None] = mapped_column(Vector)
     embedding_model_id: Mapped[uuid.UUID | None] = mapped_column()
     """The model that made ``embedding`` (no foreign key: a model may be deleted, which

@@ -80,6 +80,12 @@ LIGHT_FEATURES = (
         "Conversation compaction",
         "Summarises the oldest turns of a long assistant conversation instead of dropping them.",
     ),
+    (
+        "chunk_context",
+        "Passage context",
+        "Prepends a one-sentence context to each document passage before it is embedded and "
+        "full-text indexed.",
+    ),
 )
 """The features that use the light role; each light-role ticket adds its own entry. They are
 all off while the Workspace has no light model."""
