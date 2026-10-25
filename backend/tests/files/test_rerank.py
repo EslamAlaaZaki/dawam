@@ -126,10 +126,18 @@ def test_a_failing_rerank_model_keeps_the_fused_order(roles, policy, fake_llm, d
     assert order(roles) == ["a.md", "b.md", "c.md"]
 
 
-def test_without_the_documents_level_nothing_is_sent_to_the_rerank_model(
+def test_an_internal_rerank_model_may_see_documents_whatever_the_level(
     roles, policy, fake_llm, documents
 ):
-    register_rerank_model(roles)
+    register_rerank_model(roles, internal=True)
+    policy.includes_documents = False
+    fake_llm.script_rerank([0.1, 0.5, 0.9])
+
+    assert order(roles) == ["c.md", "b.md", "a.md"]
+
+
+def test_an_external_rerank_model_needs_the_documents_level(roles, policy, fake_llm, documents):
+    register_rerank_model(roles, internal=False)
     policy.includes_documents = False
     fake_llm.calls.clear()
 

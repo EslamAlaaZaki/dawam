@@ -1000,14 +1000,15 @@ class DocumentSearchService:
     ) -> list[Passage]:
         """Reorder the fused top passages by the Workspace's rerank model, best first, each
         passage's score becoming the model's. Without a rerank model, one the data-sharing
-        level or internal-only setting keeps from the documents, or when the call fails or the
+        level (an internal model always may) or internal-only setting keeps from the
+        documents, or when the call fails or the
         budget is used up, the fused order stands."""
         settings = self._ai.document_settings(workspace_id)
         model = self._rerank_models.current(workspace_id, user_id)
         if (
             len(passages) < 2
-            or not settings.includes_documents
             or model is None
+            or not (model.is_internal or settings.includes_documents)
             or (settings.internal_only and not model.is_internal)
         ):
             return passages

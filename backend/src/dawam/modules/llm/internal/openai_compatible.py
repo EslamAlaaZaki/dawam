@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import re
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -123,7 +124,10 @@ class OpenAICompatibleAdapter:
         try:
             for row in data["results"]:
                 score = row["relevance_score"] if "relevance_score" in row else row["score"]
-                scores[int(row["index"])] = float(score)
+                value = float(score)
+                if not math.isfinite(value):
+                    raise ValueError("score is not finite")
+                scores[int(row["index"])] = value
         except (KeyError, TypeError, ValueError, AttributeError):
             raise LlmError(INVALID_RESPONSE, "The provider's rerank reply was malformed.") from None
         if set(scores) != set(range(len(documents))):

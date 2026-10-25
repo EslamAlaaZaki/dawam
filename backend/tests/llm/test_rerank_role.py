@@ -48,7 +48,7 @@ def test_scores_come_back_one_per_document_in_the_order_sent(fixture):
 
 
 def test_a_reply_without_scores_or_with_missing_documents_is_invalid():
-    for fixture in ("rerank_malformed", "rerank_partial"):
+    for fixture in ("rerank_malformed", "rerank_partial", "rerank_nan", "rerank_inf"):
         adapter, _ = adapter_for(fixture)
         with pytest.raises(LlmError) as raised:
             adapter.rerank("rerank-model", "q", ["a", "b"])
