@@ -17,7 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from dawam.modules.files.internal.chunking import chunk
+from dawam.modules.files.internal.chunking import STRATEGIES, chunk
 from dawam.modules.llm import FakeAdapter, Gateway, Message, Reply
 
 HERE = Path(__file__).parent
@@ -58,17 +58,24 @@ class HashingAdapter(FakeAdapter):
         return [vectorise(t) for t in texts]
 
 
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    return [vectorise(t) for t in texts]
+
+
 @dataclass(frozen=True)
 class Passage:
     id: str
     text: str
 
 
-def load_passages() -> list[Passage]:
+def load_passages(strategy: str = "headings") -> list[Passage]:
     out = []
     for path in sorted((HERE / "corpus").rglob("*.md")):
         doc = f"{path.parent.name}/{path.stem}"
-        out += [Passage(f"{doc}#{c.section}", c.text) for c in chunk(path.read_text("utf-8"))]
+        out += [
+            Passage(f"{doc}#{c.section}", c.text)
+            for c in chunk(path.read_text("utf-8"), strategy=strategy, embed=embed_texts)
+        ]
     return out
 
 
@@ -89,8 +96,8 @@ def retrieve(llm: Gateway, passages: list[Passage], question: str, k: int) -> li
     return [pid for _, pid in scored[:k]]
 
 
-def evaluate(k: int = 3) -> dict[str, float]:
-    passages = load_passages()
+def evaluate(k: int = 3, strategy: str = "headings") -> dict[str, float]:
+    passages = load_passages(strategy)
     cases = load_cases()
     recall = rr = cited_ok = 0.0
     for case in cases:
@@ -107,3 +114,8 @@ def evaluate(k: int = 3) -> dict[str, float]:
         cited_ok += bool(cites) and all(c in hits and c in gold for c in cites)
     n = len(cases)
     return {f"recall@{k}": recall / n, "mrr": rr / n, "citation_correctness": cited_ok / n}
+
+
+if __name__ == "__main__":  # python -m tests.rag_eval.rag_eval: the scores per strategy
+    for name in STRATEGIES:
+        print(name, {m: round(v, 3) for m, v in evaluate(strategy=name).items()})

@@ -84,6 +84,59 @@ def test_overlap_never_crosses_a_section():
     assert "alpha" not in chunks[1].text
 
 
+def _fake_embed(texts: list[str]) -> list[list[float]]:
+    """Cats and stocks point opposite ways."""
+    return [[1.0, 0.0] if "cat" in t.lower() else [0.0, 1.0] for t in texts]
+
+
+def test_every_strategy_keeps_passages_within_the_size_limits():
+    text = "# Notes\n" + " ".join(
+        f"Sentence number {i} about cat or stock topics." for i in range(300)
+    )
+    for strategy in ("headings", "recursive", "semantic"):
+        chunks = chunk(
+            text, _words, target=60, maximum=90, overlap=10, strategy=strategy, embed=_fake_embed
+        )
+        assert chunks, strategy
+        assert all(_words(c.text) <= 90 for c in chunks), strategy
+
+
+def test_the_recursive_strategy_cuts_long_text_at_sentences_not_mid_sentence():
+    sentences = [f"Sentence {i} ends here." for i in range(40)]
+    chunks = chunk(
+        " ".join(sentences), _words, target=30, maximum=45, overlap=0, strategy="recursive"
+    )
+
+    assert len(chunks) > 1
+    assert all(c.text.endswith("here.") for c in chunks)
+    assert all(c.text.startswith("Sentence") for c in chunks)
+
+
+def test_the_semantic_strategy_splits_where_similarity_drops():
+    text = "Cats purr softly. Cats nap all day. Stocks fell sharply. Stocks rose again."
+
+    chunks = chunk(text, _words, strategy="semantic", embed=_fake_embed)
+
+    assert [c.text for c in chunks] == [
+        "Cats purr softly. Cats nap all day.",
+        "Stocks fell sharply. Stocks rose again.",
+    ]
+
+
+def test_the_semantic_strategy_without_an_embedder_is_recursive():
+    text = "Cats purr softly. Stocks fell sharply."
+
+    assert chunk(text, _words, strategy="semantic") == chunk(text, _words, strategy="recursive")
+
+
+def test_the_semantic_strategy_falls_back_to_recursive_when_vectors_do_not_match_sentences():
+    text = "Cats purr softly. Stocks fell sharply."
+
+    chunks = chunk(text, _words, strategy="semantic", embed=lambda texts: [[1.0, 0.0]])
+
+    assert chunks == chunk(text, _words, strategy="recursive")
+
+
 def _table(rows: int) -> str:
     body = (f"| {i} | item{i} |" for i in range(rows))
     return "\n".join(["| id | name |", "| --- | --- |", *body])

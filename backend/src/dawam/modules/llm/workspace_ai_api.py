@@ -9,7 +9,7 @@ change).
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -91,6 +91,9 @@ LIGHT_FEATURES = (
 all off while the Workspace has no light model."""
 
 
+ChunkingStrategy = Literal["headings", "recursive", "semantic"]
+
+
 class WorkspaceAiSettings(BaseModel):
     internal_only: bool = Field(
         description="Every model role (agent, light, embedding, vision) is refused an external "
@@ -99,6 +102,12 @@ class WorkspaceAiSettings(BaseModel):
     data_sharing_level: DataSharingLevel = Field(
         description="What the AI may see, cumulative: `metadata` < `profiles` < `documents` "
         "< `samples`."
+    )
+    chunking_strategy: ChunkingStrategy = Field(
+        description="How documents are cut into passages: `headings` (sections, the default), "
+        "`recursive` (paragraphs, then sentences, then words) or `semantic` (split where the "
+        "embedding similarity of neighbouring sentences drops). Applies to documents indexed "
+        "from now on; re-index to apply it to the others."
     )
     agent_models: list[WorkspaceModel] = Field(
         description="The Workspace's agent models; the default answers unless a message "
@@ -140,6 +149,9 @@ class WorkspaceAiSettingsRequest(BaseModel):
 
     internal_only: bool
     data_sharing_level: DataSharingLevel
+    chunking_strategy: ChunkingStrategy | None = Field(
+        default=None, description="Left out: keeps the current strategy."
+    )
     agent_model_ids: list[uuid.UUID] = Field(
         default_factory=list,
         description="Models enabled for the agent role; required when there is any to choose.",
@@ -194,6 +206,7 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
+        chunking_strategy=settings.chunking_strategy,
         agent_models=[_chosen(m) for m in view.chosen["agent"]],
         light_models=[_chosen(m) for m in view.chosen["light"]],
         light_features=[
@@ -244,6 +257,7 @@ def set_ai_settings(
             workspace_id,
             internal_only=body.internal_only,
             data_sharing_level=body.data_sharing_level,
+            chunking_strategy=body.chunking_strategy,
             agent_model_ids=body.agent_model_ids if agents else list(current.agent),
             default_agent_model_id=(
                 body.default_agent_model_id

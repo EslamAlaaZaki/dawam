@@ -10814,6 +10814,12 @@ export interface components {
             /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
             data_sharing_level: components["schemas"]["DataSharingLevel"];
             /**
+             * Chunking Strategy
+             * @description How documents are cut into passages: `headings` (sections, the default), `recursive` (paragraphs, then sentences, then words) or `semantic` (split where the embedding similarity of neighbouring sentences drops). Applies to documents indexed from now on; re-index to apply it to the others.
+             * @enum {string}
+             */
+            chunking_strategy: "headings" | "recursive" | "semantic";
+            /**
              * Agent Models
              * @description The Workspace's agent models; the default answers unless a message names another.
              */
@@ -10858,6 +10864,11 @@ export interface components {
             /** Internal Only */
             internal_only: boolean;
             data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Chunking Strategy
+             * @description Left out: keeps the current strategy.
+             */
+            chunking_strategy?: ("headings" | "recursive" | "semantic") | null;
             /**
              * Agent Model Ids
              * @description Models enabled for the agent role; required when there is any to choose.

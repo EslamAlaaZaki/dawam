@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from dawam.modules.files.internal.chunking import STRATEGIES
 from tests.rag_eval.rag_eval import evaluate, load_cases, load_passages
 
 MIN_RECALL = 0.9
@@ -17,12 +18,13 @@ def test_the_corpus_is_consistent_and_covers_both_languages():
     assert any(i.startswith("ar/") for i in ids) and any(i.startswith("en/") for i in ids)
 
 
-def test_retrieval_scores_meet_the_bar(record_property: pytest.RecordProperty, capsys):
-    scores = evaluate(k=3)
+@pytest.mark.parametrize("strategy", STRATEGIES)
+def test_retrieval_scores_meet_the_bar(record_property: pytest.RecordProperty, capsys, strategy):
+    scores = evaluate(k=3, strategy=strategy)
     for name, value in scores.items():
         record_property(name, round(value, 3))
     with capsys.disabled():
-        print("\nRAG eval: " + ", ".join(f"{n}={v:.3f}" for n, v in scores.items()))
+        print(f"\nRAG eval ({strategy}): " + ", ".join(f"{n}={v:.3f}" for n, v in scores.items()))
     assert scores["recall@3"] >= MIN_RECALL
     assert scores["mrr"] >= MIN_MRR
     assert scores["citation_correctness"] == 1.0

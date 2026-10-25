@@ -92,6 +92,7 @@ from .workspace_ai import (
     WorkspaceAiSettings,
     WorkspaceAiView,
     on_workspace_created,
+    workspace_chunking_strategy,
     workspace_embedding_model_id,
     workspace_model_id,
 )
@@ -144,6 +145,7 @@ __all__ = [
     "fake_adapter_factory",
     "on_workspace_created",
     "router",
+    "workspace_chunking_strategy",
     "workspace_embedding_model_id",
     "workspace_model_id",
 ]

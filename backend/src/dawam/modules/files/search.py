@@ -40,6 +40,7 @@ from dawam.modules.llm import (
     MeteredGateway,
     ProviderService,
     RoleService,
+    workspace_chunking_strategy,
     workspace_embedding_model_id,
     workspace_model_id,
 )
@@ -358,6 +359,19 @@ def ensure_vector_index(engine: sa.Engine, model_id: uuid.UUID, dimension: int) 
     return True
 
 
+def _embed_all(gateway: Any, texts: list[str]) -> list[list[float]]:
+    """Vectors of ``texts`` through the embedding model's gateway, in batches."""
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), EMBED_BATCH):
+        vectors.extend(gateway.embed(texts[start : start + EMBED_BATCH]))
+    return vectors
+
+
+def _chunks(text: str, counter: Any, strategy: str, embed: Any) -> list[Any]:
+    options: dict[str, Any] = {"strategy": strategy, "embed": embed}
+    return chunk(text, counter, **options) if counter else chunk(text, **options)
+
+
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
@@ -672,7 +686,14 @@ class DocumentSearchService:
         # Passage size is measured in the embedding model's own tokens, counted locally
         # (never a provider call); without a local tokenizer the estimate is used.
         counter = model.gateway.local_token_counter() if model else None
-        chunks = chunk(text or "", counter) if counter else chunk(text or "")
+        strategy = workspace_chunking_strategy(self._engine, workspace_id)
+        embed = (lambda texts: _embed_all(model.gateway, texts)) if model else None
+        try:
+            chunks = _chunks(text or "", counter, strategy, embed)
+        except (LlmError, ApiError) as exc:  # semantic chunking embeds sentences
+            _unless_other_api_error(exc)
+            logger.warning("semantic chunking failed, using recursive: %s", exc)
+            chunks = _chunks(text or "", counter, "recursive", None)
         if not chunks:
             model = None
         headers = self._headers(workspace_id, name, text or "", chunks)
