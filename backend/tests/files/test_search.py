@@ -476,6 +476,23 @@ def test_results_from_one_section_are_diversified_by_mmr(roles, policy, monkeypa
     assert sorted(diverse) == ["a.md", "b.md", "c.md"]
 
 
+def test_a_query_unlike_every_passage_returns_nothing_at_the_default_floors(
+    roles, policy, fake_llm
+):
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+    fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])
+    upload_ok(roles, sid, "ledger.md", "# Ledger\nPostings are booked daily.")
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+    upload_ok(roles, sid, "risk.md", "# Risk\nExposure is reviewed quarterly.")
+
+    fake_llm.script_embeddings([0.0, 0.0, 1.0, 0.0])  # orthogonal to both, no word in common
+    assert search(roles, "zebra").json()["items"] == []
+
+    fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])  # the same meaning as ledger.md only
+    assert [i["document"] for i in search(roles, "zebra").json()["items"]] == ["ledger.md"]
+
+
 def test_fusion_weights_decide_which_ranking_leads(roles, policy, fake_llm, monkeypatch):
     from dawam.modules.files import search as search_module
 

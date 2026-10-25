@@ -93,8 +93,11 @@ class SearchTuning:
     """1.0 is pure relevance; lower values trade it for variety."""
     same_document_similarity: float = 0.3
     """How alike two passages of one document (other sections) count for MMR."""
-    min_score: float = 0.01
-    """The fused (weighted RRF) score a passage needs; below it, it is not returned."""
+    min_text_rank: float = 0.01
+    """The ``ts_rank_cd`` a full-text match needs to count as relevant."""
+    min_vector_similarity: float = 0.3
+    """The cosine similarity a vector match needs to count as relevant. A passage is returned
+    only if it clears the floor of at least one of its rankings; below both, nothing is."""
 
 
 DEFAULT_TUNING = SearchTuning()
@@ -944,7 +947,7 @@ class DocumentSearchService:
                 params["hidden"] = hidden
             embedded = self._embed_query(db, workspace_id, user.id, query)
             fts = sa.text(
-                "SELECT c.id FROM document_chunks c "
+                "SELECT c.id, ts_rank_cd(c.search_vector, q) AS signal FROM document_chunks c "
                 "JOIN workspace_files f ON f.id = c.file_id, "
                 "to_tsquery('simple', :q) q "
                 "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
@@ -956,9 +959,9 @@ class DocumentSearchService:
             grow = 1
             while True:
                 fts_pool = tune.fts_candidates * grow
-                ranked: list[list[uuid.UUID]] = [
-                    list(
-                        db.scalars(
+                ranked: list[list[tuple[uuid.UUID, float]]] = [
+                    _signals(
+                        db.execute(
                             fts,
                             {
                                 **params,
@@ -970,12 +973,14 @@ class DocumentSearchService:
                 ]
                 vector_pool = tune.vector_candidates * grow
                 weights = [tune.fts_weight]
+                floors = [tune.min_text_rank]
                 if embedded is not None:
                     model, vector = embedded
                     weights.append(tune.vector_weight)
+                    floors.append(tune.min_vector_similarity)
                     ranked.append(
-                        list(
-                            db.scalars(
+                        _signals(
+                            db.execute(
                                 sa.text(
                                     vector_ranking_sql(model.id, len(vector), scope, vector_pool)
                                 ),
@@ -984,15 +989,15 @@ class DocumentSearchService:
                         )
                     )
                 scores: dict[uuid.UUID, float] = {}
-                for ranking, weight in zip(ranked, weights, strict=True):
-                    for position, chunk_id in enumerate(ranking):
+                relevant: set[uuid.UUID] = set()
+                for ranking, weight, floor in zip(ranked, weights, floors, strict=True):
+                    for position, (chunk_id, signal) in enumerate(ranking):
                         scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (
                             tune.rrf_k + position + 1
                         )
-                ordered = sorted(
-                    (cid for cid in scores if scores[cid] >= tune.min_score),
-                    key=lambda cid: (-scores[cid], str(cid)),
-                )
+                        if signal >= floor:
+                            relevant.add(chunk_id)
+                ordered = sorted(relevant, key=lambda cid: (-scores[cid], str(cid)))
                 rows = {
                     row.id: row
                     for row in db.execute(
@@ -1019,8 +1024,12 @@ class DocumentSearchService:
                     )
                 }
                 passages = self._parents(ordered, rows, scores)
-                full = len(ranked[0]) >= fts_pool or (
-                    len(ranked) > 1 and len(ranked[1]) >= vector_pool
+                # A ranking that ran into the floor has nothing more to give: growing the pool
+                # would only add passages below it.
+                pools = [fts_pool, vector_pool]
+                full = any(
+                    len(r) >= size and r[-1][1] >= floor
+                    for r, size, floor in zip(ranked, pools, floors, strict=False)
                 )
                 if len(passages) >= limit or not full or grow >= MAX_POOL_GROWTH:
                     return self._diversify(passages, limit, tune)
@@ -1122,6 +1131,11 @@ class DocumentSearchService:
         return model, vector
 
 
+def _signals(rows: Any) -> list[tuple[uuid.UUID, float]]:
+    """``(chunk id, absolute relevance signal)`` of a ranking's rows, best first."""
+    return [(row[0], float(row[1] or 0.0)) for row in rows]
+
+
 def vector_ranking_sql(
     model_id: uuid.UUID, dimension: int, scope: str = "", pool: int = CANDIDATES
 ) -> str:
@@ -1132,7 +1146,8 @@ def vector_ranking_sql(
     cast = f"vector({dimension})" if 0 < dimension <= HNSW_MAX_DIMENSION else "vector"
     column = f"(c.embedding::{cast})" if cast != "vector" else "c.embedding"
     return (
-        "SELECT c.id FROM document_chunks c "
+        f"SELECT c.id, 1 - ({column} <=> CAST(:v AS {cast})) AS signal "
+        "FROM document_chunks c "
         "JOIN workspace_files f ON f.id = c.file_id "
         f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model_id}' "
         f"AND c.embedding_dimension = {int(dimension)}{scope} "
