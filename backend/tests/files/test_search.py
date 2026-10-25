@@ -13,6 +13,7 @@ import pytest
 import sqlalchemy as sa
 
 from dawam.modules.files import DocumentAiSettings
+from dawam.modules.files.search import vector_ranking_sql
 from tests.files.test_files import system, upload
 from tests.roles import RoleClients
 
@@ -194,6 +195,55 @@ def test_documents_are_embedded_and_found_by_meaning_when_the_workspace_allows(
     hits = search(roles, "zzz").json()["items"]
 
     assert (hits[0]["document"], hits[0]["section"]) == ("risk.md", "Risk")
+
+
+def test_the_first_use_of_an_embedding_model_creates_its_hnsw_index_and_queries_use_it(
+    roles, policy, fake_llm, app
+):
+    model_id = register_embedding_model(roles, internal=True)
+    sid = system(roles)
+    fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])
+    upload_ok(roles, sid, "ledger.md", "# Ledger\nPostings are booked daily.")
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+    upload_ok(roles, sid, "risk.md", "# Risk\nExposure is reviewed quarterly.")
+
+    name = f"ix_document_chunks_hnsw_{uuid.UUID(model_id).hex}_4"
+    probe = "[0.0,1.0,0.0,0.0]"
+    sql = vector_ranking_sql(uuid.UUID(model_id), 4)  # the production query, real binds
+    binds = {"w": roles.workspace_id, "v": probe}
+    with app.state.engine.connect() as conn:
+        indexes = (
+            conn.execute(
+                sa.text("SELECT indexdef FROM pg_indexes WHERE indexname = :n"), {"n": name}
+            )
+            .scalars()
+            .all()
+        )
+        assert len(indexes) == 1 and "USING hnsw" in indexes[0]
+        indexed = conn.execute(sa.text(sql), binds).scalars().all()
+        conn.execute(sa.text("SET enable_seqscan = off"))
+        plan = "\n".join(conn.execute(sa.text("EXPLAIN " + sql), binds).scalars())
+        conn.execute(sa.text("RESET enable_seqscan"))
+        # The exact scan: the same ranking without the cast, so the index cannot serve it.
+        scanned = (
+            conn.execute(
+                sa.text(sql.replace("(c.embedding::vector(4))", "(c.embedding::text)::vector")),
+                binds,
+            )
+            .scalars()
+            .all()
+        )
+    assert name in plan
+    assert indexed == scanned
+
+    # A second upload with the same model reuses the index (no error, still one).
+    fake_llm.script_embeddings([0.0, 0.0, 1.0, 0.0])
+    upload_ok(roles, sid, "audit.md", "# Audit\nFindings are tracked.")
+    with app.state.engine.connect() as conn:
+        count = conn.execute(
+            sa.text("SELECT count(*) FROM pg_indexes WHERE indexname = :n"), {"n": name}
+        ).scalar()
+    assert count == 1
 
 
 def test_an_internal_only_workspace_never_sends_embeddings_to_an_external_provider(

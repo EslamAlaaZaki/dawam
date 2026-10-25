@@ -287,6 +287,30 @@ def _tags(path: str) -> list[str]:
     return list(dict.fromkeys(p.casefold() for p in path.split("/")[:-1] if p))
 
 
+HNSW_MAX_DIMENSION = 2000
+"""pgvector's limit for an HNSW index on ``vector``; wider embeddings are searched by scan."""
+
+
+def ensure_vector_index(engine: sa.Engine, model_id: uuid.UUID, dimension: int) -> bool:
+    """Create the partial HNSW index of one embedding model (and dimension) if it is missing;
+    whether the model has one. The column has no fixed dimension, so the index is on a cast
+    to ``vector(dimension)`` and is limited to the model's rows; vector queries use the same
+    cast and predicate (``_vector_ranking``) so the planner picks it."""
+    if not 0 < dimension <= HNSW_MAX_DIMENSION:
+        return False
+    name = f"ix_document_chunks_hnsw_{model_id.hex}_{dimension}"
+    with engine.begin() as conn:
+        conn.execute(sa.text("SELECT pg_advisory_xact_lock(hashtext(:n))"), {"n": name})
+        conn.execute(
+            sa.text(
+                f"CREATE INDEX IF NOT EXISTS {name} ON document_chunks "
+                f"USING hnsw ((embedding::vector({dimension})) vector_cosine_ops) "
+                f"WHERE embedding_model_id = '{model_id}' AND embedding_dimension = {dimension}"
+            )
+        )
+    return True
+
+
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
@@ -577,6 +601,12 @@ class DocumentSearchService:
                 logger.warning("embedding failed, indexing full-text only: %s", exc)
                 vectors = None
 
+        if model is not None and vectors:
+            try:
+                ensure_vector_index(self._engine, model.id, len(vectors[0]))
+            except sa.exc.SQLAlchemyError:  # search still works, by scan
+                logger.warning("creating the vector index failed", exc_info=True)
+
         with Session(self._engine) as db, db.begin():
             if key is not None and not db.scalar(
                 sa.select(WorkspaceFileRecord.id)
@@ -781,15 +811,24 @@ class DocumentSearchService:
             return []
         return list(
             db.scalars(
-                sa.text(
-                    "WITH candidates AS MATERIALIZED ("
-                    "SELECT c.id, c.embedding FROM document_chunks c "
-                    "JOIN workspace_files f ON f.id = c.file_id "
-                    "WHERE c.workspace_id = :w AND c.embedding_model_id = :m "
-                    "AND c.embedding_dimension = :d" + scope + ") "
-                    "SELECT id FROM candidates ORDER BY embedding <=> CAST(:v AS vector), id "
-                    f"LIMIT {CANDIDATES}"
-                ),
-                {**params, "m": model.id, "d": len(vector), "v": _vector_literal(vector)},
+                sa.text(vector_ranking_sql(model.id, len(vector), scope)),
+                {**params, "v": _vector_literal(vector)},
             )
         )
+
+
+def vector_ranking_sql(model_id: uuid.UUID, dimension: int, scope: str = "") -> str:
+    """The vector query. Its cast and predicate are those of the model's HNSW index (see
+    ``ensure_vector_index``); the model id and dimension are literals so the planner can prove
+    the index predicate even under a generic plan. The UUID type and the int are the injection
+    guard for those literals. Binds: ``:w`` (workspace), ``:v`` (query vector), plus the scope's."""
+    cast = f"vector({dimension})" if 0 < dimension <= HNSW_MAX_DIMENSION else "vector"
+    column = f"(c.embedding::{cast})" if cast != "vector" else "c.embedding"
+    return (
+        "SELECT c.id FROM document_chunks c "
+        "JOIN workspace_files f ON f.id = c.file_id "
+        f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model_id}' "
+        f"AND c.embedding_dimension = {int(dimension)}{scope} "
+        f"ORDER BY {column} <=> CAST(:v AS {cast}) "
+        f"LIMIT {CANDIDATES}"
+    )
