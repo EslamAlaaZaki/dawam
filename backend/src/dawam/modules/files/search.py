@@ -376,6 +376,22 @@ def _chunks(text: str, counter: Any, strategy: str, embed: Any) -> list[Any]:
     return chunk_with_parents(text, **options)
 
 
+def _match_boosts(query: str, terms: Sequence[str]) -> tuple[str, dict[str, str]]:
+    """``ORDER BY`` terms that put exact matches ahead of the plain OR ranking: passages
+    holding a table or column name from the query (a word with ``_`` or a digit; the
+    parser reads ``cust_stat`` as the phrase ``cust <-> stat``) first, then those holding
+    the query's words in order and adjacent. Empty when the query has neither."""
+    boosts, params = "", {}
+    identifiers = [t for t in terms if "_" in t or any(c.isdigit() for c in t)]
+    if identifiers:
+        params["ids"] = " | ".join(f"'{t}'" for t in identifiers)
+        boosts += "(c.search_vector @@ to_tsquery('simple', :ids)) DESC, "
+    if len(terms) > 1:
+        params["phrase"] = stemmed(query)
+        boosts += "(c.search_vector @@ phraseto_tsquery('simple', :phrase)) DESC, "
+    return boosts, params
+
+
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
@@ -919,12 +935,14 @@ class DocumentSearchService:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
             embedded = self._embed_query(db, workspace_id, user.id, query)
+            boosts, boost_params = _match_boosts(query, terms)
+            params.update(boost_params)
             fts = sa.text(
                 "SELECT c.id FROM document_chunks c "
                 "JOIN workspace_files f ON f.id = c.file_id, "
                 "to_tsquery('simple', :q) q "
                 "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
-                "ORDER BY ts_rank_cd(c.search_vector, q) DESC, c.id "
+                f"ORDER BY {boosts}ts_rank_cd(c.search_vector, q) DESC, c.id "
                 "LIMIT :pool"
             )
             # Several matching children share one parent, so the candidate pool grows
