@@ -396,3 +396,25 @@ def test_an_embedding_model_with_indexed_documents_cannot_be_removed(roles, poli
     assert unticked.status_code == 409
     assert unticked.json()["error"]["code"] == "embedding_model_indexed"
     assert admin.get(f"{ADMIN}/models/{model_id}/usage").json()["indexed_workspaces"]
+
+
+def test_chunking_never_asks_the_provider_to_count_tokens(roles, policy, fake_llm, app):
+    def remote_count(text: str) -> int:
+        raise AssertionError("chunking called the provider's token count")
+
+    fake_llm.token_counter = remote_count
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+
+    assert len(chunk_rows(app)) == 1
+
+
+def test_whitespace_only_text_is_not_embedded(roles, policy, fake_llm, app):
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+
+    upload_ok(roles, sid, "blank.md", "  \n\n  ")
+
+    assert [c for c in fake_llm.calls if c.kind == "embed" and c.texts != ("ping",)] == []
