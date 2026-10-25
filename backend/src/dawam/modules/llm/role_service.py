@@ -289,6 +289,16 @@ class MeteredGateway:
             [Message("user", prompt, images=tuple(images))],
         )
 
+    def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
+        """Like ``Gateway.rerank``, checked and metered like ``embed``: rerank reports no
+        usage, so the tokens of the query and every document are estimated."""
+        self._ensure_allowed()
+        try:
+            return self._gateway.rerank(query, documents)
+        finally:
+            tokens = sum(estimate_tokens(d) + estimate_tokens(query) for d in documents)
+            self._record(Usage(tokens, 0, estimated=True))
+
     def _metered(
         self, start: Callable[[], Iterator[ChatEvent]], messages: Sequence[Message]
     ) -> Iterator[ChatEvent]:

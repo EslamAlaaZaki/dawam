@@ -32,6 +32,7 @@ import {
 
 const NONE = "";
 const VISION_NONE = "None: the self-hosted OCR engine reads scanned pages";
+const RERANK_NONE = "None: search results keep their fused order";
 
 /** A settings section inside the dialog: the dialog is the card, so no border of its own. */
 const dialogFormClasses = "flex max-w-xl flex-col gap-4";
@@ -39,7 +40,7 @@ const dialogFormClasses = "flex max-w-xl flex-col gap-4";
 /**
  * The Workspace's AI settings (stories 160, 161): its Workspace Models. Every member sees
  * them; owners of an active Workspace choose one or more agent and light models (one of
- * each the default), the embedding model and the vision model, from the models an admin
+ * each the default), the embedding, vision and rerank models, from the models an admin
  * enabled per role.
  */
 export function AiSettingsPanel({ workspace }: { workspace: Workspace }) {
@@ -106,6 +107,8 @@ function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
       </dd>
       <dt>Vision model</dt>
       <dd>{settings.vision_model?.name ?? VISION_NONE}</dd>
+      <dt>Rerank model</dt>
+      <dd>{settings.rerank_model?.name ?? RERANK_NONE}</dd>
     </DetailList>
   );
 }
@@ -184,6 +187,12 @@ function OwnerForm({
     settings.choices.vision,
     settings.vision_model ? [settings.vision_model] : [],
   );
+  const [rerank, setRerank] = useState(settings.rerank_model?.id ?? NONE);
+  const rerankChoices = offered(
+    settings,
+    settings.choices.rerank,
+    settings.rerank_model ? [settings.rerank_model] : [],
+  );
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -197,6 +206,7 @@ function OwnerForm({
         default_light_model_id: light.defaultId,
         embedding_model_id: embedding || null,
         vision_model_id: vision || null,
+        rerank_model_id: rerank || null,
       })
       .then(
         () => toast.success("Saved."),
@@ -275,6 +285,27 @@ function OwnerForm({
         Reads the scanned pages of uploaded PDFs. An external model gets the
         page images only when the data-sharing level allows documents; otherwise
         the self-hosted OCR engine reads them.
+      </Hint>
+      <label className={labelClasses}>
+        Rerank model
+        <NativeSelect
+          value={rerank}
+          onChange={(event) => setRerank(event.target.value)}
+        >
+          <option value={NONE}>{RERANK_NONE}</option>
+          {rerankChoices.map(({ model, stale }) => (
+            <option key={model.id} value={model.id}>
+              {model.name} ({model.provider_name})
+              {model.internal ? "" : " (external)"}
+              {stale ? " (no longer offered)" : ""}
+            </option>
+          ))}
+        </NativeSelect>
+      </label>
+      <Hint>
+        Reorders the best document-search results by relevance. An external
+        model gets the passages only when the data-sharing level allows
+        documents.
       </Hint>
       {settings.internal_only && (
         <Hint>

@@ -22498,7 +22498,8 @@
                 "agent",
                 "light",
                 "embedding",
-                "vision"
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
@@ -22822,11 +22823,12 @@
                 "agent",
                 "light",
                 "embedding",
-                "vision"
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
-            "maxItems": 4,
+            "maxItems": 5,
             "title": "Roles",
             "description": "Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere."
           },
@@ -22877,7 +22879,8 @@
                 "agent",
                 "light",
                 "embedding",
-                "vision"
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
@@ -22927,7 +22930,8 @@
                 "agent",
                 "light",
                 "embedding",
-                "vision"
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
@@ -24094,6 +24098,13 @@
             },
             "type": "array",
             "title": "Vision"
+          },
+          "rerank": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Rerank"
           }
         },
         "type": "object",
@@ -24101,7 +24112,8 @@
           "agent",
           "light",
           "embedding",
-          "vision"
+          "vision",
+          "rerank"
         ],
         "title": "ModelChoices"
       },
@@ -30811,7 +30823,7 @@
           "internal_only": {
             "type": "boolean",
             "title": "Internal Only",
-            "description": "Every model role (agent, light, embedding, vision) is refused an external provider."
+            "description": "Every model role (agent, light, embedding, vision, rerank) is refused an external provider."
           },
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel",
@@ -30883,6 +30895,17 @@
             ],
             "description": "The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them."
           },
+          "rerank_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order."
+          },
           "choices": {
             "$ref": "#/components/schemas/ModelChoices",
             "description": "Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones)."
@@ -30910,6 +30933,7 @@
           "embedding_model",
           "embedding_rebuilding",
           "vision_model",
+          "rerank_model",
           "choices",
           "internal_agent_available",
           "banner"
@@ -31023,6 +31047,19 @@
             ],
             "title": "Vision Model Id",
             "description": "A model enabled for the vision role; optional."
+          },
+          "rerank_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Model Id",
+            "description": "A model enabled for the rerank role; optional."
           }
         },
         "type": "object",
