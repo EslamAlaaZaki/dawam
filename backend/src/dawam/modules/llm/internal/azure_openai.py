@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
-from ..gateway import AUTH, UNAVAILABLE, ListingUnsupported, LlmError
+from ..gateway import AUTH, BAD_REQUEST, UNAVAILABLE, ListingUnsupported, LlmError
 from .openai_compatible import OpenAICompatibleAdapter
 from .transport import HttpResponse, Transport, TransportError
 
@@ -169,6 +169,9 @@ class AzureOpenAIAdapter(OpenAICompatibleAdapter):
                 return super()._post(full, body)
             except LlmError as again:
                 raise _redacted(again, source) from None
+
+    def rerank(self, model: str, query: str, documents: Sequence[str]) -> list[float]:
+        raise LlmError(BAD_REQUEST, "Azure OpenAI has no rerank endpoint: use another provider.")
 
     def list_models(self) -> list[str]:
         raise ListingUnsupported("Azure OpenAI names deployments, which the API cannot list.")

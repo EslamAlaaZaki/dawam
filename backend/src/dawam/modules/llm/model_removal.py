@@ -21,10 +21,11 @@ from dawam.platform.errors import ApiError
 from .tables import ModelRecord, WorkspaceModelRecord
 from .workspace_ai import load_settings, model_is_internal
 
-ROLES = ("agent", "light", "embedding", "vision")
-OPTIONAL_ROLES = frozenset({"vision"})
+ROLES = ("agent", "light", "embedding", "vision", "rerank")
+OPTIONAL_ROLES = frozenset({"vision", "rerank"})
 """Roles a Workspace may go without: losing the model needs no replacement (without a vision
-model, scanned pages are read by the self-hosted OCR engine)."""
+model, scanned pages are read by the self-hosted OCR engine; without a rerank model, search
+keeps its fused order)."""
 
 
 @dataclass(frozen=True)

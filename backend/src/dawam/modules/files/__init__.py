@@ -64,6 +64,7 @@ from .deletion import FileRef, SystemFiles, purge_system_files, system_files
 from .handlers import FileContentHandler
 from .internal.ocr import DoclingOcr, OcrEngine
 from .internal.parsing import DoclingParser, DocumentParser
+from .internal.rerank import NoRerankModels, RegisteredRerankModels, RerankModel, RerankModels
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .search import (
@@ -109,12 +110,16 @@ __all__ = [
     "ImageDescription",
     "LinkService",
     "NoDocumentAi",
+    "NoRerankModels",
     "OcrEngine",
     "Passage",
     "PassageFilters",
     "RegisteredEmbeddingModels",
     "RegisteredLightModels",
+    "RegisteredRerankModels",
     "RegisteredVisionModels",
+    "RerankModel",
+    "RerankModels",
     "SourceLink",
     "SourceLinkPage",
     "SystemFiles",

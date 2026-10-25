@@ -373,6 +373,7 @@ const MODELS: NewWorkspaceModels = {
     light: [local(SMALL, "small")],
     embedding: [local(BGE_SMALL, "bge-small"), local(BGE_LARGE, "bge-large")],
     vision: [],
+    rerank: [],
   },
 };
 
@@ -424,6 +425,7 @@ describe("creating a Workspace", () => {
           light: [],
           embedding: [],
           vision: [],
+          rerank: [],
         },
       },
     });

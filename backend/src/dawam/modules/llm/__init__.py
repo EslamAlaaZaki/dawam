@@ -8,7 +8,8 @@ Public interface. Other modules import only what is re-exported here:
   with ``SecretBox`` and never returned.
 - ``Gateway``: ``chat(messages, tools, stream) -> events``, ``embed(texts) -> vectors``,
   ``vision(prompt, images) -> events`` (``Image``s such as page images, through the adapter's
-  optional ``vision`` method) and ``capabilities()``. Messages, tool calls, stream events
+  optional ``vision`` method), ``rerank(query, documents) -> scores`` (the optional ``rerank``
+  method; the ``rerank`` role) and ``capabilities()``. Messages, tool calls, stream events
   (``TextDelta``, ``ToolCallEvent``, ``Done``), ``Usage`` and errors (``LlmError`` with a
   common code) are normalised into one internal format (``Message``, ``ToolCall``, ``ToolSpec``,
   ``Capabilities``); rate limits and unavailability are retried with backoff.

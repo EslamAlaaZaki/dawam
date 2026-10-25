@@ -138,9 +138,11 @@ class WorkspaceModelRecord(Base):
 
     __tablename__ = "llm_workspace_models"
     __table_args__ = (
-        sa.CheckConstraint("role IN ('agent', 'light', 'embedding', 'vision')", name="role"),
         sa.CheckConstraint(
-            "role NOT IN ('embedding', 'vision') OR is_default", name="single_is_default"
+            "role IN ('agent', 'light', 'embedding', 'vision', 'rerank')", name="role"
+        ),
+        sa.CheckConstraint(
+            "role NOT IN ('embedding', 'vision', 'rerank') OR is_default", name="single_is_default"
         ),
         sa.Index(
             "uq_llm_workspace_models_default",

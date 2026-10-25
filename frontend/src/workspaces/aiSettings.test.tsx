@@ -27,6 +27,7 @@ const ADA: Me = {
 
 const BIG = "aaaaaaaa-0000-4000-8000-000000000001";
 const SMALL = "aaaaaaaa-0000-4000-8000-000000000002";
+const RERANK = "aaaaaaaa-0000-4000-8000-000000000009";
 const EMBED = "aaaaaaaa-0000-4000-8000-000000000003";
 const LOCAL = "aaaaaaaa-0000-4000-8000-000000000004";
 const VISION = "aaaaaaaa-0000-4000-8000-000000000005";
@@ -81,6 +82,7 @@ function settings(
     embedding_model: chosen(EMBED, "Embed-1", true),
     embedding_rebuilding: false,
     vision_model: null,
+    rerank_model: null,
     choices: {
       agent: [
         choice(BIG, "Big"),
@@ -90,6 +92,7 @@ function settings(
       light: [choice(SMALL, "Small")],
       embedding: [choice(EMBED, "Embed-1")],
       vision: [choice(VISION, "Qwen-VL", true)],
+      rerank: [choice(RERANK, "bge-reranker-v2-m3", true)],
     },
     internal_agent_available: true,
     banner: false,
@@ -242,6 +245,7 @@ describe("the Workspace AI settings card", () => {
       default_light_model_id: null,
       embedding_model_id: null,
       vision_model_id: null,
+      rerank_model_id: null,
     });
   });
 
@@ -264,6 +268,25 @@ describe("the Workspace AI settings card", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
       vision_model_id: VISION,
+    });
+  });
+
+  it("lets an owner choose the rerank model that reorders search results", async () => {
+    const requests = renderApp(
+      backend("owner", (r) => (r.path === AI ? json(settings()) : undefined)),
+      PATH,
+    );
+
+    await openSettings("AI");
+    const card = await screen.findByRole("form", { name: "AI settings" });
+    const picker = within(card).getByLabelText("Rerank model");
+    expect(picker).toHaveValue("");
+    fireEvent.change(picker, { target: { value: RERANK } });
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
+      rerank_model_id: RERANK,
     });
   });
 

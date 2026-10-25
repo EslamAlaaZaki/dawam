@@ -7251,7 +7251,7 @@ export interface components {
              */
             name: string;
             /** Roles */
-            roles: ("agent" | "light" | "embedding" | "vision")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /**
              * Context Window
              * @description Tokens: the admin's figure, or what the server's metadata reported.
@@ -7376,7 +7376,7 @@ export interface components {
              * Roles
              * @description Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere.
              */
-            roles: ("agent" | "light" | "embedding" | "vision")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /**
              * Workspace Replacements
              * @description Per Workspace and role, the replacement for a role being unticked where the model is the Workspace's default or only model for it.
@@ -7399,7 +7399,7 @@ export interface components {
              * Roles
              * @description Every role the model fills, in any Workspace.
              */
-            roles: ("agent" | "light" | "embedding" | "vision")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /** Workspaces */
             workspaces: components["schemas"]["LlmModelUsageWorkspace"][];
             /**
@@ -7421,7 +7421,7 @@ export interface components {
              * Roles
              * @description The roles in this Workspace that need a replacement.
              */
-            roles: ("agent" | "light" | "embedding" | "vision")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /**
              * Internal Only
              * @description Only internal models are accepted.
@@ -7963,6 +7963,8 @@ export interface components {
             embedding: components["schemas"]["ModelChoice"][];
             /** Vision */
             vision: components["schemas"]["ModelChoice"][];
+            /** Rerank */
+            rerank: components["schemas"]["ModelChoice"][];
         };
         /** MoveLayerRequest */
         MoveLayerRequest: {
@@ -10808,7 +10810,7 @@ export interface components {
         WorkspaceAiSettings: {
             /**
              * Internal Only
-             * @description Every model role (agent, light, embedding, vision) is refused an external provider.
+             * @description Every model role (agent, light, embedding, vision, rerank) is refused an external provider.
              */
             internal_only: boolean;
             /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
@@ -10848,6 +10850,8 @@ export interface components {
             embedding_rebuilding: boolean;
             /** @description The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them. */
             vision_model: components["schemas"]["WorkspaceModel"] | null;
+            /** @description The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order. */
+            rerank_model: components["schemas"]["WorkspaceModel"] | null;
             /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
             choices: components["schemas"]["ModelChoices"];
             /**
@@ -10909,6 +10913,11 @@ export interface components {
              * @description A model enabled for the vision role; optional.
              */
             vision_model_id?: string | null;
+            /**
+             * Rerank Model Id
+             * @description A model enabled for the rerank role; optional.
+             */
+            rerank_model_id?: string | null;
         };
         /** WorkspaceFile */
         WorkspaceFile: {

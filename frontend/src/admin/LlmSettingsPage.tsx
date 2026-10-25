@@ -85,6 +85,7 @@ const ROLE_COLUMNS: { role: LlmModelRole; label: string }[] = [
   { role: "light", label: "Light" },
   { role: "embedding", label: "Embedding" },
   { role: "vision", label: "Vision" },
+  { role: "rerank", label: "Rerank" },
 ];
 
 const EMBEDDING_HINT =
