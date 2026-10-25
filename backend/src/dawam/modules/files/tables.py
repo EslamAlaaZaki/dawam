@@ -155,8 +155,12 @@ class DocumentChunkRecord(Base):
     ordinal: Mapped[int]
     section: Mapped[str] = mapped_column(sa.String(SECTION_MAX_LENGTH))
     content: Mapped[str] = mapped_column(sa.Text())
+    context_header: Mapped[str | None] = mapped_column(sa.Text())
+    """One sentence from the light model saying where the passage comes from; ``None``: the
+    feature was off. Indexed and embedded with ``content``, never shown as the passage."""
     search_text: Mapped[str] = mapped_column(sa.Text())
-    """``content`` after Arabic normalisation: what full-text search indexes."""
+    """``context_header`` and ``content`` after Arabic normalisation: what full-text search
+    indexes."""
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR, sa.Computed("to_tsvector('simple', search_text)", persisted=True)
     )

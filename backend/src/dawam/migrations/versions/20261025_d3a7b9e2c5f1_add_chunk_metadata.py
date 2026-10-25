@@ -3,7 +3,7 @@ filtered search. Existing passages get a document type from their file's MIME ty
 rest is filled when a document is indexed again.
 
 Revision ID: d3a7b9e2c5f1
-Revises: a7c3e9f1b204
+Revises: a9d4e7b2c615
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY
 
 revision: str = "d3a7b9e2c5f1"
-down_revision: str | Sequence[str] | None = "a7c3e9f1b204"
+down_revision: str | Sequence[str] | None = "a9d4e7b2c615"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
