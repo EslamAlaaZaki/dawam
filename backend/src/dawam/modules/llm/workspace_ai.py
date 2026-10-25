@@ -32,7 +32,7 @@ from dawam.platform.errors import ApiError
 from .tables import ModelRecord, ProviderRecord, WorkspaceAiSettingsRecord, WorkspaceModelRecord
 
 AUDIT_ENTITY = "workspace_ai_settings"
-ROLES = ("agent", "light", "embedding", "vision")
+ROLES = ("agent", "light", "embedding", "vision", "rerank")
 CHUNKING_STRATEGIES = ("headings", "recursive", "semantic")
 DEFAULT_CHUNKING_STRATEGY = "headings"
 
@@ -79,6 +79,8 @@ class WorkspaceModels:
     """``None``: document search has no embedding model, so it matches text only."""
     vision: uuid.UUID | None = None
     """``None``: scanned pages are read by the self-hosted OCR engine."""
+    rerank: uuid.UUID | None = None
+    """``None``: search results keep their fused order."""
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,7 @@ def _models(
         default_light=default("light"),
         embedding=default("embedding"),
         vision=default("vision"),
+        rerank=default("rerank"),
     )
 
 
@@ -306,6 +309,7 @@ class _Fields:
     default_light: str
     embedding: str = "embedding_model_id"
     vision: str = "vision_model_id"
+    rerank: str = "rerank_model_id"
 
 
 CREATE_FIELDS = _Fields("agent_model_id", "agent_model_id", "light_model_id", "light_model_id")
@@ -356,6 +360,7 @@ def validated_models(
     fields: _Fields,
     embedding_required: bool,
     vision: uuid.UUID | None = None,
+    rerank: uuid.UUID | None = None,
 ) -> WorkspaceModels:
     """The one check for Workspace Models: every model enabled for its role and tested,
     internal-only respected, one default agent model (required whenever the Workspace may
@@ -388,6 +393,13 @@ def validated_models(
         fields.vision,
         internal_only=internal_only,
     )
+    _check_role(
+        db,
+        "rerank",
+        (rerank,) if rerank is not None else (),
+        fields.rerank,
+        internal_only=internal_only,
+    )
     return WorkspaceModels(
         agent=agent_ids,
         default_agent=_default(agent_ids, default_agent, fields.default_agent),
@@ -395,6 +407,7 @@ def validated_models(
         default_light=_default(light_ids, default_light, fields.default_light),
         embedding=embedding,
         vision=vision,
+        rerank=rerank,
     )
 
 
@@ -407,6 +420,7 @@ def _store_models(db: Session, workspace_id: uuid.UUID, models: WorkspaceModels)
         *((m, "light", m == models.default_light) for m in models.light),
         *([(models.embedding, "embedding", True)] if models.embedding is not None else []),
         *([(models.vision, "vision", True)] if models.vision is not None else []),
+        *([(models.rerank, "rerank", True)] if models.rerank is not None else []),
     ]
     db.add_all(
         WorkspaceModelRecord(workspace_id=workspace_id, model_id=m, role=role, is_default=d)
@@ -552,6 +566,7 @@ class WorkspaceAiService:
         default_light_model_id: uuid.UUID | None = None,
         embedding_model_id: uuid.UUID | None = None,
         vision_model_id: uuid.UUID | None = None,
+        rerank_model_id: uuid.UUID | None = None,
         chunking_strategy: str | None = None,
     ) -> WorkspaceAiView:
         """Owners only, while the Workspace is active. Replaces the settings and the
@@ -581,6 +596,7 @@ class WorkspaceAiService:
                 fields=UPDATE_FIELDS,
                 embedding_required=False,
                 vision=vision_model_id,
+                rerank=rerank_model_id,
             )
             reembed = models.embedding != current.embedding and has_indexed_documents(
                 db, workspace_id
@@ -668,4 +684,5 @@ def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict
         "default_light_model_id": one(models.default_light),
         "embedding_model_id": one(models.embedding),
         "vision_model_id": one(models.vision),
+        "rerank_model_id": one(models.rerank),
     }

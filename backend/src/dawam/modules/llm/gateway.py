@@ -174,6 +174,8 @@ class Adapter(Protocol):
 
     # Optional: ``vision(self, model, prompt, images) -> Iterator[ChatEvent]`` (one user turn
     # with ``images`` and the ``prompt``; absent: the provider cannot read images).
+    # Optional: ``rerank(self, model, query, documents) -> list[float]`` (one relevance score per
+    # document, in order, higher is better; absent: the provider has no rerank endpoint).
     # Optional: ``count_tokens(self, model, text) -> int | None`` (the provider's own count of
     # ``text``; ``None``/absent: not available, the gateway estimates).
     # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
@@ -283,6 +285,16 @@ class Gateway:
             self._retrying(lambda: reader(self._model, prompt, tuple(images))),
             [Message("user", prompt, images=tuple(images))],
         )
+
+    def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
+        """One relevance score per document, in order (higher is better), from a rerank
+        model. Retried like ``chat``. Raises ``LlmError`` ``bad_request`` when the provider's
+        adapter has no rerank endpoint."""
+        ranker = getattr(self._adapter, "rerank", None)
+        if ranker is None:
+            raise LlmError(BAD_REQUEST, "This provider has no rerank endpoint.")
+        [scores] = self._retrying(lambda: iter([ranker(self._model, query, tuple(documents))]))
+        return list(scores)
 
     def _estimated(
         self, events: Iterator[ChatEvent], messages: Sequence[Message]
@@ -394,12 +406,13 @@ def probe(
     embedding: bool,
     context_window: int | None = None,
     vision: bool = False,
+    rerank: bool = False,
 ) -> ProbeResult:
     """Run "Test connection": a short prompt, a streamed one, a dummy tool call, a
     JSON-schema request, for vision models a small image to read and, for embedding
-    models, one embedding. A failure of the short prompt (or of the image or the
-    embedding) fails the test with its error code; failures of the optional features just
-    mean the model does not support them.
+    models, one embedding and for rerank models a two-document ranking. A failure of the short
+    prompt (or of the image, the embedding or the ranking) fails the test with its error code;
+    failures of the optional features just mean the model does not support them.
     ``context_window`` (the admin's input) wins over the server's metadata."""
     tool_calling = streaming = json_schema = dimension = None
     try:
@@ -441,6 +454,10 @@ def probe(
             )
             if not seen.strip():
                 raise LlmError(INVALID_RESPONSE, "The model gave an empty reply to the image.")
+        if rerank:
+            scores = gateway.rerank("ping", ["ping", "pong"])
+            if len(scores) != 2:
+                raise LlmError(INVALID_RESPONSE, "The model returned the wrong number of scores.")
         if embedding:
             [vector] = gateway.embed(["ping"])
             if not vector:

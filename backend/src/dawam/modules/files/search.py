@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 import sqlalchemy as sa
@@ -64,6 +64,7 @@ from .internal.context import context_header
 from .internal.ocr import OcrEngine, VisionOcr, describe_image
 from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
+from .internal.rerank import NoRerankModels, RerankModels
 from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,9 @@ MAX_POOL_GROWTH = 8  # how far the pool may grow to find ``limit`` distinct pare
 """How many passages each ranking contributes before they are fused."""
 RRF_K = 60
 DEFAULT_LIMIT = 10
+RERANK_TOP_N = 30
+"""How many of the fused top passages the rerank model rescores."""
+RERANK_DOC_CHARS = 4000
 
 
 @dataclass(frozen=True)
@@ -395,7 +399,9 @@ class DocumentSearchService:
         ocr: Callable[[], OcrEngine | None] = lambda: None,
         vision: VisionModels | None = None,
         light: LightModels | None = None,
+        rerank: RerankModels | None = None,
     ) -> None:
+        self._rerank_models = rerank or NoRerankModels()
         self._light = light or NoLightModels()
         self._parser = parser
         self._ocr = ocr
@@ -986,8 +992,36 @@ class DocumentSearchService:
                 passages = self._parents(ordered, rows, scores)
                 full = any(len(r) >= pool for r in ranked)
                 if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
-                    return passages[:limit]
+                    return self._rerank(workspace_id, user.id, query, passages)[:limit]
                 pool *= 2
+
+    def _rerank(
+        self, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str, passages: list[Passage]
+    ) -> list[Passage]:
+        """Reorder the fused top passages by the Workspace's rerank model, best first, each
+        passage's score becoming the model's. Without a rerank model, one the data-sharing
+        level or internal-only setting keeps from the documents, or when the call fails or the
+        budget is used up, the fused order stands."""
+        settings = self._ai.document_settings(workspace_id)
+        model = self._rerank_models.current(workspace_id, user_id)
+        if (
+            len(passages) < 2
+            or not settings.includes_documents
+            or model is None
+            or (settings.internal_only and not model.is_internal)
+        ):
+            return passages
+        top, rest = passages[:RERANK_TOP_N], passages[RERANK_TOP_N:]
+        try:
+            scores = model.gateway.rerank(query, [p.text[:RERANK_DOC_CHARS] for p in top])
+        except (LlmError, ApiError) as exc:
+            _unless_other_api_error(exc)
+            logger.warning("reranking failed, keeping the fused order: %s", exc)
+            return passages
+        if len(scores) != len(top):
+            return passages
+        reranked = sorted(zip(top, scores, strict=True), key=lambda pair: -pair[1])
+        return [replace(p, score=s) for p, s in reranked] + rest
 
     @staticmethod
     def _filter_scope(filters: PassageFilters | None, params: dict[str, Any]) -> str:
