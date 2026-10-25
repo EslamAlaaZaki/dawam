@@ -28,3 +28,16 @@ def normalise(text: str) -> str:
 def words(text: str) -> list[str]:
     """The distinct normalised words of ``text``, in order of first appearance."""
     return list(dict.fromkeys(_WORD.findall(normalise(text))))
+
+
+_ARABIC_LETTER = re.compile("[ء-يٱ-ۓ]")
+_LATIN_LETTER = re.compile("[A-Za-z]")
+
+
+def language(text: str) -> str | None:
+    """``ar`` or ``en`` by the script most of the letters are in; ``None`` without letters
+    in either script."""
+    arabic, latin = len(_ARABIC_LETTER.findall(text)), len(_LATIN_LETTER.findall(text))
+    if not arabic and not latin:
+        return None
+    return "ar" if arabic >= latin else "en"

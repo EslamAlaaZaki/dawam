@@ -31,7 +31,7 @@ from dawam.modules.warehouse import (
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
-from .search import DocumentSearchService, Passage
+from .search import DocumentSearchService, Passage, PassageFilters
 from .service import FileService
 from .service import WorkspaceFile as WorkspaceFileView
 
@@ -393,6 +393,11 @@ class DocumentPassage(BaseModel):
     text: str
     score: float = Field(description="Relative rank: higher is a better match.")
     source_system_id: uuid.UUID
+    document_type: str | None = Field(default=None, description="`pdf`, `xlsx`, `md`...")
+    language: str | None = Field(default=None, description="`ar` or `en`.")
+    page: int | None = Field(default=None, description="The page of a PDF passage.")
+    sheet: str | None = Field(default=None, description="The worksheet of a spreadsheet passage.")
+    tags: list[str] = Field(default_factory=list, description="Labels: the document's folders.")
 
 
 class DocumentSearchResults(BaseModel):
@@ -414,6 +419,11 @@ def _passage(passage: Passage) -> DocumentPassage:
         text=passage.text,
         score=passage.score,
         source_system_id=passage.source_system_id,
+        document_type=passage.document_type,
+        language=passage.language,
+        page=passage.page,
+        sheet=passage.sheet,
+        tags=list(passage.tags),
     )
 
 
@@ -425,12 +435,20 @@ def search_documents(
     q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
     system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    document_type: Annotated[str | None, Query(description="Only this type, e.g. `pdf`.")] = None,
+    language: Annotated[str | None, Query(description="Only `ar` or `en` passages.")] = None,
+    page: Annotated[int | None, Query(ge=1, description="Only this PDF page.")] = None,
+    sheet: Annotated[str | None, Query(description="Only this worksheet.")] = None,
+    tag: Annotated[str | None, Query(description="Only documents with this label.")] = None,
 ) -> DocumentSearchResults:
     """Search the Workspace's uploaded documents (any member). Full-text search with Arabic
     normalisation, combined with vector search when the Workspace's data-sharing level
     includes documents and its internal-only setting allows the embedding provider. Each
     result is a cited passage: the document and its section."""
-    passages = search.search(user, workspace_id, q, system_id=system_id, limit=limit)
+    filters = PassageFilters(document_type, language, page, sheet, tag)
+    passages = search.search(
+        user, workspace_id, q, system_id=system_id, limit=limit, filters=filters
+    )
     return DocumentSearchResults(items=[_passage(p) for p in passages])
 
 
