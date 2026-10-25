@@ -128,3 +128,55 @@ def test_the_semantic_strategy_falls_back_to_recursive_when_vectors_do_not_match
     chunks = chunk(text, _words, strategy="semantic", embed=lambda texts: [[1.0, 0.0]])
 
     assert chunks == chunk(text, _words, strategy="recursive")
+
+
+def _table(rows: int) -> str:
+    body = (f"| {i} | item{i} |" for i in range(rows))
+    return "\n".join(["| id | name |", "| --- | --- |", *body])
+
+
+def test_a_small_table_is_one_passage_apart_from_prose():
+    table = _table(3)
+
+    chunks = chunk(f"before text\n{table}\nafter text")
+
+    assert [c.text for c in chunks] == ["before text", table, "after text"]
+
+
+def test_a_large_table_splits_by_rows_and_repeats_the_header():
+    chunks = chunk(_table(60), _words, target=40, maximum=60)
+
+    assert len(chunks) > 2
+    assert all(c.text.splitlines()[:2] == ["| id | name |", "| --- | --- |"] for c in chunks)
+    assert all(_words(c.text) <= 60 for c in chunks)
+    rows = [line for c in chunks for line in c.text.splitlines()[2:]]
+    assert rows == _table(60).splitlines()[2:]
+
+
+def test_pipes_without_a_rule_row_stay_prose():
+    assert len(chunk("| a | b |\n| c | d |")) == 1
+
+
+def test_a_wide_row_is_cut_so_every_part_stays_within_the_bound():
+    wide = "| 1 | " + "word " * 100 + "|"
+    table = "\n".join(["| id | name |", "| --- | --- |", wide, "| 2 | b |"])
+
+    chunks = chunk(table, _words, target=40, maximum=60)
+
+    assert len(chunks) > 2
+    assert all(_words(c.text) <= 60 for c in chunks)
+    assert all(c.text.startswith("| id | name |\n| --- | --- |\n") for c in chunks)
+
+
+def test_a_table_without_rows_emits_no_header_only_passage():
+    assert chunk("| id | name |\n| --- | --- |") == []
+
+
+def test_an_oversized_header_falls_back_to_prose_within_the_bound():
+    header = "| " + " | ".join(f"col{i}" for i in range(80)) + " |"
+    table = "\n".join([header, "| --- | --- |", "| 1 | 2 |"])
+
+    chunks = chunk(table, _words, target=40, maximum=60)
+
+    assert chunks
+    assert all(_words(c.text) <= 60 for c in chunks)

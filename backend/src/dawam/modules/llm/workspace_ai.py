@@ -17,6 +17,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Protocol
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -130,8 +131,9 @@ class WorkspaceAiView:
     choices: dict[str, list[ApprovedModel]]
     """Per role, every model an owner may choose (an internal-only Workspace takes only
     the internal ones)."""
-    embedding_locked: bool
-    """The Workspace has indexed documents, so its embedding model is fixed (ADR 0005)."""
+    embedding_rebuilding: bool
+    """The Workspace's documents are being embedded again with its new embedding model;
+    search matches text only until they all are (ADR 0006)."""
     internal_agent_available: bool
     """The installation has a tested agent model on an internal provider."""
     banner: bool
@@ -241,7 +243,8 @@ def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
 
 def has_indexed_documents(db: Session, workspace_id: uuid.UUID) -> bool:
     """Whether any of the Workspace's documents carry vectors, which pin its embedding
-    model (ADR 0005). The files module owns the chunks; this only reads them, by SQL."""
+    model to them until they are embedded again (ADR 0006). The files module owns the
+    chunks; this only reads them, by SQL."""
     return bool(
         db.scalar(
             sa.text(
@@ -251,6 +254,27 @@ def has_indexed_documents(db: Session, workspace_id: uuid.UUID) -> bool:
             {"w": workspace_id},
         )
     )
+
+
+def embedding_rebuilding(db: Session, workspace_id: uuid.UUID) -> bool:
+    """Whether the Workspace's documents are being embedded again (ADR 0006). The files
+    module owns the rebuild; this only reads it, by SQL."""
+    return bool(
+        db.scalar(
+            sa.text(
+                "SELECT EXISTS (SELECT 1 FROM document_embedding_rebuilds WHERE workspace_id = :w)"
+            ),
+            {"w": workspace_id},
+        )
+    )
+
+
+class EmbeddingModelChangedHook(Protocol):
+    def __call__(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        """Called inside the transaction that changes the embedding model of a Workspace
+        with indexed documents, so its documents are embedded again (ADR 0006). The files
+        module, which imports this one, fills it."""
+        ...
 
 
 def enabled_models(db: Session, role: str) -> list[ApprovedModel]:
@@ -452,10 +476,18 @@ def new_workspace_choices(engine: sa.Engine) -> NewWorkspaceChoices:
 
 
 class WorkspaceAiService:
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        on_embedding_changed: EmbeddingModelChangedHook | None = None,
+    ) -> None:
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._on_embedding_changed = on_embedding_changed
 
     def settings(self, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
         """The settings, for server-side callers. Authorizes nothing: callers have."""
@@ -523,8 +555,8 @@ class WorkspaceAiService:
         chunking_strategy: str | None = None,
     ) -> WorkspaceAiView:
         """Owners only, while the Workspace is active. Replaces the settings and the
-        Workspace Models (``validated_models``). The embedding model may change only while
-        the Workspace has no indexed documents (ADR 0005): 422 ``embedding_model_fixed``."""
+        Workspace Models (``validated_models``). Changing the embedding model of a Workspace
+        with indexed documents embeds them again in the background (ADR 0006)."""
         self._workspaces.authorize(user, Action.CHANGE_AI_SETTINGS, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = db.scalars(
@@ -550,12 +582,9 @@ class WorkspaceAiService:
                 embedding_required=False,
                 vision=vision_model_id,
             )
-            if models.embedding != current.embedding and has_indexed_documents(db, workspace_id):
-                raise _invalid(
-                    "The Workspace has indexed documents, so its embedding model is fixed.",
-                    "embedding_model_id",
-                    "embedding_model_fixed",
-                )
+            reembed = models.embedding != current.embedding and has_indexed_documents(
+                db, workspace_id
+            )
             if chunking_strategy is not None and chunking_strategy not in CHUNKING_STRATEGIES:
                 raise _invalid(
                     "Choose headings, recursive or semantic.",
@@ -569,6 +598,8 @@ class WorkspaceAiService:
                 record.chunking_strategy = chunking_strategy
             record.updated_at = now
             _store_models(db, workspace_id, models)
+            if reembed and self._on_embedding_changed is not None:
+                self._on_embedding_changed(db, workspace_id, user.id)
             new = _audited(record, models)
             changed = sorted(k for k in new if new[k] != old[k])
             if changed:
@@ -614,7 +645,7 @@ class WorkspaceAiService:
             settings=settings,
             chosen=chosen,
             choices={role: enabled_models(db, role) for role in ROLES},
-            embedding_locked=has_indexed_documents(db, workspace_id),
+            embedding_rebuilding=embedding_rebuilding(db, workspace_id),
             internal_agent_available=internal_available,
             banner=not settings.internal_only and not internal_available,
         )

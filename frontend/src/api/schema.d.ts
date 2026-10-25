@@ -3992,8 +3992,8 @@ export interface paths {
          *     422 `model_not_allowed` for an external model in an internal-only Workspace;
          *     422 `no_internal_model` when internal-only has no internal agent model to use;
          *     422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the
-         *     default is not one of the chosen models; 422 `embedding_model_fixed` for a different
-         *     embedding model once documents are indexed.
+         *     default is not one of the chosen models. A different embedding model once documents are
+         *     indexed starts a `reindex_documents` job that embeds them again (`embedding_rebuilding`).
          */
         put: operations["setWorkspaceAiSettings"];
         post?: never;
@@ -10812,10 +10812,10 @@ export interface components {
             /** @description The Workspace's embedding model; null: document search matches text only. */
             embedding_model: components["schemas"]["WorkspaceModel"] | null;
             /**
-             * Embedding Locked
-             * @description The Workspace has indexed documents, so its embedding model is fixed.
+             * Embedding Rebuilding
+             * @description The documents are being embedded again with a new embedding model; document search matches text only until they all are.
              */
-            embedding_locked: boolean;
+            embedding_rebuilding: boolean;
             /** @description The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them. */
             vision_model: components["schemas"]["WorkspaceModel"] | null;
             /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
@@ -10866,7 +10866,7 @@ export interface components {
             default_light_model_id?: string | null;
             /**
              * Embedding Model Id
-             * @description A model enabled for the embedding role; changes only while the Workspace has no indexed documents.
+             * @description A model enabled for the embedding role. Changing it once documents are indexed embeds them again in the background; search matches text only meanwhile.
              */
             embedding_model_id?: string | null;
             /**

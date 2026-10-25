@@ -361,7 +361,7 @@ def test_internal_only_takes_only_internal_models(roles: RoleClients, fake_llm):
     assert accepted.status_code == 200 and accepted.json()["internal_only"] is True
 
 
-def test_the_embedding_model_changes_until_the_workspace_has_indexed_documents(
+def test_the_embedding_model_changes_after_indexing_and_the_documents_are_embedded_again(
     indexing, roles: RoleClients, fake_llm
 ):
     admin = roles.client("admin")
@@ -373,16 +373,16 @@ def test_the_embedding_model_changes_until_the_workspace_has_indexed_documents(
 
     set_one = owner.put(settings_path(roles), json=body(agent, embedding=one, **sharing))
     assert upload(roles, system(roles), "sad.md", b"Postings are booked daily.").is_success
-    locked = read(owner, roles.workspace_id)
-    refused = owner.put(settings_path(roles), json=body(agent, embedding=two, **sharing))
-    cleared = owner.put(settings_path(roles), json=body(agent, **sharing))
-    same = owner.put(settings_path(roles), json=body(agent, embedding=one, **sharing))
+    changed = owner.put(settings_path(roles), json=body(agent, embedding=two, **sharing))
+    jobs = owner.get(f"/api/v1/workspaces/{roles.workspace_id}/jobs").json()["items"]
 
-    assert set_one.status_code == 200 and set_one.json()["embedding_locked"] is False
-    assert locked["embedding_locked"] is True and locked["embedding_model"]["name"] == "bge-small"
-    assert refused.status_code == 422 and code(refused) == "embedding_model_fixed"
-    assert cleared.status_code == 422 and code(cleared) == "embedding_model_fixed"
-    assert same.status_code == 200, same.text
+    assert set_one.status_code == 200 and set_one.json()["embedding_rebuilding"] is False
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["embedding_model"]["name"] == "bge-large"
+    assert changed.json()["embedding_rebuilding"] is True
+    # The inline runner rebuilt the vectors once the change committed, and switched to them.
+    assert read(owner, roles.workspace_id)["embedding_rebuilding"] is False
+    assert [j["title"] for j in jobs if j["type"] == "reindex_documents"] == ["Re-embed documents"]
 
 
 def test_model_fields_left_out_keep_their_value(roles: RoleClients, fake_llm):

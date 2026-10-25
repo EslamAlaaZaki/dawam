@@ -33,7 +33,9 @@ Public interface. Other modules import only what is re-exported here:
   ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the composition root sets
   (``app.state.on_workspace_created``): it stores the creator's embedding, default agent and
   light models, and makes the Workspace internal-only when the installation has a tested
-  internal agent model, decided in code.
+  internal agent model, decided in code. Changing the embedding model of a Workspace with
+  indexed documents calls the ``EmbeddingModelChangedHook``
+  (``app.state.on_embedding_model_changed``), which embeds them again (ADR 0006).
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` (members read, owners
   change), ``GET /ai/new-workspace-models`` (the "New workspace" form's choices), then,
   admins only, ``/admin/llm/budgets[...]``,
@@ -85,6 +87,7 @@ from .workspace_ai import (
     ApprovedModel,
     DataSharingLevel,
     DataSharingPolicy,
+    EmbeddingModelChangedHook,
     WorkspaceAiService,
     WorkspaceAiSettings,
     WorkspaceAiView,
@@ -111,6 +114,7 @@ __all__ = [
     "DataSharingLevel",
     "DataSharingPolicy",
     "Done",
+    "EmbeddingModelChangedHook",
     "FakeAdapter",
     "Gateway",
     "Image",

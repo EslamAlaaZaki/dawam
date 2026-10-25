@@ -10,6 +10,9 @@ Three strategies decide the pieces a section is packed from: ``headings`` (its p
 ``recursive`` (paragraphs, then lines, sentences and words, cutting only what is too long) and
 ``semantic`` (sentences, cut where the embedding similarity of neighbours drops). Whatever the
 strategy, the size limits hold.
+
+A Markdown table is never mixed with prose: it is one passage, or, when it is more than
+``MAX_TOKENS``, split by rows into passages that each repeat the header rows.
 """
 
 from __future__ import annotations
@@ -35,6 +38,9 @@ _SENTENCE = re.compile(r"(?<=[.!?؟])\s+|\n+")
 _SEPARATORS = (r"\n\s*\n", r"\n", r"(?<=[.!?؟])\s+")  # then words, in ``_split_long``
 
 Strategy = Literal["headings", "recursive", "semantic"]
+_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_RULE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+
 TokenCounter = Callable[[str], int]
 Embedder = Callable[[list[str]], list[list[float]]]
 
@@ -101,6 +107,24 @@ def _semantic_blocks(paragraphs: list[str], embed: Embedder) -> list[list[str]] 
     return [[" ".join(g)] for g in groups]
 
 
+def _prose_blocks(
+    paragraphs: list[str],
+    strategy: str,
+    embed: Embedder | None,
+    target: int,
+    count: TokenCounter,
+) -> list[list[str]]:
+    """The units a run of prose is packed from, in blocks that are never joined: one block,
+    except for ``semantic``, which starts a new one where the topic changes."""
+    if strategy == "semantic" and embed is not None:
+        blocks = _semantic_blocks(paragraphs, embed)
+        if blocks is not None:
+            return blocks
+    if strategy in ("recursive", "semantic"):
+        return [[u for p in paragraphs for u in _recursive_units(p, target, count)]]
+    return [paragraphs]
+
+
 def _tail(text: str, overlap: int, count: TokenCounter) -> str:
     """The last words of ``text``, at most ``overlap`` tokens."""
     if overlap <= 0:
@@ -115,6 +139,51 @@ def _tail(text: str, overlap: int, count: TokenCounter) -> str:
     while words and count(" ".join(words)) > overlap:
         words = words[1:]
     return " ".join(words)
+
+
+def _blocks(lines: list[str]) -> list[tuple[bool, list[str]]]:
+    """``lines`` as (is_table, lines) runs. A table is consecutive ``|`` rows whose second
+    row is a ``---`` rule."""
+    blocks: list[tuple[bool, list[str]]] = []
+    prose: list[str] = []
+    i = 0
+    while i < len(lines):
+        j = i
+        while j < len(lines) and _TABLE_ROW.match(lines[j]):
+            j += 1
+        if j - i >= 2 and _TABLE_RULE.match(lines[i + 1]):
+            if prose:
+                blocks.append((False, prose))
+                prose = []
+            blocks.append((True, [line.strip() for line in lines[i:j]]))
+            i = j
+        else:
+            prose.append(lines[i])
+            i += 1
+    if prose:
+        blocks.append((False, prose))
+    return blocks
+
+
+def _table_parts(rows: list[str], maximum: int, count: TokenCounter) -> list[str] | None:
+    """A table as one text, or split by rows into texts that each start with the header and
+    stay within ``maximum``. Empty for a table without rows; ``None`` when the header alone
+    is too big to repeat, so the caller treats the table as prose."""
+    header, body = rows[:2], rows[2:]
+    if not body:
+        return []
+    whole = "\n".join(rows)
+    if count(whole) <= maximum:
+        return [whole]
+    room = maximum - count("\n".join(header))
+    if room <= 0:
+        return None
+    parts: list[list[str]] = []
+    for row in (piece for r in body for piece in _split_long(r, room, count)):
+        if not parts or count("\n".join([*header, *parts[-1], row])) > maximum:
+            parts.append([])
+        parts[-1].append(row)
+    return ["\n".join([*header, *part]) for part in parts]
 
 
 def chunk(
@@ -141,34 +210,35 @@ def chunk(
 
     chunks: list[Chunk] = []
     for title, lines in sections:
-        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", "\n".join(lines)) if p.strip()]
-        if not paragraphs:
-            continue
         name = title or f"Part {len(chunks) + 1}"
         limit = maximum - overlap
-        blocks = None
-        if strategy == "semantic" and embed is not None:
-            blocks = _semantic_blocks(paragraphs, embed)  # a topic change ends a passage
-        if blocks is not None:
-            pass
-        elif strategy in ("recursive", "semantic"):
-            blocks = [[u for p in paragraphs for u in _recursive_units(p, target, count)]]
-        else:
-            blocks = [paragraphs]
-        for block in blocks:
-            current = ""
-            current_tokens = 0
-            fresh = True  # ``current`` holds at most the overlap of the previous passage
-            for paragraph in (s for p in block for s in _split_long(p, limit, count)):
-                size = count(paragraph)
-                if not fresh and current_tokens + size > target:
+        current = ""
+        current_tokens = 0
+        fresh = True  # ``current`` holds at most the overlap of the previous passage
+        for is_table, block in _blocks(lines):
+            parts = _table_parts(block, maximum, count) if is_table else None
+            if parts is not None:
+                if not fresh:
                     chunks.append(Chunk(name, current))
-                    current = _tail(current, overlap, count)
-                    current_tokens = count(current) if current else 0
-                    fresh = True
-                current = f"{current}\n\n{paragraph}" if current else paragraph
-                current_tokens += size
-                fresh = False
-            if not fresh:
-                chunks.append(Chunk(name, current))
+                chunks.extend(Chunk(name, part) for part in parts)
+                current, current_tokens, fresh = "", 0, True
+                continue
+            paragraphs = [p.strip() for p in re.split(r"\n\s*\n", "\n".join(block)) if p.strip()]
+            blocks = _prose_blocks(paragraphs, strategy, embed, target, count)
+            for index, units in enumerate(blocks):
+                if index and not fresh:  # a topic change ends the passage
+                    chunks.append(Chunk(name, current))
+                    current, current_tokens, fresh = "", 0, True
+                for paragraph in (s for p in units for s in _split_long(p, limit, count)):
+                    size = count(paragraph)
+                    if not fresh and current_tokens + size > target:
+                        chunks.append(Chunk(name, current))
+                        current = _tail(current, overlap, count)
+                        current_tokens = count(current) if current else 0
+                        fresh = True
+                    current = f"{current}\n\n{paragraph}" if current else paragraph
+                    current_tokens += size
+                    fresh = False
+        if not fresh:
+            chunks.append(Chunk(name, current))
     return chunks
