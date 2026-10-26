@@ -528,3 +528,58 @@ def test_with_few_tools_everything_is_sent_and_there_is_no_find_tools():
     run(adapter)
 
     assert [t.name for t in adapter.calls[0].tools] == ["lookup"]
+
+
+SUGGEST = ToolSpec("suggest_kpis", "Suggest KPIs.", {"type": "object"})
+
+
+class SuggestTools(Tools):
+    def specs(self) -> Sequence[ToolSpec]:
+        return [SUGGEST]
+
+
+def _suggest_run(*replies: Reply | LlmError) -> tuple[list[Any], FakeAdapter]:
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(ToolCall("c1", "suggest_kpis", {}),)), *replies
+    )
+    return run(adapter, SuggestTools()), adapter
+
+
+def test_a_kpi_suggestion_answer_gets_a_cards_block_from_a_json_schema_call():
+    cards = {
+        "intro": "I suggest one KPI.",
+        "suggestions": [{"name": "Churn", "rationale": "Tables point to it", "unit": "%"}],
+    }
+    events, adapter = _suggest_run(
+        Reply(text="1. Churn - long list"), Reply(text=json.dumps(cards))
+    )
+
+    done = events[-1]
+    assert isinstance(done, Finished) and done.status == "completed"
+    assert done.text.startswith("I suggest one KPI.\n\n```dawam-kpis\n")
+    assert "long list" not in done.text  # the Markdown list is replaced, not repeated
+    assert json.loads(done.text.split("```dawam-kpis\n")[1].split("\n```")[0]) == [
+        {"name": "Churn", "rationale": "Tables point to it", "unit": "%"}
+    ]
+    assert adapter.calls[-1].json_schema is not None and adapter.calls[-1].tools == ()
+
+
+def test_invalid_card_json_leaves_the_markdown_answer_alone():
+    events, _ = _suggest_run(
+        Reply(text="Here are KPIs."), Reply(text='{"intro": "", "suggestions": []}')
+    )
+
+    assert events[-1].text == "Here are KPIs."
+
+
+def test_a_failing_structuring_call_does_not_fail_the_run():
+    events, _ = _suggest_run(Reply(text="Here are KPIs."), LlmError("bad_request", "no"))
+
+    assert events[-1].status == "completed" and events[-1].text == "Here are KPIs."
+
+
+def test_other_answers_make_no_structuring_call():
+    adapter = FakeAdapter().script(Reply(tool_calls=(call(id=1),)), Reply(text="Done"))
+    run(adapter)
+
+    assert all(c.json_schema is None for c in adapter.calls)

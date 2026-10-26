@@ -50,6 +50,13 @@ from .context import (
 from .injection import Inspector, flagged_parts, rule_based_inspector, warn
 from .prompt import quote_data
 from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
+from .structured import (
+    KPI_CARD_TOOLS,
+    KPI_CARDS_SCHEMA,
+    STRUCTURE_REQUEST,
+    cards_block,
+    parse_cards,
+)
 
 DEFAULT_MAX_TOOL_CALLS = 25
 DEFAULT_MAX_JOB_TOOL_CALLS = 150
@@ -236,6 +243,38 @@ def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int
     return lru_cache(maxsize=2048)(counter)
 
 
+def _structured_answer(
+    gateway: ChatGateway,
+    run: _Run,
+    messages: list[Message],
+    answer: str,
+    window: int | None,
+    count: Callable[[str], int],
+) -> str | None:
+    """The cards block for a KPI suggestion answer, else ``None`` (also when the extra
+    model call fails: the Markdown answer stands). Its usage is added to the run."""
+    if not answer or not any(c.name in KPI_CARD_TOOLS and c.status == "ok" for c in run.calls):
+        return None
+    asked = [*messages, Message("assistant", answer), Message("user", STRUCTURE_REQUEST)]
+    sent = fit_messages(asked, window, protect_from=len(asked) - 1, count=count, reserved=0)
+    reply: list[str] = []
+    try:
+        with closing(gateway.chat(sent, (), False, json_schema=KPI_CARDS_SCHEMA)) as events:
+            for event in events:
+                if isinstance(event, TextDelta):
+                    reply.append(event.text)
+                elif isinstance(event, Done) and event.usage is not None:
+                    run.prompt += event.usage.prompt_tokens
+                    run.completion += event.usage.completion_tokens
+    except (LlmError, ApiError):
+        return None
+    parsed = parse_cards("".join(reply))
+    if parsed is None:
+        return None
+    intro, cards = parsed
+    return f"{intro}\n\n{cards_block(cards)}" if intro else cards_block(cards)
+
+
 def run_agent(
     gateway: ChatGateway,
     tools: ToolSet,
@@ -365,6 +404,12 @@ def run_agent(
                     pending.append(ToolCall(call_id, verdict.name, verdict.arguments))
             if not pending:
                 capped = limit_hit or (prompted and not under_cap)
+                if not capped and capabilities.json_schema is not False:
+                    block = _structured_answer(
+                        gateway, run, messages, "".join(answer), window, count
+                    )
+                    if block:  # the intro and cards replace the Markdown list that streamed
+                        run.text[:] = [block]
                 yield run.finish("tool_limit" if capped else "completed")
                 return
             if prompted:
