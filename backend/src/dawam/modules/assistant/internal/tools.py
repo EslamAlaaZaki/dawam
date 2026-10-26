@@ -32,6 +32,7 @@ from dawam.modules.lineage import LineageService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
+    ConnectionService,
     DataDictionaryService,
     PiiService,
     ProfilingService,
@@ -39,6 +40,7 @@ from dawam.modules.sources import (
     RelationshipService,
     SnapshotService,
     SourceQueryService,
+    SourceSystemService,
 )
 from dawam.modules.warehouse import (
     DdlService,
@@ -56,11 +58,13 @@ from dawam.modules.warehouse import (
     MappingDraftPlan,
     MappingDraftService,
     MappingExportService,
+    ModelService,
     ScoreService,
     ValidationService,
 )
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
+from dawam.platform.pagination import MAX_PAGE_SIZE
 from dawam.platform.pii_validators import STRUCTURED_KEYS, redact_text
 
 from .agent import ToolOutcome
@@ -97,6 +101,9 @@ class ToolServices:
     ddl: DdlService
     mapping_exports: MappingExportService
     dictionaries: DataDictionaryService
+    systems: SourceSystemService
+    connections: ConnectionService
+    model: ModelService
 
 
 @dataclass(frozen=True)
@@ -327,6 +334,83 @@ class _ListFiles(BaseModel):
         default=None,
         description="A Source System's id; leave out for the Data Warehouse's file area.",
     )
+
+
+class _WorkspaceOverview(BaseModel):
+    pass
+
+
+def _workspace_overview(ctx: ToolContext, args: _WorkspaceOverview) -> Any:
+    """Everything the member can see, with ids: the ids other tools need."""
+    services = ctx.services
+    base = f"/workspaces/{ctx.workspace_id}"
+    connections = {
+        c.system_id: c for c in services.connections.statuses(ctx.user, ctx.workspace_id)
+    }
+    systems = []
+    cursor = None
+    while True:
+        page = services.systems.list(ctx.user, ctx.workspace_id, limit=MAX_PAGE_SIZE, cursor=cursor)
+        for system in page.items:
+            connection = connections.get(system.id)
+            snapshots = services.snapshots.list(ctx.user, ctx.workspace_id, system.id)
+            files = services.files.list_for_system(ctx.user, ctx.workspace_id, system.id)
+            systems.append(
+                {
+                    "id": system.id,
+                    "name": system.name,
+                    "code": system.code,
+                    "engine": connection.engine if connection else None,
+                    "connection": connection.state if connection else "not_connected",
+                    "snapshot": {
+                        "count": len(snapshots),
+                        "latest_taken_at": snapshots[0].taken_at.isoformat(),
+                        "table_count": snapshots[0].table_count,
+                    }
+                    if snapshots
+                    else None,
+                    "file_count": len(files.items),
+                    "files_truncated": files.next_cursor is not None or None,
+                    "link": f"{base}?folder=systems/{system.id}",
+                }
+            )
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+    layers: dict[str, list[Any]] = {"staging": [], "core": [], "mart": []}
+    for table in services.model.list_tables(ctx.user, ctx.workspace_id):
+        layers[table.layer].append({"id": table.id, "name": table.name, "kind": table.kind})
+    kpi_count = 0
+    cursor = None
+    while True:
+        kpi_page = services.kpis.list(
+            ctx.user, ctx.workspace_id, limit=MAX_PAGE_SIZE, cursor=cursor
+        )
+        kpi_count += len(kpi_page.items)
+        cursor = kpi_page.next_cursor
+        if cursor is None:
+            break
+    try:
+        warehouse_files = len(services.files.list_for_warehouse(ctx.user, ctx.workspace_id).items)
+    except ApiError as exc:  # no Data Warehouse yet, so no file area
+        if exc.status_code != 404:
+            raise
+        warehouse_files = 0
+    return {
+        "source_systems": [_without_none(s) for s in systems],
+        "dw_layers": [
+            {
+                "layer": name,
+                "table_count": len(tables),
+                "tables": tables,
+                "link": f"{base}/data-warehouse",
+            }
+            for name, tables in layers.items()
+        ],
+        "kpi_count": kpi_count,
+        "data_warehouse_file_count": warehouse_files,
+        "link": base,
+    }
 
 
 class _ReadFile(BaseModel):
@@ -2130,6 +2214,16 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _list_files,
+    ),
+    Tool(
+        "workspace_overview",
+        "List the Workspace: its Source Systems (id, name, engine, Connection and Snapshot "
+        "status, file count), the Data Warehouse's tables per Layer, the KPI count and file "
+        "areas, with ids and links. Start here when you need an id.",
+        _WorkspaceOverview,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _workspace_overview,
     ),
     Tool(
         "read_file",

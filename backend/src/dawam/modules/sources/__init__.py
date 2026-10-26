@@ -107,7 +107,7 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 from fastapi import APIRouter
 
 from .api import router as _systems_router
-from .connection_service import Connection, ConnectionService
+from .connection_service import Connection, ConnectionService, ConnectionStatus
 from .deletion import (
     SourceSystemContents,
     deleted_source_system,
@@ -186,6 +186,7 @@ __all__ = [
     "ConfirmedPiiColumn",
     "Connection",
     "ConnectionService",
+    "ConnectionStatus",
     "DataDictionary",
     "DataDictionaryService",
     "DataDictionaryServiceDep",
