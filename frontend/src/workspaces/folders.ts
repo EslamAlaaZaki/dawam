@@ -151,6 +151,12 @@ export function workspaceFolders(
             : []),
         ],
       },
+      {
+        id: "document-index",
+        label: "Document index",
+        children: [],
+        empty: "Indexing of uploaded documents will appear here.",
+      },
     ],
   };
 }

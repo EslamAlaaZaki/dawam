@@ -180,6 +180,7 @@ describe("the Data Warehouse folder before setup", () => {
       "Data Warehouse",
       "Set up Data Warehouse",
       "KPIs",
+      "Document index",
     ]);
     expect(
       await screen.findByRole("heading", { name: "Set up Data Warehouse" }),
