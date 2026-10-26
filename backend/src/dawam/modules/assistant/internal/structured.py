@@ -43,7 +43,7 @@ KPI_CARDS_SCHEMA: dict[str, Any] = {
                 "required": ["name", "rationale"],
                 "additionalProperties": False,
             },
-        }
+        },
     },
     "required": ["intro", "suggestions"],
     "additionalProperties": False,

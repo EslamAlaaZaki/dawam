@@ -507,7 +507,9 @@ def test_a_kpi_suggestion_answer_gets_a_cards_block_from_a_json_schema_call():
         "intro": "I suggest one KPI.",
         "suggestions": [{"name": "Churn", "rationale": "Tables point to it", "unit": "%"}],
     }
-    events, adapter = _suggest_run(Reply(text="1. Churn - long list"), Reply(text=json.dumps(cards)))
+    events, adapter = _suggest_run(
+        Reply(text="1. Churn - long list"), Reply(text=json.dumps(cards))
+    )
 
     done = events[-1]
     assert isinstance(done, Finished) and done.status == "completed"
@@ -520,7 +522,9 @@ def test_a_kpi_suggestion_answer_gets_a_cards_block_from_a_json_schema_call():
 
 
 def test_invalid_card_json_leaves_the_markdown_answer_alone():
-    events, _ = _suggest_run(Reply(text="Here are KPIs."), Reply(text='{"intro": "", "suggestions": []}'))
+    events, _ = _suggest_run(
+        Reply(text="Here are KPIs."), Reply(text='{"intro": "", "suggestions": []}')
+    )
 
     assert events[-1].text == "Here are KPIs."
 
