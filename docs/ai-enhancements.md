@@ -238,6 +238,8 @@ flowchart TD
 
 ### 6.1 Missing domain tools: discovery
 
+> **Status:** `workspace_overview` is **done** (#395) and `search_workspace` is **done** (#396); it covers KPI and DW search, so `search_kpis` and `search_dw` were not built as separate tools. The table below is the original analysis.
+
 **Rule of thumb:** don't add a tool for everything. Every allowed tool's schema is sent with every model call (cost), small self-hosted models pick worse from long lists, and each tool needs its own permission check, data-sharing level, PII handling and tests. Add a tool when runs show the model failing or guessing without it.
 
 The real gap today is **discovery**: almost every tool needs ids the model has no way to look up.
@@ -259,12 +261,12 @@ General-purpose assistants ship tools like web search, calendar, email and code 
 
 | Tool | Useful for DAWAM? | Risks | Verdict |
 |---|---|---|---|
-| **Current date and time** (Gregorian + Hijri) | Yes: "last month's" KPIs, Snapshot ages, fiscal periods. The system prompt has no date today | none | **Add**, in the system prompt rather than as a tool (`hijridate` is already a dependency) |
+| **Current date and time** (Gregorian + Hijri) | Yes: "last month's" KPIs, Snapshot ages, fiscal periods. The system prompt has no date today | none | **Add**, in the system prompt rather than as a tool (`hijridate` is already a dependency). **Done** (#397) |
 | **Web search** | Sometimes: industry KPI definitions (e.g. banking, IFRS 9, SAMA rules), Kimball patterns, SQL dialect and vendor schema docs (SAP, Oracle EBS) | **Data leak**: search queries can carry table names, business terms or values to a third party. **Prompt injection** from web pages. Doesn't work offline | **Add later, off by default**: admin enables it on the admin page and registers providers there (self-hosted **SearXNG**, internal; **LangSearch**, external; see below); blocked in internal-only Workspaces unless the provider is internal; results quoted as data; every query audited and shown in the chat; strip sample values from queries |
 | **Web fetch** (read a URL the member pastes) | Yes, for documentation links | Same as web search, plus SSRF (internal URLs) | **Add with web search**: same switch, allow-list or block private IP ranges, size and type caps, quoted as data |
-| **Code execution** (Python sandbox) | Partly: analysing uploaded CSV/XLSX, statistics, checking formulas | Needs a real sandbox (container or gVisor/Firecracker, no network, CPU/memory/time limits); heavy to run safely | **Prefer a narrower tool**: `query_file(file_id, sql)` using **DuckDB** in-process over uploaded CSV/XLSX/Parquet, read-only, row cap, PII masking like `run_source_query`. Full Python only if real demand appears |
+| **Code execution** (Python sandbox) | Partly: analysing uploaded CSV/XLSX, statistics, checking formulas | Needs a real sandbox (container or gVisor/Firecracker, no network, CPU/memory/time limits); heavy to run safely | **Prefer a narrower tool**: `query_file(file_id, sql)` using **DuckDB** in-process over uploaded CSV/XLSX/Parquet, read-only, row cap, PII masking like `run_source_query`. Full Python only if real demand appears. **Done** (#398) for CSV/XLSX; Parquet not covered |
 | **Calculator** | Small: models are unreliable at arithmetic (coverage %, growth rates) | none | **Covered** by `query_file` / guarded SQL; a separate tool isn't worth a schema slot |
-| **Diagrams** (Mermaid ERD of the DW model or lineage) | Yes: "draw the star schema for the sales fact" | none; generated from our own model, not by the model guessing | **Add** as `render_diagram(kind, scope)` that builds Mermaid from the DW model. Showing it in chat needs Mermaid rendering in the frontend, which is a UI feature, so out of scope for the UI redesign |
+| **Diagrams** (Mermaid ERD of the DW model or lineage) | Yes: "draw the star schema for the sales fact" | none; generated from our own model, not by the model guessing | **Add** as `render_diagram(kind, scope)` that builds Mermaid from the DW model. Showing it in chat needs Mermaid rendering in the frontend, which is a UI feature, so out of scope for the UI redesign. **Done** (#399): `star_schema` and `lineage` kinds, drawn in chat |
 | **Calendar** | No use case: DAWAM has no scheduling or meetings | external account access | **Skip** |
 | **Email / messaging** (send on the member's behalf) | No: outward-facing actions; DAWAM already notifies in-app and job results go back to the conversation | sending data outside, impersonation | **Skip** |
 | **Provider-native server tools** (Anthropic web search, OpenAI code interpreter / file search, Gemini grounding) | Tempting shortcut | Run at the provider, outside our gateway's normalisation, audit and data-sharing checks; don't exist on self-hosted models; tie us to one vendor | **Avoid**; implement DAWAM-side tools so they work with every adapter |
@@ -433,12 +435,11 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | **Done** (#384, #385); also SUBSTR leak path closed (#386), rate limits (#388) |
 | 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | **Done** (#372); ADR 0006 supersedes 0005 |
 | 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2. **Done** (#426) |
-| 19 | Discovery tools: `workspace_overview`, KPI and DW search | §6.1 | High | S | Quick win; do in Phase 1 |
-| 20 | Current date (Gregorian + Hijri) in the system prompt | §6.2 | Medium | S | Quick win; do in Phase 1 |
-| 21 | `query_file` with DuckDB over uploaded CSV/XLSX | §6.2 | Medium | M | Safer than a Python sandbox |
-| 22 | `render_diagram` (Mermaid ERD / lineage) | §6.2 | Medium | S | Chat rendering needs a frontend change |
+| 19 | Discovery tools: `workspace_overview`, KPI and DW search | §6.1 | High | S | **Done** (#395, #396) |
+| 20 | Current date (Gregorian + Hijri) in the system prompt | §6.2 | Medium | S | **Done** (#397) |
+| 21 | `query_file` with DuckDB over uploaded CSV/XLSX | §6.2 | Medium | M | **Done** (#398); safer than a Python sandbox |
+| 22 | `render_diagram` (Mermaid ERD / lineage) | §6.2 | Medium | S | **Done** (#399); chat renders Mermaid |
 | 23 | Web search + web fetch, off by default, SearXNG for internal-only | §6.2 | Low–Medium | M | After #16 (injection check) |
-
 | 24 | Count tool schemas in the context budget (`fit_messages`) | §7.1 | High | S | Fixes overflows on small windows; do first |
 | 25 | Minimum context window for the agent role + Ollama `num_ctx` warning | §7.1 | High | S | |
 | 26 | Shorten the three largest tool schemas | §7.1 | Medium | S | Saves tokens on every model call |
