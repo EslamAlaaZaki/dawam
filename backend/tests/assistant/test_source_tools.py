@@ -16,6 +16,7 @@ from dawam.modules.assistant.internal.tools import MAX_RESULT_CHARS, _json
 from dawam.modules.llm import FakeAdapter, Reply
 from tests.assistant import test_chat
 from tests.assistant.test_chat import ask, conversation, tool, tool_names
+from tests.kpis import test_kpi_links
 from tests.roles import RoleClients
 from tests.sample_source import SampleSource
 from tests.sources import test_extraction
@@ -25,6 +26,7 @@ from tests.sources.test_schema_browser import schema
 scratch_source = test_extraction.scratch_source
 model = test_chat.model
 settings = test_chat.settings
+warehouse = test_kpi_links.model  # a Data Warehouse with Core and Mart tables (a fixture)
 """The chat tests' fixtures: an assigned agent model, and a small tool-call cap."""
 
 NATIONAL_ID = "29001011234567"
@@ -469,6 +471,51 @@ def test_search_documents_is_refused_below_the_documents_level(roles, model, fak
     assert "nightly" not in seen
 
 
+# -- search_workspace -----------------------------------------------------------------------
+
+
+def test_search_workspace_finds_every_kind_with_ids(roles, model, fake_llm, source, warehouse):
+    from tests.assistant.test_chat import add_kpi
+
+    kpi_id = add_kpi(roles, "Customer Churn")
+    file_id = upload(roles, source, "design.md", "# Customers\nCustomer data lives here.")
+    level(roles, "documents")
+
+    _, seen = use(roles, fake_llm, "search_workspace", query="customer", limit=20)
+    found = payload(seen)
+    customers = table_of(roles, source)
+    assert customers["id"] in {h["id"] for h in found["source"]}
+    assert [k["id"] for k in found["kpi"]] == [kpi_id]
+    assert [p["file_id"] for p in found["document"]] == [file_id]
+
+    _, seen = use(roles, fake_llm, "search_workspace", query="amount", kinds=["dw"])
+    dw_hits = payload(seen)["dw"]
+    assert {(h["kind"], h["name"]) for h in dw_hits} >= {("column", "amount")}
+    assert all(h["id"] for h in dw_hits) and set(payload(seen)) == {"dw"}
+
+
+def test_search_workspace_withholds_documents_below_the_documents_level(
+    roles, model, fake_llm, source
+):
+    upload(roles, source, "design.md", "# Customers\nCustomer data lives here.")
+
+    status, seen = use(roles, fake_llm, "search_workspace", query="customer")
+
+    assert status == "ok"
+    found = payload(seen)
+    assert found["document"] == [] and "Withheld" in found["document_note"]
+    assert "Customer data lives" not in seen and found["source"]
+
+
+def test_search_workspace_never_shows_a_protected_columns_value(roles, model, fake_llm, source):
+    level(roles, "samples")
+
+    _, seen = use(roles, fake_llm, "search_workspace", query="national_id", kinds=["source"])
+
+    [hit] = payload(seen)["source"]
+    assert hit["is_protected"] is True and NATIONAL_ID not in seen
+
+
 def test_list_files_names_a_source_systems_files(roles, model, fake_llm, source):
     file_id = upload(roles, source, "notes.md", "# Notes")
 
@@ -490,6 +537,7 @@ def test_read_file_returns_the_document_text_at_the_documents_level(roles, model
 
 METADATA_TOOLS = {
     "search_catalog",
+    "search_workspace",
     "get_object",
     "get_snapshot_diff",
     "list_files",

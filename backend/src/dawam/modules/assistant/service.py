@@ -47,7 +47,13 @@ from .internal.injection import (
     rule_based_inspector,
     warn,
 )
-from .internal.prompt import JOB_PROMPT, SYSTEM_PROMPT, prompt_version, quote_data
+from .internal.prompt import (
+    JOB_PROMPT,
+    SYSTEM_PROMPT,
+    prompt_version,
+    quote_data,
+    today_line,
+)
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -612,7 +618,7 @@ class AssistantService:
             for event in run_agent(
                 gateway,
                 tools,
-                system=SYSTEM_PROMPT + JOB_PROMPT,
+                system=SYSTEM_PROMPT + JOB_PROMPT + today_line(),
                 history=[Message("user", task)],
                 max_tool_calls=cap,
                 is_cancelled=lambda: ctx.cancelled,
@@ -1103,8 +1109,9 @@ def _clean_title(title: str | None) -> str:
 
 
 def _system_prompt(context: PageContext | None) -> str:
+    base = SYSTEM_PROMPT + today_line()
     if context is None:
-        return SYSTEM_PROMPT
+        return base
     described = {"type": context.type, "id": context.id, "name": context.label}
     page = quote_data("page context", json.dumps(described, ensure_ascii=False))
     return f"{SYSTEM_PROMPT}\n\nThe member is looking at this object right now:\n{page}"
