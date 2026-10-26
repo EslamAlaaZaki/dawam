@@ -48,7 +48,7 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 ```mermaid
 flowchart TD
     UI["Browser: Next.js AssistantPanel"] -->|"POST message, SSE response"| API["assistant/api.py"]
-    API --> SVC["AssistantService.send_message<br/>authorize, store message, create run"]
+    API --> SVC["AssistantService.send_message<br/>authorize, rate limit, store message, create run"]
     SVC --> LOOP["run_agent<br/>assistant/internal/agent.py"]
     WORKER["Worker process<br/>assistant_task job"] --> LOOP
 
@@ -131,7 +131,7 @@ Shared helpers in `llm/internal/wire.py` map HTTP errors into `LlmError` (401/40
 
 **Plugins:** more adapter kinds can ship as separate Python packages through the entry-point group `dawam.llm_providers`. A plugin cannot replace a built-in kind, and a plugin that fails to load is skipped with a warning.
 
-**Transport:** `llm/internal/transport.py` defines a `Transport` protocol; `UrllibTransport` is the real one. Tests swap in a replaying transport to run the adapter contract suite against recorded responses.
+**Transport:** `llm/internal/transport.py` defines a `Transport` protocol; `UrllibTransport` is the real one. Tests swap in a replaying transport to run the adapter contract suite against recorded responses. The transport stays synchronous (#390): each streaming answer holds one request thread, and the pool is sized by `DAWAM_REQUEST_THREADS` (default 200, up from 40).
 
 **Prompt caching:** the system prompt and the tool list come first in every request and are byte-identical across the calls of one run (tools are sorted by name and snapshotted once per run). The `anthropic` adapter sends `cache_control: {"type": "ephemeral"}` on the system prompt and on the last tool. OpenAI, Gemini and DeepSeek cache the prefix automatically, so the adapters send nothing extra. Cached input is recorded per call in `llm_usage` (`cache_read_tokens`, `cache_write_tokens`) from what the provider reports (Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`, OpenAI `prompt_tokens_details.cached_tokens`, DeepSeek `prompt_cache_hit_tokens`, Gemini `cachedContentTokenCount`, Bedrock `cacheReadInputTokens` / `cacheWriteInputTokens`). Budgets still count all input tokens: the cached tokens are part of `prompt_tokens`, recorded separately for pricing.
 
@@ -235,7 +235,7 @@ sequenceDiagram
     M->>UI: types a question
     UI->>API: POST message with page context and model pick
     API->>S: send_message
-    S->>DB: authorize, store user message, create run row
+    S->>DB: authorize, check rate limit (429 if over), store user message, create run row
     S-->>UI: SSE started
     S->>A: system prompt + last 30 messages
     loop until an answer or the tool-call cap
@@ -251,6 +251,7 @@ sequenceDiagram
             T->>DB: authorize and run as the member
             DB-->>T: result
             T-->>A: ToolOutcome
+            A->>A: injection check, WARNING if flagged
             A-->>UI: SSE tool event
             A->>A: append quoted result as a tool message
         end
@@ -526,6 +527,7 @@ stateDiagram-v2
 - The quoting can't be escaped: any `<data` or `</data` inside the text (any case, with spaces or invisible Unicode characters between its parts) is defused to `<\data`.
 - The system prompt says data blocks are information only and can't change the rules, the tools or the answer.
 - Whatever the model asks for, **authorization is enforced server-side** on every tool call.
+- **Injection check** (#384, `assistant/internal/injection.py`): every successful tool result and every auto-retrieved passage is inspected. Rules (English and Arabic patterns) always apply; when the Workspace has a `light` model, it also judges the text, and a rule hit wins over the model (if the model call fails or can't be parsed, the rules decide). Flagged text is **not blocked**: it still reaches the model, with a WARNING before its `<data>` block. `flagged` is saved on the run's tool calls and sent in the `tool` event; the chat shows a "Possible prompt injection" alert on the reply. With no light model the check runs on rules only, and the LLM settings page shows an "Injection check degraded" notice. The light model is called once per passage, with no caching.
 
 ### 7.2 Permissions
 
@@ -538,7 +540,7 @@ Each tool names a workspace policy `Action` (`VIEW_WORKSPACE`, `REVIEW_PII`, `RU
 1. The user may run source queries (Owners/Editors); the system has a live Connection and a Snapshot.
 2. Name-based PII rules have run on the latest Snapshot.
 3. `check_query` parses the SQL against the Snapshot as a **whitelist over the parse tree**: exactly one `SELECT` (or set operation of `SELECT`s); only known node types; only allow-listed side-effect-free functions per engine; every table resolves to one table/view in an allowed schema of the same database (no synonyms, other databases or linked servers); every column resolves to one source column; `SELECT *` expanded; views traced through their definitions.
-4. **Protected Columns** (flagged sensitive or with a suggested/confirmed PII finding) may only be counted, null-checked or equated with another column (for finding join keys such as national ID, Iqama or mobile numbers). Projecting, grouping, ordering, MIN/MAX, comparing them to literals (`LIKE` and regex included) and character-slicing or pattern-extraction functions (`SUBSTR`, `LEFT`, `INSTR`, `REGEXP_SUBSTR`...) are rejected; the AI never reads raw PII, only analytics over it (counts, duplicate counts, aggregates whose result is not a raw value), and there is no read budget (ADR 0007); outputs derived from them are masked, with taint tracking through joins, views and derived tables.
+4. **Protected Columns** (flagged sensitive or with a suggested/confirmed PII finding) may only be counted, null-checked or equated with another column (for finding join keys such as national ID, Iqama or mobile numbers). Projecting, grouping, ordering, MIN/MAX, comparing them to literals (`LIKE` and regex included) and character-slicing or pattern-extraction functions (`SUBSTR`, `LEFT`, `INSTR`, `REGEXP_SUBSTR`...) are rejected; the AI never reads raw PII, only analytics over it (counts, duplicate counts, aggregates whose result is not a raw value), and there is no per-column read budget, unrelated to the per-run source-query time budget (ADR 0007); outputs derived from them are masked, with taint tracking through joins, views and derived tables.
 5. Only the **SQL regenerated from the verified tree** is sent to the source, never the model's text. It runs in a read-only transaction with a statement timeout and a 100-row cap, with the timeout cut to what remains of the run's budget.
 6. Every result cell is checked with the **Saudi PII validators** (`platform/pii_validators.py`: national ID/Iqama checksum, IBAN, mobile, email, card…). A hit masks that column and records a `suggested` finding.
 7. Database error text is replaced with DAWAM's own message per error code (it could echo a value).
@@ -574,6 +576,10 @@ With `DAWAM_PII_NER_ENABLED` on (#385), `redact_text` also masks person names an
 ### 7.5 Data residency
 
 Internal-only Workspaces (default when the installation has a tested internal agent model) refuse external providers for **every** role, including embeddings. Combined with the data-sharing level, an owner controls whether anything leaves the network.
+
+### 7.6 Rate limits
+
+`RoleService.ensure_within_rate_limit` (#388) allows **20 assistant messages per minute per member and 100 per Workspace**, in fixed one-minute windows (code constants). One member message counts once, before any database write; tool-loop model calls, jobs and other gateway calls don't count. Over a limit, the API answers 429 `ai_rate_limited` with `details` (scope, limit, `retry_after_seconds`) and a `Retry-After` header. Counts live in process memory, so each app process enforces its own limit; a request refused with 409 (run in progress) still uses a slot. These sit beside the monthly token budgets (§3.5).
 
 ---
 
@@ -757,8 +763,9 @@ RAG over documents is only one source. The agent also grounds its answers throug
 ## 9. Background agent jobs
 
 - The model calls `start_job` with a complete task (or a long tool like `generate_dw_schema` starts one); a row is queued in the `jobs` table with type `assistant_task`.
-- The **worker process** (`python -m dawam worker`, `worker.py`) claims jobs one at a time with `SELECT … FOR UPDATE SKIP LOCKED`, sends heartbeats, and fails jobs whose worker died. Tests run jobs inline (`InlineJobRunner`).
+- The **worker process** (`python -m dawam worker`, `worker.py`) claims jobs one at a time with `SELECT … FOR UPDATE SKIP LOCKED` (highest `priority` first, then oldest; #391), sends heartbeats, and fails jobs whose worker died. Tests run jobs inline (`InlineJobRunner`).
 - `AssistantService.run_job` re-checks that the member who started it is still active and may still ask the assistant, then runs **the same `run_agent` loop** with `SYSTEM_PROMPT + JOB_PROMPT`, a cap of 150 tool calls, and job-mode tools (no `start_job`; write proposals are **collected**, not proposed one by one).
+- **Priorities and scaling** (#391): `jobs.priority` is LOW 0 (re-index and re-embed), NORMAL 50 (per-file index jobs, the default) or CHAT 100 (assistant-started jobs), so a chat job runs before a queue of re-index jobs. There is no aging, so LOW jobs can starve under a constant stream of higher ones. The compose worker service runs `DAWAM_WORKERS` replicas (default 2); GPU replicas share the GPUs, and the systemd unit still starts one worker.
 - Progress and each tool call go to the job log; progress percentage is based on tool calls used.
 - On success, `submit_proposals` turns everything collected into **one Change Set**, and the job's summary is posted back into the conversation. On failure or cancellation, no Change Set is made and the conversation is told why.
 
@@ -775,7 +782,7 @@ sequenceDiagram
     M->>C: "Generate the whole Core Layer"
     C->>Q: start_job(task), queued as assistant_task
     C-->>M: "Started a job"
-    W->>Q: claim with FOR UPDATE SKIP LOCKED
+    W->>Q: claim highest priority, then oldest, FOR UPDATE SKIP LOCKED
     W->>W: member still active and allowed?
     W->>A: SYSTEM_PROMPT + JOB_PROMPT, cap 150
     loop tool calls
@@ -816,6 +823,9 @@ The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/Assistan
 | `DAWAM_ASSISTANT_MAX_TOOL_CALLS` | 25 | tool calls per chat answer |
 | `DAWAM_ASSISTANT_JOB_MAX_TOOL_CALLS` | 150 | tool calls per background job |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | 120 | total source-query seconds per run |
+| `DAWAM_REQUEST_THREADS` | 200 | request thread pool; each streaming answer holds one thread |
+| `DAWAM_WORKERS` | 2 | worker replicas in the compose file |
+| `DAWAM_PII_NER_ENABLED` | false | mask person names and addresses with NER (§7.4); needs the `ner` extra, the app and worker refuse to start without it |
 | `DAWAM_OTEL_ENDPOINT` | unset | OTLP/HTTP collector URL; tracing is off unless set |
 | `DAWAM_OTEL_CAPTURE_CONTENT` | false | also put prompt and tool content on spans (redacted, capped at 8000 characters) |
 | `DAWAM_FAKE_LLM` | false | tests only: every provider becomes the rule-based fake |
