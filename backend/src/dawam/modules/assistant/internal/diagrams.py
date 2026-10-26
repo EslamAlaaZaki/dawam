@@ -71,9 +71,7 @@ def star_schema(tables: Sequence[Any], scope: str | None) -> tuple[str, int]:
                 links.append((fact, dim, column))
     lines = ["erDiagram"]
     for fact, dim, column in links:
-        lines.append(
-            f"    {ident(fact.name)} }}o--|| {ident(dim.name)} : \"{label(column.name)}\""
-        )
+        lines.append(f'    {ident(fact.name)} }}o--|| {ident(dim.name)} : "{label(column.name)}"')
     for table in members.values():
         lines.append(f"    {ident(table.name)} {{")
         for column in table.columns[:MAX_COLUMNS]:
@@ -93,7 +91,5 @@ def lineage(graph: Any) -> tuple[str, int]:
         lines.append(f'    {keys[node.id]}["{label(node.label)} ({label(node.layer)})"]')
     for edge in graph.edges:
         if edge.from_id in keys and edge.to_id in keys:
-            lines.append(
-                f"    {keys[edge.from_id]} -->|{ident(edge.kind)}| {keys[edge.to_id]}"
-            )
+            lines.append(f"    {keys[edge.from_id]} -->|{ident(edge.kind)}| {keys[edge.to_id]}")
     return "\n".join(lines), len(graph.nodes) - len(nodes)
