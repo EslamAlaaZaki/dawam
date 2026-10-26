@@ -598,3 +598,73 @@ def test_semantic_chunking_embeds_sentences_and_splits_where_the_topic_changes(
         "Cats purr softly. Cats nap all day.",
         "Stocks fell sharply. Stocks rose again.",
     ]
+
+
+def test_a_query_naming_an_identifier_ranks_the_passages_containing_it_first(roles, policy):
+    sid = system(roles)
+    upload_ok(
+        roles,
+        sid,
+        "dictionary.md",
+        "# Status codes\nstat cust status stat cust status stat cust lookups.\n\n"
+        "# Customer table\nThe cust_stat column holds the status.\n\n"
+        "# Other\nstat of the cust.",
+    )
+
+    found = search(roles, "cust_stat").json()["items"]
+
+    assert found[0]["section"] == "Customer table"
+
+
+def test_an_exact_phrase_ranks_above_the_same_words_scattered(roles, policy):
+    sid = system(roles)
+    upload_ok(
+        roles,
+        sid,
+        "terms.md",
+        "# Scattered\nA fee applies. Late arrival is noted. Payment is due; payment, fee, late.\n\n"
+        "# Exact\nThe late payment fee is charged monthly.",
+    )
+
+    found = search(roles, "late payment fee").json()["items"]
+
+    assert [p["section"] for p in found] == ["Exact", "Scattered"]
+
+
+def test_an_identifier_match_stays_first_when_vector_hits_rank_above_it(roles, policy, fake_llm):
+    register_embedding_model(roles, internal=True)
+    sid = system(roles)
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
+    upload_ok(roles, sid, "ledger.md", "# Ledger\nPostings are booked daily.")
+    fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])
+    upload_ok(roles, sid, "dictionary.md", "# Customer table\nThe cust_stat column.")
+
+    fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])  # the query's vector is the ledger's
+    found = search(roles, "cust_stat").json()["items"]
+
+    assert found[0]["section"] == "Customer table"
+
+
+def test_an_identifier_with_other_words_still_ranks_its_passage_first(roles, policy):
+    sid = system(roles)
+    upload_ok(
+        roles,
+        sid,
+        "dictionary.md",
+        "# Status\nThe customer status is reported daily, customer status again.\n\n"
+        "# Customer table\nThe cust_stat column.",
+    )
+
+    found = search(roles, "customer status cust_stat").json()["items"]
+
+    assert found[0]["section"] == "Customer table"
+
+
+@pytest.mark.parametrize(
+    "q", ["cust_stat & | !", "'cust_stat'", "a:*b", '"late (payment"', "!!", ":*"]
+)
+def test_operator_like_input_is_searched_as_words_and_never_errors(roles, policy, q):
+    sid = system(roles)
+    upload_ok(roles, sid, "d.md", "# T\nThe cust_stat column and a late payment.")
+
+    assert search(roles, q).status_code == 200

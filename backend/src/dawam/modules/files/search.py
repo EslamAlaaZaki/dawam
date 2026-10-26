@@ -405,6 +405,46 @@ def _chunks(text: str, counter: Any, strategy: str, embed: Any) -> list[Any]:
     return chunk_with_parents(text, **options)
 
 
+def _match_boosts(query: str, terms: Sequence[str]) -> tuple[str, dict[str, str]]:
+    """``ORDER BY`` terms that put exact matches ahead of the plain OR ranking: passages
+    holding a table or column name from the query (a word with ``_`` or a digit; the
+    parser reads ``cust_stat`` as the phrase ``cust <-> stat``) first, then those holding
+    the query's words in order and adjacent. Empty when the query has neither."""
+    boosts, params = "", {}
+    identifiers = [t for t in terms if "_" in t or any(c.isdigit() for c in t)]
+    if identifiers:
+        params["ids"] = " | ".join(f"'{t}'" for t in identifiers)
+        boosts += "(c.search_vector @@ to_tsquery('simple', :ids)) DESC, "
+    if len(terms) > 1:
+        params["phrase"] = stemmed(query)
+        boosts += "(c.search_vector @@ phraseto_tsquery('simple', :phrase)) DESC, "
+    return boosts, params
+
+
+def _promote_exact(
+    db: Session, passages: list[Passage], params: Mapping[str, Any], scope: str
+) -> list[Passage]:
+    """``passages`` with those holding a query identifier moved to the front (stable), so
+    fused vector hits or a reranker cannot bury an exact name match."""
+    if "ids" not in params or not passages:
+        return passages
+    exact = {
+        (row.file_id, row.text)
+        for row in db.execute(
+            sa.text(
+                "SELECT c.file_id, COALESCE(c.parent_content, c.content) AS text "
+                "FROM document_chunks c JOIN workspace_files f ON f.id = c.file_id "
+                "WHERE c.workspace_id = :w AND c.search_vector @@ to_tsquery('simple', :ids)"
+                + scope
+            ),
+            params,
+        )
+    }
+    return [p for p in passages if (p.file_id, p.text) in exact] + [
+        p for p in passages if (p.file_id, p.text) not in exact
+    ]
+
+
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
@@ -952,6 +992,8 @@ class DocumentSearchService:
             if hidden:
                 scope += " AND NOT (f.owner_kind = 'source_system' AND f.owner_id = ANY(:hidden))"
                 params["hidden"] = hidden
+            boosts, boost_params = _match_boosts(query, terms)
+            params.update(boost_params)
             queries = [query, *self._variants(workspace_id, query)]
             term_sets = [t for t in (stems(q) for q in queries) if t]
             embedded = self._embed_queries(db, workspace_id, user.id, queries)
@@ -960,7 +1002,7 @@ class DocumentSearchService:
                 "JOIN workspace_files f ON f.id = c.file_id, "
                 "to_tsquery('simple', :q) q "
                 "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
-                "ORDER BY ts_rank_cd(c.search_vector, q) DESC, c.id "
+                f"ORDER BY {boosts}ts_rank_cd(c.search_vector, q) DESC, c.id "
                 "LIMIT :pool"
             )
             # Several matching children share one parent, so the candidate pool grows
@@ -1053,7 +1095,8 @@ class DocumentSearchService:
                 )
                 if len(passages) >= limit or not full or grow >= MAX_POOL_GROWTH:
                     reranked = self._rerank(workspace_id, user.id, query, passages)
-                    return self._diversify(reranked[: max(RERANK_TOP_N, limit)], limit, tune)
+                    diverse = self._diversify(reranked[: max(RERANK_TOP_N, limit)], limit, tune)
+                    return _promote_exact(db, diverse, params, scope)[:limit]
                 grow *= 2
 
     @staticmethod
