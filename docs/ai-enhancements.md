@@ -127,7 +127,7 @@ flowchart TD
 
 | Today | Enhancement |
 |---|---|
-| Fixed ~1,000-char target, 1,500 hard split, no overlap | Configurable size and **overlap**, measured in **tokens** of the embedding model. **Done** ([#365](https://github.com/EslamAlaaZaki/dawam/issues/365)): 250 target, 375 max, 40 overlap, counted with the model's own tokenizer; code constants, not yet settings |
+| Fixed ~1,000-char target, 1,500 hard split, no overlap | Configurable size and **overlap**, measured in **tokens** of the embedding model. **Done** ([#365](https://github.com/EslamAlaaZaki/dawam/issues/365)): 250 target, 375 max, 40 overlap, counted with the model's own tokenizer; settings since [#380](https://github.com/EslamAlaaZaki/dawam/issues/380) |
 | Heading-based sections only | Strategies: heading-aware (today), recursive, **semantic** (split where embedding similarity drops), table-aware (a table is one chunk, with its header repeated). **Done**: table-aware ([#366](https://github.com/EslamAlaaZaki/dawam/issues/366)); recursive and semantic as a per-Workspace setting ([#367](https://github.com/EslamAlaaZaki/dawam/issues/367)) |
 | Chunk = what's retrieved | **Parent/child ("small-to-big")**: embed small chunks, return their parent section to the model. **Done** ([#368](https://github.com/EslamAlaaZaki/dawam/issues/368)): parents of ~1,000 tokens, children of ~250 |
 | No chunk context | **Contextual retrieval**: prepend a one-sentence context ("From the Loans data dictionary, section Status codes…"), written by the light model, before embedding and full-text indexing. **Done** ([#369](https://github.com/EslamAlaaZaki/dawam/issues/369)); off without a light model |
@@ -145,11 +145,11 @@ flowchart TD
 | No re-ranking | **Cross-encoder reranker** after fusion: `bge-reranker-v2-m3` (self-hosted, multilingual), Cohere Rerank, Jina Reranker. Add a gateway **`rerank` role** and adapter method so it obeys budgets and internal-only. **Done** ([#373](https://github.com/EslamAlaaZaki/dawam/issues/373)): OpenAI-compatible `/rerank` (Cohere, Jina, vLLM shapes) reorders the fused top 30; the fused order is the fallback |
 | `simple` FTS config, no stemming | **Arabic light stemming** (e.g. an ISRI/Tashaphyne-style stemmer applied with the normalisation) and English stemming; or BM25 via `pg_search` (ParadeDB) / `pg_textsearch`. **Done** ([#374](https://github.com/EslamAlaaZaki/dawam/issues/374)): own light Arabic and English stemmers; BM25 not built |
 | Plain OR of words | Phrase and proximity matching; boost exact identifier matches (table and column names). **Done** ([#375](https://github.com/EslamAlaaZaki/dawam/issues/375)): adjacent-word phrases and identifiers rank first in `ORDER BY`, and identifier matches stay first after fusion and reranking |
-| Equal-weight RRF, fixed k=60, 20 candidates each | Configurable weights, k and candidate counts (admin setting, §5). **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) as `SearchTuning` code constants (weights, k, candidates); the admin setting is not built |
+| Equal-weight RRF, fixed k=60, 20 candidates each | Configurable weights, k and candidate counts (admin setting, §5). **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) as `SearchTuning`; now Document AI settings ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380)) |
 | One query as typed | **Query rewriting / multi-query** (light model writes 2–3 variants, including Arabic ↔ English), **HyDE** for vague questions. **Done** ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)): up to 3 variants plus an optional HyDE answer from the light model; off without one |
 | No diversity | **MMR** to avoid five passages from the same section. **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) |
 | No score threshold | Minimum relevance score; tell the model "nothing relevant found" instead of weak passages. **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)): a relevance floor on text rank and cosine similarity, and a "nothing relevant found" note |
-| Retrieval only via a tool | Keep that (agentic RAG is right for us), plus an optional **auto-retrieve** of the top 3 passages for the first message. **Done** ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)): a per-Workspace `auto_retrieve` setting, off by default; no UI toggle |
+| Retrieval only via a tool | Keep that (agentic RAG is right for us), plus an optional **auto-retrieve** of the top 3 passages for the first message. **Done** ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)): a per-Workspace `auto_retrieve` setting, off by default; no UI toggle (not among the Document AI settings) |
 | Documents only | **GraphRAG-style** retrieval over what we already have: lineage graph, relationships, KPI links. A "knowledge graph" tool combining catalog + docs + lineage. **Done** ([#379](https://github.com/EslamAlaaZaki/dawam/issues/379)): the `explore_graph` tool |
 
 ```mermaid
@@ -173,6 +173,8 @@ Admins choose providers, models, roles and budgets; owners choose the embedding 
 
 ### Proposal
 An **installation-level "Document AI" settings page** (admins) with **per-Workspace overrides** (owners), stored in a settings table, validated, audited and versioned. Changes that invalidate the index (chunking, embedding model) ask to start a re-index.
+
+**Done** ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380), [#381](https://github.com/EslamAlaaZaki/dawam/issues/381), [#382](https://github.com/EslamAlaaZaki/dawam/issues/382), [#383](https://github.com/EslamAlaaZaki/dawam/issues/383)): admin page and Workspace tab, the re-index prompt, the index status panel and the retrieval playground. Built: chunking (strategy, size, overlap, headers), embed batch, extraction caps, retrieval (candidates, weights, k, MMR, floors, top-k) and rerank on/off with top-n. Not built: ingestion toggles (file types, OCR, parser), embedding and HNSW options, query rewriting / HyDE toggles, and the Answering group.
 
 | Group | Settings |
 |---|---|
@@ -406,7 +408,7 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises. **Done** (#424, #425); RapidOCR kept, bake-off dropped (#450) |
 | 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
 | 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain. **Done** ([#373](https://github.com/EslamAlaaZaki/dawam/issues/373), [#374](https://github.com/EslamAlaaZaki/dawam/issues/374)); also phrase and identifier matching ([#375](https://github.com/EslamAlaaZaki/dawam/issues/375)), weighted fusion, MMR and a relevance floor ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)), query rewriting and HyDE ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)), auto-retrieve ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)) and `explore_graph` ([#379](https://github.com/EslamAlaaZaki/dawam/issues/379)) |
-| 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable. The tuning exists as code constants (#376); settings and playground not yet |
+| 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable. **Done** ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380), [#381](https://github.com/EslamAlaaZaki/dawam/issues/381), [#382](https://github.com/EslamAlaaZaki/dawam/issues/382), [#383](https://github.com/EslamAlaaZaki/dawam/issues/383)): settings with Workspace overrides, re-index prompt, index status page, playground |
 | 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
 | 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
