@@ -119,6 +119,10 @@ def test_an_unreachable_provider_is_a_search_error():
         ("customer 1029384756 segment", "customer segment"),
         ("transactions on 2024-03-15 cutoff", "transactions on cutoff"),
         ("SQL Server 2019 ISO 20022 IFRS 9", "SQL Server 2019 ISO 20022 IFRS 9"),
+        ("call +20 100 123 4567 about churn", "call about churn"),
+        ("branch 020-100-123-4567 hours", "branch hours"),
+        ("IFRS 9 staging", "IFRS 9 staging"),
+        ("SQL Server 2019 dialect", "SQL Server 2019 dialect"),
     ],
 )
 def test_sample_values_are_stripped_from_a_query(query, sent):
