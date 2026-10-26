@@ -39,6 +39,7 @@ from dawam.modules.sources import (
     RelationshipService,
     SnapshotService,
     SourceQueryService,
+    SourceSystemService,
 )
 from dawam.modules.warehouse import (
     DdlService,
@@ -56,6 +57,7 @@ from dawam.modules.warehouse import (
     MappingDraftPlan,
     MappingDraftService,
     MappingExportService,
+    ModelService,
     ScoreService,
     ValidationService,
 )
@@ -97,6 +99,8 @@ class ToolServices:
     ddl: DdlService
     mapping_exports: MappingExportService
     dictionaries: DataDictionaryService
+    systems: SourceSystemService
+    model: ModelService
 
 
 @dataclass(frozen=True)
@@ -184,6 +188,19 @@ class _SearchCatalog(BaseModel):
     system_id: uuid.UUID = Field(description=SYSTEM_ID)
     query: str = Field(min_length=1, max_length=200, description="Part of an object's name.")
     limit: int = Field(default=20, ge=1, le=50)
+
+
+SearchKind = Literal["source", "dw", "kpi", "document"]
+
+
+class _SearchWorkspace(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    kinds: list[SearchKind] | None = Field(
+        default=None,
+        description="Where to look: source (Source System tables, views, columns, routines), "
+        "dw (Data Warehouse tables and columns), kpi, document. Leave out to search all.",
+    )
+    limit: int = Field(default=5, ge=1, le=20, description="At most this many per kind.")
 
 
 class _GetObject(BaseModel):
@@ -1374,6 +1391,94 @@ def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
     }
 
 
+def _search_workspace(ctx: ToolContext, args: _SearchWorkspace) -> Any:
+    kinds = set(args.kinds or ("source", "dw", "kpi", "document"))
+    services = ctx.services
+    needle = args.query.strip().lower()
+    found: dict[str, Any] = {}
+    if "source" in kinds:
+        hits: list[Any] = []
+        page = services.systems.list(ctx.user, ctx.workspace_id)
+        for system in page.items:
+            try:
+                results = _search_catalog(
+                    ctx, _SearchCatalog(system_id=system.id, query=args.query, limit=args.limit)
+                )
+            except ApiError:
+                continue  # no Snapshot yet
+            hits.extend({"system_id": system.id, "system": system.name, **r} for r in results)
+        found["source"] = hits[: args.limit]
+    if "dw" in kinds:
+        found["dw"] = _search_dw(ctx, needle, args.limit)
+    if "kpi" in kinds:
+        matches = []
+        cursor = None
+        while True:
+            kpis = services.kpis.list(ctx.user, ctx.workspace_id, limit=100, cursor=cursor)
+            matches.extend(
+                {
+                    "id": k.id,
+                    "name": k.name,
+                    "definition": k.definition,
+                    "source_system_id": k.source_system_id,
+                    "link": f"/workspaces/{ctx.workspace_id}/kpis",
+                }
+                for k in kpis.items
+                if needle in k.name.lower() or needle in k.definition.lower()
+            )
+            cursor = kpis.next_cursor
+            if cursor is None or len(matches) >= args.limit:
+                break
+        found["kpi"] = matches[: args.limit]
+    if "document" in kinds:
+        if ctx.policy.allows(DataSharingLevel.DOCUMENTS):
+            found["document"] = _search_documents(
+                ctx, _SearchDocuments(query=args.query, limit=args.limit)
+            )["passages"]
+        else:
+            found["document"] = []
+            found["document_note"] = (
+                "Withheld: the Workspace's data-sharing level does not share documents."
+            )
+    return found
+
+
+def _search_dw(ctx: ToolContext, needle: str, limit: int) -> list[dict[str, Any]]:
+    """Data Warehouse tables whose name matches, and tables with a column whose name matches."""
+    model = ctx.services.model
+    out: list[dict[str, Any]] = []
+    for summary in model.list_tables(ctx.user, ctx.workspace_id):
+        if len(out) >= limit:
+            break
+        link = f"/workspaces/{ctx.workspace_id}/data-warehouse"
+        if needle in summary.name.lower():
+            out.append(
+                {
+                    "kind": "table",
+                    "id": summary.id,
+                    "name": summary.name,
+                    "layer": summary.layer,
+                    "link": link,
+                }
+            )
+            continue
+        table = model.get_table(ctx.user, ctx.workspace_id, summary.id)
+        for column in table.columns:
+            if needle in column.name.lower() and len(out) < limit:
+                out.append(
+                    {
+                        "kind": "column",
+                        "id": column.id,
+                        "name": column.name,
+                        "table": summary.name,
+                        "table_id": summary.id,
+                        "layer": summary.layer,
+                        "link": link,
+                    }
+                )
+    return out
+
+
 def _describe_image(ctx: ToolContext, args: _DescribeImage) -> Any:
     image = ctx.services.documents.describe_image(ctx.user, ctx.workspace_id, args.file_id)
     return {"file_id": image.file_id, "name": image.name, "description": image.description}
@@ -2112,6 +2217,17 @@ TOOLS: tuple[Tool, ...] = (
         Action.VIEW_WORKSPACE,
         _search_documents,
         level=DataSharingLevel.DOCUMENTS,
+    ),
+    Tool(
+        "search_workspace",
+        "Find things by name across the Workspace in one call: Source System tables, views, "
+        "columns and routines (source), Data Warehouse tables and columns (dw), KPIs (kpi) "
+        "and uploaded documents (document, when the Workspace shares them). Each match "
+        "carries its id; open it with get_object.",
+        _SearchWorkspace,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _search_workspace,
     ),
     Tool(
         "describe_image",
