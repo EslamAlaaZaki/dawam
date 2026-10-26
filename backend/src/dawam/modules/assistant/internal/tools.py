@@ -61,7 +61,7 @@ from dawam.modules.warehouse import (
 )
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
-from dawam.platform.pii_validators import redact_text
+from dawam.platform.pii_validators import STRUCTURED_KEYS, redact_text
 
 from .agent import ToolOutcome
 
@@ -656,15 +656,19 @@ def _dotted(ref: Any) -> str:
     return f"{ref.db_schema}.{ref.table}.{ref.column}"
 
 
-def _redacted(value: Any) -> Any:
+def _redacted(value: Any, *, entities: bool = True) -> Any:
     """Model-written text with validator-detectable PII redacted, in strings, lists and
-    objects alike (spec §6.8: every model-written string is checked before it is saved)."""
+    objects alike (spec §6.8: every model-written string is checked before it is saved).
+    Identifiers and SQL (``STRUCTURED_KEYS``) skip NER-based masking of names."""
     if isinstance(value, str):
-        return redact_text(value)
+        return redact_text(value, entities=entities)
     if isinstance(value, list):
-        return [_redacted(v) for v in value]
+        return [_redacted(v, entities=entities) for v in value]
     if isinstance(value, dict):
-        return {key: _redacted(v) for key, v in value.items()}
+        return {
+            key: _redacted(v, entities=entities and key not in STRUCTURED_KEYS)
+            for key, v in value.items()
+        }
     return value
 
 
@@ -719,7 +723,9 @@ def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedIte
                     "status": "accepted" if decision.decision == "accept" else "rejected",
                     "ai_evidence": evidence,
                 },
-                label=redact_text(decision.label or labels.get(decision.relationship_id, "")),
+                label=redact_text(decision.label)
+                if decision.label  # the fallback is column paths, not prose
+                else redact_text(labels.get(decision.relationship_id, ""), entities=False),
             )
         )
     return proposed
@@ -1555,7 +1561,9 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     ]
     if counts:
         ref = new_query_ref()
-        ctx.counts[ref] = CountEvidence(args.system_id, redact_text(args.sql), counts)
+        ctx.counts[ref] = CountEvidence(
+            args.system_id, redact_text(args.sql, entities=False), counts
+        )
         content["query_ref"] = ref
         content["query_ref_note"] = (
             "Cite this query_ref in propose_changes to attach its counts as evidence."

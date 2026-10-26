@@ -200,6 +200,15 @@ class Settings(DatabaseSettings):
     """Add prompts, answers and tool arguments/results to the spans, redacted. Off by default:
     spans then carry metadata only (model, tokens, latency, tool name)."""
     otel_service_name: str = "dawam"
+    pii_ner_enabled: bool = False
+    """Also mask person names and addresses (Arabic and English) in answers and saved text,
+    with Presidio, spaCy and CAMeL Tools on this server (#385). Needs the ``ner`` extra and
+    both models; turned on, the app and worker refuse to start without them."""
+    pii_ner_english_model: str = "en_core_web_sm"
+    """spaCy model package name or folder for English names and places."""
+    pii_ner_arabic_model: str = "CAMeL-Lab/bert-base-arabic-camelbert-msa-ner"
+    """CAMeL Tools BERT NER model for Arabic: a Hugging Face id (read from the local cache)
+    or a folder."""
     fake_llm: bool = False
     """Tests only: replace every LLM provider with a rule-based fake that never calls a model
     (the browser end-to-end suite). Never on in a real installation."""

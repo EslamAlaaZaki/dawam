@@ -52,8 +52,18 @@ dev = [
     "ruff>=0.6",
     "aiosmtpd>=1.4.6",
 ]
+# NER-based PII masking of names and addresses (DAWAM_PII_NER_ENABLED, #385). Also needs
+# the spaCy English model package (`python -m spacy download en_core_web_sm`).
+ner = [
+    "camel-tools>=1.5",
+    "presidio-analyzer>=2.2",
+    "spacy>=3.7",
+]
 
 [tool.uv]
+# presidio-analyzer caps numpy below 2.5; without this every install (not just `ner`) would
+# downgrade numpy. The `ner` real-engine test runs against the newer numpy.
+override-dependencies = ["numpy>=2.0"]
 conflicts = [
     [{ extra = "ocr-cpu" }, { extra = "ocr-gpu" }],
     [{ extra = "dev" }, { extra = "ocr-gpu" }],
@@ -64,12 +74,13 @@ packages = ["src/dawam"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -m 'not oracle and not ollama and not real_model and not docling'"
+addopts = "-ra -m 'not oracle and not ollama and not real_model and not docling and not ner'"
 pythonpath = ["."]
 markers = [
     "oracle: needs an Oracle container (slow and heavy); run with `pytest -m oracle`",
     "ollama: needs a running Ollama server (DAWAM_OLLAMA_URL); run with `pytest -m ollama`",
     "docling: runs the real Docling engine (layout parsing, OCR) on a tiny fixture (model files cached in CI); run with `pytest -m docling`",
+    "ner: runs the real NER engines (Presidio with spaCy and CAMeL Tools) on a tiny fixture (the `ner` extra; model files cached in CI); run with `pytest -m ner`",
     "real_model: runs the DW generation evaluation set against a real model (DAWAM_EVAL_URL, DAWAM_EVAL_MODEL); run with `pytest -m real_model` before a release",
 ]
 
