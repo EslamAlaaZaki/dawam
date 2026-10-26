@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from dawam.modules.files.internal.chunking import (
-    MAX_TOKENS,
     OVERLAP_TOKENS,
     TARGET_TOKENS,
     Chunk,
@@ -41,10 +40,13 @@ def chunk_with_parents(
     *,
     strategy: Strategy = "headings",
     embed: Embedder | None = None,
+    target: int = TARGET_TOKENS,
+    overlap: int = OVERLAP_TOKENS,
 ) -> list[ChildChunk]:
     """The child passages of ``text``, in reading order, each with its parent section. The
     Workspace's chunking ``strategy`` cuts the parents; a ``semantic`` parent has already
-    ended where the topic changed, so its children are cut by size (``recursive``)."""
+    ended where the topic changed, so its children are cut by size (``recursive``), each of
+    about ``target`` tokens (never more than one and a half times it) sharing ``overlap``."""
     children: list[ChildChunk] = []
     parents = chunk(
         text,
@@ -60,9 +62,9 @@ def chunk_with_parents(
         for child in chunk(
             parent.text,
             count,
-            target=TARGET_TOKENS,
-            maximum=MAX_TOKENS,
-            overlap=OVERLAP_TOKENS,
+            target=target,
+            maximum=target * 3 // 2,
+            overlap=overlap,
             strategy=child_strategy,
         ):
             children.append(

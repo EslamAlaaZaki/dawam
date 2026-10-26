@@ -56,11 +56,10 @@ def test_the_cell_cap_stops_a_wide_sheet(monkeypatch):
     assert "z" not in text
 
 
-def test_text_stops_being_built_at_the_character_cap(monkeypatch):
-    monkeypatch.setattr(content, "EXTRACTED_TEXT_MAX_CHARS", 50)
+def test_text_stops_being_built_at_the_character_cap():
     data = docx([f"paragraph {n:04d} " + "x" * 20 for n in range(1000)])
 
-    text, status = content.extract_text(content.DOCX, data)
+    text, status = content.extract_text(content.DOCX, data, max_chars=50)
 
     assert status == "extracted"
     assert len(text) <= 50

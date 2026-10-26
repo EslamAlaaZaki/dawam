@@ -43,6 +43,7 @@ const EVENT_TYPES = [
   "password_reset_forced",
   "signed_out_everywhere",
   "registration_settings_changed",
+  "document_ai_settings_changed",
   "smtp_settings_changed",
   "smtp_settings_removed",
   "workspace_deleted",

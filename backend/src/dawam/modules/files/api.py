@@ -434,7 +434,10 @@ def search_documents(
     search: DocumentSearchDep,
     q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
     system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
-    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    limit: Annotated[
+        int | None,
+        Query(ge=1, le=50, description="Left out: the Workspace's Document AI `top_k`."),
+    ] = None,
     document_type: Annotated[str | None, Query(description="Only this type, e.g. `pdf`.")] = None,
     language: Annotated[str | None, Query(description="Only `ar` or `en` passages.")] = None,
     page: Annotated[int | None, Query(ge=1, description="Only this PDF page.")] = None,

@@ -154,6 +154,9 @@ def extract_text(
     parser: DocumentParser | None = None,
     ocr: OcrEngine | None = None,
     on_ocr: Callable[[], None] | None = None,
+    *,
+    max_chars: int = EXTRACTED_TEXT_MAX_CHARS,
+    max_pages: int = PDF_MAX_PAGES,
 ) -> tuple[str | None, str]:
     """``(text, status)``: ``status`` is ``extracted``, ``no_text_found`` (e.g. a scanned
     PDF without ``ocr``, or a document that cannot be read) or ``none`` (images: nothing to
@@ -162,23 +165,28 @@ def extract_text(
     A ``parser`` that handles the type returns layout-aware Markdown; if it fails, the basic
     extraction (pypdf, python-docx, openpyxl) is used instead. With ``ocr``, a PDF that has
     pages short of text is read by OCR (after ``on_ocr``); if OCR fails or reads nothing,
-    the text found without it stands."""
+    the text found without it stands. At most ``max_chars`` characters are kept, and at
+    most ``max_pages`` pages of a PDF read (the Workspace's Document AI settings)."""
     if file_type in _IMAGES:
         return None, "none"
     try:
-        if parser is not None and file_type in parser.types and _within_caps(file_type, data):
+        if (
+            parser is not None
+            and file_type in parser.types
+            and _within_caps(file_type, data, max_pages)
+        ):
             try:
                 text = parser.parse(file_type, data)
             except Exception:
                 logger.warning("layout-aware parsing failed; using basic extraction", exc_info=True)
-                text = _extract(file_type, data)
+                text = _extract(file_type, data, max_chars, max_pages)
         else:
-            text = _extract(file_type, data)
+            text = _extract(file_type, data, max_chars, max_pages)
     except Exception:
         return None, "no_text_found"
     if ocr is not None and file_type is PDF:
         text = _with_ocr(ocr, data, text, on_ocr)
-    text = text.replace("\x00", "").strip()[:EXTRACTED_TEXT_MAX_CHARS]
+    text = text.replace("\x00", "").strip()[:max_chars]
     if not _IMAGE_PLACEHOLDER.sub("", text).strip():
         return None, "no_text_found"
     return text, "extracted"
@@ -203,14 +211,14 @@ def _with_ocr(ocr: OcrEngine, data: bytes, text: str, on_ocr: Callable[[], None]
     return recognised if _IMAGE_PLACEHOLDER.sub("", recognised).strip() else text
 
 
-def _within_caps(file_type: FileType, data: bytes) -> bool:
+def _within_caps(file_type: FileType, data: bytes, max_pages: int = PDF_MAX_PAGES) -> bool:
     """Whether a document is small enough for a parser that has no caps of its own; a bigger
     one is read by the basic extraction, which stops at the caps."""
     try:
         if file_type is PDF:
             from pypdf import PdfReader
 
-            return len(PdfReader(io.BytesIO(data)).pages) <= PDF_MAX_PAGES
+            return len(PdfReader(io.BytesIO(data)).pages) <= max_pages
         if file_type is DOCX:
             from docx import Document
 
@@ -239,16 +247,17 @@ def _within_caps(file_type: FileType, data: bytes) -> bool:
 class _Text:
     """Collects text pieces, refusing more once the character cap is reached."""
 
-    def __init__(self) -> None:
+    def __init__(self, limit: int = EXTRACTED_TEXT_MAX_CHARS) -> None:
         self._parts: list[str] = []
         self._size = 0
+        self._limit = limit
 
     @property
     def full(self) -> bool:
-        return self._size >= EXTRACTED_TEXT_MAX_CHARS
+        return self._size >= self._limit
 
     def add(self, piece: str) -> None:
-        room = EXTRACTED_TEXT_MAX_CHARS - self._size
+        room = self._limit - self._size
         if room <= 0:
             return
         piece = piece[:room]
@@ -259,10 +268,15 @@ class _Text:
         return "\n".join(self._parts)
 
 
-def _extract(file_type: FileType, data: bytes) -> str:
+def _extract(
+    file_type: FileType,
+    data: bytes,
+    max_chars: int = EXTRACTED_TEXT_MAX_CHARS,
+    max_pages: int = PDF_MAX_PAGES,
+) -> str:
     if file_type in TEXT_TYPES:
-        return data[: EXTRACTED_TEXT_MAX_CHARS * 4].decode("utf-8-sig", errors="ignore")
-    out = _Text()
+        return data[: max_chars * 4].decode("utf-8-sig", errors="ignore")
+    out = _Text(max_chars)
     if file_type is PDF:
         from pypdf import PdfReader
 
@@ -270,7 +284,7 @@ def _extract(file_type: FileType, data: bytes) -> str:
         if reader.is_encrypted and not reader.decrypt(""):
             return ""
         for number, page in enumerate(reader.pages):
-            if number >= PDF_MAX_PAGES or out.full:
+            if number >= max_pages or out.full:
                 break
             if number:
                 out.add(PAGE_BREAK)

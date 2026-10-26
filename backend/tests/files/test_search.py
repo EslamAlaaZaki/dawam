@@ -470,9 +470,7 @@ def test_limit_counts_distinct_parents_not_matching_children(roles, policy):
     assert all(i["document"] == "big.md" for i in items)
 
 
-def test_results_from_one_section_are_diversified_by_mmr(roles, policy, monkeypatch):
-    from dawam.modules.files import search as search_module
-
+def test_results_from_one_section_are_diversified_by_mmr(roles, policy):
     sid = system(roles)
     filler = "Postings are booked and reconciled every day. " * 20
     strong = "ledger ledger ledger ledger"
@@ -482,9 +480,7 @@ def test_results_from_one_section_are_diversified_by_mmr(roles, policy, monkeypa
     upload_ok(roles, sid, "c.md", f"# Gamma\n\nledger {filler}")
 
     def documents(lam: float) -> list[str]:
-        monkeypatch.setattr(
-            search_module, "DEFAULT_TUNING", search_module.SearchTuning(mmr_lambda=lam)
-        )
+        assert set_document_ai(roles, mmr_lambda=lam).status_code == 200
         return [i["document"] for i in search(roles, "ledger", limit=3).json()["items"]]
 
     relevance = documents(1.0)
@@ -511,9 +507,7 @@ def test_a_query_unlike_every_passage_returns_nothing_at_the_default_floors(
     assert [i["document"] for i in search(roles, "zebra").json()["items"]] == ["ledger.md"]
 
 
-def test_fusion_weights_decide_which_ranking_leads(roles, policy, fake_llm, monkeypatch):
-    from dawam.modules.files import search as search_module
-
+def test_fusion_weights_decide_which_ranking_leads(roles, policy, fake_llm):
     register_embedding_model(roles, internal=True)
     sid = system(roles)
     fake_llm.script_embeddings([1.0, 0.0, 0.0, 0.0])
@@ -522,11 +516,7 @@ def test_fusion_weights_decide_which_ranking_leads(roles, policy, fake_llm, monk
     upload_ok(roles, sid, "meaning.md", "# Meaning\nledger")
 
     def first(**weights: float) -> str:
-        monkeypatch.setattr(
-            search_module,
-            "DEFAULT_TUNING",
-            search_module.SearchTuning(mmr_lambda=1.0, **weights),
-        )
+        assert set_document_ai(roles, mmr_lambda=1.0, **weights).status_code == 200
         fake_llm.script_embeddings([0.0, 1.0, 0.0, 0.0])
         return search(roles, "ledger").json()["items"][0]["document"]
 
@@ -551,34 +541,88 @@ def test_a_passage_indexed_before_parents_existed_is_still_returned(roles, polic
     )
 
 
-def set_chunking_strategy(roles: RoleClients, strategy: str):
+def set_document_ai(roles: RoleClients, **overrides):
+    """Override the Workspace's Document AI settings, as its owner."""
+    path = f"/api/v1/workspaces/{roles.workspace_id}/document-ai"
     owner = roles.client("owner")
-    path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
     current = owner.get(path).json()
     return owner.put(
         path,
-        json={
-            "internal_only": current["internal_only"],
-            "data_sharing_level": current["data_sharing_level"],
-            "chunking_strategy": strategy,
-        },
+        json={"version": current["version"], "overrides": {**current["overrides"], **overrides}},
     )
 
 
-def test_the_chunking_strategy_is_a_workspace_setting_owners_choose(roles, policy):
-    path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
-    assert roles.client("owner").get(path).json()["chunking_strategy"] == "headings"
+def set_installation_document_ai(roles: RoleClients, **values):
+    """Set the installation's Document AI values, as an admin."""
+    admin = roles.client("admin")
+    current = admin.get(f"{ADMIN}/document-ai").json()
+    response = admin.put(
+        f"{ADMIN}/document-ai", json={"version": current["version"], "values": values}
+    )
+    assert response.status_code == 200, response.text
 
-    assert set_chunking_strategy(roles, "recursive").json()["chunking_strategy"] == "recursive"
-    assert roles.client("viewer").get(path).json()["chunking_strategy"] == "recursive"
+
+def set_chunking_strategy(roles: RoleClients, strategy: str):
+    return set_document_ai(roles, chunking_strategy=strategy)
+
+
+def test_the_chunking_strategy_is_a_workspace_setting_owners_choose(roles, policy):
+    path = f"/api/v1/workspaces/{roles.workspace_id}/document-ai"
+    assert roles.client("owner").get(path).json()["effective"]["chunking_strategy"] == "headings"
+
+    chosen = set_chunking_strategy(roles, "recursive").json()
+    assert chosen["effective"]["chunking_strategy"] == "recursive"
+    assert roles.client("viewer").get(path).json()["effective"]["chunking_strategy"] == "recursive"
     assert set_chunking_strategy(roles, "bogus").status_code == 422
 
 
+def test_the_passage_size_and_overlap_come_from_the_settings(roles, policy, app):
+    sid = system(roles)
+    words = " ".join(f"word{n}" for n in range(300))
+
+    def passages(name: str) -> int:
+        upload_ok(roles, sid, name, f"# Long\n{words}")
+        with app.state.engine.connect() as conn:
+            return conn.execute(
+                sa.text(
+                    "SELECT count(*) FROM document_chunks c JOIN workspace_files f "
+                    "ON f.id = c.file_id WHERE f.path LIKE :p"
+                ),
+                {"p": f"%{name}"},
+            ).scalar_one()
+
+    default = passages("default.md")
+    assert set_document_ai(roles, chunk_size=60, chunk_overlap=0).status_code == 200
+
+    assert passages("small.md") > default * 2
+
+
+def test_the_extracted_text_cap_is_an_installation_setting(roles, policy, app):
+    set_installation_document_ai(roles, max_extracted_chars=10_000)
+    sid = system(roles)
+
+    upload_ok(roles, sid, "long.md", "# Long\n" + "ledger " * 3000)
+
+    with app.state.engine.connect() as conn:
+        size = conn.execute(sa.text("SELECT length(extracted_text) FROM workspace_files")).scalar()
+    assert size == 10_000
+
+
+def test_search_returns_the_workspace_top_k_unless_asked_for_another_number(roles, policy):
+    sid = system(roles)
+    for n in range(6):
+        upload_ok(roles, sid, f"doc{n}.md", f"# Part {n}\nledger entry number {n}")
+    set_document_ai(roles, top_k=4, mmr_lambda=1.0)
+
+    assert len(search(roles, "ledger").json()["items"]) == 4
+    assert len(search(roles, "ledger", limit=2).json()["items"]) == 2
+
+
 def test_semantic_chunking_embeds_sentences_and_splits_where_the_topic_changes(
-    roles, policy, fake_llm, app, monkeypatch
+    roles, policy, fake_llm, app
 ):
     # The fake gives one vector per call; a batch of one makes it one per text.
-    monkeypatch.setattr("dawam.modules.files.search.EMBED_BATCH", 1)
+    set_installation_document_ai(roles, embed_batch=1)
     register_embedding_model(roles, internal=True)
     assert set_chunking_strategy(roles, "semantic").status_code == 200
     sid = system(roles)

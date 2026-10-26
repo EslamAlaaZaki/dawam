@@ -12,7 +12,7 @@ from dawam.modules.llm import LlmError, Reply
 from tests.files import test_indexing
 from tests.files.test_files import system, upload
 from tests.files.test_indexing import listed, search
-from tests.files.test_search import Policy
+from tests.files.test_search import Policy, set_document_ai
 from tests.llm.test_roles_budgets import use_models
 from tests.llm.test_workspace_ai import register
 from tests.roles import RoleClients
@@ -71,6 +71,21 @@ def test_a_chunk_carries_the_light_models_header_and_is_found_by_it(
     assert [p["document"] for p in search(roles, "dictionary")] == ["loans.md"]
     [hit] = search(roles, "dictionary")
     assert hit["text"] == DOC.decode().split("\n\n", 1)[1]  # the passage itself is unchanged
+
+
+def test_an_owner_can_switch_passage_context_off(
+    roles: RoleClients, admin_client, fake_llm, worker
+):
+    use_light(roles, admin_client)
+    assert set_document_ai(roles, contextual_headers=False).status_code == 200
+    system_id = system(roles)
+    upload(roles, system_id, "loans.md", DOC)
+
+    worker()
+
+    assert listed(roles, system_id)["loans.md"]["index_status"] == "indexed"
+    assert headers(roles) == [None]
+    assert light_calls(fake_llm) == []
 
 
 def test_without_a_light_model_the_feature_is_off_and_indexing_succeeds(

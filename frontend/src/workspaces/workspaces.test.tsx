@@ -729,6 +729,7 @@ describe("a Workspace's page", () => {
     expect(within(dialog).getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Details",
       "AI",
+      "Document AI",
       "Archive & delete",
     ]);
   });

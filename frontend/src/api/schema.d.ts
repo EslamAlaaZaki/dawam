@@ -3972,6 +3972,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/document-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Ai Settings
+         * @description The installation's Document AI settings and the bounds of owners' overrides (admins
+         *     only).
+         */
+        get: operations["getDocumentAiSettings"];
+        /**
+         * Set Document Ai Settings
+         * @description Replace the installation's Document AI settings (admins only; recorded as a
+         *     `document_ai_settings_changed` security event). 409 `settings_changed` when `version`
+         *     is not the current one; 422 `unknown_setting`, `invalid_setting`, `out_of_range` (outside
+         *     the knob's hard limits), `invalid_bounds`, `not_overridable` (bounds for a knob owners
+         *     cannot override) or `out_of_bounds` (a value outside its own bounds).
+         */
+        put: operations["setDocumentAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
         parameters: {
             query?: never;
@@ -3996,6 +4025,33 @@ export interface paths {
          *     indexed starts a `reindex_documents` job that embeds them again (`embedding_rebuilding`).
          */
         put: operations["setWorkspaceAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/document-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace Document Ai
+         * @description The Workspace's Document AI overrides and effective settings (any member).
+         */
+        get: operations["getWorkspaceDocumentAi"];
+        /**
+         * Set Workspace Document Ai
+         * @description Replace the Workspace's overrides (owners of an active Workspace; audited). 409
+         *     `settings_changed` when `version` is not the current one; 422 `not_overridable` for an
+         *     admin-only knob, `out_of_bounds` outside the installation's bounds, and the value errors
+         *     of the installation settings.
+         */
+        put: operations["setWorkspaceDocumentAi"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4730,6 +4786,19 @@ export interface components {
              * @description The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...).
              */
             files: string[];
+        };
+        /** BoundsInput */
+        BoundsInput: {
+            /**
+             * Min
+             * @description Left out: the hard lower limit.
+             */
+            min?: number | null;
+            /**
+             * Max
+             * @description Left out: the hard upper limit.
+             */
+            max?: number | null;
         };
         /** BranchError */
         BranchError: {
@@ -6653,6 +6722,54 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
+        /** InstallationDocumentAiRequest */
+        InstallationDocumentAiRequest: {
+            /**
+             * Version
+             * @description The version these settings were read at.
+             */
+            version: number;
+            /**
+             * Values
+             * @description Knobs left out take their default.
+             */
+            values?: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Bounds
+             * @description Knobs left out are bounded by their hard limits.
+             */
+            bounds?: {
+                [key: string]: components["schemas"]["BoundsInput"];
+            };
+        };
+        /** InstallationDocumentAiSettings */
+        InstallationDocumentAiSettings: {
+            /**
+             * Version
+             * @description Send it back with a change; 0: never changed.
+             */
+            version: number;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Values
+             * @description Every knob's installation value.
+             */
+            values: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Bounds
+             * @description For each numeric knob owners may override, the range they may choose in.
+             */
+            bounds: {
+                [key: string]: components["schemas"]["NumberBounds"];
+            };
+            /** Knobs */
+            knobs: components["schemas"]["KnobInfo"][];
+        };
         /** InvitationLinkOut */
         InvitationLinkOut: {
             /**
@@ -6756,6 +6873,55 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** KnobInfo */
+        KnobInfo: {
+            /** Key */
+            key: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "chunking" | "indexing" | "retrieval" | "reranking";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "int" | "float" | "bool" | "choice";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Owner
+             * @description Workspace owners may override it.
+             */
+            owner: boolean;
+            /**
+             * Reindex
+             * @description A change applies to documents indexed from then on: re-index the Workspace's documents to apply it to the others.
+             */
+            reindex: boolean;
+            /**
+             * Default
+             * @description The value in code, when an admin sets none.
+             */
+            default: boolean | number | string;
+            /**
+             * Min
+             * @description Hard lower limit (numbers only).
+             */
+            min: number | null;
+            /**
+             * Max
+             * @description Hard upper limit (numbers only).
+             */
+            max: number | null;
+            /**
+             * Choices
+             * @description The allowed values (`choice` only).
+             */
+            choices: string[];
         };
         /** Kpi */
         Kpi: {
@@ -8069,6 +8235,13 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** NumberBounds */
+        NumberBounds: {
+            /** Min */
+            min: number;
+            /** Max */
+            max: number;
         };
         /** PageContextIn */
         PageContextIn: {
@@ -10816,12 +10989,6 @@ export interface components {
             /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
             data_sharing_level: components["schemas"]["DataSharingLevel"];
             /**
-             * Chunking Strategy
-             * @description How documents are cut into passages: `headings` (sections, the default), `recursive` (paragraphs, then sentences, then words) or `semantic` (split where the embedding similarity of neighbouring sentences drops). Applies to documents indexed from now on; re-index to apply it to the others.
-             * @enum {string}
-             */
-            chunking_strategy: "headings" | "recursive" | "semantic";
-            /**
              * Auto Retrieve
              * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level).
              */
@@ -10874,11 +11041,6 @@ export interface components {
             internal_only: boolean;
             data_sharing_level: components["schemas"]["DataSharingLevel"];
             /**
-             * Chunking Strategy
-             * @description Left out: keeps the current strategy.
-             */
-            chunking_strategy?: ("headings" | "recursive" | "semantic") | null;
-            /**
              * Auto Retrieve
              * @description Left out: keeps the current value.
              */
@@ -10918,6 +11080,61 @@ export interface components {
              * @description A model enabled for the rerank role; optional.
              */
             rerank_model_id?: string | null;
+        };
+        /** WorkspaceDocumentAiRequest */
+        WorkspaceDocumentAiRequest: {
+            /**
+             * Version
+             * @description The version these settings were read at.
+             */
+            version: number;
+            /**
+             * Overrides
+             * @description Knobs left out inherit the installation's value.
+             */
+            overrides?: {
+                [key: string]: boolean | number | string;
+            };
+        };
+        /** WorkspaceDocumentAiSettings */
+        WorkspaceDocumentAiSettings: {
+            /**
+             * Version
+             * @description Send it back with a change; 0: never changed.
+             */
+            version: number;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Overrides
+             * @description The knobs this Workspace overrides; the others inherit.
+             */
+            overrides: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Inherited
+             * @description The installation's value of every knob owners may override.
+             */
+            inherited: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Effective
+             * @description What indexing and search use: overrides clamped to the bounds, else the installation's values.
+             */
+            effective: {
+                [key: string]: boolean | number | string;
+            };
+            /** Bounds */
+            bounds: {
+                [key: string]: components["schemas"]["NumberBounds"];
+            };
+            /**
+             * Knobs
+             * @description The knobs owners may override.
+             */
+            knobs: components["schemas"]["KnobInfo"][];
         };
         /** WorkspaceFile */
         WorkspaceFile: {
@@ -18907,7 +19124,8 @@ export interface operations {
                 q?: string;
                 /** @description Only this Source System. */
                 system_id?: string | null;
-                limit?: number;
+                /** @description Left out: the Workspace's Document AI `top_k`. */
+                limit?: number | null;
                 /** @description Only this type, e.g. `pdf`. */
                 document_type?: string | null;
                 /** @description Only `ar` or `en` passages. */
@@ -20407,6 +20625,86 @@ export interface operations {
             };
         };
     };
+    getDocumentAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDocumentAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setDocumentAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallationDocumentAiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDocumentAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getWorkspaceAiSettings: {
         parameters: {
             query?: never;
@@ -20469,6 +20767,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getWorkspaceDocumentAi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceDocumentAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setWorkspaceDocumentAi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceDocumentAiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceDocumentAiSettings"];
                 };
             };
             /** @description Validation error */
