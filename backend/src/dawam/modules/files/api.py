@@ -31,7 +31,7 @@ from dawam.modules.warehouse import (
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
-from .search import DocumentSearchService, Passage, PassageFilters
+from .search import DocumentSearchService, Passage, PassageFilters, StageEntry
 from .service import FileService
 from .service import WorkspaceFile as WorkspaceFileView
 
@@ -453,6 +453,62 @@ def search_documents(
         user, workspace_id, q, system_id=system_id, limit=limit, filters=filters
     )
     return DocumentSearchResults(items=[_passage(p) for p in passages])
+
+
+class TraceEntry(BaseModel):
+    rank: int = Field(description="Position in this stage, from 1.")
+    file_id: uuid.UUID
+    document: str
+    section: str
+    text: str
+    score: float = Field(
+        description="This stage's own number: `ts_rank_cd` (full-text), cosine similarity "
+        "(vector), fused RRF score, or the rerank model's score."
+    )
+    above_floor: bool | None = Field(
+        default=None,
+        description="Full-text and vector only: whether the score clears the relevance floor.",
+    )
+
+
+class RetrievalTrace(BaseModel):
+    queries: list[str] = Field(description="The query as typed, then any rewrites.")
+    vector_used: bool = Field(description="False when the Workspace's policy keeps vectors off.")
+    reranked: bool = Field(description="Whether a rerank model reordered the fused results.")
+    full_text: list[TraceEntry]
+    vector: list[TraceEntry]
+    fused: list[TraceEntry]
+    reranked_results: list[TraceEntry]
+    final: list[TraceEntry] = Field(description="What a real search returns.")
+
+
+def _stage(entries: list[StageEntry]) -> list[TraceEntry]:
+    return [TraceEntry(rank=i, **vars(e)) for i, e in enumerate(entries, start=1)]
+
+
+@router.get("/documents/search/explain", operation_id="explainDocumentSearch")
+def explain_document_search(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    search: DocumentSearchDep,
+    q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
+    system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
+    limit: Annotated[int | None, Query(ge=1, le=50)] = None,
+) -> RetrievalTrace:
+    """The retrieval playground (any member): runs a real search with the Workspace's
+    effective Document AI settings and returns each stage's ranking and scores (full-text,
+    vector, fused, reranked, final). Permissions and data-sharing levels apply as in search."""
+    t = search.explain(user, workspace_id, q, system_id=system_id, limit=limit)
+    return RetrievalTrace(
+        queries=t.queries,
+        vector_used=t.vector_used,
+        reranked=t.reranked,
+        full_text=_stage(t.full_text),
+        vector=_stage(t.vector),
+        fused=_stage(t.fused),
+        reranked_results=_stage(t.reranked_results),
+        final=_stage(t.final),
+    )
 
 
 @router.post("/documents/reindex", operation_id="reindexDocuments", status_code=202)

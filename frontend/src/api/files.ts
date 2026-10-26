@@ -243,7 +243,8 @@ export function useIndexStatus(workspaceId: string) {
     refetchInterval: (query) =>
       query.state.status !== "error" &&
       query.state.data?.some(
-        (row) => row.index_status !== "indexed" && row.index_status !== "failed",
+        (row) =>
+          row.index_status !== "indexed" && row.index_status !== "failed",
       )
         ? INDEXING_POLL_MS
         : false,
@@ -322,5 +323,25 @@ export function useReplaceFile(
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: filesKey(workspaceId, area) }),
+  });
+}
+
+export type RetrievalTrace = components["schemas"]["RetrievalTrace"];
+export type TraceEntry = components["schemas"]["TraceEntry"];
+
+/** The retrieval playground: runs a search and returns each stage's ranking and scores. */
+export function useExplainSearch(workspaceId: string) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (q: string) => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/documents/search/explain",
+        { params: { path: { workspace_id: workspaceId }, query: { q } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
   });
 }
