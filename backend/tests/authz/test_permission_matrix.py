@@ -1434,6 +1434,18 @@ ROWS: list[Row] = [
         "Upload, edit, delete Workspace files (re-index documents)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/documents/index-status",
+        "Open Workspace content (index status of documents)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/documents/{file_id}/reindex",
+        "Upload, edit, delete Workspace files (re-index a document)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     # External links and document-to-object links (stories 65, 66): viewers read,
     # editors change (§4.3 "Upload, edit, delete Workspace files" and Source System edits).
     Row(

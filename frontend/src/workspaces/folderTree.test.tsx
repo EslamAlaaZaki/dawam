@@ -142,6 +142,7 @@ describe("the folder tree", () => {
       "Score",
       "Files",
       "DDL",
+      "Document index",
     ]);
     expect(item("Staging")).toHaveAttribute("aria-level", "3");
     expect(item("Staging")).toHaveAttribute("aria-expanded", "true");
@@ -152,7 +153,7 @@ describe("the folder tree", () => {
     open("viewer");
     await tree();
 
-    expect(screen.getAllByRole("treeitem")).toHaveLength(20);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(21);
     expect(
       screen.getByRole("heading", { name: "Retail DW" }),
     ).toBeInTheDocument();
@@ -183,10 +184,10 @@ describe("the folder tree", () => {
     press("KPIs", "ArrowUp");
     expect(item("Data Warehouse")).toHaveFocus();
     press("Data Warehouse", "End");
-    expect(item("DDL")).toHaveFocus();
-    press("DDL", "ArrowDown");
-    expect(item("DDL")).toHaveFocus();
-    press("DDL", "Home");
+    expect(item("Document index")).toHaveFocus();
+    press("Document index", "ArrowDown");
+    expect(item("Document index")).toHaveFocus();
+    press("Document index", "Home");
     expect(item("Retail DW")).toHaveFocus();
   });
 

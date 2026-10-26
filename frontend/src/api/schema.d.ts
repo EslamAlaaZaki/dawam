@@ -3453,6 +3453,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/documents/index-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Index Status
+         * @description Where indexing stands for each file of the Workspace (any member): status, passages,
+         *     embedding coverage, stale vectors and the last error.
+         */
+        get: operations["getDocumentIndexStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/documents/{file_id}/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Document
+         * @description Index one file again (owners and editors), in the background; its status on
+         *     `GET /documents/index-status` follows.
+         */
+        post: operations["reindexDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links": {
         parameters: {
             query?: never;
@@ -5900,6 +5942,11 @@ export interface components {
              */
             items: components["schemas"]["DisabledCheck"][];
         };
+        /** DocumentIndexStatus */
+        DocumentIndexStatus: {
+            /** Items */
+            items: components["schemas"]["FileIndexStatus"][];
+        };
         /** DocumentPassage */
         DocumentPassage: {
             /**
@@ -6398,6 +6445,51 @@ export interface components {
             before: string | null;
             /** After */
             after: string | null;
+        };
+        /** FileIndexStatus */
+        FileIndexStatus: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Index Status
+             * @description `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`.
+             */
+            index_status: string;
+            /**
+             * Index Error
+             * @description Why indexing `failed`; null otherwise.
+             */
+            index_error: string | null;
+            /**
+             * Index Note
+             * @description Something worth knowing that did not fail it.
+             */
+            index_note: string | null;
+            /**
+             * Chunk Count
+             * @description Passages the file is cut into.
+             */
+            chunk_count: number;
+            /**
+             * Embedded Count
+             * @description Passages that have a vector.
+             */
+            embedded_count: number;
+            /**
+             * Stale Count
+             * @description Embedded passages whose vector was made by a model other than the one in use: a re-index replaces them.
+             */
+            stale_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** FileObjectLink */
         FileObjectLink: {
@@ -18974,6 +19066,87 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReindexStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDocumentIndexStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentIndexStatus"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindexDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation error */
