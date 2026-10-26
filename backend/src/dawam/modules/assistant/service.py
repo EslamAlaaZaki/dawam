@@ -14,7 +14,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -40,6 +40,13 @@ from .internal.agent import (
     run_agent,
 )
 from .internal.context import CHARS_PER_TOKEN, PROMPT_SHARE
+from .internal.injection import (
+    Inspector,
+    flagged_parts,
+    light_model_inspector,
+    rule_based_inspector,
+    warn,
+)
 from .internal.prompt import JOB_PROMPT, SYSTEM_PROMPT, prompt_version, quote_data
 from .internal.tools import ToolRegistry
 from .tables import (
@@ -110,6 +117,8 @@ class ToolCallView:
     duration_ms: int
     result: dict[str, Any] | None = None
     """What a tool kept of its result: a source query's column names, row count and duration."""
+    flagged: list[str] = field(default_factory=list)
+    """Documents (or the tool) whose result looked like a prompt injection."""
 
 
 @dataclass(frozen=True)
@@ -215,7 +224,14 @@ def _run_view(record: RunRecord, feedback: FeedbackView | None = None) -> RunVie
         id=record.id,
         status=record.status,
         tool_calls=[
-            ToolCallView(c["name"], c["arguments"], c["status"], c["duration_ms"], c.get("result"))
+            ToolCallView(
+                c["name"],
+                c["arguments"],
+                c["status"],
+                c["duration_ms"],
+                c.get("result"),
+                c.get("flagged") or [],
+            )
             for c in record.tool_calls
         ],
         input_tokens=record.input_tokens,
@@ -697,6 +713,7 @@ class AssistantService:
         began = self._timer()
         text: list[str] = []
         calls: list[ToolCallRecord] = []
+        retrieved: list[ToolCallRecord] = []
         saved = False
         answered_by = model_id
         try:
@@ -719,8 +736,14 @@ class AssistantService:
                 )
                 messages = history.messages
                 first = len(messages) == 1 and history.summary is None
+                inspect = (
+                    light_model_inspector(light) if light is not None else rule_based_inspector
+                )
                 if first and self._ai.settings(workspace_id).auto_retrieve:
-                    messages = _with_passages(messages, tools)
+                    messages, found = _with_passages(messages, tools, inspect)
+                    if found is not None:
+                        retrieved.append(found)
+                        yield ToolFinished(found)
                 for event in run_agent(
                     gateway,
                     tools,
@@ -732,9 +755,10 @@ class AssistantService:
                     delta_poll_seconds=STOP_POLL_SECONDS,
                     summary=history.summary,
                     summarize=_summarizer(light) if light is not None else None,
+                    inspect=inspect,
                 ):
                     if isinstance(event, Finished):
-                        finished = event
+                        finished = replace(event, tool_calls=[*retrieved, *event.tool_calls])
                         break
                     if isinstance(event, Compacted):
                         self._save_summary(
@@ -820,6 +844,7 @@ class AssistantService:
                     "duration_ms": c.duration_ms,
                     "result": c.result,
                     "digest": redact_text(c.digest) if c.digest else None,
+                    "flagged": list(c.flagged),
                 }
                 for c in finished.tool_calls
             ]
@@ -980,26 +1005,38 @@ class AssistantService:
                 record.summary_through = through
 
 
-def _with_passages(messages: list[Message], tools: Any) -> list[Message]:
+def _with_passages(
+    messages: list[Message], tools: Any, inspect: Inspector
+) -> tuple[list[Message], ToolCallRecord | None]:
     """The member's first message followed by the top passages for it, quoted as data. The
     search runs as the member through the bound tools, so the data-sharing level and the
-    member's access apply; a refusal, an error or no match leaves the message as it is."""
+    member's access apply; a refusal, an error or no match leaves the message as it is.
+    Passages that look like a prompt injection stay, under a warning; the record of that
+    search is returned when any were flagged, so the UI can mark their documents."""
     [first] = messages
     outcome = tools.execute(
         "search_documents",
         {"query": (first.content or "")[:500], "limit": AUTO_RETRIEVE_PASSAGES},
     )
     if outcome.status != "ok":
-        return messages
+        return messages, None
     try:
         found = json.loads(outcome.content).get("passages")
     except (ValueError, AttributeError):
-        return messages
+        return messages, None
     if not found:
-        return messages
+        return messages, None
     passages = quote_data("auto-retrieved:documents", json.dumps(found, ensure_ascii=False))
+    flagged = flagged_parts("search_documents", outcome.content, inspect)
+    if flagged:
+        passages = warn(passages)
     note = "Passages found automatically for this message:\n" + passages
-    return [replace(first, content=f"{first.content}\n\n{note}")]
+    record = (
+        ToolCallRecord("auto_retrieve", "search_documents", {}, "ok", 0, flagged=tuple(flagged))
+        if flagged
+        else None
+    )
+    return [replace(first, content=f"{first.content}\n\n{note}")], record
 
 
 @dataclass(frozen=True)

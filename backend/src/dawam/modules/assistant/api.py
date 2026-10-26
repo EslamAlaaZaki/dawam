@@ -92,6 +92,11 @@ class ToolCallOut(BaseModel):
         "`duration_ms` and `can_write` (the Connection user could change data: warn), "
         "never a row.",
     )
+    flagged: list[str] = Field(
+        default_factory=list,
+        description="Documents (or the tool) whose result looked like a prompt injection. "
+        "The text still reached the model, wrapped with a warning.",
+    )
 
 
 class FeedbackOut(BaseModel):
@@ -244,6 +249,7 @@ def _run(view: RunView) -> RunOut:
                 status=c.status,
                 duration_ms=c.duration_ms,
                 result=c.result,
+                flagged=c.flagged,
             )
             for c in view.tool_calls
         ],
@@ -360,6 +366,7 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
                     "status": call.status,
                     "duration_ms": call.duration_ms,
                     "result": call.result,
+                    "flagged": list(call.flagged),
                 },
             )
         elif isinstance(event, Completed):

@@ -10728,6 +10728,11 @@ export interface components {
             result?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Flagged
+             * @description Documents (or the tool) whose result looked like a prompt injection. The text still reached the model, wrapped with a warning.
+             */
+            flagged?: string[];
         };
         /** TopNRequest */
         TopNRequest: {
