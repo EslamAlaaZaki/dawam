@@ -167,6 +167,10 @@ class Compacted:
 AgentEvent = Text | ToolFinished | Compacted | Finished
 
 
+CHECKPOINT_VERSION = 1
+"""Bumped when ``Checkpoint``'s JSON changes; an older checkpoint is not resumed."""
+
+
 @dataclass(frozen=True)
 class Checkpoint:
     """Where a run stands after a step: the messages so far, the calls made, the calls the
@@ -184,6 +188,7 @@ class Checkpoint:
 
     def to_json(self) -> dict[str, Any]:
         return {
+            "version": CHECKPOINT_VERSION,
             "messages": [_message_json(m) for m in self.messages],
             "calls": [_record_json(c) for c in self.calls],
             "pending": [_call_json(c) for c in self.pending],
@@ -195,7 +200,10 @@ class Checkpoint:
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> Checkpoint:
+    def from_json(cls, data: dict[str, Any]) -> Checkpoint | None:
+        """``None`` for a checkpoint of another version: the run starts afresh."""
+        if data.get("version") != CHECKPOINT_VERSION:
+            return None
         return cls(
             messages=tuple(
                 Message(

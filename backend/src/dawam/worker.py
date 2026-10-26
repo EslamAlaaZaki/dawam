@@ -47,7 +47,7 @@ def _run_job(jobs: JobService, job: Job, settings: Settings) -> None:
             # A failed heartbeat must not leave the job running unattended while this
             # worker claims more: keep waiting for it, and report again next time.
             try:
-                jobs.heartbeat(job.id)
+                jobs.heartbeat(job.id, job.attempts)
             except SQLAlchemyError:
                 logger.exception("job heartbeat failed", extra={"job_id": str(job.id)})
 

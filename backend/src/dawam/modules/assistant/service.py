@@ -608,7 +608,7 @@ class AssistantService:
             ) from exc
         cap = self._max_job_tool_calls
         saved = ctx.checkpoint
-        resume = Checkpoint.from_json(saved["run"]) if saved else None
+        resume = Checkpoint.from_json(saved.get("run") or {}) if saved else None
         calls = len(resume.calls) if resume else 0
         if resume:
             ctx.log(f"Resumed after {calls} tool calls.")
@@ -622,11 +622,14 @@ class AssistantService:
             tools = self._tools.bind(
                 user, workspace_id, self._ai.policy(workspace_id), conversation_id, job=True
             )
-            if saved:
+            if resume and saved:
                 tools.restore_proposals(saved["proposals"])
 
             def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
-                ctx.save_checkpoint({"run": state.to_json(), "proposals": tools.saved_proposals()})
+                # Stored like the run's other records: redacted (ADR 0002). The proposals stay
+                # as they are; they become the Change Set's items.
+                run = redact_json(state.to_json())
+                ctx.save_checkpoint({"run": run, "proposals": tools.saved_proposals()})
 
             finished = Finished("completed", "", [], 0, 0)
             for event in run_agent(

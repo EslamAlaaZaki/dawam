@@ -412,3 +412,27 @@ def test_a_job_whose_worker_died_resumes_without_repeating_finished_tool_calls(
     assert [m.role for m in sent] == ["system", "user", "assistant", "tool", "assistant", "tool"]
     [created] = change_sets(roles)
     assert created["item_counts"] == {"pending": 2}  # the proposal made before it died too
+
+
+def test_a_job_checkpoint_is_stored_redacted(app, services, roles, model):
+    import json
+
+    import sqlalchemy as sa
+
+    kpi = add_kpi(roles, name="Ask jane.doe@example.com")
+    adapter = _DyingAdapter(at=2).script(
+        Reply(tool_calls=(tool("get_object", "c1", kind="kpi", id=kpi),)),
+    )
+    services.llm_adapters = lambda kind, config: adapter
+    runner = QueuedJobRunner()
+    runner.register(JOB_TYPE, services.jobs.handler(JOB_TYPE))
+    queue = JobService(app.state.engine, runner=runner, clock=services.clock)
+    job = submit(app, services, roles, queue=queue)
+    with pytest.raises(WorkerKilled):
+        queue.execute(queue.claim_next())
+
+    with app.state.engine.connect() as db:
+        query = sa.text("select checkpoint from jobs where id = :id")
+        saved = json.dumps(db.execute(query, {"id": job.id}).scalar())
+    assert "get_object" in saved
+    assert "jane.doe@example.com" not in saved and "redacted" in saved

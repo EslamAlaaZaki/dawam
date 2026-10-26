@@ -562,6 +562,15 @@ def test_a_resumed_run_keeps_the_tool_call_cap_of_the_whole_run():
     assert events[-1].status == "completed"
 
 
+def test_a_checkpoint_of_another_version_is_not_resumed():
+    first = FakeAdapter().script(Reply(tool_calls=(call(1),)), Reply(text="x"))
+    saved, _ = checkpoints_of(first)
+    data = saved[-1].to_json()
+
+    assert Checkpoint.from_json({**data, "version": 999}) is None
+    assert Checkpoint.from_json({k: v for k, v in data.items() if k != "version"}) is None
+
+
 def test_a_limited_mode_run_resumes_too():
     first = FakeAdapter().script(Reply(text=json_call(id=7)), Reply(text="x"))
     saved, _ = checkpoints_of(first, gateway=gateway(first, capabilities=LIMITED))

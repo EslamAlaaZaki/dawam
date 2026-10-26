@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 import time
 import uuid
@@ -220,6 +221,39 @@ def test_a_job_that_keeps_killing_its_worker_is_failed_in_the_end(resumable, rol
     assert resumable.claim_next() is None
 
 
+def test_a_stalled_worker_cannot_write_to_a_job_another_worker_resumed(app, roles, clock):
+    stalled = []
+
+    def handle(params, ctx):
+        if ctx.checkpoint is None:
+            ctx.save_checkpoint({"n": 1})
+            stalled.append(ctx)
+            raise WorkerKilled  # the worker stalls: the queue thinks it is gone
+
+    runner = QueuedJobRunner()
+    runner.register("stalls", handle)
+    service = JobService(app.state.engine, runner=runner, clock=clock)
+    roles.client("owner")
+    job = service.submit(roles.workspace_id, "stalls", {}, title="t", created_by=None)
+    assert kill_and_restart(service, clock) == 1
+    resumed = service.claim_next()
+    [old] = stalled
+
+    old.log("stale line")
+    old.progress(77)
+    old.save_checkpoint({"n": "stale"})
+    service.heartbeat(job.id, resumed.attempts - 1)
+    service.execute(dataclasses.replace(resumed, attempts=resumed.attempts - 1))  # finishes
+
+    assert old.cancelled
+    body = get(roles, job.id).json()
+    assert body["status"] == "running" and body["progress"] == 0
+    assert "stale line" not in body["log"]
+    assert _checkpoint(app, job.id) == {"n": 1}
+    service.execute(resumed)
+    assert get(roles, job.id).json()["status"] == "succeeded"
+
+
 def submit_steps(service: JobService, roles: RoleClients, **params):
     roles.client("owner")
     return service.submit(
@@ -280,7 +314,7 @@ def test_a_worker_whose_heartbeat_fails_still_waits_for_its_job(app, roles, cloc
         finished.set()
 
     class HeartbeatFails(JobService):
-        def heartbeat(self, job_id):
+        def heartbeat(self, job_id, attempt=None):
             raise OperationalError("UPDATE jobs", {}, Exception("connection lost"))
 
     runner = QueuedJobRunner()
