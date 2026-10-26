@@ -30,6 +30,7 @@ import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
+import { IndexStatusPanel } from "./IndexStatusPanel";
 import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceSettingsDialog } from "./WorkspaceSettingsDialog";
@@ -232,6 +233,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
                 kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"
               }
             />
+          ) : folder.id === "document-index" ? (
+            <IndexStatusPanel workspace={workspace.data} />
           ) : documentsSystem ? (
             <DocumentsPanel
               key={folder.id}

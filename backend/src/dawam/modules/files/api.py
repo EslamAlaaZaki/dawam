@@ -460,3 +460,44 @@ def reindex_documents(
     job: run it after the embedding model or its dimension changes."""
     job = search.start_reindex(user, workspace_id)
     return ReindexStarted(job_id=job.id, status=job.status)
+
+
+class FileIndexStatus(BaseModel):
+    file_id: uuid.UUID
+    name: str
+    index_status: str = Field(
+        description="`queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` "
+        "or `failed`."
+    )
+    index_error: str | None = Field(description="Why indexing `failed`; null otherwise.")
+    index_note: str | None = Field(description="Something worth knowing that did not fail it.")
+    chunk_count: int = Field(description="Passages the file is cut into.")
+    embedded_count: int = Field(description="Passages that have a vector.")
+    stale_count: int = Field(
+        description="Embedded passages whose vector was made by a model other than the one in "
+        "use: a re-index replaces them."
+    )
+    updated_at: datetime
+
+
+class DocumentIndexStatus(BaseModel):
+    items: list[FileIndexStatus]
+
+
+@router.get("/documents/index-status", operation_id="getDocumentIndexStatus")
+def get_document_index_status(
+    workspace_id: uuid.UUID, user: CurrentUser, search: DocumentSearchDep
+) -> DocumentIndexStatus:
+    """Where indexing stands for each file of the Workspace (any member): status, passages,
+    embedding coverage, stale vectors and the last error."""
+    rows = search.index_overview(user, workspace_id)
+    return DocumentIndexStatus(items=[FileIndexStatus(**vars(row)) for row in rows])
+
+
+@router.post("/documents/{file_id}/reindex", operation_id="reindexDocument", status_code=202)
+def reindex_document(
+    workspace_id: uuid.UUID, file_id: uuid.UUID, user: CurrentUser, search: DocumentSearchDep
+) -> None:
+    """Index one file again (owners and editors), in the background; its status on
+    `GET /documents/index-status` follows."""
+    search.reindex_file(user, workspace_id, file_id)

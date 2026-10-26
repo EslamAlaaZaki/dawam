@@ -27,6 +27,7 @@ import logging
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Any, Protocol
 
 import sqlalchemy as sa
@@ -106,6 +107,21 @@ class SearchTuning:
 
 
 DEFAULT_TUNING = SearchTuning()
+
+
+@dataclass(frozen=True)
+class FileIndexStatus:
+    """One row of the index status page."""
+
+    file_id: uuid.UUID
+    name: str
+    index_status: str
+    index_error: str | None
+    index_note: str | None
+    chunk_count: int
+    embedded_count: int
+    stale_count: int
+    updated_at: datetime
 
 
 @dataclass(frozen=True)
@@ -859,6 +875,76 @@ class DocumentSearchService:
                 created_by=user.id,
                 db=db,
             )
+
+    def index_overview(self, user: User, workspace_id: uuid.UUID) -> list[FileIndexStatus]:
+        """Where indexing stands for every file of the Workspace (any member), by name: its
+        status, passages, how many are embedded and how many of those were made by a model
+        other than the one in use (stale until a re-index)."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        model = self._embedder(workspace_id)
+        current = model.id if model else None
+        chunks = (
+            sa.select(
+                DocumentChunkRecord.file_id.label("file_id"),
+                sa.func.count().label("total"),
+                sa.func.count(DocumentChunkRecord.embedding).label("embedded"),
+                sa.func.count()
+                .filter(
+                    DocumentChunkRecord.embedding.is_not(None),
+                    DocumentChunkRecord.embedding_model_id.is_distinct_from(current),
+                )
+                .label("stale"),
+            )
+            .where(DocumentChunkRecord.workspace_id == workspace_id)
+            .group_by(DocumentChunkRecord.file_id)
+            .subquery()
+        )
+        files = WorkspaceFileRecord
+        with Session(self._engine) as db:
+            hidden = hidden_source_system_ids(db, workspace_id)
+            query = (
+                sa.select(files, chunks.c.total, chunks.c.embedded, chunks.c.stale)
+                .outerjoin(chunks, chunks.c.file_id == files.id)
+                .where(files.workspace_id == workspace_id)
+                .order_by(files.path)
+            )
+            if hidden:
+                query = query.where(
+                    sa.not_(
+                        sa.and_(files.owner_kind == "source_system", files.owner_id.in_(hidden))
+                    )
+                )
+            return [
+                FileIndexStatus(
+                    file_id=record.id,
+                    name=record.path,
+                    index_status=record.index_status,
+                    index_error=record.index_error,
+                    index_note=record.index_note,
+                    chunk_count=total or 0,
+                    embedded_count=embedded or 0,
+                    stale_count=stale or 0,
+                    updated_at=record.updated_at,
+                )
+                for record, total, embedded, stale in db.execute(query)
+            ]
+
+    def reindex_file(self, user: User, workspace_id: uuid.UUID, file_id: uuid.UUID) -> None:
+        """Index one file again (owners and editors), as an ``index_document`` job: its status
+        goes back to ``queued`` and its error is cleared."""
+        self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            result = db.execute(
+                sa.update(WorkspaceFileRecord)
+                .where(
+                    WorkspaceFileRecord.id == file_id,
+                    WorkspaceFileRecord.workspace_id == workspace_id,
+                )
+                .values(index_status="queued", index_error=None)
+            )
+        if result.rowcount == 0:
+            raise ApiError(404, "not_found", "File not found.")
+        self.queue_index(workspace_id, file_id)
 
     def start_reembed(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
         """The ``EmbeddingModelChangedHook`` (ADR 0006), inside the transaction that changes

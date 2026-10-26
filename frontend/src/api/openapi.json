@@ -12678,6 +12678,122 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/documents/index-status": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Get Document Index Status",
+        "description": "Where indexing stands for each file of the Workspace (any member): status, passages,\nembedding coverage, stale vectors and the last error.",
+        "operationId": "getDocumentIndexStatus",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentIndexStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/documents/{file_id}/reindex": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Reindex Document",
+        "description": "Index one file again (owners and editors), in the background; its status on\n`GET /documents/index-status` follows.",
+        "operationId": "reindexDocument",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links": {
       "get": {
         "tags": [
@@ -19512,6 +19628,22 @@
         ],
         "title": "DisabledChecks"
       },
+      "DocumentIndexStatus": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FileIndexStatus"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DocumentIndexStatus"
+      },
       "DocumentPassage": {
         "properties": {
           "file_id": {
@@ -20655,6 +20787,81 @@
           "after"
         ],
         "title": "FieldChange"
+      },
+      "FileIndexStatus": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "File Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "index_status": {
+            "type": "string",
+            "title": "Index Status",
+            "description": "`queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`."
+          },
+          "index_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Error",
+            "description": "Why indexing `failed`; null otherwise."
+          },
+          "index_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Note",
+            "description": "Something worth knowing that did not fail it."
+          },
+          "chunk_count": {
+            "type": "integer",
+            "title": "Chunk Count",
+            "description": "Passages the file is cut into."
+          },
+          "embedded_count": {
+            "type": "integer",
+            "title": "Embedded Count",
+            "description": "Passages that have a vector."
+          },
+          "stale_count": {
+            "type": "integer",
+            "title": "Stale Count",
+            "description": "Embedded passages whose vector was made by a model other than the one in use: a re-index replaces them."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "name",
+          "index_status",
+          "index_error",
+          "index_note",
+          "chunk_count",
+          "embedded_count",
+          "stale_count",
+          "updated_at"
+        ],
+        "title": "FileIndexStatus"
       },
       "FileObjectLink": {
         "properties": {
