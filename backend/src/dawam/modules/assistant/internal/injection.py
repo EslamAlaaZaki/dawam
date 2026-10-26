@@ -51,8 +51,10 @@ _PATTERNS = [
         r"\byou\s+are\s+now\b[^.\n]{0,40}\b(an?|the|in)\b",
         r"\b(act|behave|respond)\s+as\s+(if\s+you\s+(are|were)|an?\s)",
         r"^\s*(system|assistant)\s*:",
+        r"\b(system|assistant)\s*:\s*(call|ignore|you|reply|do|obey|run|now)\b",
         r"\b(call|invoke|run|execute)\b[^.\n]{0,30}\b(the\s+)?(tool|function)\b",
-        r"\b(call|invoke|use)\s+[a-z]+_[a-z_]+\b",
+        # Only state-changing tool names: a tool's own note may say "call evaluate_dw again".
+        r"\b(call|invoke|use)\s+(delete|drop|truncate|remove|approve|apply|grant|revoke)_[a-z_]+\b",
         r"\b(send|reveal|share|give|reply\s+with|tell)\b[^.\n]{0,40}\b(api\s+keys?|passwords?|"
         r"credentials?|secrets?)\b",
         r"\b(delete|drop|truncate)\s+(the\s+)?(all\s+)?(tables?|data|rows)\b[^.\n]{0,30}"
