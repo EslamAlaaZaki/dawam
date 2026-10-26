@@ -218,8 +218,11 @@ def _structured_answer(
                     run.completion += event.usage.completion_tokens
     except (LlmError, ApiError):
         return None
-    cards = parse_cards("".join(reply))
-    return cards_block(cards) if cards else None
+    parsed = parse_cards("".join(reply))
+    if parsed is None:
+        return None
+    intro, cards = parsed
+    return f"{intro}\n\n{cards_block(cards)}" if intro else cards_block(cards)
 
 
 def run_agent(
@@ -340,9 +343,8 @@ def run_agent(
                     block = _structured_answer(
                         gateway, run, messages, "".join(answer), window, count
                     )
-                    if block:
-                        run.text.append(block)
-                        yield Text(block)
+                    if block:  # the intro and cards replace the Markdown list that streamed
+                        run.text[:] = [block]
                 yield run.finish("tool_limit" if capped else "completed")
                 return
             if prompted:

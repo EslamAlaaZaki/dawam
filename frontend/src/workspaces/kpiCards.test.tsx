@@ -17,7 +17,7 @@ describe("a dawam-kpis block in an answer", () => {
     );
     expect(cards).toHaveLength(2);
     expect(within(cards[0]!).getByText("Churn rate")).toBeInTheDocument();
-    expect(within(cards[0]!).getByText("%")).toBeInTheDocument();
+    expect(within(cards[0]!).getByText("%")).toHaveClass("font-mono");
     expect(within(cards[1]!).getByText("Sales less returns")).toBeInTheDocument();
     expect(screen.getByText("Here are KPIs.")).toBeInTheDocument();
   });
