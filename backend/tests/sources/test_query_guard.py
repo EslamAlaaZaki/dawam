@@ -755,6 +755,43 @@ def test_pattern_predicates_on_a_protected_column_stay_rejected(engine, sql):
     rejected(sql, engine)
 
 
+# --- analytics over protected columns: numbers about them, never a raw value (ADR 0007) -----------
+
+ANALYTICS_ACCEPTED = [
+    # (sql, masked output names)
+    ("select count(national_id) from core.customers", ()),
+    ("select count(distinct national_id) from core.customers", ()),
+    ("select count(*) - count(distinct national_id) as dupes from core.customers", ()),
+    (
+        "select count(*) as dupes from core.customers a join core.customers b on a.national_id = b.national_id",
+        (),
+    ),
+    ("select sum(salary) as s, avg(salary) as a from core.customers", ("s", "a")),
+]
+ANALYTICS_REJECTED = [
+    # value-emitting aggregates hand back a raw value
+    "select min(national_id) from core.customers",
+    "select max(national_id) from core.customers",
+    "select min(salary), max(salary) from core.customers",
+    # grouping by a protected value orders the groups by it in many engines
+    "select count(*) from (select national_id from core.customers group by national_id having count(*) > 1) t",
+    "select national_id, count(*) from core.customers group by national_id",
+]
+
+
+@pytest.mark.parametrize(("engine", "sql", "masked"), each_engine(ANALYTICS_ACCEPTED))
+def test_counts_and_sums_over_a_protected_column_are_allowed(engine, sql, masked):
+    result = accepted(sql, engine)
+
+    up = str.upper if engine == "oracle" else str
+    assert result.masked_columns == tuple(up(m) for m in masked)
+
+
+@pytest.mark.parametrize(("engine", "sql"), each_engine([(q,) for q in ANALYTICS_REJECTED]))
+def test_analytics_that_return_or_order_by_a_raw_protected_value_are_rejected(engine, sql):
+    rejected(sql, engine)
+
+
 def test_a_view_that_slices_a_protected_column_itself_stays_queryable_and_masked():
     """The guard judges the model's SQL; a view is the source's own definition."""
     for engine in ENGINES:

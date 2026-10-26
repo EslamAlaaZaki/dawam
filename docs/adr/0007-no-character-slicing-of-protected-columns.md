@@ -6,16 +6,13 @@ ADR 0002 masks an output column whenever it derives from a Protected Column, so 
 
 The guard therefore rejects character-slicing and pattern-extraction functions on a Protected Column, in every dialect's spelling, whatever they are nested in: `SUBSTR`, `SUBSTRING`, `LEFT`, `RIGHT`, `MID`, `CHARINDEX`, `INSTR`, `LOCATE`, `STRPOS`/`POSITION`, `PATINDEX`, `STUFF`, `OVERLAY`, `REGEXP_SUBSTR`, `REGEXP_INSTR`, `REGEXP_REPLACE`, `REGEXP_MATCH`, `SPLIT_PART`, `SUBSTRING_INDEX` and Oracle's `SUBSTRB`/`INSTRB` family. Columns that are not protected are unaffected: slicing them stays part of normal exploration. A view whose stored definition slices a protected column is still queryable, its column masked as before: the guard judges the SQL the model writes, and the model cannot choose the view's slice.
 
-`LIKE` and regex predicates on a Protected Column stay rejected outright, as ADR 0002 already has them ("comparing them to literals"). The maintainer's decision for this change also allows them against a per-run read budget per protected column; that relaxes today's rule, so it is left open below rather than implemented here.
+The AI does not read PII; it may only run analytics over it. `LIKE` and regex predicates on a Protected Column stay rejected outright, as ADR 0002 already has them ("comparing them to literals"), and there is no per-run read budget that would let a few through: each one is a yes/no question about the value. Aggregates over a Protected Column are allowed only when the result is not a raw value: `COUNT`, `COUNT(DISTINCT)`, duplicate counts (`COUNT(*) - COUNT(DISTINCT col)`, or a self-join on the column) and `SUM`/`AVG` (returned masked). `MIN`, `MAX` and the other value-emitting aggregates hand back one row's value and stay rejected, as do `GROUP BY` and `ORDER BY` on the column, since many engines return groups in the column's order.
 
 Small-cell suppression (k-anonymity) stays rejected, as in ADR 0002.
-
-## Open
-
-- **A per-run read budget for `LIKE`/regex predicates on Protected Columns.** It would let a model check a column's format (Saudi national IDs start with 1, Iqamas with 2) a few times per run, at the cost of a bounded boolean oracle on the value. Today those predicates are rejected, which is stricter. Needs the maintainer's confirmation before the guard is loosened.
 
 ## Considered options
 
 - **Keep masking slices by lineage only (ADR 0002 as it was)**: rejected; a slice too small for any validator leaks the value a piece at a time.
 - **Reject slicing on every column**: rejected; it would block most legitimate exploration of unflagged columns, which the per-run seconds budget, the row cap and the audit trail already limit (spec §6.8).
+- **A per-run read budget for `LIKE`/regex predicates on Protected Columns**: rejected by the maintainer; it would still let the model read raw PII a little at a time.
 - **Small-cell suppression (k-anonymity)**: still rejected as too costly (ADR 0002).
