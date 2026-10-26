@@ -253,6 +253,7 @@ def test_a_viewer_can_still_use_read_tools(roles, model, fake_llm):
         "explain_check",
         "get_lineage",
         "explore_graph",
+        "render_diagram",
         "get_relationships",
         "list_files",
         "search_catalog",

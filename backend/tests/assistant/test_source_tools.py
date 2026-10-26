@@ -499,6 +499,7 @@ METADATA_TOOLS = {
     "explain_check",
     "get_lineage",
     "explore_graph",
+    "render_diagram",
     "get_relationships",
 }
 LEVELS = [
