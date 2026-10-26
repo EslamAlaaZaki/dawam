@@ -17,6 +17,7 @@ from dawam.modules.lineage import LineageService
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, WorkspaceAiService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
+    ConnectionService,
     DataDictionaryService,
     PiiService,
     ProfilingService,
@@ -150,6 +151,9 @@ def build_assistant_service(
             ),
             dictionaries=DataDictionaryService(snapshots, systems),
             systems=systems,
+            connections=ConnectionService(
+                engine, workspaces=workspaces, encryption_key=encryption_key, clock=clock
+            ),
             model=model,
             web=WebService(
                 engine,

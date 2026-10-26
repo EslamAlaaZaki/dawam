@@ -79,6 +79,15 @@ class ConnectionInput:
     allowed_schemas: list[str]
 
 
+@dataclass(frozen=True)
+class ConnectionStatus:
+    system_id: uuid.UUID
+    engine: str
+    state: str
+    """``tested`` (saved, and a test has run) or ``untested``; a system with no row has no
+    Connection yet."""
+
+
 def _view(record: ConnectionRecord) -> Connection:
     return Connection(
         id=record.id,
@@ -218,6 +227,26 @@ class ConnectionService:
                     404, "connection_not_found", "This Source System has no Connection yet."
                 )
             return _view(record)
+
+    def statuses(self, user: User, workspace_id: uuid.UUID) -> list[ConnectionStatus]:
+        """Each Source System's database engine and whether its Connection is saved and
+        tested. Any member: no host, user or secret is given."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        query = (
+            sa.select(
+                ConnectionRecord.source_system_id,
+                ConnectionRecord.engine,
+                ConnectionRecord.last_tested_at,
+            )
+            .join(SourceSystemRecord, SourceSystemRecord.id == ConnectionRecord.source_system_id)
+            .where(SourceSystemRecord.workspace_id == workspace_id)
+        )
+        with Session(self._engine) as db:
+            rows = db.execute(query).all()
+        return [
+            ConnectionStatus(system_id, engine, "tested" if tested else "untested")
+            for system_id, engine, tested in rows
+        ]
 
     def test(
         self,
