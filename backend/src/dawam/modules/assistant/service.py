@@ -398,6 +398,7 @@ class AssistantService:
             )
         if model_id is not None:
             self._ai.check_chat_model(workspace_id, model_id)
+        self._roles.ensure_within_rate_limit(workspace_id, user.id)
         now = self._clock()
         with Session(self._engine) as db, db.begin():
             record = self._load(
