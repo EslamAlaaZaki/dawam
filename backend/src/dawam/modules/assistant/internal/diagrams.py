@@ -54,7 +54,8 @@ def star_schema(tables: Sequence[Any], scope: str | None) -> tuple[str, int]:
                 roots += [
                     t
                     for t in tables
-                    if t.kind == "fact" and any(c.references_table_id == table.id for c in t.columns)
+                    if t.kind == "fact"
+                    and any(c.references_table_id == table.id for c in t.columns)
                 ]
     if not roots:
         return "", 0
