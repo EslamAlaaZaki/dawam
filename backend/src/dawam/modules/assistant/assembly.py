@@ -146,6 +146,8 @@ def build_assistant_service(
                 MappingService(engine, workspaces=workspaces, clock=clock),
             ),
             dictionaries=DataDictionaryService(snapshots, systems),
+            systems=systems,
+            model=model,
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )
