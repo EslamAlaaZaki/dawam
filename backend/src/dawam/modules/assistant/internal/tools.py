@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, ValidationError
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.files import DocumentSearchService, FileService, PassageFilters
-from dawam.modules.jobs import JobService
+from dawam.modules.jobs import PRIORITY_CHAT, JobService
 from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.lineage import LineageService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
@@ -1632,6 +1632,7 @@ def _submit_job(ctx: ToolContext, title: str, task: str) -> Reported:
         },
         title=title,
         created_by=ctx.user.id,
+        priority=PRIORITY_CHAT,
     )
     content = {
         "job_id": job.id,
