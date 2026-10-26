@@ -503,6 +503,11 @@ class WorkspaceAiService:
         with Session(self._engine) as db:
             return default_model_id(db, workspace_id, "agent")
 
+    def light_model_id(self, workspace_id: uuid.UUID) -> uuid.UUID | None:
+        """The Workspace's default light model; ``None``: it has none."""
+        with Session(self._engine) as db:
+            return default_model_id(db, workspace_id, "light")
+
     def check_chat_model(self, workspace_id: uuid.UUID, model_id: uuid.UUID) -> None:
         """A model a member may pick for a message: one of the Workspace's agent models.
         422 ``model_not_allowed`` otherwise."""

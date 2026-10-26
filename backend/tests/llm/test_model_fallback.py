@@ -1,3 +1,4 @@
+# ruff: noqa: F811
 """The ordered model fallback list per role (ticket #406).
 
 Admins set the list through the HTTP API; calls go through ``RoleService.gateway_for_role``
@@ -21,7 +22,7 @@ def set_fallbacks(client, role, *models):
     return client.put(f"{BASE}/fallbacks/{role}", json={"model_ids": [m["id"] for m in models]})
 
 
-def ask(role_service, workspace_id):  # noqa: F811
+def ask(role_service, workspace_id):
     gateway = role_service.gateway_for_role("agent", workspace_id=workspace_id)
     return "".join(getattr(e, "text", "") for e in gateway.chat(ASK))
 
@@ -30,7 +31,7 @@ def models_called(fake_llm):
     return [c.model for c in fake_llm.calls]
 
 
-def test_admins_set_an_ordered_list_per_role(admin_client, setup):  # noqa: F811
+def test_admins_set_an_ordered_list_per_role(admin_client, setup):
     one, two = register(admin_client, "one"), register(admin_client, "two")
 
     response = set_fallbacks(admin_client, "agent", two, one)
@@ -41,7 +42,7 @@ def test_admins_set_an_ordered_list_per_role(admin_client, setup):  # noqa: F811
     assert admin_client.get(f"{BASE}/fallbacks").json() == response.json()
 
 
-def test_a_model_not_enabled_for_the_role_is_refused(admin_client, setup):  # noqa: F811
+def test_a_model_not_enabled_for_the_role_is_refused(admin_client, setup):
     light_only = register(admin_client, "tiny", roles=("light",))
 
     response = set_fallbacks(admin_client, "agent", light_only)
@@ -49,7 +50,7 @@ def test_a_model_not_enabled_for_the_role_is_refused(admin_client, setup):  # no
     assert response.status_code == 422 and code(response) == "invalid_fallback_model"
 
 
-def test_only_admins_set_fallbacks(roles: RoleClients, setup):  # noqa: F811
+def test_only_admins_set_fallbacks(roles: RoleClients, setup):
     assert roles.client("owner").get(f"{BASE}/fallbacks").status_code == 403
 
 
@@ -85,7 +86,7 @@ def test_a_timeout_is_unavailable_and_falls_back(
     assert ask(role_service, setup) == "late but fine"
 
 
-def test_other_failures_do_not_fall_back(admin_client, role_service, setup, fake_llm):  # noqa: F811
+def test_other_failures_do_not_fall_back(admin_client, role_service, setup, fake_llm):
     backup = register(admin_client, "backup")
     set_fallbacks(admin_client, "agent", backup)
     fake_llm.calls.clear()  # registering a model probes it

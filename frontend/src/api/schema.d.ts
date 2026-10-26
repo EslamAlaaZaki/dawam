@@ -3890,6 +3890,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/fallbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fallbacks
+         * @description The ordered fallback models of the agent and light roles (admins only).
+         */
+        get: operations["getLlmFallbacks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/fallbacks/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Role Fallbacks
+         * @description Replace a role's ordered fallback list (admins only). 422 `invalid_fallback_model`
+         *     when a model is not enabled and tested for the role.
+         */
+        put: operations["setLlmRoleFallbacks"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/llm/budgets": {
         parameters: {
             query?: never;
@@ -7597,6 +7638,11 @@ export interface components {
              */
             amount: number | string;
         };
+        /** LlmFallbackList */
+        LlmFallbackList: {
+            /** Roles */
+            roles: components["schemas"]["LlmRoleFallbacks"][];
+        };
         /** LlmListedModel */
         LlmListedModel: {
             /** Name */
@@ -7896,6 +7942,24 @@ export interface components {
              * @default 60
              */
             timeout_seconds: number;
+        };
+        /** LlmRoleFallbacks */
+        LlmRoleFallbacks: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "agent" | "light";
+            /**
+             * Model Ids
+             * @description The models tried, in this order, when the role's model is unavailable or times out. Never after a budget or policy refusal; a model that fails a Workspace's internal-only check is skipped for that Workspace.
+             */
+            model_ids: string[];
+        };
+        /** LlmRoleFallbacksRequest */
+        LlmRoleFallbacksRequest: {
+            /** Model Ids */
+            model_ids: string[];
         };
         /** LlmSetupStatus */
         LlmSetupStatus: {
@@ -20648,6 +20712,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmSetupStatus"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLlmFallbacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmFallbackList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmRoleFallbacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: "agent" | "light";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmRoleFallbacksRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmFallbackList"];
                 };
             };
             /** @description Validation error */

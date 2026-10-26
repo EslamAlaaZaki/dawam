@@ -14346,6 +14346,115 @@
         }
       }
     },
+    "/api/v1/admin/llm/fallbacks": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Fallbacks",
+        "description": "The ordered fallback models of the agent and light roles (admins only).",
+        "operationId": "getLlmFallbacks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmFallbackList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/fallbacks/{role}": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Role Fallbacks",
+        "description": "Replace a role's ordered fallback list (admins only). 422 `invalid_fallback_model`\nwhen a model is not enabled and tested for the role.",
+        "operationId": "setLlmRoleFallbacks",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "light"
+              ],
+              "type": "string",
+              "title": "Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmRoleFallbacksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmFallbackList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/llm/budgets": {
       "get": {
         "tags": [
@@ -23538,6 +23647,22 @@
         ],
         "title": "LlmCostBudgetRequest"
       },
+      "LlmFallbackList": {
+        "properties": {
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/LlmRoleFallbacks"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "roles"
+        ],
+        "title": "LlmFallbackList"
+      },
       "LlmListedModel": {
         "properties": {
           "name": {
@@ -24216,6 +24341,50 @@
           "internal"
         ],
         "title": "LlmProviderRequest"
+      },
+      "LlmRoleFallbacks": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "light"
+            ],
+            "title": "Role"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids",
+            "description": "The models tried, in this order, when the role's model is unavailable or times out. Never after a budget or policy refusal; a model that fails a Workspace's internal-only check is skipped for that Workspace."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "model_ids"
+        ],
+        "title": "LlmRoleFallbacks"
+      },
+      "LlmRoleFallbacksRequest": {
+        "properties": {
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_ids"
+        ],
+        "title": "LlmRoleFallbacksRequest"
       },
       "LlmSetupStatus": {
         "properties": {
