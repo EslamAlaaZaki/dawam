@@ -93,6 +93,11 @@ LIGHT_FEATURES = (
         "Searches documents with a few rewordings of the question, including its Arabic or "
         "English translation, and fuses the results.",
     ),
+    (
+        "conversation_titles",
+        "Conversation titles",
+        "Names a new assistant conversation from its first question and answer.",
+    ),
 )
 """The features that use the light role; each light-role ticket adds its own entry. They are
 all off while the Workspace has no light model."""
