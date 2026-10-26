@@ -19,12 +19,15 @@ The guard fails closed. It is a whitelist over the sqlglot tree, not a blacklist
   ``WHERE`` are allowed. Projecting one by name, ``GROUP BY``, ``ORDER BY``, window
   ``PARTITION BY``/``ORDER BY``, value-emitting aggregates (``MIN``, ``MAX``, ``STRING_AGG``...),
   comparing to anything but another column, and joining to a literal-derived value are rejected.
-  An output derived from a protected column any other way (``SUBSTR``, ``CONCAT``, ``CAST``,
-  ``SUM``, a view column, ``SELECT *``) is returned as masked.
+  An output derived from a protected column any other way (``CONCAT``, ``CAST``, ``SUM``, a view
+  column, ``SELECT *``) is returned as masked. Character-slicing and pattern-extraction functions
+  (``SUBSTR``, ``LEFT``, ``INSTR``, ``REGEXP_SUBSTR``, ``SPLIT_PART``... in every dialect's
+  spelling) are rejected on a protected column (ADR 0007): a small enough slice passes no
+  validator, so masking by lineage alone would let the value be read piece by piece.
 
 A protected value may appear only in: ``COUNT(col)``, ``COUNT(DISTINCT col)``, ``col IS [NOT] NULL``
 and ``col = other_col`` / ``col IN (SELECT other_col ...)`` as top-level ``AND`` conjuncts, and, in
-the select list, inside UPPER, LOWER, TRIM, SUBSTR, CONCAT, ``||``, CAST to text, SUM and AVG.
+the select list, inside UPPER, LOWER, TRIM, CONCAT, ``||``, CAST to text, SUM and AVG.
 Arithmetic, CASE, other functions and boolean contexts are rejected (they would be an error or
 boolean oracle). A column equated with a protected one holds its values, so it is tainted for the
 whole query, views and derived tables included: returned masked, never compared to a value. The
@@ -90,6 +93,19 @@ _VALUE_EMITTING = _words(
     "min max least greatest groupconcat arrayagg firstvalue lastvalue lag lead"
 )
 _REGEX_COMPARISONS = _words("regexplike")
+# Functions that cut out, or locate, part of a text (ADR 0007). On a protected column they read
+# the value piece by piece, so small that no single cell passes a validator: rejected there in
+# every spelling (sqlglot maps SUBSTR/SUBSTRING/MID, CHARINDEX/INSTR/LOCATE/STRPOS... onto these),
+# whether or not the engine's allow-list has them.
+_SLICING_TYPED = _words(
+    "substring left right strposition splitpart substringindex regexpsubstr regexpinstr "
+    "regexpextract regexpextractall regexpreplace overlay stuff"
+)
+_SLICING_ANONYMOUS = _words(
+    "substr substring substrb substrc substr2 substr4 mid left right instr instrb instrc instr2 "
+    "instr4 charindex patindex locate position strpos split_part substring_index regexp_substr "
+    "regexp_instr regexp_match regexp_matches regexp_extract regexp_replace overlay stuff"
+)
 
 
 def _classes(names: str) -> tuple[type[exp.Expression], ...]:
@@ -110,7 +126,6 @@ _FORBIDDEN = _classes(
     "SessionParameter Placeholder"
 )
 _MASKING_ARGS = {
-    "substring": ("this",),
     "trim": ("this",),
     "upper": ("this",),
     "lower": ("this",),
@@ -345,6 +360,13 @@ def _is_int(node: object) -> bool:
 def _plain_column(node: exp.Expression, info: _Info) -> bool:
     """A bare column reference whose value, if protected, is the protected value unchanged."""
     return isinstance(_unparen(node), exp.Column) and (not info.prot or info.identity)
+
+
+def _slices(node: exp.Func) -> bool:
+    """A function that cuts out or locates part of a text (``_SLICING_*``)."""
+    if isinstance(node, exp.Anonymous):
+        return node.name.lower() in _SLICING_ANONYMOUS
+    return node.key in _SLICING_TYPED
 
 
 def _unparen(node: exp.Expression) -> exp.Expression:
@@ -1105,7 +1127,7 @@ class _Resolver:
                 return _derive(infos)
             self.no_protected(
                 infos,
-                "used in an expression outside UPPER, LOWER, TRIM, SUBSTR, CONCAT, CAST, SUM, AVG",
+                "used in an expression outside UPPER, LOWER, TRIM, CONCAT, CAST, SUM, AVG",
             )
             return self.revealing(infos)
         raise _Reject(f"Unsupported SQL ({type(node).__name__}).")
@@ -1230,8 +1252,9 @@ class _Resolver:
 
     def func(self, node: exp.Func, scope: _Scope) -> _Info:
         a = self.a
-        if self.strict and not a.function_allowed(node):
-            label = node.name if isinstance(node, exp.Anonymous) else node.key
+        slicing = _slices(node)
+        label = node.name if isinstance(node, exp.Anonymous) else node.key
+        if self.strict and not slicing and not a.function_allowed(node):
             raise _Reject(f"The function {label!r} is not on the allow-list for this engine.")
         key = node.key
         if isinstance(node, exp.Count):
@@ -1253,6 +1276,16 @@ class _Resolver:
                     self.reveal |= i.src
             return _Info(literal=True)  # a number about the rows, not a column's values
         keyed = self.keyed_children(node, scope)
+        if self.strict and slicing:
+            for _, i in keyed:
+                if i.prot:
+                    raise _Reject(
+                        f"Character-slicing and pattern-extraction functions ({label.upper()}) "
+                        f"cannot be applied to the protected column {sorted(i.prot)[0]}: they "
+                        "would read it piece by piece."
+                    )
+            if not a.function_allowed(node):
+                raise _Reject(f"The function {label!r} is not on the allow-list for this engine.")
         if self.strict:
             self.masking_use(node, keyed)
         infos = [i for _, i in keyed]

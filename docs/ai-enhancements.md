@@ -381,7 +381,7 @@ flowchart LR
 |---|---|
 | Prompt injection handled by quoting and server-side authz only | Add a **prompt-injection classifier** on retrieved text and tool results (Llama Prompt Guard, a light-model check); flag suspicious documents in the UI |
 | PII detection is regex + checksum (Saudi-focused) | Add **NER-based PII** for names and addresses in Arabic and English (e.g. Presidio with Arabic models, CAMeL Tools); apply to answers and saved text |
-| Known leak path: reading a text column piece by piece with `SUBSTR` (documented in `source_query_service.py`) | Per-column read budgets, pattern detection across a run, or small-cell suppression (k-anonymity, rejected for Release 1 in ADR 0002) |
+| Reading a protected column piece by piece with `SUBSTR` is closed (ADR 0007): the AI never reads raw PII, only analytics over it; slicing, `LIKE` and regex on protected columns are rejected, with no read budget. An *unflagged* text column can still be read piece by piece (documented in `source_query_service.py`) | Pattern detection across a run, or small-cell suppression (k-anonymity, rejected for Release 1 in ADR 0002) |
 | No output moderation | Optional moderation/guard model (Llama Guard) on answers |
 | Per-user rate limits for AI | Requests per minute per user and Workspace, besides monthly token budgets |
 | Model and data governance | Model cards per registered model (data residency, retention, training-use policy); show in AI settings which provider sees which data level |
