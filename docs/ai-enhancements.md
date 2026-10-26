@@ -142,15 +142,15 @@ flowchart TD
 
 | Gap today | Enhancement |
 |---|---|
-| No re-ranking | **Cross-encoder reranker** after fusion: `bge-reranker-v2-m3` (self-hosted, multilingual), Cohere Rerank, Jina Reranker. Add a gateway **`rerank` role** and adapter method so it obeys budgets and internal-only |
-| `simple` FTS config, no stemming | **Arabic light stemming** (e.g. an ISRI/Tashaphyne-style stemmer applied with the normalisation) and English stemming; or BM25 via `pg_search` (ParadeDB) / `pg_textsearch` |
-| Plain OR of words | Phrase and proximity matching; boost exact identifier matches (table and column names) |
-| Equal-weight RRF, fixed k=60, 20 candidates each | Configurable weights, k and candidate counts (admin setting, §5) |
-| One query as typed | **Query rewriting / multi-query** (light model writes 2–3 variants, including Arabic ↔ English), **HyDE** for vague questions |
-| No diversity | **MMR** to avoid five passages from the same section |
-| No score threshold | Minimum relevance score; tell the model "nothing relevant found" instead of weak passages |
-| Retrieval only via a tool | Keep that (agentic RAG is right for us), plus an optional **auto-retrieve** of the top 3 passages for the first message |
-| Documents only | **GraphRAG-style** retrieval over what we already have: lineage graph, relationships, KPI links. A "knowledge graph" tool combining catalog + docs + lineage |
+| No re-ranking | **Cross-encoder reranker** after fusion: `bge-reranker-v2-m3` (self-hosted, multilingual), Cohere Rerank, Jina Reranker. Add a gateway **`rerank` role** and adapter method so it obeys budgets and internal-only. **Done** ([#373](https://github.com/EslamAlaaZaki/dawam/issues/373)): OpenAI-compatible `/rerank` (Cohere, Jina, vLLM shapes) reorders the fused top 30; the fused order is the fallback |
+| `simple` FTS config, no stemming | **Arabic light stemming** (e.g. an ISRI/Tashaphyne-style stemmer applied with the normalisation) and English stemming; or BM25 via `pg_search` (ParadeDB) / `pg_textsearch`. **Done** ([#374](https://github.com/EslamAlaaZaki/dawam/issues/374)): own light Arabic and English stemmers; BM25 not built |
+| Plain OR of words | Phrase and proximity matching; boost exact identifier matches (table and column names). **Done** ([#375](https://github.com/EslamAlaaZaki/dawam/issues/375)): adjacent-word phrases and identifiers rank first in `ORDER BY`, and identifier matches stay first after fusion and reranking |
+| Equal-weight RRF, fixed k=60, 20 candidates each | Configurable weights, k and candidate counts (admin setting, §5). **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) as `SearchTuning` code constants (weights, k, candidates); the admin setting is not built |
+| One query as typed | **Query rewriting / multi-query** (light model writes 2–3 variants, including Arabic ↔ English), **HyDE** for vague questions. **Done** ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)): up to 3 variants plus an optional HyDE answer from the light model; off without one |
+| No diversity | **MMR** to avoid five passages from the same section. **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) |
+| No score threshold | Minimum relevance score; tell the model "nothing relevant found" instead of weak passages. **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)): a relevance floor on text rank and cosine similarity, and a "nothing relevant found" note |
+| Retrieval only via a tool | Keep that (agentic RAG is right for us), plus an optional **auto-retrieve** of the top 3 passages for the first message. **Done** ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)): a per-Workspace `auto_retrieve` setting, off by default; no UI toggle |
+| Documents only | **GraphRAG-style** retrieval over what we already have: lineage graph, relationships, KPI links. A "knowledge graph" tool combining catalog + docs + lineage. **Done** ([#379](https://github.com/EslamAlaaZaki/dawam/issues/379)): the `explore_graph` tool |
 
 ```mermaid
 flowchart LR
@@ -405,15 +405,15 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR. **Done** (#363) |
 | 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises. **Done** (#424, #425); RapidOCR kept, bake-off dropped (#450) |
 | 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
-| 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain |
-| 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable |
+| 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain. **Done** ([#373](https://github.com/EslamAlaaZaki/dawam/issues/373), [#374](https://github.com/EslamAlaaZaki/dawam/issues/374)); also phrase and identifier matching ([#375](https://github.com/EslamAlaaZaki/dawam/issues/375)), weighted fusion, MMR and a relevance floor ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)), query rewriting and HyDE ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)), auto-retrieve ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)) and `explore_graph` ([#379](https://github.com/EslamAlaaZaki/dawam/issues/379)) |
+| 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable. The tuning exists as code constants (#376); settings and playground not yet |
 | 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
 | 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
 | 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | Parsing **done** (#364); table-aware chunking **done** (#366); overlap **done** (#365) |
 | 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks. **Done** (#371) |
 | 11 | Conversation compaction + Workspace memory | §7 | Medium | M | Compaction **done** (#354); Workspace memory not yet |
-| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | Contextual headers **done** (#369); titles and query rewriting not yet |
+| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | Contextual headers **done** (#369); query rewriting **done** (#377); titles not yet |
 | 13 | Planning + self-verification in jobs | §6 | Medium | M | |
 | 14 | Model fallback + cost tables | §6, §8 | Medium | S | |
 | 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | Only after 6–8 are in place |

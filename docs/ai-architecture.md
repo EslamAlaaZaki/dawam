@@ -16,7 +16,7 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 | **Vendor SDKs (`openai`, `anthropic`, `boto3` for Bedrock, `google-genai`)?** | **No.** Every provider is called over raw HTTP with the Python standard library (`urllib.request`). `boto3` is an optional dependency, used only for S3 file storage, never for Bedrock. |
 | **OCR in the RAG pipeline?** | **Yes.** PDF, DOCX and XLSX are parsed by Docling (headings and tables kept). Scanned PDF pages are read by OCR: the Workspace's `vision` model when the data-sharing policy allows, else a self-hosted Docling + RapidOCR engine (English and Arabic). Uploaded images (PNG, JPEG, GIF, WebP) are described by the vision model. Indexing runs as a background job with a per-file status. With no OCR engine and no vision model allowed, a scan is marked `no_text_found`. |
 | **Vector database?** | **PostgreSQL + `pgvector`** (Docker image `pgvector/pgvector:pg16`), in the same database as the app. No separate vector store. |
-| **Retrieval type?** | **Hybrid:** Postgres full-text search (`tsvector`, GIN index) plus pgvector cosine distance, merged with **Reciprocal Rank Fusion**. |
+| **Retrieval type?** | **Hybrid:** Postgres full-text search (`tsvector`, GIN index) plus pgvector cosine distance, merged with weighted **Reciprocal Rank Fusion**, then optionally reranked by a cross-encoder (`rerank` role). |
 | **Agent style?** | One ReAct-style **tool-calling loop**: the model calls tools, gets results, and repeats until it answers or hits a tool-call cap. It is a single agent, not a multi-agent graph. Long tasks run as background jobs on the same loop. |
 | **Models without native tool calling?** | Supported through **prompted tool calling** ("limited mode"): tools are described in the system prompt and a strict JSON reply is parsed and schema-checked. |
 | **Structured output?** | The gateway supports JSON Schema output on every adapter and probes for it. The assistant itself gets structured data through tool-call arguments (Pydantic schemas). |
@@ -167,7 +167,7 @@ flowchart LR
 
 ### 3.5 Model roles, Workspace Models and budgets
 
-- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3) and passage context headers (§8.2); no fallback to the agent role for those) and `embedding` (document vectors) and `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it.
+- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3), passage context headers (§8.2) and query rewriting (§8.4); no fallback to the agent role for those) and `embedding` (document vectors), `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed) and `rerank` (a cross-encoder that reorders search results, §8.4; optional, with no fallback: a Workspace without one keeps the fused order, #373). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it. Gateway `rerank(query, documents)` returns one score per document; only the OpenAI-compatible adapter implements it (`POST /rerank`, Cohere, Jina and vLLM reply shapes; malformed, partial, duplicate or non-finite scores are rejected), the others refuse with `bad_request`. It is retried like `chat`, goes through the `MeteredGateway` (budgets, internal-only, tokens recorded under `rerank`), and "Test connection" ranks two documents; a rerank-only model is never asked to chat.
 - **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
@@ -665,7 +665,9 @@ Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested visio
 | `embedding` | pgvector `vector` with **no fixed dimension** (so any embedding model works) |
 | `embedding_model_id`, `embedding_dimension` | which model made the vector; search only compares vectors of the current model and dimension |
 
-**Arabic normalisation** (`files/internal/arabic.py`), applied to passages and queries alike: removes diacritics (tashkeel) and tatweel; unifies alef forms (أ إ آ ٱ → ا), alef maqsura → ya (ى → ي), ta marbuta → ha (ة → ه); lower-cases. The Postgres `simple` text-search configuration is used (no stemming or stop words), so it works the same for Arabic and English.
+**Arabic normalisation** (`files/internal/arabic.py`), applied to passages and queries alike: removes diacritics (tashkeel) and tatweel; unifies alef forms (أ إ آ ٱ → ا), alef maqsura → ya (ى → ي), ta marbuta → ha (ة → ه); lower-cases. The Postgres `simple` text-search configuration is used (no stop words); stemming is done by DAWAM itself, below.
+
+**Stemming** (#374, `stemmed()` / `stems()` in `files/internal/arabic.py`), run after normalisation, so a query word matches its other forms (`loans` / `loan`, `used` / `uses`, Arabic words with a prefix or suffix). Arabic: a light10-style stemmer that strips one prefix and one suffix and keeps at least 3 letters. English: a small suffix stripper. Digits, codes and mixed tokens are left alone. Indexing stores the stemmed text in `search_text`, and the query's `tsquery` is built from the stemmed words, so both sides share one code path. It is lossy: some Arabic words over-stem. Migration `e4b8a1c6d937` re-stemmed existing passages; its downgrade does nothing (a re-index restores the old form).
 
 **Embeddings are optional and policy-gated.** A passage is embedded only when all of these hold:
 - the Workspace's data-sharing level is `documents` or above;
@@ -685,32 +687,50 @@ Otherwise the Workspace gets **full-text search only** and no document text is s
 `DocumentSearchService.search(user, workspace_id, query, system_id=, limit=10)`:
 
 1. **Authorize** (any member who can view the Workspace).
-2. Normalise the query and split it into distinct words.
-3. **Full-text ranking:** `to_tsquery('simple', 'w1' | 'w2' | …)` (OR of the words), `ts_rank_cd` order, top **20**.
-4. **Vector ranking** (only if the embedder is allowed): embed the query with the same model, then `ORDER BY embedding <=> query_vector` (**cosine distance**) over passages with the same model id and dimension, top **20**.
-5. Both are scoped to the Workspace, optionally one Source System's documents, and exclude soft-deleted Source Systems. Optional **metadata filters** (#370, `PassageFilters`) narrow both rankings: `document_type`, `language` (`ar`/`en`), `page`, `sheet`, `tag` (a folder of the file's path); every filter set must match. The `search_documents` tool takes them as arguments, and the file search API as query parameters.
-6. **Fuse** with RRF: `score = Σ 1 / (60 + rank)` over the rankings.
-7. **Small to big** (#368): rankings hold child passages; the result is their **parent** section's text, once per parent, at its best child's rank. Several children share a parent, so the candidate pool (20 per ranking) grows, up to 8 times, until `limit` distinct parents are found or the rankings run out. A passage indexed before parents existed is returned as itself. Keep the top `limit` (default 10).
-8. Return `Passage(file_id, document, section, text, score, source_system_id, document_type, language, page, sheet, tags)`.
+2. Normalise and **stem** the query (#374) and split it into distinct words.
+3. **Query variants** (#377, `files/internal/query_rewrite.py`): when the Workspace has a `light` model that the data level and internal-only setting let documents reach, it returns up to 3 variants of the query (rewordings, Arabic to English and back) and, for a vague question, a **HyDE** line (`ANSWER:`, a short hypothetical answer). The query is quoted to the light model as untrusted data. With no light model, a failing one or an exhausted budget, the query is used as typed.
+4. **Full-text ranking:** per query and variant, `to_tsquery('simple', 'w1' | 'w2' | …)` (OR of the stemmed words). Before `ts_rank_cd`, `ORDER BY` puts first the passages holding a **table or column name** from the query (a word with `_` or a digit; the parser reads `cust_stat` as the phrase `cust <-> stat`), then those holding the query's words **in order and adjacent** (`phraseto_tsquery`), so an exact name or phrase beats scattered words (#375). Top **20** (`fts_candidates`).
+5. **Vector ranking** (only if the embedder is allowed): embed the query and its variants in one batched call with the same model, then `ORDER BY embedding <=> query_vector` (**cosine distance**) over passages with the same model id and dimension, top **20** (`vector_candidates`) per ranking.
+6. All are scoped to the Workspace, optionally one Source System's documents, and exclude soft-deleted Source Systems. Optional **metadata filters** (#370, `PassageFilters`) narrow every ranking: `document_type`, `language` (`ar`/`en`), `page`, `sheet`, `tag` (a folder of the file's path); every filter set must match. The `search_documents` tool takes them as arguments, and the file search API as query parameters.
+7. **Weighted fusion** (#376): `score = Σ weight / (k + rank)` over the rankings, with `SearchTuning` defaults `fts_weight` 1.0, `vector_weight` 1.0, `k` 60. The tuning is a set of code constants until the Document AI settings exist. **Relevance floor:** a passage survives only if its `ts_rank_cd` is at least `min_text_rank` (0.01) or its cosine similarity is at least `min_vector_similarity` (0.3); an unrelated query returns nothing.
+8. **Small to big** (#368): rankings hold child passages; the result is their **parent** section's text, once per parent, at its best child's rank. Several children share a parent, so the candidate pool grows, up to 8 times, until `limit` distinct parents are found or the rankings run out; it grows only when a ranking filled its pool and its weakest candidate still cleared its floor. A passage indexed before parents existed is returned as itself.
+9. **Rerank** (#373): when the Workspace has a `rerank` model, the fused top **30** parents (each cut to 4,000 characters) are scored by it (§3.5) and reordered. The fused order is kept when there is no rerank model, the call fails, a budget is used up, the data-sharing level is below `documents` (unless the model is internal), or the Workspace is internal-only and the model external.
+10. **Exact names stay first** (#375): passages holding a table or column name from the query are moved to the front (stable), so neither fused vector hits nor a reranker can bury an exact name match.
+11. **MMR diversity** (#376) over the parent passages: `mmr_lambda` 0.7 trades relevance for variety; two passages of one section count as identical (1.0), of one document as 0.3, else 0. Five passages from one section no longer fill the result. Keep the top `limit` (default 10).
+12. Return `Passage(file_id, document, section, text, score, source_system_id, document_type, language, page, sheet, tags)`.
+
+The `search_documents` tool always returns `{"passages": [...]}`; when nothing clears the floor it adds a `note` ("Nothing relevant found…") telling the model not to guess.
 
 ```mermaid
 flowchart TD
     Q["Agent calls search_documents(query)"] --> AZ["Authorize: view the Workspace,<br/>level >= documents"]
-    AZ --> N["Normalise the query, split into words"]
-    N --> FT["Full-text ranking<br/>to_tsquery OR of words, ts_rank_cd<br/>top 20"]
-    N --> EQ{"Embedder allowed<br/>for this Workspace?"}
+    AZ --> N["Normalise and stem the query"]
+    N --> RW{"Light model<br/>allowed?"}
+    RW -->|yes| VAR["Up to 3 variants + optional HyDE answer"]
+    RW -->|no| ASIS["Query as typed"]
+    VAR & ASIS --> FT["Full-text ranking per query<br/>OR of stems, exact names and phrases first,<br/>ts_rank_cd, top 20"]
+    VAR & ASIS --> EQ{"Embedder allowed<br/>for this Workspace?"}
     EQ -->|no| SKIP["No vector ranking"]
-    EQ -->|yes| QE["Embed the query<br/>same model"]
+    EQ -->|yes| QE["Embed query and variants<br/>same model, one call"]
     QE --> VR["Vector ranking<br/>cosine distance, same model and dimension<br/>top 20"]
     FT & VR & SKIP --> SC["Scope: Workspace, optional Source System,<br/>metadata filters, hide soft-deleted systems"]
-    SC --> RRF["Reciprocal Rank Fusion<br/>score = sum of 1 / (60 + rank)"]
+    SC --> RRF["Weighted RRF + relevance floor<br/>score = sum of weight / (60 + rank)"]
     RRF --> PAR["Small to big: child passages replaced<br/>by their parent section, once each"]
-    PAR --> TOP["Top 10 passages"]
+    PAR --> RR{"Rerank model<br/>allowed?"}
+    RR -->|yes| RK["Cross-encoder reorders the top 30"]
+    RR -->|no| KEEP["Keep the fused order"]
+    RK & KEEP --> EX["Passages holding a query identifier first"]
+    EX --> MMR["MMR diversity"]
+    MMR --> TOP["Top 10 passages"]
     TOP --> OUT["Passages with document + section<br/>quoted as data for the model"]
     OUT --> ANS["Model answers and cites<br/>document and section links"]
 ```
 
-There is **no re-ranker model**, no query rewriting or HyDE, and no automatic context stuffing: retrieval is a **tool** (`search_documents`) the agent decides to call, so it can search several times with different words, then `read_file` the whole document. The model cites passages as *document + section*, linked to the file.
+Retrieval is a **tool** (`search_documents`) the agent decides to call, so it can search several times with different words, then `read_file` the whole document. The model cites passages as *document + section*, linked to the file.
+
+**Auto-retrieve** (#378, optional). A per-Workspace AI setting, `auto_retrieve` (default off; audited; on the AI settings GET and PUT, no UI toggle yet). When it is on, the assistant runs `search_documents` as the member on the **first message of a chat** (limit 3) and appends the passages to that message as quoted, untrusted data, with no tool-call round trip. A refusal (for example a data-sharing level below `documents`), an error or an empty result leaves the message unchanged. Follow-up messages get none, and the stored message is never modified.
+
+**Graph retrieval** (#379). The `explore_graph` tool (§6.2) adds a structured route beside documents: it returns an object's neighbours up to 2 hops away (lineage, KPI links, source column relationships, and the documents that mention it).
 
 Retrieved text is passed to the model as quoted data (`<data source="tool:search_documents">`), so instructions inside documents are not followed.
 
