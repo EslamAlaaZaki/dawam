@@ -260,7 +260,7 @@ General-purpose assistants ship tools like web search, calendar, email and code 
 | Tool | Useful for DAWAM? | Risks | Verdict |
 |---|---|---|---|
 | **Current date and time** (Gregorian + Hijri) | Yes: "last month's" KPIs, Snapshot ages, fiscal periods. The system prompt has no date today | none | **Add**, in the system prompt rather than as a tool (`hijridate` is already a dependency) |
-| **Web search** | Sometimes: industry KPI definitions (e.g. banking, IFRS 9, SAMA rules), Kimball patterns, SQL dialect and vendor schema docs (SAP, Oracle EBS) | **Data leak**: search queries can carry table names, business terms or values to a third party. **Prompt injection** from web pages. Doesn't work offline | **Add later, off by default**: admin enables it with a provider (self-hosted **SearXNG** for internal-only installs; Brave, Tavily or Bing otherwise); blocked in internal-only Workspaces unless the provider is internal; results quoted as data; every query audited and shown in the chat; strip sample values from queries |
+| **Web search** | Sometimes: industry KPI definitions (e.g. banking, IFRS 9, SAMA rules), Kimball patterns, SQL dialect and vendor schema docs (SAP, Oracle EBS) | **Data leak**: search queries can carry table names, business terms or values to a third party. **Prompt injection** from web pages. Doesn't work offline | **Add later, off by default**: admin enables it on the admin page and registers providers there (self-hosted **SearXNG**, internal; **LangSearch**, external; see below); blocked in internal-only Workspaces unless the provider is internal; results quoted as data; every query audited and shown in the chat; strip sample values from queries |
 | **Web fetch** (read a URL the member pastes) | Yes, for documentation links | Same as web search, plus SSRF (internal URLs) | **Add with web search**: same switch, allow-list or block private IP ranges, size and type caps, quoted as data |
 | **Code execution** (Python sandbox) | Partly: analysing uploaded CSV/XLSX, statistics, checking formulas | Needs a real sandbox (container or gVisor/Firecracker, no network, CPU/memory/time limits); heavy to run safely | **Prefer a narrower tool**: `query_file(file_id, sql)` using **DuckDB** in-process over uploaded CSV/XLSX/Parquet, read-only, row cap, PII masking like `run_source_query`. Full Python only if real demand appears |
 | **Calculator** | Small: models are unreliable at arithmetic (coverage %, growth rates) | none | **Covered** by `query_file` / guarded SQL; a separate tool isn't worth a schema slot |
@@ -283,6 +283,17 @@ flowchart TD
     SRCH --> Q["Results quoted as data,<br/>injection check (§9)"]
     Q --> AG["Agent cites the URL"]
 ```
+
+**Search providers.** Only two for now, both free; others can be added later behind the same port:
+
+| Provider | Kind | How it works | Workspaces |
+|---|---|---|---|
+| **SearXNG** | Internal (self-hosted, open source, no API key) | DAWAM calls your SearXNG server (`/search?format=json`); it forwards the query to engines such as Google, Bing and DuckDuckGo and merges the results. The engines see your server, not the member, but the query text still leaves the network, so value stripping matters | Normal and internal-only |
+| **LangSearch** | External (cloud API, free tier, API key) | DAWAM calls `POST https://api.langsearch.com/v1/web-search`; LangSearch searches its own index and can return page summaries. Queries are tied to the installation's API key | Normal only |
+
+Skipped: Brave (no free tier since February 2026), Tavily (small one-time free credits), Bing (Bing Search APIs retired in 2025), Google (Custom Search JSON API closed to new customers, shut down 1 January 2027).
+
+**Admin page, not `.env`.** Like LLM providers, search providers are set in the app: an admin turns web search on, registers SearXNG (URL) and/or LangSearch (API key, stored like provider keys), tests them, and picks the provider used by normal Workspaces and the one used by internal-only Workspaces (internal providers only). Both can be registered at once. The Workspace's existing `internal_only` flag (`llm_workspace_settings`, set by the owner) decides which applies. Web fetch shares the same on/off switch; it is done by DAWAM itself, not a provider.
 
 ---
 
