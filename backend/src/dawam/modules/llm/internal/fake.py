@@ -24,6 +24,8 @@ from ..gateway import (
     LlmError,
     Message,
     OllamaContext,
+    ReasoningDelta,
+    ReasoningSettings,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -40,6 +42,8 @@ class Reply:
     tool_calls: tuple[ToolCall, ...] = ()
     usage: Usage | None = field(default_factory=lambda: Usage(10, 5))
     finish_reason: str | None = None
+    reasoning: str = ""
+    """The model's thinking, sent before the text (a reasoning model)."""
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,7 @@ class FakeCall:
     tools: tuple[ToolSpec, ...] = ()
     stream: bool = False
     json_schema: dict[str, Any] | None = None
+    reasoning: ReasoningSettings | None = None
     texts: tuple[str, ...] = ()
     query: str | None = None
     """For ``rerank``: the query; the documents are in ``texts``."""
@@ -106,9 +111,10 @@ class FakeAdapter:
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
         self.calls.append(
-            FakeCall("chat", model, tuple(messages), tuple(tools), stream, json_schema)
+            FakeCall("chat", model, tuple(messages), tuple(tools), stream, json_schema, reasoning)
         )
         outcome = (
             self._script.popleft() if self._script else self._default(tools, json_schema, stream)
@@ -117,6 +123,8 @@ class FakeAdapter:
             raise outcome
         if not isinstance(outcome, Reply):
             raise AssertionError("the fake provider's script holds an embedding, not a reply")
+        if outcome.reasoning:
+            yield ReasoningDelta(outcome.reasoning)
         if stream and outcome.text:
             words = outcome.text.split(" ")
             for index, word in enumerate(words):

@@ -14,7 +14,7 @@ import struct
 import time
 import zlib
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 
 Role = Literal["system", "user", "assistant", "tool"]
@@ -104,6 +104,9 @@ class Usage:
     """Of ``prompt_tokens``, the part served from the provider's prompt cache."""
     cache_write_tokens: int = 0
     """Of ``prompt_tokens``, the part written to the provider's prompt cache."""
+    reasoning_tokens: int = 0
+    """Of ``completion_tokens``, the part spent on reasoning (reported, or estimated from the
+    reasoning text). Already inside ``completion_tokens``: never add it to the total."""
 
     @property
     def total_tokens(self) -> int:
@@ -112,6 +115,14 @@ class Usage:
 
 @dataclass(frozen=True)
 class TextDelta:
+    text: str
+
+
+@dataclass(frozen=True)
+class ReasoningDelta:
+    """A piece of the model's reasoning ("thinking"). The ``Gateway`` passes it on only when
+    the model is set to show its reasoning; otherwise it is counted and dropped."""
+
     text: str
 
 
@@ -129,9 +140,27 @@ class Done:
     """``stop``, ``tool_calls``, ``length`` or ``None`` when the provider gave none."""
 
 
-ChatEvent = TextDelta | ToolCallEvent | Done
-"""What ``chat`` yields: any number of ``TextDelta`` and ``ToolCallEvent``, then one
-``Done``. Without streaming, the text arrives as a single ``TextDelta``."""
+ChatEvent = TextDelta | ReasoningDelta | ToolCallEvent | Done
+"""What ``chat`` yields: any number of ``TextDelta``, ``ReasoningDelta`` (only for a model set
+to show its reasoning) and ``ToolCallEvent``, then one ``Done``. Without streaming, the text
+arrives as a single ``TextDelta``."""
+
+REASONING_EFFORTS = ("low", "medium", "high")
+
+
+@dataclass(frozen=True)
+class ReasoningSettings:
+    """How a reasoning model is asked to think. An adapter turns it into its provider's
+    request: Anthropic extended thinking (``budget_tokens``), OpenAI-style
+    ``reasoning_effort``, or, for Qwen3 and DeepSeek-R1 style servers, the splitting of
+    ``<think>`` tags out of the reply."""
+
+    effort: str | None = None
+    """``low``, ``medium`` or ``high``; ``None``: the provider's default."""
+    budget_tokens: int | None = None
+    """A cap on thinking tokens, for providers that take one (Anthropic)."""
+    show: bool = False
+    """Stream the reasoning as ``ReasoningDelta`` events; off: it is counted, then dropped."""
 
 
 @dataclass(frozen=True)
@@ -165,6 +194,9 @@ class Adapter(Protocol):
         stream: bool,
         json_schema: dict[str, Any] | None,
     ) -> Iterator[ChatEvent]: ...
+
+    # An adapter that supports reasoning models also takes ``reasoning: ReasoningSettings | None
+    # = None`` on ``chat``; the ``Gateway`` passes it only when the model has settings.
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]: ...
 
@@ -209,8 +241,10 @@ class Gateway:
         capabilities: Capabilities | None = None,
         max_retries: int = MAX_RETRIES,
         sleep: Callable[[float], None] = time.sleep,
+        reasoning: ReasoningSettings | None = None,
     ) -> None:
         self._adapter = adapter
+        self._reasoning = reasoning
         self._model = model
         self._capabilities = capabilities or Capabilities()
         self._max_retries = max_retries
@@ -267,12 +301,19 @@ class Gateway:
         """Send the conversation and yield events. A rate limit or an unavailable provider
         is retried with backoff, but only until the first event: a stream already begun
         is never restarted. Token usage is estimated when the provider reports none."""
-        yield from self._estimated(
+        extra: dict[str, Any] = {"reasoning": self._reasoning} if self._reasoning else {}
+        events = self._estimated(
             self._retrying(
-                lambda: self._adapter.chat(self._model, messages, tools, stream, json_schema)
+                lambda: self._adapter.chat(
+                    self._model, messages, tools, stream, json_schema, **extra
+                )
             ),
             messages,
         )
+        show = self._reasoning is not None and self._reasoning.show
+        for event in events:
+            if show or not isinstance(event, ReasoningDelta):
+                yield event
 
     def vision(self, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
         """Send ``images`` (page images, say) with ``prompt`` in one user turn and yield the
@@ -300,15 +341,28 @@ class Gateway:
         self, events: Iterator[ChatEvent], messages: Sequence[Message]
     ) -> Iterator[ChatEvent]:
         produced: list[str] = []
+        thought: list[str] = []
         for event in events:
             if isinstance(event, TextDelta):
                 produced.append(event.text)
+            elif isinstance(event, ReasoningDelta):
+                thought.append(event.text)
             elif isinstance(event, ToolCallEvent):
                 produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
-            elif isinstance(event, Done) and event.usage is None:
-                prompt = estimate_prompt_tokens(messages)
-                completion = estimate_tokens("".join(produced))
-                event = Done(Usage(prompt, completion, estimated=True), event.finish_reason)
+            elif isinstance(event, Done):
+                reasoning = estimate_tokens("".join(thought))
+                if event.usage is None:
+                    prompt = estimate_prompt_tokens(messages)
+                    completion = estimate_tokens("".join(produced)) + reasoning
+                    usage = Usage(prompt, completion, estimated=True, reasoning_tokens=reasoning)
+                    event = Done(usage, event.finish_reason)
+                elif event.usage.reasoning_tokens == 0 and reasoning:
+                    # The provider counts thinking inside the output but does not split it out.
+                    usage = replace(
+                        event.usage,
+                        reasoning_tokens=min(reasoning, event.usage.completion_tokens),
+                    )
+                    event = Done(usage, event.finish_reason)
             yield event
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:

@@ -133,6 +133,8 @@ function TestResult({ model }: { model: LlmModel }) {
         context window: {model.context_window ?? "unknown"}
         {model.embedding_dimension !== null &&
           ` · dimension: ${model.embedding_dimension}`}
+        {model.reasoning.enabled &&
+          ` · reasoning: ${model.reasoning.show ? "shown" : "hidden"}`}
       </p>
     );
   }
@@ -531,6 +533,76 @@ function contextWindow(form: FormData): number | undefined {
   return window ? Number(window) : undefined;
 }
 
+/** The thinking settings of a reasoning model: how hard it thinks and whether members
+ * see the reasoning. Off: nothing special is sent to the model. */
+function ReasoningFields({ model }: { model: LlmModel }) {
+  const [enabled, setEnabled] = useState(model.reasoning.enabled);
+  return (
+    <fieldset className="flex flex-col gap-3">
+      <legend className="text-sm font-medium">Reasoning</legend>
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input
+          name="reasoning_enabled"
+          type="checkbox"
+          className="size-4 accent-primary"
+          checked={enabled}
+          onChange={(event) => setEnabled(event.target.checked)}
+        />
+        This is a reasoning model
+      </label>
+      {enabled && (
+        <>
+          <label className={labelClasses}>
+            Effort
+            <NativeSelect
+              name="reasoning_effort"
+              defaultValue={model.reasoning.effort ?? ""}
+            >
+              <option value="">Provider default</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </NativeSelect>
+          </label>
+          <label className={labelClasses}>
+            Thinking budget in tokens (Anthropic; empty: from the effort)
+            <Input
+              name="reasoning_budget_tokens"
+              type="number"
+              min={1}
+              defaultValue={model.reasoning.budget_tokens ?? ""}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              name="reasoning_show"
+              type="checkbox"
+              className="size-4 accent-primary"
+              defaultChecked={model.reasoning.show}
+            />
+            Show the reasoning to members (off: hidden, still counted)
+          </label>
+        </>
+      )}
+    </fieldset>
+  );
+}
+
+function reasoningSettings(form: FormData, previous: LlmModel["reasoning"]) {
+  const enabled = form.get("reasoning_enabled") !== null;
+  if (!enabled) {
+    return { ...previous, enabled: false };
+  }
+  const effort = String(form.get("reasoning_effort") ?? "");
+  const budget = String(form.get("reasoning_budget_tokens") ?? "").trim();
+  return {
+    enabled: true,
+    effort: effort ? (effort as "low" | "medium" | "high") : null,
+    budget_tokens: budget ? Number(budget) : null,
+    show: form.get("reasoning_show") !== null,
+  };
+}
+
 function AddModelDialog({
   providers,
   open,
@@ -687,7 +759,10 @@ function EditModelDialog({
 
   function onSubmit(form: FormData) {
     update.mutate(
-      { context_window: contextWindow(form) },
+      {
+        context_window: contextWindow(form),
+        reasoning: reasoningSettings(form, model.reasoning),
+      },
       {
         onSuccess: () => {
           toast.success(`${model.name} updated.`);
@@ -705,7 +780,7 @@ function EditModelDialog({
         onOpenChange(next);
       }}
       title="Edit model"
-      description="Only the context window can change."
+      description="Only the context window and the reasoning settings can change."
       submitLabel="Save"
       onSubmit={onSubmit}
       pending={update.isPending}
@@ -716,6 +791,7 @@ function EditModelDialog({
         <Input value={model.name} readOnly />
       </label>
       <ContextWindowField model={model} />
+      <ReasoningFields model={model} />
     </EntityFormDialog>
   );
 }

@@ -22,6 +22,8 @@ from ..gateway import (
     Image,
     LlmError,
     Message,
+    ReasoningDelta,
+    ReasoningSettings,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -36,6 +38,11 @@ DEFAULT_MAX_TOKENS = 4096
 """The API requires a cap on the reply; this one fits every Claude model."""
 
 _EPHEMERAL = {"type": "ephemeral"}
+
+MIN_THINKING_BUDGET = 1024
+"""The least thinking budget the API accepts."""
+_EFFORT_BUDGETS = {"low": 1024, "medium": 4096, "high": 8192}
+DEFAULT_THINKING_EFFORT = "medium"
 
 _FINISH_REASONS = {
     "end_turn": "stop",
@@ -68,6 +75,7 @@ class AnthropicAdapter:
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
         system, wire_messages = _wire_messages(messages)
         body: dict[str, Any] = {
@@ -87,6 +95,10 @@ class AnthropicAdapter:
             body["tools"][-1]["cache_control"] = _EPHEMERAL
         if json_schema is not None:
             body["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
+        if reasoning is not None and _can_think(messages):
+            budget = _thinking_budget(reasoning)
+            body["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            body["max_tokens"] = budget + DEFAULT_MAX_TOKENS  # the budget counts inside the cap
         response = self._send("POST", "/messages", json.dumps(body).encode("utf-8"))
         if response.status >= 400:
             try:
@@ -187,6 +199,19 @@ class AnthropicAdapter:
             )
         except TransportError as exc:
             raise LlmError(UNAVAILABLE, str(exc)) from None
+
+
+def _thinking_budget(reasoning: ReasoningSettings) -> int:
+    if reasoning.budget_tokens:
+        return max(MIN_THINKING_BUDGET, reasoning.budget_tokens)
+    return _EFFORT_BUDGETS.get(reasoning.effort or "", _EFFORT_BUDGETS[DEFAULT_THINKING_EFFORT])
+
+
+def _can_think(messages: Sequence[Message]) -> bool:
+    """Extended thinking needs the earlier thinking blocks sent back with each tool turn,
+    and the conversation does not keep them: after the model has called a tool, the rest
+    of the run goes without thinking rather than failing the request."""
+    return not any(m.role == "assistant" and m.tool_calls for m in messages)
 
 
 def _image_block(image: Image) -> dict[str, Any]:
@@ -293,6 +318,8 @@ def _reply_events(data: Any) -> Iterator[ChatEvent]:
             raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
         if block.get("type") == "text" and block.get("text"):
             yield TextDelta(str(block["text"]))
+        elif block.get("type") == "thinking" and block.get("thinking"):
+            yield ReasoningDelta(str(block["thinking"]))
         elif block.get("type") == "tool_use":
             yield ToolCallEvent(_tool_call(block, block.get("input")))
     yield Done(_usage(data.get("usage")), _finish(data.get("stop_reason")))
@@ -328,6 +355,8 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
             delta = delta if isinstance(delta, dict) else {}
             if delta.get("type") == "text_delta" and delta.get("text"):
                 yield TextDelta(str(delta["text"]))
+            elif delta.get("type") == "thinking_delta" and delta.get("thinking"):
+                yield ReasoningDelta(str(delta["thinking"]))
             elif delta.get("type") == "input_json_delta" and _index(event) in blocks:
                 blocks[_index(event)]["json"] += str(delta.get("partial_json") or "")
         elif kind == "content_block_stop":

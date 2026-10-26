@@ -21,7 +21,7 @@ from dawam.modules.auth import CurrentUser
 from dawam.platform.pii_validators import redact_json
 
 from .assembly import build_assistant_service
-from .internal.agent import Text, ToolFinished
+from .internal.agent import Reasoning, Text, ToolFinished
 from .service import (
     AssistantService,
     ChatMessage,
@@ -357,6 +357,8 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
             )
         elif isinstance(event, Text):
             yield _sse("text", {"text": event.text})
+        elif isinstance(event, Reasoning):
+            yield _sse("reasoning", {"text": event.text})
         elif isinstance(event, ToolFinished):
             call = event.call
             yield _sse(
@@ -388,7 +390,8 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
     responses={
         200: {
             "description": "A Server-Sent Events stream: `started` (run and message ids), "
-            "`text` (an answer fragment), `tool` (a finished tool call: name, arguments, "
+            "`text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a "
+            "model set to show it; never saved), `tool` (a finished tool call: name, arguments, "
             "status, duration), then one `done` with the run (status, tools, tokens, "
             "duration and, when the run could not finish, `error_code` and `error_message`).",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},

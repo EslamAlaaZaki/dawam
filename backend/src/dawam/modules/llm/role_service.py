@@ -644,6 +644,7 @@ class RoleService:
                     estimated=usage.estimated,
                     cache_read_tokens=usage.cache_read_tokens,
                     cache_write_tokens=usage.cache_write_tokens,
+                    reasoning_tokens=usage.reasoning_tokens,
                 )
             )
 

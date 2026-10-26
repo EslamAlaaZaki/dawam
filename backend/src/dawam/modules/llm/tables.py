@@ -53,6 +53,14 @@ class ModelRecord(Base):
     supports_streaming: Mapped[bool | None]
     supports_json_schema: Mapped[bool | None]
     embedding_dimension: Mapped[int | None]
+    reasoning_enabled: Mapped[bool] = mapped_column(server_default=sa.false())
+    """A reasoning model: ask it to think, and count the thinking."""
+    reasoning_effort: Mapped[str | None] = mapped_column(sa.String(16))
+    """``low``, ``medium`` or ``high``; null: the provider's default."""
+    reasoning_budget_tokens: Mapped[int | None]
+    """A cap on thinking tokens, for providers that take one (Anthropic)."""
+    reasoning_show: Mapped[bool] = mapped_column(server_default=sa.false())
+    """Stream the reasoning to the member; off: it is counted and hidden."""
     test_ok: Mapped[bool | None]
     """Null: not tested since the model or its provider last changed."""
     test_error_code: Mapped[str | None] = mapped_column(sa.String(32))
@@ -182,6 +190,8 @@ class UsageRecord(Base):
     cache_read_tokens: Mapped[int] = mapped_column(server_default="0")
     """Part of ``prompt_tokens`` served from the provider's prompt cache (budgets count it)."""
     cache_write_tokens: Mapped[int] = mapped_column(server_default="0")
+    reasoning_tokens: Mapped[int] = mapped_column(server_default="0")
+    """Part of ``completion_tokens`` spent on reasoning (not additional to it)."""
 
 
 class ModelPriceRecord(Base):
