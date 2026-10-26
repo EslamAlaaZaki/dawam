@@ -140,3 +140,52 @@ describe("the document index page", () => {
     });
   });
 });
+
+describe("the retrieval playground", () => {
+  const entry = (rank: number, document: string, score: number) => ({
+    rank,
+    file_id: OK_ID,
+    document,
+    section: "Intro",
+    text: "t",
+    score,
+    above_floor: true,
+  });
+
+  it("shows each stage's ranking and scores for a query", async () => {
+    const handler = backend("viewer");
+    renderApp((r) => {
+      if (r.method === "GET" && r.path === `${BASE}/search/explain`) {
+        expect(r.query.q).toBe("postings");
+        return json({
+          queries: ["postings"],
+          vector_used: false,
+          reranked: false,
+          full_text: [entry(1, "a.md", 0.1234)],
+          vector: [],
+          fused: [{ ...entry(1, "a.md", 0.0164), above_floor: null }],
+          reranked_results: [],
+          final: [{ ...entry(1, "a.md", 0.0164), above_floor: null }],
+        });
+      }
+      return handler(r);
+    }, FOLDER);
+
+    fireEvent.change(await screen.findByLabelText("Query"), {
+      target: { value: "postings" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+
+    const fullText = await screen.findByRole("region", {
+      name: "Full-text ranking",
+    });
+    expect(fullText).toHaveTextContent("a.md");
+    expect(fullText).toHaveTextContent("0.1234");
+    expect(
+      screen.getByRole("region", { name: "Fused ranking" }),
+    ).toHaveTextContent("0.0164");
+    expect(
+      screen.getByRole("region", { name: "Vector ranking" }),
+    ).toHaveTextContent("Not used");
+  });
+});

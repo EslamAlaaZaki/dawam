@@ -3432,6 +3432,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/documents/search/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain Document Search
+         * @description The retrieval playground (any member): runs a real search with the Workspace's
+         *     effective Document AI settings and returns each stage's ranking and scores (full-text,
+         *     vector, fused, reranked, final). Permissions and data-sharing levels apply as in search.
+         */
+        get: operations["explainDocumentSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documents/reindex": {
         parameters: {
             query?: never;
@@ -8976,6 +8998,37 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** RetrievalTrace */
+        RetrievalTrace: {
+            /**
+             * Queries
+             * @description The query as typed, then any rewrites.
+             */
+            queries: string[];
+            /**
+             * Vector Used
+             * @description False when the Workspace's policy keeps vectors off.
+             */
+            vector_used: boolean;
+            /**
+             * Reranked
+             * @description Whether a rerank model reordered the fused results.
+             */
+            reranked: boolean;
+            /** Full Text */
+            full_text: components["schemas"]["TraceEntry"][];
+            /** Vector */
+            vector: components["schemas"]["TraceEntry"][];
+            /** Fused */
+            fused: components["schemas"]["TraceEntry"][];
+            /** Reranked Results */
+            reranked_results: components["schemas"]["TraceEntry"][];
+            /**
+             * Final
+             * @description What a real search returns.
+             */
+            final: components["schemas"]["TraceEntry"][];
+        };
         /** ReviewFlag */
         ReviewFlag: {
             /**
@@ -10687,6 +10740,35 @@ export interface components {
             value: string;
             /** Count */
             count: number;
+        };
+        /** TraceEntry */
+        TraceEntry: {
+            /**
+             * Rank
+             * @description Position in this stage, from 1.
+             */
+            rank: number;
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Document */
+            document: string;
+            /** Section */
+            section: string;
+            /** Text */
+            text: string;
+            /**
+             * Score
+             * @description This stage's own number: `ts_rank_cd` (full-text), cosine similarity (vector), fused RRF score, or the rerank model's score.
+             */
+            score: number;
+            /**
+             * Above Floor
+             * @description Full-text and vector only: whether the score clears the relevance floor.
+             */
+            above_floor?: boolean | null;
         };
         /** TransferOwnershipRequest */
         TransferOwnershipRequest: {
@@ -19273,6 +19355,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentSearchResults"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    explainDocumentSearch: {
+        parameters: {
+            query?: {
+                /** @description What to look for. */
+                q?: string;
+                /** @description Only this Source System. */
+                system_id?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalTrace"];
                 };
             };
             /** @description Validation error */

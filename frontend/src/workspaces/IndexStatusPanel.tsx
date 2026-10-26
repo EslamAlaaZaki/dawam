@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Loading } from "../shell/Loading";
+import { RetrievalPlayground } from "./RetrievalPlayground";
 import { EmptyState, ErrorText, Hint, TableCard, monoClasses } from "./parts";
 
 const STATUS: Record<string, string> = {
@@ -151,6 +152,7 @@ export function IndexStatusPanel({ workspace }: { workspace: Workspace }) {
       {!canManage && (
         <Hint>Only owners and editors can re-index documents.</Hint>
       )}
+      <RetrievalPlayground workspaceId={workspace.id} />
     </section>
   );
 }

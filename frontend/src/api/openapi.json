@@ -12632,6 +12632,110 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/documents/search/explain": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Explain Document Search",
+        "description": "The retrieval playground (any member): runs a real search with the Workspace's\neffective Document AI settings and returns each stage's ranking and scores (full-text,\nvector, fused, reranked, final). Permissions and data-sharing levels apply as in search.",
+        "operationId": "explainDocumentSearch",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "What to look for.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "What to look for."
+          },
+          {
+            "name": "system_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this Source System.",
+              "title": "System Id"
+            },
+            "description": "Only this Source System."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 50,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrievalTrace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/documents/reindex": {
       "post": {
         "tags": [
@@ -26412,6 +26516,76 @@
         ],
         "title": "ResetPasswordRequest"
       },
+      "RetrievalTrace": {
+        "properties": {
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Queries",
+            "description": "The query as typed, then any rewrites."
+          },
+          "vector_used": {
+            "type": "boolean",
+            "title": "Vector Used",
+            "description": "False when the Workspace's policy keeps vectors off."
+          },
+          "reranked": {
+            "type": "boolean",
+            "title": "Reranked",
+            "description": "Whether a rerank model reordered the fused results."
+          },
+          "full_text": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Full Text"
+          },
+          "vector": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Vector"
+          },
+          "fused": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Fused"
+          },
+          "reranked_results": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Reranked Results"
+          },
+          "final": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Final",
+            "description": "What a real search returns."
+          }
+        },
+        "type": "object",
+        "required": [
+          "queries",
+          "vector_used",
+          "reranked",
+          "full_text",
+          "vector",
+          "fused",
+          "reranked_results",
+          "final"
+        ],
+        "title": "RetrievalTrace"
+      },
       "ReviewFlag": {
         "properties": {
           "code": {
@@ -30284,6 +30458,59 @@
           "count"
         ],
         "title": "TopValue"
+      },
+      "TraceEntry": {
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "description": "Position in this stage, from 1."
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "File Id"
+          },
+          "document": {
+            "type": "string",
+            "title": "Document"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "This stage's own number: `ts_rank_cd` (full-text), cosine similarity (vector), fused RRF score, or the rerank model's score."
+          },
+          "above_floor": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above Floor",
+            "description": "Full-text and vector only: whether the score clears the relevance floor."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rank",
+          "file_id",
+          "document",
+          "section",
+          "text",
+          "score"
+        ],
+        "title": "TraceEntry"
       },
       "TransferOwnershipRequest": {
         "properties": {
