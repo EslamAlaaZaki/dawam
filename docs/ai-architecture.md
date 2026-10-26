@@ -572,13 +572,13 @@ Everything the model writes is run through `redact_text` / `redact_json` before 
 
 With `DAWAM_PII_NER_ENABLED` on (#385), `redact_text` also masks person names and addresses in Arabic and English as `[redacted: person_name]` / `[redacted: address]`, after the regex rules: Presidio with spaCy (English) and CAMeL Tools (Arabic), self-hosted, behind the `EntityDetector` port (`platform/pii_entities.py`, `platform/pii_ner_presidio.py`, optional `ner` extra). A place counts as an address only next to a street word, house number or postal code, so "sales in Riyadh" stays. The query-time check on result cells stays regex-only (`entities=False`).
 
-### 7.5 Rate limits
-
-`RoleService.ensure_within_rate_limit` (#388) allows **20 assistant messages per minute per member and 100 per Workspace**, in fixed one-minute windows (code constants). One member message counts once, before any database write; tool-loop model calls, jobs and other gateway calls don't count. Over a limit, the API answers 429 `ai_rate_limited` with `details` (scope, limit, `retry_after_seconds`) and a `Retry-After` header. Counts live in process memory, so each app process enforces its own limit; a request refused with 409 (run in progress) still uses a slot. These sit beside the monthly token budgets (§3.5).
-
-### 7.6 Data residency
+### 7.5 Data residency
 
 Internal-only Workspaces (default when the installation has a tested internal agent model) refuse external providers for **every** role, including embeddings. Combined with the data-sharing level, an owner controls whether anything leaves the network.
+
+### 7.6 Rate limits
+
+`RoleService.ensure_within_rate_limit` (#388) allows **20 assistant messages per minute per member and 100 per Workspace**, in fixed one-minute windows (code constants). One member message counts once, before any database write; tool-loop model calls, jobs and other gateway calls don't count. Over a limit, the API answers 429 `ai_rate_limited` with `details` (scope, limit, `retry_after_seconds`) and a `Retry-After` header. Counts live in process memory, so each app process enforces its own limit; a request refused with 409 (run in progress) still uses a slot. These sit beside the monthly token budgets (§3.5).
 
 ---
 
