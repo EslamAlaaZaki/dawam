@@ -26,7 +26,9 @@ class JobRecord(Base):
             "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="status"
         ),
         sa.CheckConstraint("progress BETWEEN 0 AND 100", name="progress"),
-        sa.Index("ix_jobs_status_created_at", "status", "created_at"),
+        sa.Index(
+            "ix_jobs_status_priority_created_at", "status", sa.text("priority DESC"), "created_at"
+        ),
         sa.Index("ix_jobs_workspace_id_created_at", "workspace_id", "created_at"),
     )
 
@@ -40,6 +42,8 @@ class JobRecord(Base):
     params: Mapped[dict[str, Any]] = mapped_column(JSONB)
     """The JSON its handler gets back."""
     status: Mapped[str] = mapped_column(sa.String(16))
+    priority: Mapped[int] = mapped_column(server_default="50")
+    """Higher runs first (see ``PRIORITY_*`` in the service)."""
     progress: Mapped[int] = mapped_column()
     log: Mapped[str] = mapped_column(sa.Text)
     error: Mapped[str | None] = mapped_column(sa.String(ERROR_MAX_LENGTH))

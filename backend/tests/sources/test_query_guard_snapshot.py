@@ -66,9 +66,13 @@ def test_guarding_an_extracted_snapshot(
     assert "core.customers.national_id" in projected.reason
 
     # a derived value is returned, masked, and the safe SQL really runs on the source
-    masked = guard("select cust_no, substring(national_id, 1, 3) as prefix from core.customers")
+    masked = guard("select cust_no, upper(national_id) as prefix from core.customers")
     assert isinstance(masked, SafeQuery)
     assert masked.masked_columns == ("prefix",)
+    # but slicing it is rejected: a piece too small for any validator would leak (ADR 0007)
+    assert isinstance(
+        guard("select cust_no, substring(national_id, 1, 3) from core.customers"), Rejected
+    )
     assert '"core"."customers"' in masked.sql
     assert len(run_on_source(sample_source, masked.sql)) > 0
 

@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 from dawam import job_handlers
 from dawam.app import Services, create_app
 from dawam.modules.jobs import (
+    PRIORITY_CHAT,
+    PRIORITY_LOW,
+    PRIORITY_NORMAL,
     InlineJobRunner,
     JobService,
     QueuedJobRunner,
@@ -326,3 +329,37 @@ def test_archiving_a_workspace_cancels_its_queued_and_running_jobs(queued, inlin
         assert body["finished_at"] is not None
     assert get(roles, finished.id).json()["status"] == "succeeded"
     assert queued.claim_next() is None
+
+
+def test_a_chat_job_queued_after_reindex_jobs_runs_first(queued, roles: RoleClients, clock):
+    roles.client("owner")
+    owner = roles.user("owner").id
+
+    def put(title, priority):
+        clock.advance(timedelta(seconds=1))
+        return queued.submit(
+            roles.workspace_id,
+            "ok",
+            {"name": title},
+            title=title,
+            created_by=owner,
+            priority=priority,
+        )
+
+    put("reindex 1", PRIORITY_LOW)
+    put("reindex 2", PRIORITY_LOW)
+    chat = put("chat", PRIORITY_CHAT)
+    put("export", PRIORITY_NORMAL)
+
+    order = [queued.claim_next().title for _ in range(4)]
+    assert order == ["chat", "export", "reindex 1", "reindex 2"]
+    assert chat.priority == PRIORITY_CHAT
+    assert queued.claim_next() is None
+
+
+def test_equal_priorities_run_oldest_first(queued, roles: RoleClients, clock):
+    first = submit(queued, roles)
+    clock.advance(timedelta(seconds=1))
+    second = submit(queued, roles)
+    assert queued.claim_next().id == first.id
+    assert queued.claim_next().id == second.id

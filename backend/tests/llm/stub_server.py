@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,8 @@ class StubLlmServer:
         """Answer every request with this HTTP status."""
         self.tools = True
         self.context_window: int | None = 16384
+        self.stream_delay = 0.0
+        """Seconds a streamed answer waits before each of its lines (a slow model)."""
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
 
     @property
@@ -71,12 +74,15 @@ class StubLlmServer:
                     {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 2}},
                 ]
                 lines = [f"data: {json.dumps(c)}\n\n" for c in chunks] + ["data: [DONE]\n\n"]
-                raw = "".join(lines).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Connection", "close")
                 self.end_headers()
-                self.wfile.write(raw)
+                for line in lines:
+                    time.sleep(stub.stream_delay)
+                    self.wfile.write(line.encode())
+                    self.wfile.flush()
+                self.close_connection = True
 
         return Handler
 

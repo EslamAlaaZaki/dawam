@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends, FastAPI
 from sqlalchemy.orm import Session
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -60,6 +61,7 @@ from dawam.platform.email import EmailSender, SmtpEmailSender
 from dawam.platform.errors import ERROR_RESPONSES, install_error_handlers
 from dawam.platform.logs import install_request_id_on_records
 from dawam.platform.migrations import upgrade_to_head
+from dawam.platform.pii_entities import configure_entity_detector
 from dawam.platform.request_context import RequestContextMiddleware
 from dawam.platform.security_headers import SecurityHeadersMiddleware
 from dawam.platform.storage import create_storage
@@ -111,6 +113,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     install_request_id_on_records()
     if settings.otel_endpoint:
         configure_tracing(settings)
+    if settings.pii_ner_enabled:
+        configure_entity_detector(settings)
     engine = create_engine(settings.database_url)
     # The worker registers the same handlers: a job is submitted here and run there.
     job_handlers.register_job_handlers(
@@ -143,6 +147,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Streaming answers hold a thread while they wait on the provider: size the pool.
+        anyio.to_thread.current_default_thread_limiter().total_tokens = settings.request_threads
         if settings.run_migrations_on_startup:
             upgrade_to_head(engine)
         try:

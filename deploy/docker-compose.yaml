@@ -87,6 +87,10 @@ services:
   worker:
     <<: *dawam
     command: ["python", "-m", "dawam", "worker"]
+    # Workers share the queue (FOR UPDATE SKIP LOCKED), so scale with
+    # DAWAM_WORKERS=4 or `docker compose up --scale worker=4`.
+    deploy:
+      replicas: ${DAWAM_WORKERS:-2}
 
   db:
     image: pgvector/pgvector:pg16

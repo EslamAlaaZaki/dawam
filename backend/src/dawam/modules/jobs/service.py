@@ -44,6 +44,12 @@ WORKER_LOST = "The worker running this job stopped before it finished."
 
 ACTIVE = ("queued", "running")
 
+PRIORITY_LOW = 0
+"""Bulk background work (re-indexing): runs when nothing more urgent is waiting."""
+PRIORITY_NORMAL = 50
+PRIORITY_CHAT = 100
+"""Started from a chat: somebody is waiting for it, so it jumps the queue."""
+
 
 class UnknownJobTypeError(LookupError):
     pass
@@ -155,6 +161,8 @@ class Job:
     title: str
     status: str
     """``queued``, ``running``, ``succeeded``, ``failed`` or ``cancelled``."""
+    priority: int
+    """Higher runs first; ties run oldest first."""
     progress: int
     log: str
     error: str | None
@@ -177,6 +185,7 @@ def _view(record: JobRecord) -> Job:
         type=record.type,
         title=record.title,
         status=record.status,
+        priority=record.priority,
         progress=record.progress,
         log=record.log,
         error=record.error,
@@ -242,6 +251,7 @@ class JobService:
         *,
         title: str,
         created_by: uuid.UUID | None,
+        priority: int = PRIORITY_NORMAL,
         db: Session | None = None,
     ) -> Job:
         """Queue a job of ``job_type`` in the Workspace and return it. The caller has
@@ -261,6 +271,7 @@ class JobService:
             title=title.strip()[:TITLE_MAX_LENGTH] or job_type,
             params=dict(params),
             status="queued",
+            priority=priority,
             progress=0,
             log="",
             created_by=created_by,
@@ -357,8 +368,9 @@ class JobService:
     # -- for the worker --------------------------------------------------------------
 
     def claim_next(self) -> Job | None:
-        """Take the oldest queued job (``FOR UPDATE SKIP LOCKED``, so workers never take
-        the same one) and mark it running; ``None`` if there is none."""
+        """Take the highest-priority queued job, oldest first among equals
+        (``FOR UPDATE SKIP LOCKED``, so workers never take the same one) and mark it running;
+        ``None`` if there is none."""
         return self._claim(None)
 
     def execute(self, job: Job) -> None:
@@ -430,7 +442,9 @@ class JobService:
         query = sa.select(JobRecord).where(JobRecord.status == "queued")
         if job_id is not None:
             query = query.where(JobRecord.id == job_id)
-        query = query.order_by(JobRecord.created_at, JobRecord.id).limit(1)
+        query = query.order_by(JobRecord.priority.desc(), JobRecord.created_at, JobRecord.id).limit(
+            1
+        )
         with Session(self._engine) as db, db.begin():
             record = db.scalars(query.with_for_update(skip_locked=True)).first()
             if record is None:

@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # The CAMeL Tools Arabic NER model for the real NER test (#385), pinned.
+  CAMEL_NER_REVISION: 54e2905e7c756883b00877cd48ed710a304af0d1
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -61,6 +65,38 @@ jobs:
       - name: Real Docling engine tests
         if: matrix.shard == 1
         run: pytest -m docling tests/files/test_layout_parsing.py tests/files/test_ocr.py
+      # The real NER engines (Presidio, spaCy, CAMeL Tools) on a tiny fixture, once (shard 1),
+      # after the other tests so the `ner` extra does not change their environment. The
+      # spaCy model wheel and the CAMeL BERT model (pinned to a revision) are cached, keyed on
+      # the model versions and the installed Presidio and CAMeL Tools versions.
+      - name: Install the NER extra
+        if: matrix.shard == 1
+        id: ner
+        run: |
+          pip install -e ".[ner]"
+          echo "versions=presidio-$(pip show presidio-analyzer | sed -n 's/^Version: //p')-camel-$(pip show camel-tools | sed -n 's/^Version: //p')" >> "$GITHUB_OUTPUT"
+      - name: Cache NER models
+        if: matrix.shard == 1
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/dawam-ner
+          key: ner-models-v2-en_core_web_sm-3.8.0-camelbert-msa-ner-${{ env.CAMEL_NER_REVISION }}-${{ steps.ner.outputs.versions }}
+      - name: Real NER engine tests
+        if: matrix.shard == 1
+        run: |
+          models=~/.cache/dawam-ner
+          wheel="$models/en_core_web_sm-3.8.0-py3-none-any.whl"
+          if [ ! -f "$wheel" ]; then
+            mkdir -p "$models"
+            curl -sSfL -o "$wheel"               https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+          fi
+          pip install "$wheel"
+          camel="$models/camelbert-msa-ner-$CAMEL_NER_REVISION"
+          # That revision ships PyTorch weights only (pytorch_model.bin), no safetensors.
+          if [ ! -f "$camel/pytorch_model.bin" ]; then
+            python -c "import sys; from huggingface_hub import snapshot_download; snapshot_download('CAMeL-Lab/bert-base-arabic-camelbert-msa-ner', revision=sys.argv[1], local_dir=sys.argv[2], allow_patterns=['*.json', 'vocab.txt', 'pytorch_model.bin'])" "$CAMEL_NER_REVISION" "$camel"
+          fi
+          DAWAM_PII_NER_ARABIC_MODEL="$camel" HF_HUB_OFFLINE=1 pytest -m ner tests/platform/test_pii_entities.py
 
   # Oracle containers are slow and heavy: their tests (marker `oracle`) run here, not above.
   backend-oracle:

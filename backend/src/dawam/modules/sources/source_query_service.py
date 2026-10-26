@@ -17,10 +17,12 @@ this order, failing closed at every step:
 6. what the model learns about a failure is a message of our own per error code: a database's
    error text can echo a value.
 
-Known limitation: a model can read an unflagged text column piece by piece with
-``SUBSTR``/``LEFT``/``RIGHT``/``REVERSE`` so that no single cell passes a validator. The guard
-does not block this (it would block most legitimate exploration); the per-run budget, the row
-cap and the audit trail of every query limit and expose it.
+On a protected column the guard rejects character-slicing and pattern-extraction functions
+(``SUBSTR``, ``LEFT``, ``INSTR``, ``REGEXP_SUBSTR``...; ADR 0007) as well as ``LIKE``/regex
+predicates. Known limitation: a model can still read an *unflagged* text column piece by piece
+so that no single cell passes a validator. The guard does not block this (it would block most
+legitimate exploration); the per-run budget, the row cap and the audit trail of every query
+limit and expose it.
 
 Every run is audited (``source_query`` entity, channel ``ai``): the model's SQL with
 validator-detectable PII redacted, the outcome, column names, row count and duration, never a
@@ -267,7 +269,7 @@ class SourceQueryService:
         masked |= set(hits) | weak
         written = self._record_findings(workspace_id, snapshot_id, checked, hits)
         # Names are the model's own aliases; redacted all the same.
-        names = tuple(redact_text(str(n)) for n in raw.columns)
+        names = tuple(redact_text(str(n), entities=False) for n in raw.columns)
         rows = tuple(
             tuple(MASK if i in masked else _shown(v) for i, v in enumerate(row[: len(raw.columns)]))
             for row in raw.rows
@@ -420,7 +422,7 @@ class SourceQueryService:
                 entity_type=AUDIT_ENTITY,
                 entity_id=system_id,
                 old=None,
-                new={"sql": redact_text(sql)[:MAX_AUDIT_SQL_CHARS], **outcome},
+                new={"sql": redact_text(sql, entities=False)[:MAX_AUDIT_SQL_CHARS], **outcome},
                 at=self._clock(),
                 via="ai",
             )
@@ -457,7 +459,7 @@ def _value_rule(values: Any) -> str | None:
             return rule
         text = value if isinstance(value, str) else str(value)
         embedded: list[str] = []
-        redact_text(text, found=embedded)
+        redact_text(text, found=embedded, entities=False)
         if embedded:
             return embedded[0]
     return None
