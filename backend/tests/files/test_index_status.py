@@ -24,7 +24,7 @@ def rows(roles, as_role="viewer") -> dict:
     return {item["name"]: item for item in response.json()["items"]}
 
 
-def test_the_page_matches_each_files_real_status(roles, policy):
+def test_the_page_matches_each_files_real_status(roles):
     register_embedding_model(roles, internal=True)
     sid = system(roles)
     upload_ok(
@@ -40,7 +40,7 @@ def test_the_page_matches_each_files_real_status(roles, policy):
     assert item["stale_count"] == 0
 
 
-def test_text_only_files_have_no_embedding_coverage(roles, policy):
+def test_text_only_files_have_no_embedding_coverage(roles):
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
 
@@ -50,7 +50,7 @@ def test_text_only_files_have_no_embedding_coverage(roles, policy):
     assert item["embedded_count"] == 0
 
 
-def test_vectors_of_an_older_model_are_stale(roles, policy, app):
+def test_vectors_of_an_older_model_are_stale(roles, app):
     register_embedding_model(roles, internal=True, name="bge-small")
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
@@ -63,7 +63,7 @@ def test_vectors_of_an_older_model_are_stale(roles, policy, app):
     assert item["stale_count"] == item["chunk_count"] >= 1
 
 
-def test_a_failed_file_shows_its_error(roles, policy, app):
+def test_a_failed_file_shows_its_error(roles, app):
     sid = system(roles)
     upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
     with app.state.engine.begin() as conn:
@@ -76,7 +76,7 @@ def test_a_failed_file_shows_its_error(roles, policy, app):
     assert (item["index_status"], item["index_error"]) == ("failed", "boom")
 
 
-def test_reindexing_one_file_indexes_it_again(roles, policy, app):
+def test_reindexing_one_file_indexes_it_again(roles, app):
     sid = system(roles)
     file = upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
     with app.state.engine.begin() as conn:
@@ -95,7 +95,7 @@ def test_reindexing_one_file_indexes_it_again(roles, policy, app):
     assert item["chunk_count"] >= 1
 
 
-def test_only_members_who_manage_files_reindex_a_file(roles, policy):
+def test_only_members_who_manage_files_reindex_a_file(roles):
     sid = system(roles)
     file = upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
     url = f"/api/v1/workspaces/{roles.workspace_id}/documents/{file['id']}/reindex"
@@ -105,7 +105,7 @@ def test_only_members_who_manage_files_reindex_a_file(roles, policy):
     assert roles.client("owner").post(url).status_code == 202
 
 
-def test_an_unknown_file_is_not_found(roles, policy):
+def test_an_unknown_file_is_not_found(roles):
     url = (
         f"/api/v1/workspaces/{roles.workspace_id}/documents/"
         "00000000-0000-0000-0000-000000000000/reindex"
@@ -113,5 +113,5 @@ def test_an_unknown_file_is_not_found(roles, policy):
     assert roles.client("owner").post(url).status_code == 404
 
 
-def test_non_members_do_not_see_the_page(roles, policy):
+def test_non_members_do_not_see_the_page(roles):
     assert roles.client("non_member").get(status_url(roles)).status_code in (403, 404)
