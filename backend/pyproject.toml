@@ -36,6 +36,7 @@ dependencies = [
     "pillow>=10",  # encodes the rendered pages as PNG
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
+    "duckdb>=1.1",  # query_file: sandboxed in-process SQL over an uploaded CSV or XLSX
 ]
 
 [project.optional-dependencies]

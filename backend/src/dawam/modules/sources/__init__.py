@@ -63,7 +63,9 @@ Public interface. Other modules import only what is re-exported here:
   Connection): guard, read-only run with the statement timeout and a row cap, a per-run
   ``QueryBudget`` of source-query seconds, masking of guard-masked and validator-hit columns, a
   ``value-at-query`` finding on a hit, error text of our own, and an audit entry (``ai``
-  channel) without result values.
+  channel) without result values. ``personal_columns`` and ``shown_cell`` are its value masking
+  and cell shaping, and ``match_name`` the built-in PII name rules, for other code that shows
+  table data to the model (the assistant's ``query_file``); ``MASK`` is what a masked cell shows.
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -122,6 +124,7 @@ from .enhancement_changes import SourceEnhancementHandler
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
 from .internal.pii import is_protected, protected_column_ids
+from .internal.pii_rules import match_name
 from .internal.query_guard import (
     GuardCatalog,
     GuardColumn,
@@ -159,9 +162,12 @@ from .snapshot_service import (
 )
 from .source_query_service import (
     DEFAULT_BUDGET_SECONDS,
+    MASK,
     QueryBudget,
     SourceQueryResult,
     SourceQueryService,
+    personal_columns,
+    shown_cell,
 )
 from .staging_source_service import (
     StagingColumn,
@@ -181,6 +187,7 @@ __all__ = [
     "DEFAULT_BUDGET_SECONDS",
     "EXTRACT_JOB",
     "INFER_JOB",
+    "MASK",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
     "ConfirmedPiiColumn",
@@ -241,9 +248,12 @@ __all__ = [
     "hidden_source_system_ids",
     "is_protected",
     "load_guard_catalog",
+    "match_name",
+    "personal_columns",
     "protected_column_ids",
     "purge_source_system",
     "router",
+    "shown_cell",
     "source_column_labels",
     "source_system_contents",
     "untraceable_views",

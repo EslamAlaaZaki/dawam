@@ -64,6 +64,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import STRUCTURED_KEYS, redact_text
 
 from .agent import ToolOutcome
+from .file_query import run_file_query
 
 logger = logging.getLogger(__name__)
 
@@ -408,6 +409,19 @@ class _RunSourceQuery(BaseModel):
         max_length=4000,
         description="One SELECT over the Source System's tables, e.g. a COUNT(*) overlap check. "
         "Name tables as schema.table. Protected columns can be counted and joined on, not shown.",
+    )
+
+
+class _QueryFile(BaseModel):
+    file_id: uuid.UUID = Field(description="A CSV or XLSX file's id, from list_files.")
+    sql: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="One DuckDB SELECT over the table `data` (the file's rows; an XLSX "
+        "sheet's first row is its header), e.g. SELECT region, SUM(amount) FROM data GROUP BY 1.",
+    )
+    sheet: str | None = Field(
+        default=None, max_length=200, description="An XLSX sheet's name; default the first."
     )
 
 
@@ -1582,6 +1596,31 @@ def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     return Reported(content, saved)
 
 
+def _query_file(ctx: ToolContext, args: _QueryFile) -> Any:
+    file = ctx.services.files.download(ctx.user, ctx.workspace_id, args.file_id)
+    result = run_file_query(file.data, file.mime, args.sql, sheet=args.sheet)
+    content: dict[str, Any] = {
+        "name": file.name,
+        "columns": result.columns,
+        "rows": result.rows,
+        "row_count": result.row_count,
+        "truncated": result.truncated,
+        "duration_ms": result.duration_ms,
+        "table": [dataclasses.asdict(c) for c in result.table],
+    }
+    if result.truncated:
+        content["note"] = f"Only the first {result.row_count} rows are shown."
+    masked = [c.name for c in result.table if c.masked] + list(result.masked_columns)
+    if masked:
+        content["masked_columns"] = masked
+        content["masked_note"] = (
+            "Columns that hold personal data are masked; count them instead of showing them."
+        )
+    # Like a source query's, the rows are shown once and never saved on the run.
+    saved = {"name": file.name, "columns": result.columns, "row_count": result.row_count}
+    return Reported(content, saved)
+
+
 def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     """The changes are not made: they become a Change Set the user reviews."""
     items = _proposed_items(ctx, args)
@@ -2138,6 +2177,17 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _read_file,
+        level=DataSharingLevel.DOCUMENTS,
+    ),
+    Tool(
+        "query_file",
+        "Analyse an uploaded CSV or XLSX file with one read-only DuckDB SELECT over the table "
+        "`data` (sums, counts, group-bys, arithmetic). At most 1,000 rows come back and "
+        "personal-data columns are masked; the result lists the table's columns.",
+        _QueryFile,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _query_file,
         level=DataSharingLevel.DOCUMENTS,
     ),
     Tool(

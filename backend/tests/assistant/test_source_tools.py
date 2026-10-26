@@ -501,16 +501,17 @@ METADATA_TOOLS = {
     "explore_graph",
     "get_relationships",
 }
+DOCUMENT_TOOLS = {"get_profile", "search_documents", "read_file", "describe_image", "query_file"}
 LEVELS = [
     ("metadata", METADATA_TOOLS),
     ("profiles", METADATA_TOOLS | {"get_profile"}),
     (
         "documents",
-        METADATA_TOOLS | {"get_profile", "search_documents", "read_file", "describe_image"},
+        METADATA_TOOLS | DOCUMENT_TOOLS,
     ),
     (
         "samples",
-        METADATA_TOOLS | {"get_profile", "search_documents", "read_file", "describe_image"},
+        METADATA_TOOLS | DOCUMENT_TOOLS,
     ),
 ]
 

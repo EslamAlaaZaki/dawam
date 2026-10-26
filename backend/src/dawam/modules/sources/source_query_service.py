@@ -34,7 +34,7 @@ from __future__ import annotations
 import math
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -476,6 +476,19 @@ def _mostly_weak(values: list[Any]) -> bool:
         if found is not None and found.ratio >= WEAK_MATCH_RATIO:
             return True
     return False
+
+
+def personal_columns(columns: Sequence[Sequence[Any]]) -> set[int]:
+    """The positions of the columns whose values show PII, the test ``run`` masks by: one
+    value passes a strong rule (whole or embedded in text), or most pass a weak one."""
+    return {
+        i for i, values in enumerate(columns) if _value_rule(values) or _mostly_weak(list(values))
+    }
+
+
+def shown_cell(value: Any) -> Any:
+    """A cell as the model sees it (see ``_shown``)."""
+    return _shown(value)
 
 
 def _shown(value: Any) -> Any:
