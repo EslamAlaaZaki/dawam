@@ -738,6 +738,7 @@ class AssistantService:
                 tools = self._tools.bind(
                     user, workspace_id, self._ai.policy(workspace_id), conversation_id
                 )
+                tools.allow_urls(m.content or "" for m in history.messages if m.role == "user")
                 self._set_prompt_version(
                     started.run_id, prompt_version(SYSTEM_PROMPT, tools.specs())
                 )

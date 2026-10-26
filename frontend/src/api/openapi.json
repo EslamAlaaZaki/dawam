@@ -15310,6 +15310,270 @@
         }
       }
     },
+    "/api/v1/admin/web": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Get Settings",
+        "description": "Whether the assistant may use the web, its search providers, and which provider each\nkind of Workspace uses (admins only).",
+        "operationId": "getWebSettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Update Settings",
+        "description": "Turn web access on or off and pick the providers (admins only). 422\n`invalid_web_config` for a provider that is not registered, or an external one for\ninternal-only Workspaces.",
+        "operationId": "updateWebSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/web/providers/{kind}": {
+      "put": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Save Provider",
+        "description": "Register or change a search provider (admins only). The key is sealed before it is\nstored. 422 `invalid_web_config` or `api_key_required`.",
+        "operationId": "saveWebProvider",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "searxng",
+                "langsearch"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebProviderIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Delete Provider",
+        "description": "Remove a search provider (admins only); Workspaces that used it have none until\nanother is picked. 404 `web_provider_not_found`.",
+        "operationId": "deleteWebProvider",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "searxng",
+                "langsearch"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/web/providers/{kind}/test": {
+      "post": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Test Provider",
+        "description": "Run one search through the provider and keep the result (admins only).",
+        "operationId": "testWebProvider",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "searxng",
+                "langsearch"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebProviderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/assistant/conversations": {
       "get": {
         "tags": [
@@ -31706,6 +31970,233 @@
           "version"
         ],
         "title": "VersionInfo"
+      },
+      "WebProviderIn": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url",
+            "description": "SearXNG: the server's URL (JSON output must be on in its settings.yml)."
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key",
+            "description": "LangSearch: the API key. Left out: the stored one is kept."
+          }
+        },
+        "type": "object",
+        "title": "WebProviderIn"
+      },
+      "WebProviderOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "searxng",
+              "langsearch"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "Runs inside the installation's network: the only kind internal-only Workspaces may use."
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key"
+          },
+          "test_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Ok",
+            "description": "Null: not tested since it was saved."
+          },
+          "test_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Error"
+          },
+          "last_tested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tested At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "label",
+          "internal",
+          "base_url",
+          "has_api_key",
+          "test_ok",
+          "test_error",
+          "last_tested_at",
+          "updated_at"
+        ],
+        "title": "WebProviderOut"
+      },
+      "WebSettingsIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "normal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normal Provider"
+          },
+          "internal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Provider",
+            "description": "An internal provider only (`searxng`), else 422 `invalid_web_config`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "WebSettingsIn"
+      },
+      "WebSettingsOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Web search and web fetch for the assistant; off by default."
+          },
+          "normal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normal Provider",
+            "description": "The search provider of Workspaces that are not internal-only."
+          },
+          "internal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Provider",
+            "description": "The search provider of internal-only Workspaces (internal providers only)."
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/WebProviderOut"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "normal_provider",
+          "internal_provider",
+          "providers",
+          "updated_at"
+        ],
+        "title": "WebSettingsOut"
       },
       "Workspace": {
         "properties": {

@@ -438,9 +438,9 @@ flowchart TD
 
 - A `ToolContext` per run holds the user, Workspace, services, data-sharing policy, a **source-query time budget** (default 120 s per run), proposal collection for jobs, and the run's count-query evidence.
 
-### 6.2 The tool catalogue (31 tools)
+### 6.2 The tool catalogue (33 tools)
 
-There are 31 tools.
+There are 33 tools.
 
 **Read: catalog, profiling, lineage, scoring**
 
@@ -478,6 +478,13 @@ There are 31 tools.
 | Tool | What it does | Needs |
 |---|---|---|
 | `run_source_query` | One read-only `SELECT` on a Source System with a live Connection; max 100 rows; personal-data columns masked; draws on the per-run time budget (§7.3) | run source query + `samples` |
+
+**Read: the web** (off by default; offered only when an admin turned web access on, §7.7)
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `web_search` | Search the web through the provider of the Workspace's kind (SearXNG or LangSearch). Values are stripped from the query first; the query as sent is audited and shown in the chat. Chat only (#400) | ask assistant |
+| `web_fetch` | Read the text of one page: a URL the member wrote in the conversation or one a `web_search` returned in the same answer. Private and internal addresses refused, 2 MB and 10 s caps, text types only. Chat only (#400) | ask assistant |
 
 **Write: everything goes through review**
 
@@ -586,6 +593,17 @@ Internal-only Workspaces (default when the installation has a tested internal ag
 ### 7.6 Rate limits
 
 `RoleService.ensure_within_rate_limit` (#388) allows **20 assistant messages per minute per member and 100 per Workspace**, in fixed one-minute windows (code constants). One member message counts once, before any database write; tool-loop model calls, jobs and other gateway calls don't count. Over a limit, the API answers 429 `ai_rate_limited` with `details` (scope, limit, `retry_after_seconds`) and a `Retry-After` header. Counts live in process memory, so each app process enforces its own limit; a request refused with 409 (run in progress) still uses a slot. These sit beside the monthly token budgets (§3.5).
+
+### 7.7 Outbound web access (`web/`, ADR 0008)
+
+The `web` module owns `web_search` and `web_fetch`'s side of the work (#400, [ADR 0008](adr/0008-assistant-outbound-web-access.md)). **Off by default.** An admin sets it on the admin page **Web access** (`/admin/web`; API `GET|PUT /admin/web`, `PUT|DELETE /admin/web/providers/{kind}`, `POST .../{kind}/test`, admins only), not in `.env`: one on/off switch for both tools, the registered search providers, and the provider of normal Workspaces and of internal-only Workspaces. Tables `web_settings` (one row) and `web_search_providers`.
+
+- **Providers** sit behind the `SearchProvider` port: **SearXNG** (internal, self-hosted; the admin's URL; `GET <url>/search?q=…&format=json`, which needs `json` in SearXNG's `search.formats`) and **LangSearch** (external; API key sealed with `SecretBox` like LLM provider keys; `POST https://api.langsearch.com/v1/web-search` with a Bearer key). Both can be registered and tested at once.
+- **Which provider:** the Workspace's `internal_only` flag (`llm_workspace_settings`, reached through an `internal_only` port the composition root fills) picks the normal or the internal-only provider. An internal-only Workspace never uses an external one: the API refuses the choice and the lookup checks the provider's kind again. Disabled, or no provider for the Workspace's kind, means `web_search` is not offered; an internal-only Workspace gets `web_fetch` only once it has an internal provider.
+- **Queries** go through `strip_values`: quoted literals, phone-like digit groups, tokens with more than five digits, amounts, dates and whatever the PII validators find are removed; "IFRS 9" stays. Each query is audited (`web_search`, channel `ai`) before it leaves and kept on the run for the chat.
+- **Fetch** is done by DAWAM (`fetch_page`): `http`/`https` on ports 80 and 443 only; every resolved address must be public (private, loopback, link-local/metadata, shared, reserved, multicast and IPv6 forms embedding them are refused), checked again on each of at most 5 redirects; the connection goes to the checked address (no DNS rebinding); 2 MB, 10 s, text types only, HTML reduced to text, 12,000 characters to the model. Audited as `web_fetch`.
+- Results are ordinary tool results: quoted as data and screened by the injection check (§7.1).
+- All HTTP goes through the `Network` port; tests pass a fake (`Services.web_network`), and the test guard refuses `api.langsearch.com`.
 
 ---
 
@@ -837,7 +855,7 @@ The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/Assistan
 | `DAWAM_FAKE_LLM` | false | tests only: every provider becomes the rule-based fake |
 | encryption key | — | seals provider API keys |
 
-Model prices (cost per million tokens, per currency) are set by system admins in the AI settings page (`llm_model_prices`). Providers, models, roles, budgets, Workspace Models, internal-only and data-sharing levels are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
+Model prices (cost per million tokens, per currency) are set by system admins in the AI settings page (`llm_model_prices`). Providers, models, roles, budgets, Workspace Models, internal-only, data-sharing levels and web access (§7.7) are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
 
 ---
 
@@ -886,6 +904,7 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | Limited mode | `assistant/internal/prompted.py`, `assistant/internal/json_schema.py` |
 | Context management | `assistant/internal/context.py` |
 | Tools | `assistant/internal/tools.py`, `assistant/internal/file_query.py` (`query_file` engine), `assistant/internal/diagrams.py` (`render_diagram` Mermaid builders) |
+| Web access (search providers, fetch, value stripping) | `web/service.py`, `web/api.py`, `web/tables.py`, `web/internal/{providers,fetch,network,strip}.py` |
 | Conversations, runs, jobs | `assistant/service.py`, `assistant/api.py`, `assistant/assembly.py`, `assistant/tables.py` |
 | RAG: extraction | `files/internal/content.py` |
 | RAG: chunking | `files/internal/chunking.py`, `files/internal/parents.py`, `files/internal/context.py` |
@@ -894,5 +913,5 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | Source-query guard | `sources/source_query_service.py`, `sources/internal/query_guard.py`, `query_guard_catalog.py` |
 | PII validators and redaction | `platform/pii_validators.py`, `sources/internal/pii*.py` |
 | Worker and jobs | `worker.py`, `job_handlers.py`, `modules/jobs/` |
-| Frontend | `frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx`, `frontend/src/workspaces/MermaidDiagram.tsx` |
-| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |
+| Frontend | `frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx`, `frontend/src/workspaces/MermaidDiagram.tsx`, `frontend/src/admin/WebAccessPage.tsx`, `frontend/src/api/web.ts` |
+| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`, `docs/adr/0008-assistant-outbound-web-access.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |

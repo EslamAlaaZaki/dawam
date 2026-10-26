@@ -4164,6 +4164,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/web": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description Whether the assistant may use the web, its search providers, and which provider each
+         *     kind of Workspace uses (admins only).
+         */
+        get: operations["getWebSettings"];
+        /**
+         * Update Settings
+         * @description Turn web access on or off and pick the providers (admins only). 422
+         *     `invalid_web_config` for a provider that is not registered, or an external one for
+         *     internal-only Workspaces.
+         */
+        put: operations["updateWebSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/web/providers/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Provider
+         * @description Register or change a search provider (admins only). The key is sealed before it is
+         *     stored. 422 `invalid_web_config` or `api_key_required`.
+         */
+        put: operations["saveWebProvider"];
+        post?: never;
+        /**
+         * Delete Provider
+         * @description Remove a search provider (admins only); Workspaces that used it have none until
+         *     another is picked. 404 `web_provider_not_found`.
+         */
+        delete: operations["deleteWebProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/web/providers/{kind}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description Run one search through the provider and keep the result (admins only).
+         */
+        post: operations["testWebProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/assistant/conversations": {
         parameters: {
             query?: never;
@@ -11130,6 +11203,86 @@ export interface components {
             name: string;
             /** Version */
             version: string;
+        };
+        /** WebProviderIn */
+        WebProviderIn: {
+            /**
+             * Base Url
+             * @description SearXNG: the server's URL (JSON output must be on in its settings.yml).
+             */
+            base_url?: string | null;
+            /**
+             * Api Key
+             * @description LangSearch: the API key. Left out: the stored one is kept.
+             */
+            api_key?: string | null;
+        };
+        /** WebProviderOut */
+        WebProviderOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "searxng" | "langsearch";
+            /** Label */
+            label: string;
+            /**
+             * Internal
+             * @description Runs inside the installation's network: the only kind internal-only Workspaces may use.
+             */
+            internal: boolean;
+            /** Base Url */
+            base_url: string;
+            /** Has Api Key */
+            has_api_key: boolean;
+            /**
+             * Test Ok
+             * @description Null: not tested since it was saved.
+             */
+            test_ok: boolean | null;
+            /** Test Error */
+            test_error: string | null;
+            /** Last Tested At */
+            last_tested_at: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WebSettingsIn */
+        WebSettingsIn: {
+            /** Enabled */
+            enabled: boolean;
+            /** Normal Provider */
+            normal_provider?: ("searxng" | "langsearch") | null;
+            /**
+             * Internal Provider
+             * @description An internal provider only (`searxng`), else 422 `invalid_web_config`.
+             */
+            internal_provider?: ("searxng" | "langsearch") | null;
+        };
+        /** WebSettingsOut */
+        WebSettingsOut: {
+            /**
+             * Enabled
+             * @description Web search and web fetch for the assistant; off by default.
+             */
+            enabled: boolean;
+            /**
+             * Normal Provider
+             * @description The search provider of Workspaces that are not internal-only.
+             */
+            normal_provider: ("searxng" | "langsearch") | null;
+            /**
+             * Internal Provider
+             * @description The search provider of internal-only Workspaces (internal providers only).
+             */
+            internal_provider: ("searxng" | "langsearch") | null;
+            /** Providers */
+            providers: components["schemas"]["WebProviderOut"][];
+            /** Updated At */
+            updated_at: string | null;
         };
         /** Workspace */
         Workspace: {
@@ -21262,6 +21415,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NewWorkspaceModels"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getWebSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSettingsOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateWebSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSettingsOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveWebProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "searxng" | "langsearch";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebProviderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSettingsOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteWebProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "searxng" | "langsearch";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testWebProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "searxng" | "langsearch";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebProviderOut"];
                 };
             };
             /** @description Validation error */

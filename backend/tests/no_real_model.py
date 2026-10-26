@@ -19,7 +19,9 @@ REAL_MODEL_HOSTS = re.compile(
     r"|cognitiveservices\.azure\.com|generativelanguage\.googleapis\.com"
     r"|aiplatform\.googleapis\.com|api\.mistral\.ai|api\.cohere\.com|api\.cohere\.ai"
     r"|api\.groq\.com|api\.x\.ai|api\.together\.xyz|api\.deepseek\.com|openrouter\.ai"
-    r"|bedrock(?:-runtime|-agent-runtime)?\.[a-z0-9-]+\.amazonaws\.com)\.?$",
+    r"|bedrock(?:-runtime|-agent-runtime)?\.[a-z0-9-]+\.amazonaws\.com"
+    # Web search providers (ADR 0008): faked at the web module's ``Network`` port.
+    r"|api\.langsearch\.com)\.?$",
     re.IGNORECASE,
 )
 

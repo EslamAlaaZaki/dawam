@@ -152,6 +152,15 @@ SMTP_SETTINGS = {
 LLM_PROVIDER_BODY = {"name": "Local vLLM", "base_url": "http://llm.test/v1", "internal": True}
 
 
+def _web_provider(roles: RoleClients) -> None:
+    """Registers SearXNG (as the admin) on a closed local port: a test of it fails at once,
+    and nothing outside is reached."""
+    response = roles.client("admin").put(
+        "/api/v1/admin/web/providers/searxng", json={"base_url": "http://127.0.0.1:9"}
+    )
+    assert response.status_code == 200, response.text
+
+
 def _mail(roles: RoleClients) -> MailService:
     state = roles.app.state
     return MailService(
@@ -570,6 +579,39 @@ ROWS: list[Row] = [
         json=smtp_test_body,
     ),
     Row("GET", "/api/v1/admin/undelivered-links", "see links to share", admin_only()),
+    # Web access for the assistant (admin only: ADR 0008).
+    Row("GET", "/api/v1/admin/web", "see web access settings", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/web",
+        "turn web access on or off",
+        admin_only(),
+        json=lambda roles: {"enabled": False},
+    ),
+    Row(
+        "PUT",
+        "/api/v1/admin/web/providers/{kind}",
+        "register a search provider",
+        admin_only(),
+        json=lambda roles: {"base_url": "http://127.0.0.1:9"},
+        path_params={"kind": lambda roles: "searxng"},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/admin/web/providers/{kind}",
+        "remove a search provider",
+        admin_only(),
+        setup=_web_provider,
+        path_params={"kind": lambda roles: "searxng"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/admin/web/providers/{kind}/test",
+        "test a search provider",
+        admin_only(),
+        setup=_web_provider,
+        path_params={"kind": lambda roles: "searxng"},
+    ),
     Row(
         "DELETE",
         "/api/v1/admin/undelivered-links/{link_id}",

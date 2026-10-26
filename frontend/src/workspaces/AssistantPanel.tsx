@@ -141,14 +141,39 @@ function canWrite(tools: readonly ToolCall[]) {
   );
 }
 
+const SEARCH_PROVIDERS: Record<string, string> = {
+  searxng: "SearXNG",
+  langsearch: "LangSearch",
+};
+
+/** What a reply sent to the web: each search query (as sent, values removed) and each page read. */
+function webOf(tools: readonly ToolCall[]) {
+  return tools.flatMap((tool) => {
+    if (tool.name === "web_search" && typeof tool.result?.query === "string") {
+      const provider = String(tool.result.provider ?? "");
+      return [
+        {
+          label: `Searched the web (${SEARCH_PROVIDERS[provider] ?? provider})`,
+          detail: tool.result.query,
+        },
+      ];
+    }
+    if (tool.name === "web_fetch" && typeof tool.result?.url === "string") {
+      return [{ label: "Read a web page", detail: tool.result.url }];
+    }
+    return [];
+  });
+}
+
 /** Documents (or tools) whose text looked like a prompt injection; the model still saw it, with a warning. */
 function flaggedOf(tools: readonly ToolCall[]) {
   return [...new Set(tools.flatMap((tool) => tool.flagged ?? []))];
 }
 
 /**
- * What a reply's tools left for the member to see: the jobs it started, a warning when
- * a Connection's user can write and the documents flagged as possible injections. The tool
+ * What a reply's tools left for the member to see: the jobs it started, what it sent to the
+ * web, a warning when a Connection's user can write and the documents flagged as possible
+ * injections. The tool
  * calls themselves are not shown.
  */
 function ToolNotes({
@@ -168,6 +193,19 @@ function ToolNotes({
           title={job.title}
         />
       ))}
+      {webOf(tools).length > 0 && (
+        <ul
+          aria-label="Web access"
+          className="flex flex-col gap-1 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+        >
+          {webOf(tools).map((item, index) => (
+            <li key={index}>
+              {item.label}:{" "}
+              <span className="break-all text-foreground">{item.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {canWrite(tools) && (
         <p
           role="alert"
@@ -238,6 +276,7 @@ function hasNotes(run: Run | null | undefined): boolean {
     !!run &&
     (["cancelled", "tool_limit", "failed"].includes(run.status) ||
       jobsOf(run.tool_calls).length > 0 ||
+      webOf(run.tool_calls).length > 0 ||
       canWrite(run.tool_calls) ||
       flaggedOf(run.tool_calls).length > 0)
   );

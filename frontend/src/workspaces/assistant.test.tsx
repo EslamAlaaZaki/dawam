@@ -337,6 +337,70 @@ describe("the assistant's chat panel", () => {
     expect(await screen.findByText(/can change data/)).toBeInTheDocument();
   });
 
+  it("shows each web search query as sent and each page read", async () => {
+    const search = {
+      name: "web_search",
+      arguments: { query: "IFRS 9 stage 'Ahmed'" },
+      status: "ok",
+      duration_ms: 30,
+      result: { query: "IFRS 9 stage", provider: "searxng", results: 3 },
+    };
+    const fetched = {
+      name: "web_fetch",
+      arguments: { url: "https://ifrs.example/9" },
+      status: "ok",
+      duration_ms: 40,
+      result: { url: "https://ifrs.example/9", title: "IFRS 9" },
+    };
+    renderApp(
+      backend({
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", search),
+            frame("tool", fetched),
+            frame("text", { text: "Three stages." }),
+            frame("done", {
+              run: run({ tool_calls: [search, fetched] }),
+              message_id: "a",
+            }),
+          ]),
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "IFRS 9 stages?",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [search, fetched] }),
+              sender: ADA_SENDER,
+              model: null,
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Three stages.",
+              created_at: "2026-01-05T10:00:01Z",
+              run: null,
+              sender: null,
+              model: null,
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await ask("IFRS 9 stages?");
+
+    const web = await screen.findByRole("list", { name: "Web access" });
+    expect(web).toHaveTextContent("Searched the web (SearXNG): IFRS 9 stage");
+    expect(web).not.toHaveTextContent("Ahmed");
+    expect(web).toHaveTextContent("Read a web page: https://ifrs.example/9");
+  });
+
   it("shows the progress of a job the assistant started", async () => {
     const start = {
       name: "start_job",

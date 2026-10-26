@@ -1,0 +1,23 @@
+# The assistant reaches the web only through DAWAM's own tools, off by default
+
+The assistant gets two tools, `web_search` and `web_fetch`, implemented in DAWAM (the `web` module), not as provider-native server tools: they then work with every model adapter and go through our audit, data-sharing and internal-only checks. Both are off by default. An admin turns them on with one switch on the admin page (stored in the database like LLM providers, not in `.env`) and registers the search providers there.
+
+**Providers.** Search sits behind a `SearchProvider` port with two adapters for now, both free: **SearXNG** (self-hosted, internal; the admin enters its URL and enables JSON output in its `settings.yml`; DAWAM calls `GET <url>/search?q=…&format=json`) and **LangSearch** (a cloud API, external; the admin enters an API key, sealed with `SecretBox` like LLM provider keys; DAWAM calls `POST https://api.langsearch.com/v1/web-search` with a Bearer key). Both can be registered and tested at once. The admin picks the provider of normal Workspaces (any registered one) and the provider of internal-only Workspaces (internal ones only). The Workspace's existing `internal_only` flag decides which applies. An internal-only Workspace never uses an external provider: the API refuses the choice, and the lookup checks the provider's kind again before every call. Others (Brave, Tavily) can be added later as more adapters.
+
+**When the tools are offered.** `web_search` is offered when the switch is on and the Workspace's kind has a registered provider; otherwise it is not in the tool list at all. `web_fetch` shares the switch; an internal-only Workspace gets it only once the admin has given internal-only Workspaces a provider, which is the admin's opt-in to web access for them. Both are chat-only (a background job never reaches the web) and need only `ask_assistant`; every call still runs as the member through `BoundTools.execute`.
+
+**Queries.** The model's query loses its values before it leaves: quoted literals, tokens with more than five digits (ids, accounts), amounts, dates, and everything the PII validators recognise (emails, phones, IBANs, ID and card numbers, and names when NER is on). Short numbers stay ("IFRS 9", "SQL Server 2019"). The query as sent is audited (`web_search`, channel `ai`) before the call, kept on the run and shown in the chat under the answer.
+
+**Fetch.** DAWAM fetches the page itself. Only `http`/`https` on ports 80 and 443, no credentials in the URL. The host is resolved and every address must be public: private, loopback, link-local (cloud metadata), shared, reserved and multicast ranges are refused, as are IPv6 addresses embedding one (IPv4-mapped, NAT64, 6to4, Teredo). The connection goes to the checked address (TLS still verified against the host name), so a second DNS answer cannot redirect it (rebinding). Redirects are followed by hand, at most five, each checked the same way. The body is capped at 2 MB and 10 seconds, only text types are read, HTML is reduced to text, and the model sees at most 12,000 characters. Each fetch is audited (`web_fetch`).
+
+`web_fetch` reads only a URL the member wrote in the conversation or one a `web_search` returned in the same answer. A URL the model composed could carry Workspace data out in its path or query string, steered by a prompt injection; limiting fetches to URLs the model did not write closes that channel.
+
+**Untrusted content.** Results and pages are tool results, so they are quoted as data and pass through the prompt-injection check like every other tool result; a flagged page is marked in the chat.
+
+## Considered options
+
+- **Provider-native web search** (Anthropic, OpenAI, Gemini grounding): rejected; it runs at the provider outside our gateway, audit and internal-only checks, and does not exist for self-hosted models.
+- **Configure providers in `.env`**: rejected by the maintainer; an admin must be able to register, test and switch providers in the app, like LLM providers.
+- **Brave, Tavily, Bing, Google**: not now. Brave has no free tier, Tavily only one-off credits, Bing's Search APIs are retired and Google's Custom Search JSON API closes on 1 January 2027.
+- **Let `web_fetch` read any public URL**: rejected; the SSRF guard stops internal addresses but not data leaving in a URL the model wrote.
+- **An allow-list of domains for fetch**: not now; it needs upkeep by the admin, and the public-address check plus the "member's or search result's URL" rule cover the risks the ticket names.

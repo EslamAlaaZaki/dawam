@@ -27,6 +27,7 @@ from dawam.modules import (
     propagation,
     sources,
     warehouse,
+    web,
     workspaces,
 )
 
@@ -48,6 +49,7 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     collaboration,
     files,
     llm,
+    web,
     assistant,
     docpack,
     deletions,
