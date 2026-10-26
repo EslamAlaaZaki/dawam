@@ -190,6 +190,66 @@ describe("the Workspace's Document AI settings", () => {
     ).toBeInTheDocument();
   });
 
+  async function saveChunkSize(role: WorkspaceRole) {
+    const requests = renderApp(
+      backend(role, (r) => {
+        if (r.method === "PUT" && r.path === DOC_AI) {
+          return json(
+            settings({
+              version: 3,
+              overrides: { chunk_size: 300 },
+              effective: { chunk_size: 300, top_k: 5 },
+            }),
+          );
+        }
+        if (
+          r.method === "POST" &&
+          r.path === `/api/v1/workspaces/${WORKSPACE_ID}/documents/reindex`
+        ) {
+          return json({ job_id: "j1", status: "queued" }, 202);
+        }
+        return undefined;
+      }),
+      PATH,
+    );
+    const dialog = await openSettings("Document AI");
+    fireEvent.click(
+      await within(dialog).findByLabelText("Override Passage size"),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Passage size"), {
+      target: { value: "300" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Save Document AI settings" }),
+    );
+    await within(dialog).findByText(/Re-index the Workspace's documents/);
+    return { requests, dialog };
+  }
+
+  it("queues a re-index when the owner accepts the prompt", async () => {
+    const { requests, dialog } = await saveChunkSize("owner");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Re-index now" }),
+    );
+    expect(
+      await screen.findByText("Re-indexing all documents."),
+    ).toBeInTheDocument();
+    expect(
+      requests.filter((r) => r.path.endsWith("/documents/reindex")),
+    ).toHaveLength(1);
+  });
+
+  it("leaves the index as is when the owner declines", async () => {
+    const { requests, dialog } = await saveChunkSize("owner");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Not now" }));
+    expect(
+      within(dialog).queryByText(/Re-index the Workspace's documents/),
+    ).not.toBeInTheDocument();
+    expect(requests.some((r) => r.path.endsWith("/documents/reindex"))).toBe(
+      false,
+    );
+  });
+
   it("shows the API's message when a save is refused", async () => {
     renderApp(
       backend("owner", (r) =>
