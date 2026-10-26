@@ -19,5 +19,5 @@ def fake_llm(services: Services) -> FakeAdapter:
 
 @pytest.fixture(autouse=True)
 def all_tools_sent(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Most tests check which tools a role is offered: send them all (tool search has its own tests)."""
+    """Tests of what a role is offered need every tool sent (tool search has its own tests)."""
     monkeypatch.setattr(agent, "TOOL_SEARCH_THRESHOLD", 1_000)
