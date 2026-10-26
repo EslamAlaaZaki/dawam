@@ -85,6 +85,30 @@ RERANK_DOC_CHARS = 4000
 
 
 @dataclass(frozen=True)
+class SearchTuning:
+    """How rankings are fused and trimmed. Code constants for now; they become admin
+    settings with the Document AI settings (24.1)."""
+
+    fts_weight: float = 1.0
+    vector_weight: float = 1.0
+    rrf_k: int = RRF_K
+    fts_candidates: int = CANDIDATES
+    vector_candidates: int = CANDIDATES
+    mmr_lambda: float = 0.7
+    """1.0 is pure relevance; lower values trade it for variety."""
+    same_document_similarity: float = 0.3
+    """How alike two passages of one document (other sections) count for MMR."""
+    min_text_rank: float = 0.01
+    """The ``ts_rank_cd`` a full-text match needs to count as relevant."""
+    min_vector_similarity: float = 0.3
+    """The cosine similarity a vector match needs to count as relevant. A passage is returned
+    only if it clears the floor of at least one of its rankings; below both, nothing is."""
+
+
+DEFAULT_TUNING = SearchTuning()
+
+
+@dataclass(frozen=True)
 class DocumentAiSettings:
     """What a Workspace's AI settings say about documents."""
 
@@ -949,9 +973,12 @@ class DocumentSearchService:
         system_id: uuid.UUID | None = None,
         limit: int = DEFAULT_LIMIT,
         filters: PassageFilters | None = None,
+        tuning: SearchTuning | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
-        where the passages were embedded, vector rankings are fused."""
+        where the passages were embedded, vector rankings are fused (weighted RRF), passages
+        below the relevance floor are dropped and the rest are diversified (MMR)."""
+        tune = tuning or DEFAULT_TUNING
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         terms = stems(query)
         if not terms:
@@ -971,7 +998,7 @@ class DocumentSearchService:
             term_sets = [t for t in (stems(q) for q in queries) if t]
             embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
-                "SELECT c.id FROM document_chunks c "
+                "SELECT c.id, ts_rank_cd(c.search_vector, q) AS signal FROM document_chunks c "
                 "JOIN workspace_files f ON f.id = c.file_id, "
                 "to_tsquery('simple', :q) q "
                 "WHERE c.workspace_id = :w AND c.search_vector @@ q" + scope + " "
@@ -980,37 +1007,60 @@ class DocumentSearchService:
             )
             # Several matching children share one parent, so the candidate pool grows
             # until it holds ``limit`` distinct parents or the rankings run dry.
-            pool = CANDIDATES
+            grow = 1
             while True:
-                ranked: list[list[uuid.UUID]] = [
-                    list(
-                        db.scalars(
-                            fts,
-                            {
-                                **params,
-                                "q": " | ".join(f"'{term}'" for term in term_set),
-                                "pool": pool,
-                            },
+                fts_pool = tune.fts_candidates * grow
+                vector_pool = tune.vector_candidates * grow
+                # One ranking per query variant (full-text) and per vector, each with the
+                # weight, floor and pool size of its kind.
+                ranked: list[list[tuple[uuid.UUID, float]]] = []
+                weights: list[float] = []
+                floors: list[float] = []
+                pools: list[int] = []
+                for term_set in term_sets:
+                    ranked.append(
+                        _signals(
+                            db.execute(
+                                fts,
+                                {
+                                    **params,
+                                    "q": " | ".join(f"'{term}'" for term in term_set),
+                                    "pool": fts_pool,
+                                },
+                            )
                         )
                     )
-                    for term_set in term_sets
-                ]
+                    weights.append(tune.fts_weight)
+                    floors.append(tune.min_text_rank)
+                    pools.append(fts_pool)
                 if embedded is not None:
                     model, vectors = embedded
                     for vector in vectors:
                         ranked.append(
-                            list(
-                                db.scalars(
-                                    sa.text(vector_ranking_sql(model.id, len(vector), scope, pool)),
+                            _signals(
+                                db.execute(
+                                    sa.text(
+                                        vector_ranking_sql(
+                                            model.id, len(vector), scope, vector_pool
+                                        )
+                                    ),
                                     {**params, "v": _vector_literal(vector)},
                                 )
                             )
                         )
+                        weights.append(tune.vector_weight)
+                        floors.append(tune.min_vector_similarity)
+                        pools.append(vector_pool)
                 scores: dict[uuid.UUID, float] = {}
-                for ranking in ranked:
-                    for position, chunk_id in enumerate(ranking):
-                        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + position + 1)
-                ordered = sorted(scores, key=lambda cid: (-scores[cid], str(cid)))
+                relevant: set[uuid.UUID] = set()
+                for ranking, weight, floor in zip(ranked, weights, floors, strict=True):
+                    for position, (chunk_id, signal) in enumerate(ranking):
+                        scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (
+                            tune.rrf_k + position + 1
+                        )
+                        if signal >= floor:
+                            relevant.add(chunk_id)
+                ordered = sorted(relevant, key=lambda cid: (-scores[cid], str(cid)))
                 rows = {
                     row.id: row
                     for row in db.execute(
@@ -1037,11 +1087,47 @@ class DocumentSearchService:
                     )
                 }
                 passages = self._parents(ordered, rows, scores)
-                full = any(len(r) >= pool for r in ranked)
-                if len(passages) >= limit or not full or pool >= CANDIDATES * MAX_POOL_GROWTH:
+                # A ranking that ran into the floor has nothing more to give: growing the pool
+                # would only add passages below it.
+                full = any(
+                    len(r) >= size and r[-1][1] >= floor
+                    for r, size, floor in zip(ranked, pools, floors, strict=True)
+                )
+                if len(passages) >= limit or not full or grow >= MAX_POOL_GROWTH:
                     reranked = self._rerank(workspace_id, user.id, query, passages)
-                    return _promote_exact(db, reranked, params, scope)[:limit]
-                pool *= 2
+                    diverse = self._diversify(reranked[: max(RERANK_TOP_N, limit)], limit, tune)
+                    return _promote_exact(db, diverse, params, scope)[:limit]
+                grow *= 2
+
+    @staticmethod
+    def _diversify(passages: list[Passage], limit: int, tune: SearchTuning) -> list[Passage]:
+        """Maximal marginal relevance: pick ``limit`` passages, each the best trade between its
+        relevance and how little it repeats what is already picked (same section: fully
+        alike; same document, another section: a little)."""
+        if len(passages) <= 1 or tune.mmr_lambda >= 1.0:
+            return passages[:limit]
+        scores = [p.score for p in passages]
+        low = min(0.0, min(scores))  # scores are relative to the best; shifted if any is negative
+        span = (max(scores) - low) or 1.0
+        remaining = list(passages)
+        picked: list[Passage] = []
+
+        def similarity(a: Passage, b: Passage) -> float:
+            if a.file_id != b.file_id:
+                return 0.0
+            return 1.0 if a.section == b.section else tune.same_document_similarity
+
+        while remaining and len(picked) < limit:
+            best = max(
+                remaining,
+                key=lambda p: (
+                    tune.mmr_lambda * ((p.score - low) / span)
+                    - (1 - tune.mmr_lambda) * max((similarity(p, q) for q in picked), default=0.0)
+                ),
+            )
+            picked.append(best)
+            remaining.remove(best)
+        return picked
 
     def _rerank(
         self, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str, passages: list[Passage]
@@ -1156,6 +1242,11 @@ class DocumentSearchService:
         return model, vectors
 
 
+def _signals(rows: Any) -> list[tuple[uuid.UUID, float]]:
+    """``(chunk id, absolute relevance signal)`` of a ranking's rows, best first."""
+    return [(row[0], float(row[1] or 0.0)) for row in rows]
+
+
 def vector_ranking_sql(
     model_id: uuid.UUID, dimension: int, scope: str = "", pool: int = CANDIDATES
 ) -> str:
@@ -1166,7 +1257,8 @@ def vector_ranking_sql(
     cast = f"vector({dimension})" if 0 < dimension <= HNSW_MAX_DIMENSION else "vector"
     column = f"(c.embedding::{cast})" if cast != "vector" else "c.embedding"
     return (
-        "SELECT c.id FROM document_chunks c "
+        f"SELECT c.id, 1 - ({column} <=> CAST(:v AS {cast})) AS signal "
+        "FROM document_chunks c "
         "JOIN workspace_files f ON f.id = c.file_id "
         f"WHERE c.workspace_id = :w AND c.embedding_model_id = '{model_id}' "
         f"AND c.embedding_dimension = {int(dimension)}{scope} "
