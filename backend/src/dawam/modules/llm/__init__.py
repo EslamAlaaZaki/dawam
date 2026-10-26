@@ -6,10 +6,12 @@ Public interface. Other modules import only what is re-exported here:
   ``Model``, ``ProviderInput``, ``ModelInput``, ``SetupStatus``). ``gateway_for(model_id)``
   is how any other module reaches a model: it returns a ``Gateway``. API keys are sealed
   with ``SecretBox`` and never returned.
-- ``Gateway``: ``chat(messages, tools, stream) -> events``, ``embed(texts) -> vectors``
-  and ``capabilities()``. Messages, tool calls, stream events (``TextDelta``,
-  ``ToolCallEvent``, ``Done``), ``Usage`` and errors (``LlmError`` with a common code)
-  are normalised into one internal format (``Message``, ``ToolCall``, ``ToolSpec``,
+- ``Gateway``: ``chat(messages, tools, stream) -> events``, ``embed(texts) -> vectors``,
+  ``vision(prompt, images) -> events`` (``Image``s such as page images, through the adapter's
+  optional ``vision`` method), ``rerank(query, documents) -> scores`` (the optional ``rerank``
+  method; the ``rerank`` role) and ``capabilities()``. Messages, tool calls, stream events
+  (``TextDelta``, ``ToolCallEvent``, ``Done``), ``Usage`` and errors (``LlmError`` with a
+  common code) are normalised into one internal format (``Message``, ``ToolCall``, ``ToolSpec``,
   ``Capabilities``); rate limits and unavailability are retried with backoff.
 - ``Adapter``: the protocol a provider family implements; ``adapter_for`` builds the
   ``openai_compatible`` one (vLLM, SGLang, Ollama, OpenAI and any server exposing
@@ -19,7 +21,8 @@ Public interface. Other modules import only what is re-exported here:
 - ``RoleService``: monthly token budgets (installation and per Workspace) and usage.
   ``gateway_for_role(role, workspace_id=, user_id=)`` is how features call a model, resolved
   from the Workspace's Workspace Models (``agent``: its default agent model; ``light``: its
-  default light model, else its default agent model; ``embedding``: its embedding model): the
+  default light model, else its default agent model; ``embedding``: its embedding model;
+  ``vision``: its vision model, which is optional and reads scanned pages): the
   ``MeteredGateway`` checks the budgets before every call (429 ``token_budget_exhausted``) and
   records tokens per call.
 - ``WorkspaceAiService``: a Workspace's AI settings (its Workspace Models, internal-only,
@@ -31,27 +34,40 @@ Public interface. Other modules import only what is re-exported here:
   ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the composition root sets
   (``app.state.on_workspace_created``): it stores the creator's embedding, default agent and
   light models, and makes the Workspace internal-only when the installation has a tested
-  internal agent model, decided in code.
-- ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` (members read, owners
+  internal agent model, decided in code. Changing the embedding model of a Workspace with
+  indexed documents calls the ``EmbeddingModelChangedHook``
+  (``app.state.on_embedding_model_changed``), which embeds them again (ADR 0006).
+- ``document_ai_config(engine, workspace_id)``: the Workspace's effective Document AI
+  settings (``DocumentAiConfig``: the RAG pipeline's chunking, indexing, retrieval and
+  reranking knobs), which indexing and search read. Admins set the installation's values and
+  the bounds owners override within; owners override the retrieval and chunking knobs per
+  Workspace (``document_ai``: validated, versioned and audited).
+- ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` and
+  ``GET|PUT /workspaces/{workspace_id}/document-ai`` (members read, owners
   change), ``GET /ai/new-workspace-models`` (the "New workspace" form's choices), then,
-  admins only, ``/admin/llm/budgets[...]``,
+  admins only, ``/admin/llm/document-ai``, ``/admin/llm/budgets[...]``,
   ``/admin/llm/usage``, ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
 Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
-``llm_usage``, ``llm_workspace_settings`` and ``llm_workspace_models`` tables. Imports
+``llm_usage``, ``llm_workspace_settings``, ``llm_workspace_models``,
+``llm_document_ai_settings`` and ``llm_workspace_document_ai`` tables. Imports
 ``auth``, ``activity``, ``audit`` and ``workspaces`` (for the admin policy).
 """
 
 from fastapi import APIRouter
 
 from .api import router as admin_router
+from .document_ai import DocumentAiConfig, document_ai_config
+from .document_ai_api import admin_router as document_ai_admin_router
+from .document_ai_api import router as document_ai_router
 from .gateway import (
     Adapter,
     Capabilities,
     ChatEvent,
     Done,
     Gateway,
+    Image,
     LlmError,
     Message,
     OllamaContext,
@@ -82,18 +98,22 @@ from .workspace_ai import (
     ApprovedModel,
     DataSharingLevel,
     DataSharingPolicy,
+    EmbeddingModelChangedHook,
     WorkspaceAiService,
     WorkspaceAiSettings,
     WorkspaceAiView,
     on_workspace_created,
     workspace_embedding_model_id,
+    workspace_model_id,
 )
 from .workspace_ai_api import new_workspace_router
 from .workspace_ai_api import router as workspace_ai_router
 
 router = APIRouter()
 router.include_router(admin_router)
+router.include_router(document_ai_admin_router)
 router.include_router(workspace_ai_router)
+router.include_router(document_ai_router)
 router.include_router(new_workspace_router)
 
 __all__ = [
@@ -105,9 +125,12 @@ __all__ = [
     "ChatEvent",
     "DataSharingLevel",
     "DataSharingPolicy",
+    "DocumentAiConfig",
     "Done",
+    "EmbeddingModelChangedHook",
     "FakeAdapter",
     "Gateway",
+    "Image",
     "LlmError",
     "Message",
     "MeteredGateway",
@@ -132,8 +155,10 @@ __all__ = [
     "WorkspaceAiView",
     "adapter_for",
     "call_cost",
+    "document_ai_config",
     "fake_adapter_factory",
     "on_workspace_created",
     "router",
     "workspace_embedding_model_id",
+    "workspace_model_id",
 ]

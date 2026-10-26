@@ -12491,10 +12491,213 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 50,
-              "minimum": 1,
-              "default": 10,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 50,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Left out: the Workspace's Document AI `top_k`.",
+              "title": "Limit"
+            },
+            "description": "Left out: the Workspace's Document AI `top_k`."
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this type, e.g. `pdf`.",
+              "title": "Document Type"
+            },
+            "description": "Only this type, e.g. `pdf`."
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only `ar` or `en` passages.",
+              "title": "Language"
+            },
+            "description": "Only `ar` or `en` passages."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this PDF page.",
+              "title": "Page"
+            },
+            "description": "Only this PDF page."
+          },
+          {
+            "name": "sheet",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this worksheet.",
+              "title": "Sheet"
+            },
+            "description": "Only this worksheet."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only documents with this label.",
+              "title": "Tag"
+            },
+            "description": "Only documents with this label."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/documents/search/explain": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Explain Document Search",
+        "description": "The retrieval playground (any member): runs a real search with the Workspace's\neffective Document AI settings and returns each stage's ranking and scores (full-text,\nvector, fused, reranked, final). Permissions and data-sharing levels apply as in search.",
+        "operationId": "explainDocumentSearch",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "What to look for.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "What to look for."
+          },
+          {
+            "name": "system_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this Source System.",
+              "title": "System Id"
+            },
+            "description": "Only this Source System."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 50,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Limit"
             }
           }
@@ -12505,7 +12708,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentSearchResults"
+                  "$ref": "#/components/schemas/RetrievalTrace"
                 }
               }
             }
@@ -12560,6 +12763,164 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReindexStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/documents/index-status": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Get Document Index Status",
+        "description": "Where indexing stands for each file of the Workspace (any member): status, passages,\nembedding coverage, stale vectors and the last error.",
+        "operationId": "getDocumentIndexStatus",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentIndexStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/documents/{file_id}/reindex": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Reindex Document",
+        "description": "Index one file again (owners and editors), in the background; its status on\n`GET /documents/index-status` follows.",
+        "operationId": "reindexDocument",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/document-ai/reindex": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Reindex All Documents",
+        "description": "Index the documents of every Workspace again (admins only), as one background job\nper Workspace: offered after the installation's Document AI settings change.",
+        "operationId": "reindexAllDocuments",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReindexAllStarted"
                 }
               }
             }
@@ -14583,6 +14944,98 @@
         }
       }
     },
+    "/api/v1/admin/llm/document-ai": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Document Ai Settings",
+        "description": "The installation's Document AI settings and the bounds of owners' overrides (admins\nonly).",
+        "operationId": "getDocumentAiSettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDocumentAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Document Ai Settings",
+        "description": "Replace the installation's Document AI settings (admins only; recorded as a\n`document_ai_settings_changed` security event). 409 `settings_changed` when `version`\nis not the current one; 422 `unknown_setting`, `invalid_setting`, `out_of_range` (outside\nthe knob's hard limits), `invalid_bounds`, `not_overridable` (bounds for a knob owners\ncannot override) or `out_of_bounds` (a value outside its own bounds).",
+        "operationId": "setDocumentAiSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallationDocumentAiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDocumentAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
       "get": {
         "tags": [
@@ -14641,7 +15094,7 @@
           "llm"
         ],
         "summary": "Set Ai Settings",
-        "description": "Replace the settings and the Workspace Models (owners of an active Workspace; audited);\nmodel fields left out keep their current value.\n422 `invalid_model_role` for a model not enabled (and tested) for its role;\n422 `model_not_allowed` for an external model in an internal-only Workspace;\n422 `no_internal_model` when internal-only has no internal agent model to use;\n422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the\ndefault is not one of the chosen models; 422 `embedding_model_fixed` for a different\nembedding model once documents are indexed.",
+        "description": "Replace the settings and the Workspace Models (owners of an active Workspace; audited);\nmodel fields left out keep their current value.\n422 `invalid_model_role` for a model not enabled (and tested) for its role;\n422 `model_not_allowed` for an external model in an internal-only Workspace;\n422 `no_internal_model` when internal-only has no internal agent model to use;\n422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the\ndefault is not one of the chosen models. A different embedding model once documents are\nindexed starts a `reindex_documents` job that embeds them again (`embedding_rebuilding`).",
         "operationId": "setWorkspaceAiSettings",
         "parameters": [
           {
@@ -14672,6 +15125,122 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/document-ai": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Workspace Document Ai",
+        "description": "The Workspace's Document AI overrides and effective settings (any member).",
+        "operationId": "getWorkspaceDocumentAi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDocumentAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Workspace Document Ai",
+        "description": "Replace the Workspace's overrides (owners of an active Workspace; audited). 409\n`settings_changed` when `version` is not the current one; 422 `not_overridable` for an\nadmin-only knob, `out_of_bounds` outside the installation's bounds, and the value errors\nof the installation settings.",
+        "operationId": "setWorkspaceDocumentAi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceDocumentAiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDocumentAiSettings"
                 }
               }
             }
@@ -16824,6 +17393,36 @@
           "files"
         ],
         "title": "Body_validateSchemaImport"
+      },
+      "BoundsInput": {
+        "properties": {
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min",
+            "description": "Left out: the hard lower limit."
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "Left out: the hard upper limit."
+          }
+        },
+        "type": "object",
+        "title": "BoundsInput"
       },
       "BranchError": {
         "properties": {
@@ -19421,6 +20020,22 @@
         ],
         "title": "DisabledChecks"
       },
+      "DocumentIndexStatus": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FileIndexStatus"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DocumentIndexStatus"
+      },
       "DocumentPassage": {
         "properties": {
           "file_id": {
@@ -19451,6 +20066,62 @@
             "type": "string",
             "format": "uuid",
             "title": "Source System Id"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type",
+            "description": "`pdf`, `xlsx`, `md`..."
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "`ar` or `en`."
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page",
+            "description": "The page of a PDF passage."
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet",
+            "description": "The worksheet of a spreadsheet passage."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Labels: the document's folders."
           }
         },
         "type": "object",
@@ -20509,6 +21180,81 @@
         ],
         "title": "FieldChange"
       },
+      "FileIndexStatus": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "File Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "index_status": {
+            "type": "string",
+            "title": "Index Status",
+            "description": "`queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`."
+          },
+          "index_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Error",
+            "description": "Why indexing `failed`; null otherwise."
+          },
+          "index_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Note",
+            "description": "Something worth knowing that did not fail it."
+          },
+          "chunk_count": {
+            "type": "integer",
+            "title": "Chunk Count",
+            "description": "Passages the file is cut into."
+          },
+          "embedded_count": {
+            "type": "integer",
+            "title": "Embedded Count",
+            "description": "Passages that have a vector."
+          },
+          "stale_count": {
+            "type": "integer",
+            "title": "Stale Count",
+            "description": "Embedded passages whose vector was made by a model other than the one in use: a re-index replaces them."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "name",
+          "index_status",
+          "index_error",
+          "index_note",
+          "chunk_count",
+          "embedded_count",
+          "stale_count",
+          "updated_at"
+        ],
+        "title": "FileIndexStatus"
+      },
       "FileObjectLink": {
         "properties": {
           "file_id": {
@@ -21064,6 +21810,115 @@
         ],
         "title": "InferenceStarted"
       },
+      "InstallationDocumentAiRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The version these settings were read at."
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Knobs left out take their default."
+          },
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BoundsInput"
+            },
+            "type": "object",
+            "title": "Bounds",
+            "description": "Knobs left out are bounded by their hard limits."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "InstallationDocumentAiRequest"
+      },
+      "InstallationDocumentAiSettings": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with a change; 0: never changed."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Every knob's installation value."
+          },
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumberBounds"
+            },
+            "type": "object",
+            "title": "Bounds",
+            "description": "For each numeric knob owners may override, the range they may choose in."
+          },
+          "knobs": {
+            "items": {
+              "$ref": "#/components/schemas/KnobInfo"
+            },
+            "type": "array",
+            "title": "Knobs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "updated_at",
+          "values",
+          "bounds",
+          "knobs"
+        ],
+        "title": "InstallationDocumentAiSettings"
+      },
       "InvitationLinkOut": {
         "properties": {
           "email": {
@@ -21291,6 +22146,117 @@
           "next_cursor"
         ],
         "title": "JobPage"
+      },
+      "KnobInfo": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "chunking",
+              "indexing",
+              "retrieval",
+              "reranking"
+            ],
+            "title": "Group"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "int",
+              "float",
+              "bool",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "owner": {
+            "type": "boolean",
+            "title": "Owner",
+            "description": "Workspace owners may override it."
+          },
+          "reindex": {
+            "type": "boolean",
+            "title": "Reindex",
+            "description": "A change applies to documents indexed from then on: re-index the Workspace's documents to apply it to the others."
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Default",
+            "description": "The value in code, when an admin sets none."
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min",
+            "description": "Hard lower limit (numbers only)."
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "Hard upper limit (numbers only)."
+          },
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Choices",
+            "description": "The allowed values (`choice` only)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "group",
+          "kind",
+          "label",
+          "description",
+          "owner",
+          "reindex",
+          "default",
+          "min",
+          "max",
+          "choices"
+        ],
+        "title": "KnobInfo"
       },
       "Kpi": {
         "properties": {
@@ -22350,7 +23316,9 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
@@ -22673,11 +23641,13 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
-            "maxItems": 3,
+            "maxItems": 5,
             "title": "Roles",
             "description": "Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere."
           },
@@ -22727,7 +23697,9 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
@@ -22776,7 +23748,9 @@
               "enum": [
                 "agent",
                 "light",
-                "embedding"
+                "embedding",
+                "vision",
+                "rerank"
               ]
             },
             "type": "array",
@@ -23936,13 +24910,29 @@
             },
             "type": "array",
             "title": "Embedding"
+          },
+          "vision": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Vision"
+          },
+          "rerank": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array",
+            "title": "Rerank"
           }
         },
         "type": "object",
         "required": [
           "agent",
           "light",
-          "embedding"
+          "embedding",
+          "vision",
+          "rerank"
         ],
         "title": "ModelChoices"
       },
@@ -24163,6 +25153,24 @@
           "created_at"
         ],
         "title": "Notification"
+      },
+      "NumberBounds": {
+        "properties": {
+          "min": {
+            "type": "number",
+            "title": "Min"
+          },
+          "max": {
+            "type": "number",
+            "title": "Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "NumberBounds"
       },
       "PageContextIn": {
         "properties": {
@@ -25112,6 +26120,24 @@
         ],
         "title": "RegistrationStatus"
       },
+      "ReindexAllStarted": {
+        "properties": {
+          "job_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Job Ids",
+            "description": "One `reindex_documents` job per Workspace that has files."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_ids"
+        ],
+        "title": "ReindexAllStarted"
+      },
       "ReindexStarted": {
         "properties": {
           "job_id": {
@@ -25489,6 +26515,76 @@
           "password"
         ],
         "title": "ResetPasswordRequest"
+      },
+      "RetrievalTrace": {
+        "properties": {
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Queries",
+            "description": "The query as typed, then any rewrites."
+          },
+          "vector_used": {
+            "type": "boolean",
+            "title": "Vector Used",
+            "description": "False when the Workspace's policy keeps vectors off."
+          },
+          "reranked": {
+            "type": "boolean",
+            "title": "Reranked",
+            "description": "Whether a rerank model reordered the fused results."
+          },
+          "full_text": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Full Text"
+          },
+          "vector": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Vector"
+          },
+          "fused": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Fused"
+          },
+          "reranked_results": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Reranked Results"
+          },
+          "final": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEntry"
+            },
+            "type": "array",
+            "title": "Final",
+            "description": "What a real search returns."
+          }
+        },
+        "type": "object",
+        "required": [
+          "queries",
+          "vector_used",
+          "reranked",
+          "full_text",
+          "vector",
+          "fused",
+          "reranked_results",
+          "final"
+        ],
+        "title": "RetrievalTrace"
       },
       "ReviewFlag": {
         "properties": {
@@ -29363,6 +30459,59 @@
         ],
         "title": "TopValue"
       },
+      "TraceEntry": {
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "description": "Position in this stage, from 1."
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "File Id"
+          },
+          "document": {
+            "type": "string",
+            "title": "Document"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "This stage's own number: `ts_rank_cd` (full-text), cosine similarity (vector), fused RRF score, or the rerank model's score."
+          },
+          "above_floor": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above Floor",
+            "description": "Full-text and vector only: whether the score clears the relevance floor."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rank",
+          "file_id",
+          "document",
+          "section",
+          "text",
+          "score"
+        ],
+        "title": "TraceEntry"
+      },
       "TransferOwnershipRequest": {
         "properties": {
           "user_id": {
@@ -30652,11 +31801,16 @@
           "internal_only": {
             "type": "boolean",
             "title": "Internal Only",
-            "description": "Every model role (agent, light, embedding) is refused an external provider."
+            "description": "Every model role (agent, light, embedding, vision, rerank) is refused an external provider."
           },
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel",
             "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
+          },
+          "auto_retrieve": {
+            "type": "boolean",
+            "title": "Auto Retrieve",
+            "description": "On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level)."
           },
           "agent_models": {
             "items": {
@@ -30693,10 +31847,32 @@
             ],
             "description": "The Workspace's embedding model; null: document search matches text only."
           },
-          "embedding_locked": {
+          "embedding_rebuilding": {
             "type": "boolean",
-            "title": "Embedding Locked",
-            "description": "The Workspace has indexed documents, so its embedding model is fixed."
+            "title": "Embedding Rebuilding",
+            "description": "The documents are being embedded again with a new embedding model; document search matches text only until they all are."
+          },
+          "vision_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them."
+          },
+          "rerank_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order."
           },
           "choices": {
             "$ref": "#/components/schemas/ModelChoices",
@@ -30717,11 +31893,14 @@
         "required": [
           "internal_only",
           "data_sharing_level",
+          "auto_retrieve",
           "agent_models",
           "light_models",
           "light_features",
           "embedding_model",
-          "embedding_locked",
+          "embedding_rebuilding",
+          "vision_model",
+          "rerank_model",
           "choices",
           "internal_agent_available",
           "banner"
@@ -30736,6 +31915,18 @@
           },
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel"
+          },
+          "auto_retrieve": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Retrieve",
+            "description": "Left out: keeps the current value."
           },
           "agent_model_ids": {
             "items": {
@@ -30792,7 +31983,33 @@
               }
             ],
             "title": "Embedding Model Id",
-            "description": "A model enabled for the embedding role; changes only while the Workspace has no indexed documents."
+            "description": "A model enabled for the embedding role. Changing it once documents are indexed embeds them again in the background; search matches text only meanwhile."
+          },
+          "vision_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Model Id",
+            "description": "A model enabled for the vision role; optional."
+          },
+          "rerank_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Model Id",
+            "description": "A model enabled for the rerank role; optional."
           }
         },
         "type": "object",
@@ -30802,6 +32019,151 @@
         ],
         "title": "WorkspaceAiSettingsRequest",
         "description": "Model fields left out keep their current value."
+      },
+      "WorkspaceDocumentAiRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The version these settings were read at."
+          },
+          "overrides": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Overrides",
+            "description": "Knobs left out inherit the installation's value."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "WorkspaceDocumentAiRequest"
+      },
+      "WorkspaceDocumentAiSettings": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with a change; 0: never changed."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Overrides",
+            "description": "The knobs this Workspace overrides; the others inherit."
+          },
+          "inherited": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Inherited",
+            "description": "The installation's value of every knob owners may override."
+          },
+          "effective": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Effective",
+            "description": "What indexing and search use: overrides clamped to the bounds, else the installation's values."
+          },
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumberBounds"
+            },
+            "type": "object",
+            "title": "Bounds"
+          },
+          "knobs": {
+            "items": {
+              "$ref": "#/components/schemas/KnobInfo"
+            },
+            "type": "array",
+            "title": "Knobs",
+            "description": "The knobs owners may override."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "updated_at",
+          "overrides",
+          "inherited",
+          "effective",
+          "bounds",
+          "knobs"
+        ],
+        "title": "WorkspaceDocumentAiSettings"
       },
       "WorkspaceFile": {
         "properties": {
@@ -30847,7 +32209,36 @@
           "text_status": {
             "type": "string",
             "title": "Text Status",
-            "description": "`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image)."
+            "description": "`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image, or a file whose text is not extracted yet)."
+          },
+          "index_status": {
+            "type": "string",
+            "title": "Index Status",
+            "description": "Where indexing for search is: `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`."
+          },
+          "index_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Error",
+            "description": "Why indexing `failed`; null otherwise."
+          },
+          "index_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Note",
+            "description": "Something worth knowing about the last indexing that did not fail it, e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's vision model; null otherwise."
           },
           "updated_by": {
             "anyOf": [
@@ -30878,6 +32269,8 @@
           "mime",
           "size",
           "text_status",
+          "index_status",
+          "index_error",
           "updated_by",
           "updated_at"
         ],

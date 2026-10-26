@@ -79,6 +79,16 @@ class Settings(DatabaseSettings):
     ``DAWAM_ENCRYPTION_KEY`` (base64). ``get_secret_value()`` returns the raw bytes."""
 
     log_level: str = "INFO"
+    document_parser: Literal["docling", "basic"] = "docling"
+    """How uploaded PDF, DOCX and XLSX files are read for indexing: ``docling`` keeps headings,
+    reading order and tables (Markdown); ``basic`` is plain text (pypdf, python-docx, openpyxl)."""
+    document_ocr: Literal["rapidocr", "off"] = "rapidocr"
+    """How the scanned pages of uploaded PDFs are read: ``rapidocr`` (Docling with RapidOCR's
+    PP-OCR models, English and Arabic) or ``off`` (a scan stays ``no_text_found``)."""
+    document_accelerator: Literal["auto", "cpu", "cuda"] = "auto"
+    """The device Docling's models and RapidOCR run on: ``auto`` (an NVIDIA GPU when one is
+    visible, else the CPU), ``cpu``, or ``cuda`` (falls back to the CPU, with a warning, when
+    no GPU is visible). A GPU needs the image built with ``ACCELERATOR=cuda``."""
     run_migrations_on_startup: bool = True
 
     worker_poll_seconds: float = 5.0

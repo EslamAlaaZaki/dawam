@@ -372,6 +372,8 @@ const MODELS: NewWorkspaceModels = {
     agent: [local(BIG, "big"), local(SMALL, "small")],
     light: [local(SMALL, "small")],
     embedding: [local(BGE_SMALL, "bge-small"), local(BGE_LARGE, "bge-large")],
+    vision: [],
+    rerank: [],
   },
 };
 
@@ -418,7 +420,13 @@ describe("creating a Workspace", () => {
     const backend = fakeBackend({
       models: {
         internal_only: false,
-        choices: { agent: [local(BIG, "big")], light: [], embedding: [] },
+        choices: {
+          agent: [local(BIG, "big")],
+          light: [],
+          embedding: [],
+          vision: [],
+          rerank: [],
+        },
       },
     });
     renderApp(backend);
@@ -721,6 +729,7 @@ describe("a Workspace's page", () => {
     expect(within(dialog).getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Details",
       "AI",
+      "Document AI",
       "Archive & delete",
     ]);
   });

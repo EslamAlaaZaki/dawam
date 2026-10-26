@@ -2,9 +2,10 @@
 data-sharing level (spec §6.18, stories 160, 161).
 
 Only owners change them (``Action.CHANGE_AI_SETTINGS``); every change is audited. The
-Workspace Models are one embedding model and one or more agent and light models, one of
-each the default, chosen from the models an admin enabled for each Model Role; the gateway
-resolves every call's model from them (``RoleService.gateway_for_role``). The restriction
+Workspace Models are one embedding model, one or more agent and light models, one of
+each the default, and optionally one vision model, chosen from the models an admin enabled
+for each Model Role; the gateway resolves every call's model from them
+(``RoleService.gateway_for_role``). The restriction
 applies to every model role and is enforced in the gateway (``RoleService.metered_gateway``);
 the level is exposed as one ``DataSharingPolicy`` that other modules ask before they put data
 in a prompt.
@@ -16,6 +17,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Protocol
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -30,7 +32,7 @@ from dawam.platform.errors import ApiError
 from .tables import ModelRecord, ProviderRecord, WorkspaceAiSettingsRecord, WorkspaceModelRecord
 
 AUDIT_ENTITY = "workspace_ai_settings"
-ROLES = ("agent", "light", "embedding")
+ROLES = ("agent", "light", "embedding", "vision", "rerank")
 
 
 class DataSharingLevel(StrEnum):
@@ -73,6 +75,10 @@ class WorkspaceModels:
     """``None``: light tasks use the default agent model."""
     embedding: uuid.UUID | None = None
     """``None``: document search has no embedding model, so it matches text only."""
+    vision: uuid.UUID | None = None
+    """``None``: scanned pages are read by the self-hosted OCR engine."""
+    rerank: uuid.UUID | None = None
+    """``None``: search results keep their fused order."""
 
 
 @dataclass(frozen=True)
@@ -82,6 +88,8 @@ class WorkspaceAiSettings:
     data_sharing_level: DataSharingLevel
     models: WorkspaceModels
     updated_at: datetime | None
+    auto_retrieve: bool = False
+    """The first message of a conversation carries the top document passages."""
 
     @property
     def policy(self) -> DataSharingPolicy:
@@ -123,8 +131,9 @@ class WorkspaceAiView:
     choices: dict[str, list[ApprovedModel]]
     """Per role, every model an owner may choose (an internal-only Workspace takes only
     the internal ones)."""
-    embedding_locked: bool
-    """The Workspace has indexed documents, so its embedding model is fixed (ADR 0005)."""
+    embedding_rebuilding: bool
+    """The Workspace's documents are being embedded again with its new embedding model;
+    search matches text only until they all are (ADR 0006)."""
     internal_agent_available: bool
     """The installation has a tested agent model on an internal provider."""
     banner: bool
@@ -167,6 +176,8 @@ def _models(
         light=ids("light"),
         default_light=default("light"),
         embedding=default("embedding"),
+        vision=default("vision"),
+        rerank=default("rerank"),
     )
 
 
@@ -183,6 +194,7 @@ def load_settings(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
         data_sharing_level=DataSharingLevel(record.data_sharing_level),
         models=models,
         updated_at=record.updated_at,
+        auto_retrieve=record.auto_retrieve,
     )
 
 
@@ -199,8 +211,13 @@ def default_model_id(db: Session, workspace_id: uuid.UUID, role: str) -> uuid.UU
 
 def workspace_embedding_model_id(engine: sa.Engine, workspace_id: uuid.UUID) -> uuid.UUID | None:
     """The Workspace's embedding model; ``None``: it has none."""
+    return workspace_model_id(engine, workspace_id, "embedding")
+
+
+def workspace_model_id(engine: sa.Engine, workspace_id: uuid.UUID, role: str) -> uuid.UUID | None:
+    """The Workspace's default model for ``role``; ``None``: it has none."""
     with Session(engine) as db:
-        return default_model_id(db, workspace_id, "embedding")
+        return default_model_id(db, workspace_id, role)
 
 
 def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
@@ -214,7 +231,8 @@ def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
 
 def has_indexed_documents(db: Session, workspace_id: uuid.UUID) -> bool:
     """Whether any of the Workspace's documents carry vectors, which pin its embedding
-    model (ADR 0005). The files module owns the chunks; this only reads them, by SQL."""
+    model to them until they are embedded again (ADR 0006). The files module owns the
+    chunks; this only reads them, by SQL."""
     return bool(
         db.scalar(
             sa.text(
@@ -224,6 +242,27 @@ def has_indexed_documents(db: Session, workspace_id: uuid.UUID) -> bool:
             {"w": workspace_id},
         )
     )
+
+
+def embedding_rebuilding(db: Session, workspace_id: uuid.UUID) -> bool:
+    """Whether the Workspace's documents are being embedded again (ADR 0006). The files
+    module owns the rebuild; this only reads it, by SQL."""
+    return bool(
+        db.scalar(
+            sa.text(
+                "SELECT EXISTS (SELECT 1 FROM document_embedding_rebuilds WHERE workspace_id = :w)"
+            ),
+            {"w": workspace_id},
+        )
+    )
+
+
+class EmbeddingModelChangedHook(Protocol):
+    def __call__(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        """Called inside the transaction that changes the embedding model of a Workspace
+        with indexed documents, so its documents are embedded again (ADR 0006). The files
+        module, which imports this one, fills it."""
+        ...
 
 
 def enabled_models(db: Session, role: str) -> list[ApprovedModel]:
@@ -254,6 +293,8 @@ class _Fields:
     light: str
     default_light: str
     embedding: str = "embedding_model_id"
+    vision: str = "vision_model_id"
+    rerank: str = "rerank_model_id"
 
 
 CREATE_FIELDS = _Fields("agent_model_id", "agent_model_id", "light_model_id", "light_model_id")
@@ -303,10 +344,13 @@ def validated_models(
     embedding: uuid.UUID | None,
     fields: _Fields,
     embedding_required: bool,
+    vision: uuid.UUID | None = None,
+    rerank: uuid.UUID | None = None,
 ) -> WorkspaceModels:
     """The one check for Workspace Models: every model enabled for its role and tested,
     internal-only respected, one default agent model (required whenever the Workspace may
-    choose one) and one default light model when any light model is chosen."""
+    choose one), one default light model when any light model is chosen and at most one
+    vision model."""
     if internal_only and enabled_models(db, "agent") and not _internal_agent_available(db):
         raise _invalid(
             "An internal-only Workspace needs an agent model on an internal provider.",
@@ -327,12 +371,28 @@ def validated_models(
     )
     if embedding_required and embedding is None and offered_embedding:
         raise _invalid("Choose the embedding model.", fields.embedding, "embedding_model_required")
+    _check_role(
+        db,
+        "vision",
+        (vision,) if vision is not None else (),
+        fields.vision,
+        internal_only=internal_only,
+    )
+    _check_role(
+        db,
+        "rerank",
+        (rerank,) if rerank is not None else (),
+        fields.rerank,
+        internal_only=internal_only,
+    )
     return WorkspaceModels(
         agent=agent_ids,
         default_agent=_default(agent_ids, default_agent, fields.default_agent),
         light=light_ids,
         default_light=_default(light_ids, default_light, fields.default_light),
         embedding=embedding,
+        vision=vision,
+        rerank=rerank,
     )
 
 
@@ -344,6 +404,8 @@ def _store_models(db: Session, workspace_id: uuid.UUID, models: WorkspaceModels)
         *((m, "agent", m == models.default_agent) for m in models.agent),
         *((m, "light", m == models.default_light) for m in models.light),
         *([(models.embedding, "embedding", True)] if models.embedding is not None else []),
+        *([(models.vision, "vision", True)] if models.vision is not None else []),
+        *([(models.rerank, "rerank", True)] if models.rerank is not None else []),
     ]
     db.add_all(
         WorkspaceModelRecord(workspace_id=workspace_id, model_id=m, role=role, is_default=d)
@@ -362,6 +424,7 @@ def new_workspace_settings(
         workspace_id=workspace_id,
         internal_only=_internal_agent_available(db),
         data_sharing_level=DataSharingLevel.METADATA.value,
+        auto_retrieve=False,
         updated_at=at,
     )
 
@@ -412,10 +475,18 @@ def new_workspace_choices(engine: sa.Engine) -> NewWorkspaceChoices:
 
 
 class WorkspaceAiService:
-    def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: sa.Engine,
+        *,
+        workspaces: WorkspaceService,
+        clock: Clock,
+        on_embedding_changed: EmbeddingModelChangedHook | None = None,
+    ) -> None:
         self._engine = engine
         self._workspaces = workspaces
         self._clock = clock
+        self._on_embedding_changed = on_embedding_changed
 
     def settings(self, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
         """The settings, for server-side callers. Authorizes nothing: callers have."""
@@ -479,10 +550,13 @@ class WorkspaceAiService:
         light_model_ids: list[uuid.UUID] | None = None,
         default_light_model_id: uuid.UUID | None = None,
         embedding_model_id: uuid.UUID | None = None,
+        vision_model_id: uuid.UUID | None = None,
+        rerank_model_id: uuid.UUID | None = None,
+        auto_retrieve: bool | None = None,
     ) -> WorkspaceAiView:
         """Owners only, while the Workspace is active. Replaces the settings and the
-        Workspace Models (``validated_models``). The embedding model may change only while
-        the Workspace has no indexed documents (ADR 0005): 422 ``embedding_model_fixed``."""
+        Workspace Models (``validated_models``). Changing the embedding model of a Workspace
+        with indexed documents embeds them again in the background (ADR 0006)."""
         self._workspaces.authorize(user, Action.CHANGE_AI_SETTINGS, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = db.scalars(
@@ -506,18 +580,21 @@ class WorkspaceAiService:
                 embedding=embedding_model_id,
                 fields=UPDATE_FIELDS,
                 embedding_required=False,
+                vision=vision_model_id,
+                rerank=rerank_model_id,
             )
-            if models.embedding != current.embedding and has_indexed_documents(db, workspace_id):
-                raise _invalid(
-                    "The Workspace has indexed documents, so its embedding model is fixed.",
-                    "embedding_model_id",
-                    "embedding_model_fixed",
-                )
+            reembed = models.embedding != current.embedding and has_indexed_documents(
+                db, workspace_id
+            )
             old = _audited(record, current)
             record.internal_only = internal_only
             record.data_sharing_level = data_sharing_level.value
+            if auto_retrieve is not None:
+                record.auto_retrieve = auto_retrieve
             record.updated_at = now
             _store_models(db, workspace_id, models)
+            if reembed and self._on_embedding_changed is not None:
+                self._on_embedding_changed(db, workspace_id, user.id)
             new = _audited(record, models)
             changed = sorted(k for k in new if new[k] != old[k])
             if changed:
@@ -563,7 +640,7 @@ class WorkspaceAiService:
             settings=settings,
             chosen=chosen,
             choices={role: enabled_models(db, role) for role in ROLES},
-            embedding_locked=has_indexed_documents(db, workspace_id),
+            embedding_rebuilding=embedding_rebuilding(db, workspace_id),
             internal_agent_available=internal_available,
             banner=not settings.internal_only and not internal_available,
         )
@@ -579,9 +656,12 @@ def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict
     return {
         "internal_only": record.internal_only,
         "data_sharing_level": record.data_sharing_level,
+        "auto_retrieve": record.auto_retrieve,
         "agent_model_ids": ids(models.agent),
         "default_agent_model_id": one(models.default_agent),
         "light_model_ids": ids(models.light),
         "default_light_model_id": one(models.default_light),
         "embedding_model_id": one(models.embedding),
+        "vision_model_id": one(models.vision),
+        "rerank_model_id": one(models.rerank),
     }

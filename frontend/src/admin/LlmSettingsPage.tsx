@@ -84,6 +84,8 @@ const ROLE_COLUMNS: { role: LlmModelRole; label: string }[] = [
   { role: "agent", label: "Agent" },
   { role: "light", label: "Light" },
   { role: "embedding", label: "Embedding" },
+  { role: "vision", label: "Vision" },
+  { role: "rerank", label: "Rerank" },
 ];
 
 const EMBEDDING_HINT =
@@ -97,7 +99,7 @@ function testSummary(model: LlmModel): string {
   return "Not tested";
 }
 
-/** Every registered model with its three Model Role checkboxes (any combination). */
+/** Every registered model with a checkbox per Model Role (any combination). */
 function ModelRolesSection() {
   const providers = useLlmProviders();
   if (providers.isPending) {
@@ -134,7 +136,9 @@ function ModelRolesSection() {
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7}>No models registered yet.</TableCell>
+                <TableCell colSpan={4 + ROLE_COLUMNS.length}>
+                  No models registered yet.
+                </TableCell>
               </TableRow>
             )}
             {rows.map(({ model, provider }) => (

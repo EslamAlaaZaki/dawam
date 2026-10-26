@@ -68,7 +68,7 @@ flowchart LR
 ## 2. Document ingestion: OCR, layout and images
 
 ### Today
-`pypdf` text only. Scanned PDFs → `no_text_found`. Images aren't read. Tables in PDFs come out as loose text. Indexing runs synchronously in the upload request.
+Shipped in Epic 21 (#363, #424, #425, #364, #426): indexing runs as a background job with a per-file status; PDF, DOCX and XLSX are parsed by Docling into Markdown that keeps headings and tables; scanned PDF pages are read by OCR (a self-hosted Docling + RapidOCR engine, or the Workspace's vision model); uploaded images are described by the vision model; the agent has a `describe_image` tool. How it works now: `ai-architecture.md` §8.1. What did not ship: the Document AI settings page (§5), so the parser, OCR engine and thresholds are still environment settings and code constants.
 
 ### 2.1 OCR
 
@@ -84,14 +84,22 @@ flowchart LR
 
 **Recommendation:** add an `OcrEngine` port in `files/internal/` with two implementations to start: a self-hosted one (PaddleOCR or Docling) for internal-only installs, and a **vision-model** one that calls a new gateway role `vision` (so budgets and internal-only apply). Run OCR only when `pypdf` returns no or very little text per page.
 
+**Done** (#424, #425). The port is `OcrEngine` (`files/internal/ocr.py`). The self-hosted engine is Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or NVIDIA GPU), read once per language (English, Arabic) keeping the more confident reading per page; Tesseract and PaddleOCR were not built. The `vision` role is a gateway role like `embedding`, with its own Workspace Model, Test connection and adapter support. OCR runs only on pages with under 50 characters of their own text. RapidOCR stays the self-hosted engine (maintainer decision; the bake-off, #450, was dropped).
+
 ### 2.2 Layout-aware parsing
 Replace per-page `extract_text()` with a parser that keeps **headings, reading order and tables** (Docling, Marker or Unstructured), output as Markdown. Our heading-based chunker then gets real sections, and tables stay intact as Markdown tables.
+
+**Done** (#364) for PDF, DOCX and XLSX, with Docling. Table-aware chunking and chunk overlap (§3) shipped in Epic 22 (#366, #365).
 
 ### 2.3 Images and diagrams
 Data teams upload **ERD screenshots, architecture diagrams and report mock-ups**. A vision model can describe them ("table `orders` has FK `customer_id` → `customers.id`") and that description becomes searchable text, linked to the image. A new tool such as `describe_image(file_id)` would let the agent look on demand.
 
+**Done** (#426). An uploaded image is described on indexing and the description is its searchable text; the agent's `describe_image` tool returns it, or asks the vision model afresh when there is none.
+
 ### 2.4 Async ingestion
 Move `index_file` from the upload request to a job (`index_document`), with a per-file status: `queued → extracting → ocr → chunking → embedding → indexed | failed`. OCR and embeddings are too slow for a request.
+
+**Done** (#363) as the `index_document` job and `files.index_status`, with one extra column, `index_note`, added by #425. The diagram below is the original design; it differs from what shipped in these ways: the self-hosted engine is Docling + RapidOCR, there are no contextual headers, and image descriptions are made at the `ocr` stage. See `ai-architecture.md` §8.1 for the shipped flow.
 
 ```mermaid
 flowchart TD
@@ -119,14 +127,14 @@ flowchart TD
 
 | Today | Enhancement |
 |---|---|
-| Fixed ~1,000-char target, 1,500 hard split, no overlap | Configurable size and **overlap**, measured in **tokens** of the embedding model |
-| Heading-based sections only | Strategies: heading-aware (today), recursive, **semantic** (split where embedding similarity drops), table-aware (a table is one chunk, with its header repeated) |
-| Chunk = what's retrieved | **Parent/child ("small-to-big")**: embed small chunks, return their parent section to the model |
-| No chunk context | **Contextual retrieval**: prepend a one-sentence context ("From the Loans data dictionary, section Status codes…"), written by the light model, before embedding and full-text indexing |
-| No metadata filters beyond Source System | Metadata per chunk: document type, language, page number, sheet, tags; filterable in the tool |
-| No ANN index (vector column has no fixed dimension) | Per-model **partial HNSW indexes** with a fixed-dimension cast (e.g. `CREATE INDEX ... USING hnsw ((embedding::vector(1024)) vector_cosine_ops) WHERE embedding_model_id = '...'`), or `halfvec` to save memory; needed once Workspaces have many documents |
-| Embedding model fixed after indexing (ADR 0005) | The deferred **re-embed on change** job: build new vectors in the background, search full-text meanwhile, then switch |
-| Generic embedding model | Recommend **multilingual** embedders for Arabic + English: `bge-m3`, `multilingual-e5-large`, `jina-embeddings-v3`, OpenAI `text-embedding-3-large`, Cohere `embed-multilingual-v3` |
+| Fixed ~1,000-char target, 1,500 hard split, no overlap | Configurable size and **overlap**, measured in **tokens** of the embedding model. **Done** ([#365](https://github.com/EslamAlaaZaki/dawam/issues/365)): 250 target, 375 max, 40 overlap, counted with the model's own tokenizer; settings since [#380](https://github.com/EslamAlaaZaki/dawam/issues/380) |
+| Heading-based sections only | Strategies: heading-aware (today), recursive, **semantic** (split where embedding similarity drops), table-aware (a table is one chunk, with its header repeated). **Done**: table-aware ([#366](https://github.com/EslamAlaaZaki/dawam/issues/366)); recursive and semantic as a per-Workspace setting ([#367](https://github.com/EslamAlaaZaki/dawam/issues/367)) |
+| Chunk = what's retrieved | **Parent/child ("small-to-big")**: embed small chunks, return their parent section to the model. **Done** ([#368](https://github.com/EslamAlaaZaki/dawam/issues/368)): parents of ~1,000 tokens, children of ~250 |
+| No chunk context | **Contextual retrieval**: prepend a one-sentence context ("From the Loans data dictionary, section Status codes…"), written by the light model, before embedding and full-text indexing. **Done** ([#369](https://github.com/EslamAlaaZaki/dawam/issues/369)); off without a light model |
+| No metadata filters beyond Source System | Metadata per chunk: document type, language, page number, sheet, tags; filterable in the tool. **Done** ([#370](https://github.com/EslamAlaaZaki/dawam/issues/370)); tags are the file's folders |
+| No ANN index (vector column has no fixed dimension) | Per-model **partial HNSW indexes** with a fixed-dimension cast (e.g. `CREATE INDEX ... USING hnsw ((embedding::vector(1024)) vector_cosine_ops) WHERE embedding_model_id = '...'`), or `halfvec` to save memory; needed once Workspaces have many documents. **Done** ([#371](https://github.com/EslamAlaaZaki/dawam/issues/371)) with the `vector` cast up to 2,000 dimensions; `halfvec` not built |
+| Embedding model fixed after indexing (ADR 0005) | The deferred **re-embed on change** job: build new vectors in the background, search full-text meanwhile, then switch. **Done** ([#372](https://github.com/EslamAlaaZaki/dawam/issues/372), ADR 0006) |
+| Generic embedding model | Recommend **multilingual** embedders for Arabic + English (documented in `ai-architecture.md` §8.3): `bge-m3`, `multilingual-e5-large`, `jina-embeddings-v3`, OpenAI `text-embedding-3-large`, Cohere `embed-multilingual-v3` |
 
 ---
 
@@ -134,15 +142,15 @@ flowchart TD
 
 | Gap today | Enhancement |
 |---|---|
-| No re-ranking | **Cross-encoder reranker** after fusion: `bge-reranker-v2-m3` (self-hosted, multilingual), Cohere Rerank, Jina Reranker. Add a gateway **`rerank` role** and adapter method so it obeys budgets and internal-only |
-| `simple` FTS config, no stemming | **Arabic light stemming** (e.g. an ISRI/Tashaphyne-style stemmer applied with the normalisation) and English stemming; or BM25 via `pg_search` (ParadeDB) / `pg_textsearch` |
-| Plain OR of words | Phrase and proximity matching; boost exact identifier matches (table and column names) |
-| Equal-weight RRF, fixed k=60, 20 candidates each | Configurable weights, k and candidate counts (admin setting, §5) |
-| One query as typed | **Query rewriting / multi-query** (light model writes 2–3 variants, including Arabic ↔ English), **HyDE** for vague questions |
-| No diversity | **MMR** to avoid five passages from the same section |
-| No score threshold | Minimum relevance score; tell the model "nothing relevant found" instead of weak passages |
-| Retrieval only via a tool | Keep that (agentic RAG is right for us), plus an optional **auto-retrieve** of the top 3 passages for the first message |
-| Documents only | **GraphRAG-style** retrieval over what we already have: lineage graph, relationships, KPI links. A "knowledge graph" tool combining catalog + docs + lineage |
+| No re-ranking | **Cross-encoder reranker** after fusion: `bge-reranker-v2-m3` (self-hosted, multilingual), Cohere Rerank, Jina Reranker. Add a gateway **`rerank` role** and adapter method so it obeys budgets and internal-only. **Done** ([#373](https://github.com/EslamAlaaZaki/dawam/issues/373)): OpenAI-compatible `/rerank` (Cohere, Jina, vLLM shapes) reorders the fused top 30; the fused order is the fallback |
+| `simple` FTS config, no stemming | **Arabic light stemming** (e.g. an ISRI/Tashaphyne-style stemmer applied with the normalisation) and English stemming; or BM25 via `pg_search` (ParadeDB) / `pg_textsearch`. **Done** ([#374](https://github.com/EslamAlaaZaki/dawam/issues/374)): own light Arabic and English stemmers; BM25 not built |
+| Plain OR of words | Phrase and proximity matching; boost exact identifier matches (table and column names). **Done** ([#375](https://github.com/EslamAlaaZaki/dawam/issues/375)): adjacent-word phrases and identifiers rank first in `ORDER BY`, and identifier matches stay first after fusion and reranking |
+| Equal-weight RRF, fixed k=60, 20 candidates each | Configurable weights, k and candidate counts (admin setting, §5). **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) as `SearchTuning`; now Document AI settings ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380)) |
+| One query as typed | **Query rewriting / multi-query** (light model writes 2–3 variants, including Arabic ↔ English), **HyDE** for vague questions. **Done** ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)): up to 3 variants plus an optional HyDE answer from the light model; off without one |
+| No diversity | **MMR** to avoid five passages from the same section. **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)) |
+| No score threshold | Minimum relevance score; tell the model "nothing relevant found" instead of weak passages. **Done** ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)): a relevance floor on text rank and cosine similarity, and a "nothing relevant found" note |
+| Retrieval only via a tool | Keep that (agentic RAG is right for us), plus an optional **auto-retrieve** of the top 3 passages for the first message. **Done** ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)): a per-Workspace `auto_retrieve` setting, off by default; no UI toggle (not among the Document AI settings) |
+| Documents only | **GraphRAG-style** retrieval over what we already have: lineage graph, relationships, KPI links. A "knowledge graph" tool combining catalog + docs + lineage. **Done** ([#379](https://github.com/EslamAlaaZaki/dawam/issues/379)): the `explore_graph` tool |
 
 ```mermaid
 flowchart LR
@@ -165,6 +173,8 @@ Admins choose providers, models, roles and budgets; owners choose the embedding 
 
 ### Proposal
 An **installation-level "Document AI" settings page** (admins) with **per-Workspace overrides** (owners), stored in a settings table, validated, audited and versioned. Changes that invalidate the index (chunking, embedding model) ask to start a re-index.
+
+**Done** ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380), [#381](https://github.com/EslamAlaaZaki/dawam/issues/381), [#382](https://github.com/EslamAlaaZaki/dawam/issues/382), [#383](https://github.com/EslamAlaaZaki/dawam/issues/383)): admin page and Workspace tab, the re-index prompt, the index status panel and the retrieval playground. Built: chunking (strategy, size, overlap, headers), embed batch, extraction caps, retrieval (candidates, weights, k, MMR, floors, top-k) and rerank on/off with top-n. Not built: ingestion toggles (file types, OCR, parser), embedding and HNSW options, query rewriting / HyDE toggles, and the Answering group.
 
 | Group | Settings |
 |---|---|
@@ -200,7 +210,7 @@ flowchart TD
 |---|---|---|
 | **Planning** | none: the model improvises | Plan-then-execute for jobs: a `write_plan` / `update_plan` (todo list) tool, the plan shown in the job UI; re-plan after failures |
 | **Self-verification** | none built in | After generation, automatically call `run_validation` / `get_score`, fix and retry (bounded), "reflection" before the final answer |
-| **Multi-agent** | one agent with 25 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
+| **Multi-agent** | one agent with 26 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
 | **Tool selection** | all allowed tools sent every turn | **Dynamic tool loading / tool search**: send a short list plus a `find_tools` tool; big win for small models and token cost |
 | **Parallel tools** | calls in one turn run one after another | Run independent **read** tools concurrently (thread pool), keep writes sequential |
 | **Ask the member** | jobs can't ask; chats just answer | An `ask_member` interrupt: the run pauses (checkpointed), the question shows in the chat, the answer resumes it |
@@ -294,7 +304,7 @@ flowchart TD
 | Part | Today | With all tools proposed in §6 |
 |---|---|---|
 | System prompt (`SYSTEM_PROMPT`, 1,186 chars; jobs add 405) | ~300 tokens | ~350 tokens (adds the date) |
-| Tool schemas (25 tools, 29,945 chars) | **~7,500 tokens** | **~10,500–11,000 tokens** (about 12 small new tools at roughly 200–300 tokens each) |
+| Tool schemas (26 tools) | **~7,500 tokens** | **~10,500–11,000 tokens** (about 12 small new tools at roughly 200–300 tokens each) |
 
 The three largest schemas, `generate_dw_schema` (4,923 chars), `draft_mappings` (3,416) and `propose_changes` (3,267), are about a third of the total. The median tool is about 700 chars.
 
@@ -394,24 +404,24 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 
 | # | Item | Section | Impact | Effort | Notes |
 |---|---|---|---|---|---|
-| 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR |
-| 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises |
+| 1 | Async ingestion job + per-file index status | §2.4, §5 | High | M | Prerequisite for OCR. **Done** (#363) |
+| 2 | OCR (self-hosted engine + vision role), Arabic + English | §2.1 | High | M | Scanned PDFs are common in Saudi enterprises. **Done** (#424, #425); RapidOCR kept, bake-off dropped (#450) |
 | 3 | Prompt caching + real token counts | §7 | High | S | Cuts cost and latency right away. **Done** (#352, #353) |
-| 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain |
-| 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable |
+| 4 | Reranker (rerank role) + Arabic stemming | §4 | High | M | Biggest retrieval quality gain. **Done** ([#373](https://github.com/EslamAlaaZaki/dawam/issues/373), [#374](https://github.com/EslamAlaaZaki/dawam/issues/374)); also phrase and identifier matching ([#375](https://github.com/EslamAlaaZaki/dawam/issues/375)), weighted fusion, MMR and a relevance floor ([#376](https://github.com/EslamAlaaZaki/dawam/issues/376)), query rewriting and HyDE ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)), auto-retrieve ([#378](https://github.com/EslamAlaaZaki/dawam/issues/378)) and `explore_graph` ([#379](https://github.com/EslamAlaaZaki/dawam/issues/379)) |
+| 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable. **Done** ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380), [#381](https://github.com/EslamAlaaZaki/dawam/issues/381), [#382](https://github.com/EslamAlaaZaki/dawam/issues/382), [#383](https://github.com/EslamAlaaZaki/dawam/issues/383)): settings with Workspace overrides, re-index prompt, index status page, playground |
 | 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
 | 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
 | 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
-| 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | |
-| 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks |
+| 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | Parsing **done** (#364); table-aware chunking **done** (#366); overlap **done** (#365) |
+| 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks. **Done** (#371) |
 | 11 | Conversation compaction + Workspace memory | §7 | Medium | M | Compaction **done** (#354); Workspace memory not yet |
-| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | |
+| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | Contextual headers **done** (#369); query rewriting **done** (#377); titles not yet |
 | 13 | Planning + self-verification in jobs | §6 | Medium | M | |
 | 14 | Model fallback + cost tables | §6, §8 | Medium | S | |
 | 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | Only after 6–8 are in place |
 | 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | |
-| 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | |
-| 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2 |
+| 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | **Done** (#372); ADR 0006 supersedes 0005 |
+| 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2. **Done** (#426) |
 | 19 | Discovery tools: `workspace_overview`, KPI and DW search | §6.1 | High | S | Quick win; do in Phase 1 |
 | 20 | Current date (Gregorian + Hijri) in the system prompt | §6.2 | Medium | S | Quick win; do in Phase 1 |
 | 21 | `query_file` with DuckDB over uploaded CSV/XLSX | §6.2 | Medium | M | Safer than a Python sandbox |

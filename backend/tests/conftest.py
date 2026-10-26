@@ -129,6 +129,8 @@ def settings(database_url: str, tmp_path: Path) -> Settings:
         database_url=database_url,
         storage_path=str(tmp_path / "files"),
         encryption_key=TEST_ENCRYPTION_KEY,  # type: ignore[arg-type]
+        document_parser="basic",  # the Docling engine is never loaded in the default run
+        document_ocr="off",
         score_debounce_seconds=0,  # a design change is scored before its request returns
     )
 

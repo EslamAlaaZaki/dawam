@@ -2,7 +2,8 @@
 ADR 0005). One rule for both: a Workspace needs a replacement for a role only when the model
 is its default for the role or its only model for it; the admin picks one per Workspace and
 role (an internal-only Workspace takes only an internal model), applied in one transaction
-as the Workspace's new default. Workspaces holding it as a non-default extra just lose it.
+as the Workspace's new default. Workspaces holding it as a non-default extra just lose it, and
+so do Workspaces holding it for an optional role (vision).
 A Workspace's indexed documents pin its embedding model, so that role cannot be released
 while any exist; nothing is ever re-indexed.
 """
@@ -20,7 +21,11 @@ from dawam.platform.errors import ApiError
 from .tables import ModelRecord, WorkspaceModelRecord
 from .workspace_ai import load_settings, model_is_internal
 
-ROLES = ("agent", "light", "embedding")
+ROLES = ("agent", "light", "embedding", "vision", "rerank")
+OPTIONAL_ROLES = frozenset({"vision", "rerank"})
+"""Roles a Workspace may go without: losing the model needs no replacement (without a vision
+model, scanned pages are read by the self-hosted OCR engine; without a rerank model, search
+keeps its fused order)."""
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,8 @@ def _names(db: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
 
 
 def _needs_replacement(db: Session, row: WorkspaceModelRecord) -> bool:
+    if row.role in OPTIONAL_ROLES:
+        return False
     if row.is_default:
         return True
     others = db.scalar(

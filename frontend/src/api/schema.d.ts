@@ -3432,6 +3432,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/documents/search/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain Document Search
+         * @description The retrieval playground (any member): runs a real search with the Workspace's
+         *     effective Document AI settings and returns each stage's ranking and scores (full-text,
+         *     vector, fused, reranked, final). Permissions and data-sharing levels apply as in search.
+         */
+        get: operations["explainDocumentSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documents/reindex": {
         parameters: {
             query?: never;
@@ -3447,6 +3469,69 @@ export interface paths {
          *     job: run it after the embedding model or its dimension changes.
          */
         post: operations["reindexDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/documents/index-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Index Status
+         * @description Where indexing stands for each file of the Workspace (any member): status, passages,
+         *     embedding coverage, stale vectors and the last error.
+         */
+        get: operations["getDocumentIndexStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/documents/{file_id}/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Document
+         * @description Index one file again (owners and editors), in the background; its status on
+         *     `GET /documents/index-status` follows.
+         */
+        post: operations["reindexDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/document-ai/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex All Documents
+         * @description Index the documents of every Workspace again (admins only), as one background job
+         *     per Workspace: offered after the installation's Document AI settings change.
+         */
+        post: operations["reindexAllDocuments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3972,6 +4057,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/document-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Ai Settings
+         * @description The installation's Document AI settings and the bounds of owners' overrides (admins
+         *     only).
+         */
+        get: operations["getDocumentAiSettings"];
+        /**
+         * Set Document Ai Settings
+         * @description Replace the installation's Document AI settings (admins only; recorded as a
+         *     `document_ai_settings_changed` security event). 409 `settings_changed` when `version`
+         *     is not the current one; 422 `unknown_setting`, `invalid_setting`, `out_of_range` (outside
+         *     the knob's hard limits), `invalid_bounds`, `not_overridable` (bounds for a knob owners
+         *     cannot override) or `out_of_bounds` (a value outside its own bounds).
+         */
+        put: operations["setDocumentAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
         parameters: {
             query?: never;
@@ -3992,10 +4106,37 @@ export interface paths {
          *     422 `model_not_allowed` for an external model in an internal-only Workspace;
          *     422 `no_internal_model` when internal-only has no internal agent model to use;
          *     422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the
-         *     default is not one of the chosen models; 422 `embedding_model_fixed` for a different
-         *     embedding model once documents are indexed.
+         *     default is not one of the chosen models. A different embedding model once documents are
+         *     indexed starts a `reindex_documents` job that embeds them again (`embedding_rebuilding`).
          */
         put: operations["setWorkspaceAiSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/document-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace Document Ai
+         * @description The Workspace's Document AI overrides and effective settings (any member).
+         */
+        get: operations["getWorkspaceDocumentAi"];
+        /**
+         * Set Workspace Document Ai
+         * @description Replace the Workspace's overrides (owners of an active Workspace; audited). 409
+         *     `settings_changed` when `version` is not the current one; 422 `not_overridable` for an
+         *     admin-only knob, `out_of_bounds` outside the installation's bounds, and the value errors
+         *     of the installation settings.
+         */
+        put: operations["setWorkspaceDocumentAi"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4730,6 +4871,19 @@ export interface components {
              * @description The filled workbook (.xlsx), or one CSV per sheet named like it (`tables.csv`, `columns.csv`, ...).
              */
             files: string[];
+        };
+        /** BoundsInput */
+        BoundsInput: {
+            /**
+             * Min
+             * @description Left out: the hard lower limit.
+             */
+            min?: number | null;
+            /**
+             * Max
+             * @description Left out: the hard upper limit.
+             */
+            max?: number | null;
         };
         /** BranchError */
         BranchError: {
@@ -5900,6 +6054,11 @@ export interface components {
              */
             items: components["schemas"]["DisabledCheck"][];
         };
+        /** DocumentIndexStatus */
+        DocumentIndexStatus: {
+            /** Items */
+            items: components["schemas"]["FileIndexStatus"][];
+        };
         /** DocumentPassage */
         DocumentPassage: {
             /**
@@ -5929,6 +6088,31 @@ export interface components {
              * Format: uuid
              */
             source_system_id: string;
+            /**
+             * Document Type
+             * @description `pdf`, `xlsx`, `md`...
+             */
+            document_type?: string | null;
+            /**
+             * Language
+             * @description `ar` or `en`.
+             */
+            language?: string | null;
+            /**
+             * Page
+             * @description The page of a PDF passage.
+             */
+            page?: number | null;
+            /**
+             * Sheet
+             * @description The worksheet of a spreadsheet passage.
+             */
+            sheet?: string | null;
+            /**
+             * Tags
+             * @description Labels: the document's folders.
+             */
+            tags?: string[];
         };
         /** DocumentSearchResults */
         DocumentSearchResults: {
@@ -6374,6 +6558,51 @@ export interface components {
             /** After */
             after: string | null;
         };
+        /** FileIndexStatus */
+        FileIndexStatus: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Index Status
+             * @description `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`.
+             */
+            index_status: string;
+            /**
+             * Index Error
+             * @description Why indexing `failed`; null otherwise.
+             */
+            index_error: string | null;
+            /**
+             * Index Note
+             * @description Something worth knowing that did not fail it.
+             */
+            index_note: string | null;
+            /**
+             * Chunk Count
+             * @description Passages the file is cut into.
+             */
+            chunk_count: number;
+            /**
+             * Embedded Count
+             * @description Passages that have a vector.
+             */
+            embedded_count: number;
+            /**
+             * Stale Count
+             * @description Embedded passages whose vector was made by a model other than the one in use: a re-index replaces them.
+             */
+            stale_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** FileObjectLink */
         FileObjectLink: {
             /**
@@ -6628,6 +6857,54 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
+        /** InstallationDocumentAiRequest */
+        InstallationDocumentAiRequest: {
+            /**
+             * Version
+             * @description The version these settings were read at.
+             */
+            version: number;
+            /**
+             * Values
+             * @description Knobs left out take their default.
+             */
+            values?: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Bounds
+             * @description Knobs left out are bounded by their hard limits.
+             */
+            bounds?: {
+                [key: string]: components["schemas"]["BoundsInput"];
+            };
+        };
+        /** InstallationDocumentAiSettings */
+        InstallationDocumentAiSettings: {
+            /**
+             * Version
+             * @description Send it back with a change; 0: never changed.
+             */
+            version: number;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Values
+             * @description Every knob's installation value.
+             */
+            values: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Bounds
+             * @description For each numeric knob owners may override, the range they may choose in.
+             */
+            bounds: {
+                [key: string]: components["schemas"]["NumberBounds"];
+            };
+            /** Knobs */
+            knobs: components["schemas"]["KnobInfo"][];
+        };
         /** InvitationLinkOut */
         InvitationLinkOut: {
             /**
@@ -6731,6 +7008,55 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+        };
+        /** KnobInfo */
+        KnobInfo: {
+            /** Key */
+            key: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "chunking" | "indexing" | "retrieval" | "reranking";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "int" | "float" | "bool" | "choice";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Owner
+             * @description Workspace owners may override it.
+             */
+            owner: boolean;
+            /**
+             * Reindex
+             * @description A change applies to documents indexed from then on: re-index the Workspace's documents to apply it to the others.
+             */
+            reindex: boolean;
+            /**
+             * Default
+             * @description The value in code, when an admin sets none.
+             */
+            default: boolean | number | string;
+            /**
+             * Min
+             * @description Hard lower limit (numbers only).
+             */
+            min: number | null;
+            /**
+             * Max
+             * @description Hard upper limit (numbers only).
+             */
+            max: number | null;
+            /**
+             * Choices
+             * @description The allowed values (`choice` only).
+             */
+            choices: string[];
         };
         /** Kpi */
         Kpi: {
@@ -7226,7 +7552,7 @@ export interface components {
              */
             name: string;
             /** Roles */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /**
              * Context Window
              * @description Tokens: the admin's figure, or what the server's metadata reported.
@@ -7351,7 +7677,7 @@ export interface components {
              * Roles
              * @description Any combination of `agent`, `light` and `embedding`; none: the model is offered nowhere.
              */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /**
              * Workspace Replacements
              * @description Per Workspace and role, the replacement for a role being unticked where the model is the Workspace's default or only model for it.
@@ -7374,7 +7700,7 @@ export interface components {
              * Roles
              * @description Every role the model fills, in any Workspace.
              */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /** Workspaces */
             workspaces: components["schemas"]["LlmModelUsageWorkspace"][];
             /**
@@ -7396,7 +7722,7 @@ export interface components {
              * Roles
              * @description The roles in this Workspace that need a replacement.
              */
-            roles: ("agent" | "light" | "embedding")[];
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
             /**
              * Internal Only
              * @description Only internal models are accepted.
@@ -7936,6 +8262,10 @@ export interface components {
             light: components["schemas"]["ModelChoice"][];
             /** Embedding */
             embedding: components["schemas"]["ModelChoice"][];
+            /** Vision */
+            vision: components["schemas"]["ModelChoice"][];
+            /** Rerank */
+            rerank: components["schemas"]["ModelChoice"][];
         };
         /** MoveLayerRequest */
         MoveLayerRequest: {
@@ -8040,6 +8370,13 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** NumberBounds */
+        NumberBounds: {
+            /** Min */
+            min: number;
+            /** Max */
+            max: number;
         };
         /** PageContextIn */
         PageContextIn: {
@@ -8456,6 +8793,14 @@ export interface components {
              */
             open: boolean;
         };
+        /** ReindexAllStarted */
+        ReindexAllStarted: {
+            /**
+             * Job Ids
+             * @description One `reindex_documents` job per Workspace that has files.
+             */
+            job_ids: string[];
+        };
         /** ReindexStarted */
         ReindexStarted: {
             /**
@@ -8652,6 +8997,37 @@ export interface components {
             token: string;
             /** Password */
             password: string;
+        };
+        /** RetrievalTrace */
+        RetrievalTrace: {
+            /**
+             * Queries
+             * @description The query as typed, then any rewrites.
+             */
+            queries: string[];
+            /**
+             * Vector Used
+             * @description False when the Workspace's policy keeps vectors off.
+             */
+            vector_used: boolean;
+            /**
+             * Reranked
+             * @description Whether a rerank model reordered the fused results.
+             */
+            reranked: boolean;
+            /** Full Text */
+            full_text: components["schemas"]["TraceEntry"][];
+            /** Vector */
+            vector: components["schemas"]["TraceEntry"][];
+            /** Fused */
+            fused: components["schemas"]["TraceEntry"][];
+            /** Reranked Results */
+            reranked_results: components["schemas"]["TraceEntry"][];
+            /**
+             * Final
+             * @description What a real search returns.
+             */
+            final: components["schemas"]["TraceEntry"][];
         };
         /** ReviewFlag */
         ReviewFlag: {
@@ -10365,6 +10741,35 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** TraceEntry */
+        TraceEntry: {
+            /**
+             * Rank
+             * @description Position in this stage, from 1.
+             */
+            rank: number;
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Document */
+            document: string;
+            /** Section */
+            section: string;
+            /** Text */
+            text: string;
+            /**
+             * Score
+             * @description This stage's own number: `ts_rank_cd` (full-text), cosine similarity (vector), fused RRF score, or the rerank model's score.
+             */
+            score: number;
+            /**
+             * Above Floor
+             * @description Full-text and vector only: whether the score clears the relevance floor.
+             */
+            above_floor?: boolean | null;
+        };
         /** TransferOwnershipRequest */
         TransferOwnershipRequest: {
             /**
@@ -10781,11 +11186,16 @@ export interface components {
         WorkspaceAiSettings: {
             /**
              * Internal Only
-             * @description Every model role (agent, light, embedding) is refused an external provider.
+             * @description Every model role (agent, light, embedding, vision, rerank) is refused an external provider.
              */
             internal_only: boolean;
             /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
             data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Auto Retrieve
+             * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level).
+             */
+            auto_retrieve: boolean;
             /**
              * Agent Models
              * @description The Workspace's agent models; the default answers unless a message names another.
@@ -10804,10 +11214,14 @@ export interface components {
             /** @description The Workspace's embedding model; null: document search matches text only. */
             embedding_model: components["schemas"]["WorkspaceModel"] | null;
             /**
-             * Embedding Locked
-             * @description The Workspace has indexed documents, so its embedding model is fixed.
+             * Embedding Rebuilding
+             * @description The documents are being embedded again with a new embedding model; document search matches text only until they all are.
              */
-            embedding_locked: boolean;
+            embedding_rebuilding: boolean;
+            /** @description The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them. */
+            vision_model: components["schemas"]["WorkspaceModel"] | null;
+            /** @description The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order. */
+            rerank_model: components["schemas"]["WorkspaceModel"] | null;
             /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
             choices: components["schemas"]["ModelChoices"];
             /**
@@ -10830,6 +11244,11 @@ export interface components {
             internal_only: boolean;
             data_sharing_level: components["schemas"]["DataSharingLevel"];
             /**
+             * Auto Retrieve
+             * @description Left out: keeps the current value.
+             */
+            auto_retrieve?: boolean | null;
+            /**
              * Agent Model Ids
              * @description Models enabled for the agent role; required when there is any to choose.
              */
@@ -10851,9 +11270,74 @@ export interface components {
             default_light_model_id?: string | null;
             /**
              * Embedding Model Id
-             * @description A model enabled for the embedding role; changes only while the Workspace has no indexed documents.
+             * @description A model enabled for the embedding role. Changing it once documents are indexed embeds them again in the background; search matches text only meanwhile.
              */
             embedding_model_id?: string | null;
+            /**
+             * Vision Model Id
+             * @description A model enabled for the vision role; optional.
+             */
+            vision_model_id?: string | null;
+            /**
+             * Rerank Model Id
+             * @description A model enabled for the rerank role; optional.
+             */
+            rerank_model_id?: string | null;
+        };
+        /** WorkspaceDocumentAiRequest */
+        WorkspaceDocumentAiRequest: {
+            /**
+             * Version
+             * @description The version these settings were read at.
+             */
+            version: number;
+            /**
+             * Overrides
+             * @description Knobs left out inherit the installation's value.
+             */
+            overrides?: {
+                [key: string]: boolean | number | string;
+            };
+        };
+        /** WorkspaceDocumentAiSettings */
+        WorkspaceDocumentAiSettings: {
+            /**
+             * Version
+             * @description Send it back with a change; 0: never changed.
+             */
+            version: number;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Overrides
+             * @description The knobs this Workspace overrides; the others inherit.
+             */
+            overrides: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Inherited
+             * @description The installation's value of every knob owners may override.
+             */
+            inherited: {
+                [key: string]: boolean | number | string;
+            };
+            /**
+             * Effective
+             * @description What indexing and search use: overrides clamped to the bounds, else the installation's values.
+             */
+            effective: {
+                [key: string]: boolean | number | string;
+            };
+            /** Bounds */
+            bounds: {
+                [key: string]: components["schemas"]["NumberBounds"];
+            };
+            /**
+             * Knobs
+             * @description The knobs owners may override.
+             */
+            knobs: components["schemas"]["KnobInfo"][];
         };
         /** WorkspaceFile */
         WorkspaceFile: {
@@ -10896,9 +11380,24 @@ export interface components {
             size: number;
             /**
              * Text Status
-             * @description `extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image).
+             * @description `extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image, or a file whose text is not extracted yet).
              */
             text_status: string;
+            /**
+             * Index Status
+             * @description Where indexing for search is: `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`.
+             */
+            index_status: string;
+            /**
+             * Index Error
+             * @description Why indexing `failed`; null otherwise.
+             */
+            index_error: string | null;
+            /**
+             * Index Note
+             * @description Something worth knowing about the last indexing that did not fail it, e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's vision model; null otherwise.
+             */
+            index_note?: string | null;
             /** Updated By */
             updated_by: string | null;
             /**
@@ -18828,7 +19327,18 @@ export interface operations {
                 q?: string;
                 /** @description Only this Source System. */
                 system_id?: string | null;
-                limit?: number;
+                /** @description Left out: the Workspace's Document AI `top_k`. */
+                limit?: number | null;
+                /** @description Only this type, e.g. `pdf`. */
+                document_type?: string | null;
+                /** @description Only `ar` or `en` passages. */
+                language?: string | null;
+                /** @description Only this PDF page. */
+                page?: number | null;
+                /** @description Only this worksheet. */
+                sheet?: string | null;
+                /** @description Only documents with this label. */
+                tag?: string | null;
             };
             header?: never;
             path: {
@@ -18845,6 +19355,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentSearchResults"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    explainDocumentSearch: {
+        parameters: {
+            query?: {
+                /** @description What to look for. */
+                q?: string;
+                /** @description Only this Source System. */
+                system_id?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalTrace"];
                 };
             };
             /** @description Validation error */
@@ -18885,6 +19441,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReindexStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDocumentIndexStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentIndexStatus"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindexDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindexAllDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexAllStarted"];
                 };
             };
             /** @description Validation error */
@@ -20318,6 +20993,86 @@ export interface operations {
             };
         };
     };
+    getDocumentAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDocumentAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setDocumentAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallationDocumentAiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDocumentAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getWorkspaceAiSettings: {
         parameters: {
             query?: never;
@@ -20380,6 +21135,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getWorkspaceDocumentAi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceDocumentAiSettings"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setWorkspaceDocumentAi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceDocumentAiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceDocumentAiSettings"];
                 };
             };
             /** @description Validation error */

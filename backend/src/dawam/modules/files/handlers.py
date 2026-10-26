@@ -23,7 +23,7 @@ from dawam.modules.workspaces import Action
 from dawam.platform.errors import ApiError
 from dawam.platform.storage import FileStorage, new_key
 
-from .internal.content import TEXT_TYPES, Unsupported, detect, extract_text
+from .internal.content import TEXT_TYPES, Unsupported, detect
 from .tables import WorkspaceFileRecord
 
 FIELDS = ("content",)
@@ -91,14 +91,16 @@ class FileContentHandler:
         old_size = record.size
         data = self._encode(record.path, payload["content"])
         file_type = detect(record.path, data)
-        text, text_status = extract_text(file_type, data)
         key = new_key()
         self._storage.put(key, data)
         record.mime = file_type.mime
         record.storage_key = key
         record.size = len(data)
-        record.extracted_text = text
-        record.text_status = text_status
+        record.extracted_text = None
+        record.text_status = "none"
+        record.index_status = "queued"  # the after-accept hook queues the index_document job
+        record.index_error = None
+        record.index_note = None
         record.updated_by = actor_id
         record.updated_at = at
         db.flush()

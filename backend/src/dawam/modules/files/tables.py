@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import UserDefinedType
 
@@ -29,6 +29,11 @@ class WorkspaceFileRecord(Base):
         sa.CheckConstraint(
             "text_status IN ('none', 'extracted', 'no_text_found')", name="text_status"
         ),
+        sa.CheckConstraint(
+            "index_status IN ('queued', 'extracting', 'ocr', 'chunking', 'embedding', "
+            "'indexed', 'failed')",
+            name="index_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -50,7 +55,15 @@ class WorkspaceFileRecord(Base):
     extracted_text: Mapped[str | None] = mapped_column(sa.Text())
     text_status: Mapped[str] = mapped_column(sa.String(16))
     """``none`` (nothing to extract, e.g. an image), ``extracted`` or ``no_text_found``
-    (e.g. a scanned PDF)."""
+    (e.g. a scanned PDF). Set by the ``index_document`` job, so ``none`` until it ran."""
+    index_status: Mapped[str] = mapped_column(sa.String(16), default="queued")
+    """Where the ``index_document`` job is: ``queued``, ``extracting``, ``ocr``,
+    ``chunking``, ``embedding``, then ``indexed`` or ``failed``."""
+    index_error: Mapped[str | None] = mapped_column(sa.Text())
+    """Why indexing ``failed``; ``None`` otherwise."""
+    index_note: Mapped[str | None] = mapped_column(sa.Text())
+    """Something worth knowing about the last indexing that did not fail it (e.g. the
+    self-hosted OCR engine read the scans instead of the vision model); ``None`` otherwise."""
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -129,6 +142,7 @@ class DocumentChunkRecord(Base):
     __table_args__ = (
         sa.Index("ix_document_chunks_search_vector", "search_vector", postgresql_using="gin"),
         sa.Index("ix_document_chunks_workspace_id", "workspace_id"),
+        sa.Index("ix_document_chunks_tags", "tags", postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -141,13 +155,48 @@ class DocumentChunkRecord(Base):
     ordinal: Mapped[int]
     section: Mapped[str] = mapped_column(sa.String(SECTION_MAX_LENGTH))
     content: Mapped[str] = mapped_column(sa.Text())
+    context_header: Mapped[str | None] = mapped_column(sa.Text())
+    """One sentence from the light model saying where the passage comes from; ``None``: the
+    feature was off. Indexed and embedded with ``content``, never shown as the passage."""
     search_text: Mapped[str] = mapped_column(sa.Text())
-    """``content`` after Arabic normalisation: what full-text search indexes."""
+    """``context_header`` and ``content`` after Arabic normalisation and light stemming
+    (Arabic and English): what full-text search
+    indexes."""
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR, sa.Computed("to_tsvector('simple', search_text)", persisted=True)
     )
+    document_type: Mapped[str | None] = mapped_column(sa.String(16))
+    """The file's type (``pdf``, ``xlsx``, ``md``...) when it was indexed."""
+    language: Mapped[str | None] = mapped_column(sa.String(8))
+    """``ar`` or ``en``, by the script of the passage; ``None`` if it has no letters."""
+    page: Mapped[int | None]
+    """The 1-based page of a PDF passage; ``None`` for other documents."""
+    sheet: Mapped[str | None] = mapped_column(sa.String(SECTION_MAX_LENGTH))
+    """The worksheet of a spreadsheet passage; ``None`` for other documents."""
+    tags: Mapped[list[str]] = mapped_column(ARRAY(sa.Text()), default=list, server_default="{}")
+    """Lower-case labels: the folders of the document's path."""
     embedding: Mapped[list[float] | None] = mapped_column(Vector)
     embedding_model_id: Mapped[uuid.UUID | None] = mapped_column()
     """The model that made ``embedding`` (no foreign key: a model may be deleted, which
     only makes the chunk stale)."""
     embedding_dimension: Mapped[int | None]
+    parent_ordinal: Mapped[int | None]
+    """Small-to-big retrieval: the position, within the file, of the larger parent section
+    this passage was cut from. Passages sharing it are returned as their parent, once."""
+    parent_content: Mapped[str | None] = mapped_column(sa.Text())
+    """The parent section's text; ``None`` for a passage indexed before parents existed."""
+
+
+class EmbeddingRebuildRecord(Base):
+    """A Workspace whose documents are being embedded again with its new embedding model
+    (ADR 0006). While the row exists, search matches text only; the ``reindex_documents``
+    job whose ``rebuild_id`` it holds deletes it when it switches to the new vectors."""
+
+    __tablename__ = "document_embedding_rebuilds"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    rebuild_id: Mapped[uuid.UUID]
+    """The rebuild that switches; a newer change or re-index replaces it."""
+    started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

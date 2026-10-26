@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -29,14 +29,17 @@ from .gateway import (
     ChatEvent,
     Done,
     Gateway,
+    Image,
     Message,
     TextDelta,
     ToolCallEvent,
     ToolSpec,
     Usage,
     _message_text,
+    estimate_prompt_tokens,
     estimate_tokens,
 )
+from .internal.local_tokens import local_counter
 from .service import ProviderService
 from .tables import (
     MODEL_NAME_MAX_LENGTH,
@@ -257,6 +260,11 @@ class MeteredGateway:
         external provider's count endpoint, so it gets the estimate."""
         return estimate_tokens(text) if self._refuse_external else self._gateway.count_tokens(text)
 
+    def local_token_counter(self) -> Callable[[str], int] | None:
+        """Counts this model's tokens on this machine (a local tokenizer), or ``None`` when
+        none is known. Never a network call, never metered."""
+        return local_counter(self._model_name)
+
     def chat(
         self,
         messages: Sequence[Message],
@@ -268,11 +276,37 @@ class MeteredGateway:
         """Like ``Gateway.chat``, but raises 429 ``token_budget_exhausted`` before the
         call when a budget is used up, and records the usage when the reply is done."""
         self._ensure_allowed()
+        yield from self._metered(
+            lambda: self._gateway.chat(messages, tools, stream, json_schema=json_schema), messages
+        )
+
+    def vision(self, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """Like ``Gateway.vision``, checked and metered like ``chat``: the images count
+        against the budgets (as the provider reports them, or estimated)."""
+        self._ensure_allowed()
+        yield from self._metered(
+            lambda: self._gateway.vision(prompt, images),
+            [Message("user", prompt, images=tuple(images))],
+        )
+
+    def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
+        """Like ``Gateway.rerank``, checked and metered like ``embed``: rerank reports no
+        usage, so the tokens of the query and every document are estimated."""
+        self._ensure_allowed()
+        try:
+            return self._gateway.rerank(query, documents)
+        finally:
+            tokens = sum(estimate_tokens(d) + estimate_tokens(query) for d in documents)
+            self._record(Usage(tokens, 0, estimated=True))
+
+    def _metered(
+        self, start: Callable[[], Iterator[ChatEvent]], messages: Sequence[Message]
+    ) -> Iterator[ChatEvent]:
         produced: list[str] = []
         reported: Usage | None = None
         with tracing().model_call(self._model_name, self._role) as span:
             try:
-                for event in self._gateway.chat(messages, tools, stream, json_schema=json_schema):
+                for event in start():
                     if isinstance(event, TextDelta):
                         produced.append(event.text)
                     elif isinstance(event, ToolCallEvent):
@@ -283,7 +317,7 @@ class MeteredGateway:
             finally:
                 # Errors and abandoned streams count too: estimate what was sent and received.
                 if reported is None:
-                    prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
+                    prompt = estimate_prompt_tokens(messages)
                     reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
                 self._record(reported)
                 span.usage(reported.prompt_tokens, reported.completion_tokens)

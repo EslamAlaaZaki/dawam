@@ -10,18 +10,27 @@ built on the app's database, settings and clock.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import functools
+from collections.abc import Callable, Mapping
 
 import sqlalchemy as sa
 
 from dawam.modules.assistant import ASSISTANT_JOB, build_assistant_service
 from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
+    INDEX_JOB,
     REINDEX_JOB,
+    DoclingOcr,
+    DoclingParser,
     DocumentAiPolicy,
+    DocumentParser,
     DocumentSearchService,
     NoDocumentAi,
+    OcrEngine,
     RegisteredEmbeddingModels,
+    RegisteredLightModels,
+    RegisteredRerankModels,
+    RegisteredVisionModels,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
@@ -49,6 +58,30 @@ def build_change_set_handlers(settings: Settings | None = None) -> ObjectHandler
     return change_set_handlers(settings)
 
 
+@functools.cache
+def _docling(accelerator: str) -> DoclingParser:
+    return DoclingParser(accelerator)  # type: ignore[arg-type]  # one converter per process
+
+
+def default_parser(settings: Settings) -> DocumentParser | None:
+    """The layout-aware parser the settings name; ``None`` keeps the basic extraction."""
+    if settings.document_parser != "docling":
+        return None
+    return _docling(settings.document_accelerator)
+
+
+@functools.cache
+def _docling_ocr(accelerator: str) -> DoclingOcr:
+    return DoclingOcr(accelerator)  # type: ignore[arg-type]  # one converter per process
+
+
+def default_ocr(settings: Settings) -> OcrEngine | None:
+    """The OCR engine the settings name; ``None`` leaves scanned pages unread."""
+    if settings.document_ocr == "off":
+        return None
+    return _docling_ocr(settings.document_accelerator)
+
+
 def build_document_search(
     runner: JobRunner,
     engine: sa.Engine,
@@ -57,6 +90,8 @@ def build_document_search(
     *,
     llm_adapters: AdapterFactory | None = None,
     document_ai: DocumentAiPolicy | None = None,
+    parser: Callable[[], DocumentParser | None] | None = None,
+    ocr: Callable[[], OcrEngine | None] | None = None,
 ) -> DocumentSearchService:
     """The document search service, as the API and the worker build it. Until the
     Workspace AI settings exist, ``document_ai`` defaults to ``NoDocumentAi``: documents
@@ -68,15 +103,20 @@ def build_document_search(
         clock=clock,
         **options,
     )
+    roles = RoleService(engine, providers=providers, clock=clock)
     return DocumentSearchService(
         engine,
         workspaces=WorkspaceService(engine, clock=clock),
         ai=document_ai or NoDocumentAi(),
-        embeddings=RegisteredEmbeddingModels(
-            providers, RoleService(engine, providers=providers, clock=clock), engine
-        ),
+        embeddings=RegisteredEmbeddingModels(providers, roles, engine),
+        vision=RegisteredVisionModels(providers, roles, engine),
+        light=RegisteredLightModels(providers, roles, engine),
+        rerank=RegisteredRerankModels(providers, roles, engine),
         jobs=runner,
+        storage=create_storage(settings),
         clock=clock,
+        parser=parser or (lambda: default_parser(settings)),
+        ocr=ocr or (lambda: default_ocr(settings)),
     )
 
 
@@ -87,6 +127,8 @@ def _service_handlers(
     clock: Clock,
     llm_adapters: AdapterFactory | None,
     document_ai: DocumentAiPolicy | None,
+    parser: Callable[[], DocumentParser | None] | None,
+    ocr: Callable[[], OcrEngine | None] | None,
 ) -> dict[str, JobHandler]:
     snapshots = SnapshotService(
         engine,
@@ -118,8 +160,17 @@ def _service_handlers(
         clock=clock,
     )
     documents = build_document_search(
-        runner, engine, settings, clock, llm_adapters=llm_adapters, document_ai=document_ai
+        runner,
+        engine,
+        settings,
+        clock,
+        llm_adapters=llm_adapters,
+        document_ai=document_ai,
+        parser=parser,
+        ocr=ocr,
     )
+    runner.on_abandoned(INDEX_JOB, documents.abandon_index)
+    runner.on_abandoned(REINDEX_JOB, documents.abandon_reindex)
     assistant = build_assistant_service(
         engine,
         settings,
@@ -136,6 +187,7 @@ def _service_handlers(
         PROFILE_JOB: profiling.run_profiling,
         PII_SCAN_JOB: pii_scans.run_scan,
         INFER_JOB: relationships.run_inference,
+        INDEX_JOB: documents.run_index,
         REINDEX_JOB: documents.run_reindex,
     }
 
@@ -148,11 +200,15 @@ def register_job_handlers(
     clock: Clock,
     llm_adapters: AdapterFactory | None = None,
     document_ai: DocumentAiPolicy | None = None,
+    parser: Callable[[], DocumentParser | None] | None = None,
+    ocr: Callable[[], OcrEngine | None] | None = None,
 ) -> None:
     """Register every handler on ``runner``. A type the runner already has is left alone:
     tests build several apps on one shared runner, and the first app's handlers serve all."""
     handlers = {
-        **_service_handlers(runner, engine, settings, clock, llm_adapters, document_ai),
+        **_service_handlers(
+            runner, engine, settings, clock, llm_adapters, document_ai, parser, ocr
+        ),
         **JOB_HANDLERS,
     }
     for job_type, handler in handlers.items():

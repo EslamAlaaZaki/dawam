@@ -146,10 +146,18 @@ def test_the_settings_list_the_light_features_as_on_or_off(roles, model, admin_c
     url = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
 
     off = owner.get(url).json()["light_features"]
-    assert [(f["key"], f["enabled"]) for f in off] == [("conversation_compaction", False)]
+    assert [(f["key"], f["enabled"]) for f in off] == [
+        ("conversation_compaction", False),
+        ("chunk_context", False),
+        ("query_rewriting", False),
+    ]
 
     spare = register(admin_client, "light-model", roles=("light",))
     assert use_models(owner, roles.workspace_id, model, light=spare).status_code == 200
     on = owner.get(url).json()["light_features"]
-    assert [(f["key"], f["enabled"]) for f in on] == [("conversation_compaction", True)]
+    assert [(f["key"], f["enabled"]) for f in on] == [
+        ("conversation_compaction", True),
+        ("chunk_context", True),
+        ("query_rewriting", True),
+    ]
     assert base(roles)  # the assistant path is unchanged

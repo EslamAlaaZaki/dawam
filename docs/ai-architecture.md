@@ -14,9 +14,9 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 | **LangGraph?** | **No.** The agent loop is a hand-written Python generator (`assistant/internal/agent.py`, about 250 lines). |
 | **LlamaIndex, Haystack, Semantic Kernel, CrewAI, AutoGen?** | **No.** |
 | **Vendor SDKs (`openai`, `anthropic`, `boto3` for Bedrock, `google-genai`)?** | **No.** Every provider is called over raw HTTP with the Python standard library (`urllib.request`). `boto3` is an optional dependency, used only for S3 file storage, never for Bedrock. |
-| **OCR in the RAG pipeline?** | **No.** PDFs are read with `pypdf`'s text extraction. A scanned (image-only) PDF yields no text and is marked `no_text_found`. Uploaded images (PNG, JPEG, GIF, WebP) are stored but never read: no OCR and no vision model. |
+| **OCR in the RAG pipeline?** | **Yes.** PDF, DOCX and XLSX are parsed by Docling (headings and tables kept). Scanned PDF pages are read by OCR: the Workspace's `vision` model when the data-sharing policy allows, else a self-hosted Docling + RapidOCR engine (English and Arabic). Uploaded images (PNG, JPEG, GIF, WebP) are described by the vision model. Indexing runs as a background job with a per-file status. With no OCR engine and no vision model allowed, a scan is marked `no_text_found`. |
 | **Vector database?** | **PostgreSQL + `pgvector`** (Docker image `pgvector/pgvector:pg16`), in the same database as the app. No separate vector store. |
-| **Retrieval type?** | **Hybrid:** Postgres full-text search (`tsvector`, GIN index) plus pgvector cosine distance, merged with **Reciprocal Rank Fusion**. |
+| **Retrieval type?** | **Hybrid:** Postgres full-text search (`tsvector`, GIN index) plus pgvector cosine distance, merged with weighted **Reciprocal Rank Fusion**, then optionally reranked by a cross-encoder (`rerank` role). |
 | **Agent style?** | One ReAct-style **tool-calling loop**: the model calls tools, gets results, and repeats until it answers or hits a tool-call cap. It is a single agent, not a multi-agent graph. Long tasks run as background jobs on the same loop. |
 | **Models without native tool calling?** | Supported through **prompted tool calling** ("limited mode"): tools are described in the system prompt and a strict JSON reply is parsed and schema-checked. |
 | **Structured output?** | The gateway supports JSON Schema output on every adapter and probes for it. The assistant itself gets structured data through tool-call arguments (Pydantic schemas). |
@@ -33,7 +33,8 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 | HTTP to model providers | `urllib.request` (standard library), behind a `Transport` port |
 | Schemas for tool arguments | Pydantic v2 (`model_json_schema()` produces the JSON Schema sent to the model) |
 | SQL parsing (AI source-query guard, lineage, transpiling) | `sqlglot` |
-| Document text extraction | `pypdf` (PDF), `python-docx` (DOCX), `openpyxl` (XLSX), strict UTF-8 for text types |
+| Document text extraction | Docling (PDF, DOCX, XLSX → Markdown), with `pypdf`, `python-docx` and `openpyxl` as the fallback; strict UTF-8 for text types |
+| OCR | RapidOCR (PP-OCR on ONNX Runtime) through Docling, self-hosted; or the Workspace's vision model through the gateway |
 | Crypto for provider auth | `cryptography` (RS256 JWT for Google service accounts); SigV4 for AWS is written by hand with `hmac`/`hashlib` |
 | Secret storage | API keys sealed with `SecretBox` (encryption key from settings), never returned by the API |
 | Background jobs | DB-backed queue (`SELECT ... FOR UPDATE SKIP LOCKED`), worker process `python -m dawam worker` |
@@ -62,7 +63,7 @@ flowchart TD
     AD --> A6["plugin entry point"]
     A1 & A2 & A3 & A4 & A5 & A6 --> TR["UrllibTransport"] --> P(["Model provider over HTTPS"])
 
-    LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>25 tools"]
+    LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>26 tools"]
     TOOLS --> AUTHZ{"Policy action allowed?<br/>Data-sharing level allowed?"}
     AUTHZ -->|no| REF["refused result"]
     AUTHZ -->|yes| SL["Service layer<br/>same one the REST API uses"]
@@ -166,7 +167,7 @@ flowchart LR
 
 ### 3.5 Model roles, Workspace Models and budgets
 
-- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3); no fallback to the agent role for that) and `embedding` (document vectors).
+- **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3), passage context headers (§8.2) and query rewriting (§8.4); no fallback to the agent role for those) and `embedding` (document vectors), `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed) and `rerank` (a cross-encoder that reorders search results, §8.4; optional, with no fallback: a Workspace without one keeps the fused order, #373). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it. Gateway `rerank(query, documents)` returns one score per document; only the OpenAI-compatible adapter implements it (`POST /rerank`, Cohere, Jina and vLLM reply shapes; malformed, partial, duplicate or non-finite scores are rejected), the others refuse with `bad_request`. It is retried like `chat`, goes through the `MeteredGateway` (budgets, internal-only, tokens recorded under `rerank`), and "Test connection" ranks two documents; a rerank-only model is never asked to chat.
 - **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
@@ -199,7 +200,7 @@ flowchart TD
 |---|---|
 | `metadata` | schemas, names, descriptions, KPIs, lineage, scores |
 | `profiles` | + profile statistics (null share, distinct counts, lengths, patterns) |
-| `documents` | + document text (enables `search_documents`, `read_file`, and **embedding** documents) |
+| `documents` | + document text (enables `search_documents`, `read_file`, `describe_image`, and **embedding** documents; also sending page and image bytes to a non-internal vision model) |
 | `samples` | + real values: top-N values, min/max, and `run_source_query` (see ADR 0002) |
 
 Tools declare the level they need; the tool registry hides and refuses tools above the Workspace's level.
@@ -434,7 +435,9 @@ flowchart TD
 
 - A `ToolContext` per run holds the user, Workspace, services, data-sharing policy, a **source-query time budget** (default 120 s per run), proposal collection for jobs, and the run's count-query evidence.
 
-### 6.2 The tool catalogue (25 tools)
+### 6.2 The tool catalogue (27 tools)
+
+There are 27 tools.
 
 **Read: catalog, profiling, lineage, scoring**
 
@@ -447,6 +450,7 @@ flowchart TD
 | `get_relationships` | Inferred relationships with confidence and evidence | view |
 | `get_pii_findings` | Columns that look personal, with category and status; never values | review PII |
 | `get_lineage` | Column-level lineage up- or downstream (edge kinds `value`, `uses`, `lookup`, `kpi`), capped at 200 nodes | view |
+| `explore_graph` | One object's neighbours at most 2 hops away: lineage, KPI links, a source column's relationships (with `system_id`) and the documents that mention it (those only at `documents`); capped at 100 nodes. Adds to `get_lineage`, `get_relationships` and `search_documents` (#379) | view |
 | `get_score` | Rule-based DW design score (0–100), grade, per-Layer scores, failed checks with fix hints | view |
 | `explain_check` | Explain one failed score check | ask assistant |
 | `evaluate_dw` | Advisory evaluation of a DW Layer: read it, then store findings (never changes the score) | ask assistant |
@@ -458,6 +462,7 @@ flowchart TD
 | Tool | What it does | Needs |
 |---|---|---|
 | `search_documents` | Hybrid search over uploaded documents; each passage names its document and section (§8) | `documents` |
+| `describe_image` | What an uploaded image (ERD, diagram, mock-up) shows: its description from indexing, or a fresh one by the vision model (§8.1) | `documents` |
 | `list_files` | List files in a Source System's or the DW's file area | view |
 | `read_file` | Read a text file or document's extracted text (max 15,000 characters) | `documents` |
 
@@ -574,63 +579,95 @@ Internal-only Workspaces (default when the installation has a tested internal ag
 
 ### 8.1 Ingestion
 
+Uploading a file stores its bytes and queues an `index_document` background job; the upload returns at once. The job moves the file's `index_status` through `queued → extracting → ocr → chunking → embedding → indexed`, or `failed` with the error kept in `index_error`. The `ocr` stage is entered only when a scanned page or an image is actually sent to a reader. The Documents panel shows the status per file. A job for bytes that were replaced in the meantime is dropped (it checks the file's `storage_key`), and a job that is cancelled or whose worker is lost fails the file instead of leaving it `queued`.
+
 ```mermaid
 flowchart TD
     U["Upload, or an accepted file Change Set"] --> D{"Type from the bytes<br/>matches the extension<br/>and is on the allow-list?"}
     D -->|no| REJ(["422: not allowed"])
-    D -->|yes| T{"File type"}
-    T -->|PDF| X1["pypdf extract_text<br/>max 1,000 pages"]
-    T -->|DOCX| X2["python-docx<br/>paragraphs + table rows"]
-    T -->|XLSX| X3["openpyxl<br/>'## sheet' + tab-joined rows"]
+    D -->|yes| Q["Store the bytes, queue the<br/>index_document job: status queued"]
+    Q --> T{"File type<br/>(status extracting)"}
+    T -->|"PDF, DOCX, XLSX"| P["Docling: Markdown with headings,<br/>reading order, tables"]
+    P -->|"fails, or over the caps"| X1["Basic extraction:<br/>pypdf, python-docx, openpyxl"]
     T -->|"MD, TXT, SQL, YAML, CSV, JSON"| X4["UTF-8 decode"]
-    T -->|"PNG, JPEG, GIF, WebP"| X5["Not read: status none<br/>no OCR, no vision"]
-    X1 & X2 & X3 & X4 --> TXT{"Any text?"}
-    TXT -->|"no, e.g. a scanned PDF"| NT(["status no_text_found<br/>not searchable"])
-    TXT -->|yes| STORE["Store file + extracted_text<br/>max 2,000,000 chars"]
-    STORE --> IDX["index_file, synchronously after upload"]
-    IDX --> CH["chunk: split at headings,<br/>pack paragraphs to ~1,000 chars"]
-    CH --> NORM["Arabic normalisation"]
-    NORM --> FTS["document_chunks row<br/>search_vector tsvector, GIN index"]
+    T -->|"PNG, JPEG, GIF, WebP"| IMG{"Workspace vision model<br/>that the policy lets<br/>the image reach?"}
+    IMG -->|yes| DESC["status ocr: vision model describes it;<br/>the description is the text"]
+    IMG -->|"no, or it failed"| NONE(["status none, not searchable;<br/>index_note says why"])
+    P & X1 --> SC{"PDF pages with under<br/>50 characters of text?"}
+    SC -->|no| TXT
+    SC -->|yes| OCR{"OCR engine"}
+    OCR -->|"vision model allowed"| VM["status ocr: page images through<br/>MeteredGateway, vision role"]
+    OCR -->|"no vision model,<br/>or not allowed"| SH["status ocr: self-hosted<br/>Docling + RapidOCR, English and Arabic"]
+    OCR -->|"self-hosted engine off"| TXT
+    VM -->|"call failed"| SH
+    VM & SH --> TXT{"Any text?"}
+    X4 & DESC --> TXT
+    TXT -->|"no, e.g. an unread scan"| NT(["status no_text_found<br/>not searchable"])
+    TXT -->|yes| STORE["Store extracted_text<br/>max 2,000,000 chars"]
+    STORE --> CH["status chunking: parent sections of ~1,000 tokens,<br/>cut by the Workspace strategy into child passages<br/>of ~250 tokens with overlap; tables kept whole"]
+    CH --> HDR{"Light model the<br/>policy lets the text reach?"}
+    HDR -->|yes| CTX["One-sentence context header<br/>per passage"]
+    HDR -->|no| NORM
+    CTX --> NORM["Arabic normalisation<br/>of header + passage"]
+    NORM --> FTS["document_chunks row + metadata<br/>search_vector tsvector, GIN index"]
     CH --> POL{"Level >= documents,<br/>tested embedding model,<br/>internal-only respected?"}
     POL -->|no| FTO(["Full-text only:<br/>nothing sent to a model"])
-    POL -->|yes| EMB["Embed in batches of 32<br/>through MeteredGateway"]
+    POL -->|yes| EMB["status embedding: batches of 32<br/>through MeteredGateway"]
     EMB -->|"provider or budget failure"| FTO
-    EMB -->|ok| VEC["Store embedding, model id,<br/>dimension in pgvector"]
+    EMB -->|ok| VEC["Store embedding, model id,<br/>dimension in pgvector;<br/>create the model's HNSW index if missing"]
+    FTO & VEC --> DONE(["status indexed"])
 ```
 
 **Type detection** (`files/internal/content.py`): the type comes from the bytes (magic numbers; the ZIP structure for DOCX/XLSX; strict UTF-8 for text) and must match the file extension. Allow-list: PDF, DOCX, XLSX, Markdown, TXT, SQL, YAML, CSV, JSON, PNG, JPEG, GIF, WebP. SVG and HTML are refused (they can carry script). Zip-bomb limits: 5,000 entries, 300 MB uncompressed.
 
-**Text extraction:**
+**Text extraction** (`extract_text`): PDF, DOCX and XLSX go to the layout-aware parser first; the basic libraries are the fallback.
 
 | Type | Library | How |
 |---|---|---|
-| PDF | `pypdf` | `page.extract_text()` per page, max 1,000 pages; an encrypted PDF is tried with an empty password |
-| DOCX | `python-docx` | paragraphs, then table rows joined with tabs; max 50,000 each |
-| XLSX | `openpyxl` (read-only, computed values) | `## <sheet name>` heading, then tab-joined rows; max 200,000 rows / 2,000,000 cells |
+| PDF, DOCX, XLSX | **Docling** (`internal/parsing.py`: `DocumentParser` port, `DoclingParser`) | Markdown that keeps headings, reading order and tables (as Markdown tables), so the chunker (§8.2) gets real sections. One shared converter per worker process. The page, paragraph, row and cell caps below are checked before Docling runs; a file over them, or a parse failure, falls back to basic extraction. Docling's own OCR is off here. `document_parser=basic` skips Docling. |
+| PDF (fallback) | `pypdf` | `page.extract_text()` per page, max 1,000 pages; an encrypted PDF is tried with an empty password |
+| DOCX (fallback) | `python-docx` | paragraphs, then table rows joined with tabs; max 50,000 each |
+| XLSX (fallback) | `openpyxl` (read-only, computed values) | `## <sheet name>` heading, then tab-joined rows; max 200,000 rows / 2,000,000 cells |
 | Text types | — | UTF-8 (BOM tolerated) |
-| Images | — | **not read** (status `none`) |
+| Images | vision model (optional) | a description, see below; with no usable vision model the status is `none` |
 
-Extracted text is capped at 2,000,000 characters. A file with no extractable text gets status `no_text_found` and is not searchable.
+Extracted text is capped at 2,000,000 characters. Text made only of Docling's image marks counts as no text. A file with no extractable text gets status `no_text_found` and is not searchable.
 
-> **No OCR.** A scanned PDF or a photographed document produces no text, so it never reaches the index. Supporting it would need a new OCR or vision-model step in `extract_text`.
+**OCR of scanned PDFs** (`internal/ocr.py`, `OcrEngine` port). After parsing, a PDF page with under 50 characters of its own text is treated as a scan (a PDF with more than 200 such pages, or over the page cap, is left alone). Two engines sit behind the port:
+
+- **Self-hosted:** `DoclingOcr`, Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or an NVIDIA GPU). RapidOCR has no recognizer that reads both scripts, so each page is read once for English and once for Arabic, and the reading with the higher mean confidence is kept. Pages that have their own text keep it. This is the default; `document_ocr=off` disables it.
+- **Vision model:** `VisionOcr` renders each scanned page at 150 dpi and sends it, one page per call, to the Workspace's `vision` model through the `MeteredGateway` (budgets, usage and internal-only apply), asking for the page as Markdown. The prompt tells the model to ignore instructions written on the page, and the reply is untrusted text like any document text.
+
+Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested vision model **and** the policy lets the document reach its provider (an internal provider always does; an external one needs level `documents` or above and a Workspace that is not internal-only), the vision model reads the scans. Otherwise, or if the vision call fails (budget, provider error), the self-hosted engine reads them. If that is off too, the scan stays unread. Whenever the choice was not the plain one, the file's `index_note` says why (for example "…does not let documents reach its vision model's provider, so the self-hosted OCR engine read the scanned pages."), and the note is shown with the file. If OCR fails altogether, the text found without it stands. The device for Docling and RapidOCR is the `document_accelerator` setting (`auto`, `cpu`, `cuda`); the backend image is built for CPU or CUDA and bundles the pinned layout and table models, so nothing is downloaded at run time. The engine choices are environment settings and code constants (the OCR trigger threshold is not one of the Document AI settings, §8.4); the self-hosted engine is RapidOCR, chosen by the maintainer (the OCR bake-off, #450, was closed as not planned).
+
+**Images and diagrams** (`describe_image` in `internal/ocr.py`). An uploaded PNG, JPEG, GIF or WebP is sent to the vision model under the same policy rule as scans, with a prompt that asks for tables, columns, keys, relationships, boxes, arrows and labels (ERDs, architecture diagrams, report mock-ups). The reply, headed `# Description of <file name>`, is stored as the file's `extracted_text`, so it is chunked, indexed and found by `search_documents` like any document text. With no usable vision model, or if the call fails, the image stays unread (`none`) and the `index_note` says why. The assistant's **`describe_image(file_id)`** tool (level `documents`) returns the stored description or, when there is none, asks the vision model afresh if the policy allows (nothing is stored). It answers 422 `no_vision` when it cannot, and 422 `not_an_image` for other files. The description reaches the model as quoted data like all retrieved text.
 
 ### 8.2 Chunking (`files/internal/chunking.py`)
 
-- Structure-aware: the text is split into **sections** at Markdown headings (`#`…`######`); text before any heading is "Part N". XLSX sheets become sections through the `## <sheet>` lines.
-- Each section is split on blank lines into paragraphs, which are packed into passages of about **1,000 characters** (target); a single paragraph longer than **1,500** characters is hard-split.
-- No overlap between chunks. Each chunk keeps its `section` name (max 200 characters) as its **citation**.
+- Structure-aware: the text is split into **sections** at Markdown headings (`#`…`######`); text before any heading is "Part N". XLSX sheets become sections through the `## <sheet>` lines. A PDF's pages are separated by a form feed in the extracted text; a passage never spans two pages and records its `page`.
+- **Size in tokens** (#365), counted locally with the embedding model's own tokenizer (no provider call; without one, about four characters a token). A passage targets **250** tokens and never exceeds **375**; consecutive passages of a section share about **40** tokens of **overlap** (a passage's tail starts the next), never across a page. These are the defaults of the Document AI settings `chunk_size` and `chunk_overlap` (§8.4); a Workspace may override them.
+- **Strategy** (#367), a Document AI setting (`chunking_strategy`, §8.4; set for the installation, owner-overridable per Workspace; it moved out of the Workspace AI settings in #380; it applies to documents indexed from then on, a re-index applies it to the others): `headings` (default; a section's paragraphs are packed), `recursive` (paragraphs, then lines, sentences and words, cutting only what is too long) and `semantic` (sentences, with a new passage where the embedding similarity of neighbouring sentences drops below 0.5; it embeds the sentences through the Workspace's embedding model and behaves as `recursive` when there is none or the call returns the wrong count). The size limits hold for every strategy.
+- **Tables** (#366): a Markdown table is never mixed with prose. It is one passage, or, over 375 tokens, split by rows into passages that each repeat the header rows. A table whose header alone is too big is treated as prose.
+- **Parent/child, small to big** (#368, `internal/parents.py`): the text is first cut into **parent** sections of about 1,000 tokens (at most 1,500, no overlap); each parent is then cut into the child passages above. Children are what is embedded and matched; search returns the parent (§8.4). Each child stores its parent's position and text. The Workspace strategy cuts the parents (for `semantic`, at topic changes, falling back to `recursive` if the embedding call fails); the children are cut by size with the Workspace strategy, except that `semantic` children use `recursive`, since a semantic parent already ends where the topic changes.
+- **Contextual header** (#369, `internal/context.py`): when the Workspace has a `light` model that the data level and internal-only setting let documents reach, it writes one sentence (max 30 words, stored max 300 characters) for each passage from the document name, section, the first 4,000 characters of the document and the passage. The header is stored in `context_header` and is prepended to the passage for **full-text indexing and embedding** only; `content` stays as written. If a call fails, indexing goes on without headers for the rest of the file. With no light model the feature is off.
+- Each chunk keeps its `section` name (max 200 characters) as its **citation**.
 
 ### 8.3 Indexing (`files/search.py`, table `document_chunks`)
 
 | Column | Purpose |
 |---|---|
 | `content` | the passage as written |
-| `search_text` | the passage after **Arabic normalisation** |
+| `context_header` | the light model's one-sentence context, or empty (#369) |
+| `parent_ordinal`, `parent_content` | the parent section the passage was cut from, and its text; empty for a passage indexed before parents existed (#368) |
+| `document_type`, `language`, `page`, `sheet`, `tags` | metadata (#370): file type, `ar`/`en` detected from the passage, PDF page, XLSX sheet, and the lower-cased folders of the file's path |
+| `search_text` | the header and passage after **Arabic normalisation** |
 | `search_vector` | `tsvector` generated column: `to_tsvector('simple', search_text)`, **GIN index** |
 | `embedding` | pgvector `vector` with **no fixed dimension** (so any embedding model works) |
 | `embedding_model_id`, `embedding_dimension` | which model made the vector; search only compares vectors of the current model and dimension |
 
-**Arabic normalisation** (`files/internal/arabic.py`), applied to passages and queries alike: removes diacritics (tashkeel) and tatweel; unifies alef forms (أ إ آ ٱ → ا), alef maqsura → ya (ى → ي), ta marbuta → ha (ة → ه); lower-cases. The Postgres `simple` text-search configuration is used (no stemming or stop words), so it works the same for Arabic and English.
+**Arabic normalisation** (`files/internal/arabic.py`), applied to passages and queries alike: removes diacritics (tashkeel) and tatweel; unifies alef forms (أ إ آ ٱ → ا), alef maqsura → ya (ى → ي), ta marbuta → ha (ة → ه); lower-cases. The Postgres `simple` text-search configuration is used (no stop words); stemming is done by DAWAM itself, below.
+
+**Stemming** (#374, `stemmed()` / `stems()` in `files/internal/arabic.py`), run after normalisation, so a query word matches its other forms (`loans` / `loan`, `used` / `uses`, Arabic words with a prefix or suffix). Arabic: a light10-style stemmer that strips one prefix and one suffix and keeps at least 3 letters. English: a small suffix stripper. Digits, codes and mixed tokens are left alone. Indexing stores the stemmed text in `search_text`, and the query's `tsquery` is built from the stemmed words, so both sides share one code path. It is lossy: some Arabic words over-stem. Migration `e4b8a1c6d937` re-stemmed existing passages; its downgrade does nothing (a re-index restores the old form).
 
 **Embeddings are optional and policy-gated.** A passage is embedded only when all of these hold:
 - the Workspace's data-sharing level is `documents` or above;
@@ -639,39 +676,73 @@ Extracted text is capped at 2,000,000 characters. A file with no extractable tex
 
 Otherwise the Workspace gets **full-text search only** and no document text is sent to any model. An embedding failure (provider down, budget used up) leaves the file full-text only; a re-index fixes it. Embedding calls go through the `MeteredGateway`, so they count against budgets.
 
-**Embedding model choice** (ADR 0005): set per Workspace at creation; it can be changed until the Workspace has indexed documents, then it's fixed, because vectors from different models aren't comparable. A `reindex_documents` background job rebuilds every passage of a Workspace.
+**Embedding model choice** (ADR 0006, which supersedes ADR 0005): an owner can change a Workspace's embedding model at any time. Vectors from different models aren't comparable, so when the Workspace has indexed documents the change starts a `reindex_documents` background job (#372) that embeds every document again. While it runs, search for that Workspace is **full-text only** (an `document_embedding_rebuilds` row switches the vector ranking off). When the job ends, however it ends, one transaction drops every vector not made by the new model and turns vector search back on, so results never mix models. A document whose embedding fails stays full-text only until a re-index. A newer change or a manual re-index supersedes a running rebuild: only the newest one switches. A model cannot be removed while a Workspace has documents indexed with it.
 
-There is no ANN index (HNSW/IVFFlat) on `embedding`, since the column has no fixed dimension: vector search is an exact scan over the Workspace's candidate rows.
+**Recommended embedders for Arabic + English:** a multilingual model, such as `bge-m3`, `multilingual-e5-large`, `jina-embeddings-v3`, OpenAI `text-embedding-3-large` or Cohere `embed-multilingual-v3`. Prefer these for Arabic + English documents. DAWAM does not enforce this; the model is the owner's choice.
+
+**Vector indexes** (#371, `ensure_vector_index`). The `embedding` column has no fixed dimension, so each embedding model gets its own **partial HNSW index** on a cast, created (if missing) when its first vectors are stored: `USING hnsw ((embedding::vector(N)) vector_cosine_ops) WHERE embedding_model_id = '<id>' AND embedding_dimension = N`, named `ix_document_chunks_hnsw_<model id>_<N>`. The vector query uses the same cast and predicate (the model id and dimension are literals in the SQL), so the planner picks the index. pgvector limits HNSW on `vector` to **2,000** dimensions; a model with wider vectors has no index and is searched by exact scan, as before. `halfvec` and tunable `m`, `ef_construction` and `ef_search` were not built.
 
 ### 8.4 Retrieval: hybrid search with Reciprocal Rank Fusion
 
 `DocumentSearchService.search(user, workspace_id, query, system_id=, limit=10)`:
 
 1. **Authorize** (any member who can view the Workspace).
-2. Normalise the query and split it into distinct words.
-3. **Full-text ranking:** `to_tsquery('simple', 'w1' | 'w2' | …)` (OR of the words), `ts_rank_cd` order, top **20**.
-4. **Vector ranking** (only if the embedder is allowed): embed the query with the same model, then `ORDER BY embedding <=> query_vector` (**cosine distance**) over passages with the same model id and dimension, top **20**.
-5. Both are scoped to the Workspace, optionally one Source System's documents, and exclude soft-deleted Source Systems.
-6. **Fuse** with RRF: `score = Σ 1 / (60 + rank)` over the rankings; keep the top `limit` (default 10).
-7. Return `Passage(file_id, document, section, text, score, source_system_id)`.
+2. Normalise and **stem** the query (#374) and split it into distinct words.
+3. **Query variants** (#377, `files/internal/query_rewrite.py`): when the Workspace has a `light` model that the data level and internal-only setting let documents reach, it returns up to 3 variants of the query (rewordings, Arabic to English and back) and, for a vague question, a **HyDE** line (`ANSWER:`, a short hypothetical answer). The query is quoted to the light model as untrusted data. With no light model, a failing one or an exhausted budget, the query is used as typed.
+4. **Full-text ranking:** per query and variant, `to_tsquery('simple', 'w1' | 'w2' | …)` (OR of the stemmed words). Before `ts_rank_cd`, `ORDER BY` puts first the passages holding a **table or column name** from the query (a word with `_` or a digit; the parser reads `cust_stat` as the phrase `cust <-> stat`), then those holding the query's words **in order and adjacent** (`phraseto_tsquery`), so an exact name or phrase beats scattered words (#375). Top **20** (`fts_candidates`).
+5. **Vector ranking** (only if the embedder is allowed): embed the query and its variants in one batched call with the same model, then `ORDER BY embedding <=> query_vector` (**cosine distance**) over passages with the same model id and dimension, top **20** (`vector_candidates`) per ranking.
+6. All are scoped to the Workspace, optionally one Source System's documents, and exclude soft-deleted Source Systems. Optional **metadata filters** (#370, `PassageFilters`) narrow every ranking: `document_type`, `language` (`ar`/`en`), `page`, `sheet`, `tag` (a folder of the file's path); every filter set must match. The `search_documents` tool takes them as arguments, and the file search API as query parameters.
+7. **Weighted fusion** (#376): `score = Σ weight / (k + rank)` over the rankings, with `SearchTuning` defaults `fts_weight` 1.0, `vector_weight` 1.0, `k` 60. The tuning, with the candidate counts, `mmr_lambda`, the floors and `top_k`, is read from the Workspace's effective Document AI settings (§8.4); the values here are the defaults. **Relevance floor:** a passage survives only if its `ts_rank_cd` is at least `min_text_rank` (0.01) or its cosine similarity is at least `min_vector_similarity` (0.3); an unrelated query returns nothing.
+8. **Small to big** (#368): rankings hold child passages; the result is their **parent** section's text, once per parent, at its best child's rank. Several children share a parent, so the candidate pool grows, up to 8 times, until `limit` distinct parents are found or the rankings run out; it grows only when a ranking filled its pool and its weakest candidate still cleared its floor. A passage indexed before parents existed is returned as itself.
+9. **Rerank** (#373): when the Workspace has a `rerank` model, the fused top **30** parents (each cut to 4,000 characters) are scored by it (§3.5) and reordered. The fused order is kept when there is no rerank model, the call fails, a budget is used up, the data-sharing level is below `documents` (unless the model is internal), or the Workspace is internal-only and the model external.
+10. **Exact names stay first** (#375): passages holding a table or column name from the query are moved to the front (stable), so neither fused vector hits nor a reranker can bury an exact name match.
+11. **MMR diversity** (#376) over the parent passages: `mmr_lambda` 0.7 trades relevance for variety; two passages of one section count as identical (1.0), of one document as 0.3, else 0. Five passages from one section no longer fill the result. Keep the top `limit` (default 10).
+12. Return `Passage(file_id, document, section, text, score, source_system_id, document_type, language, page, sheet, tags)`.
+
+The `search_documents` tool always returns `{"passages": [...]}`; when nothing clears the floor it adds a `note` ("Nothing relevant found…") telling the model not to guess.
 
 ```mermaid
 flowchart TD
     Q["Agent calls search_documents(query)"] --> AZ["Authorize: view the Workspace,<br/>level >= documents"]
-    AZ --> N["Normalise the query, split into words"]
-    N --> FT["Full-text ranking<br/>to_tsquery OR of words, ts_rank_cd<br/>top 20"]
-    N --> EQ{"Embedder allowed<br/>for this Workspace?"}
+    AZ --> N["Normalise and stem the query"]
+    N --> RW{"Light model<br/>allowed?"}
+    RW -->|yes| VAR["Up to 3 variants + optional HyDE answer"]
+    RW -->|no| ASIS["Query as typed"]
+    VAR & ASIS --> FT["Full-text ranking per query<br/>OR of stems, exact names and phrases first,<br/>ts_rank_cd, top 20"]
+    VAR & ASIS --> EQ{"Embedder allowed<br/>for this Workspace?"}
     EQ -->|no| SKIP["No vector ranking"]
-    EQ -->|yes| QE["Embed the query<br/>same model"]
+    EQ -->|yes| QE["Embed query and variants<br/>same model, one call"]
     QE --> VR["Vector ranking<br/>cosine distance, same model and dimension<br/>top 20"]
-    FT & VR & SKIP --> SC["Scope: Workspace, optional Source System,<br/>hide soft-deleted systems"]
-    SC --> RRF["Reciprocal Rank Fusion<br/>score = sum of 1 / (60 + rank)"]
-    RRF --> TOP["Top 10 passages"]
+    FT & VR & SKIP --> SC["Scope: Workspace, optional Source System,<br/>metadata filters, hide soft-deleted systems"]
+    SC --> RRF["Weighted RRF + relevance floor<br/>score = sum of weight / (60 + rank)"]
+    RRF --> PAR["Small to big: child passages replaced<br/>by their parent section, once each"]
+    PAR --> RR{"Rerank model<br/>allowed?"}
+    RR -->|yes| RK["Cross-encoder reorders the top 30"]
+    RR -->|no| KEEP["Keep the fused order"]
+    RK & KEEP --> EX["Passages holding a query identifier first"]
+    EX --> MMR["MMR diversity"]
+    MMR --> TOP["Top 10 passages"]
     TOP --> OUT["Passages with document + section<br/>quoted as data for the model"]
     OUT --> ANS["Model answers and cites<br/>document and section links"]
 ```
 
-There is **no re-ranker model**, no query rewriting or HyDE, and no automatic context stuffing: retrieval is a **tool** (`search_documents`) the agent decides to call, so it can search several times with different words, then `read_file` the whole document. The model cites passages as *document + section*, linked to the file.
+Retrieval is a **tool** (`search_documents`) the agent decides to call, so it can search several times with different words, then `read_file` the whole document. The model cites passages as *document + section*, linked to the file.
+
+**Auto-retrieve** (#378, optional). A per-Workspace AI setting, `auto_retrieve` (default off; audited; on the AI settings GET and PUT, no UI toggle; its passage count stays a code constant). When it is on, the assistant runs `search_documents` as the member on the **first message of a chat** (limit 3) and appends the passages to that message as quoted, untrusted data, with no tool-call round trip. A refusal (for example a data-sharing level below `documents`), an error or an empty result leaves the message unchanged. Follow-up messages get none, and the stored message is never modified.
+
+**Graph retrieval** (#379). The `explore_graph` tool (§6.2) adds a structured route beside documents: it returns an object's neighbours up to 2 hops away (lineage, KPI links, source column relationships, and the documents that mention it).
+
+**Document AI settings** (#380, `llm/document_ai.py`, `document_ai_api.py`). The knobs of the RAG pipeline live in one registry (`KNOBS`), grouped as chunking, indexing, retrieval and reranking, instead of code constants. Defaults are in `DocumentAiConfig`: `chunking_strategy`, `chunk_size`, `chunk_overlap`, `contextual_headers`, `embed_batch`, `max_extracted_chars`, `max_pdf_pages`, `top_k`, `fts_candidates`, `vector_candidates`, `fts_weight`, `vector_weight`, `rrf_k`, `mmr_lambda`, `min_text_rank`, `min_vector_similarity`, `rerank`, `rerank_top_n`. Two layers:
+- **Installation** (`GET|PUT /admin/llm/document-ai`, admins): the values, plus owner min/max bounds for each numeric knob owners may override. Table `llm_document_ai_settings`.
+- **Workspace overrides** (`GET|PUT /workspaces/{id}/document-ai`; members read, owners write; table `llm_workspace_document_ai`). Owners may override the chunking and retrieval knobs and `rerank`; `embed_batch`, the extraction caps, `rrf_k` and `rerank_top_n` stay admin-only. An unknown key is 422 `unknown_setting`, a known knob owners cannot override 422 `not_overridable`, a value outside the bounds 422 `out_of_bounds`, and a write naming an older `version` 409 `settings_changed`.
+
+`document_ai_config(engine, workspace_id)` is the one effective-settings lookup that indexing (chunking, overlap, headers, embed batch, extraction caps) and search (candidates, weights, MMR, floors, rerank, top-k) read: code defaults, then the installation's values, then the Workspace's overrides clamped to the current bounds (an admin may tighten them after an owner chose). Changes are audited: installation changes as a `document_ai_settings_changed` security event, Workspace changes in the audit trail and activity feed. Migration `c8f2a4d6e913` created the tables and moved `chunking_strategy` out of the Workspace AI settings (`PUT /ai-settings` no longer accepts it). Still code constants: the OCR trigger threshold, parent-chunk sizes and the auto-retrieve passage count. UI: the admin page "Document AI" and a "Document AI" tab in Workspace settings.
+
+**Re-index prompt** (#381). The chunking knobs (`chunking_strategy`, `chunk_size`, `chunk_overlap`, `contextual_headers`) apply only to documents indexed from then on. After a save that changed one of them, both settings pages ask whether to re-index. In Workspace settings "Re-index now" queues the existing `reindex_documents` job for that Workspace; on the admin page it calls `POST /admin/llm/document-ai/reindex` (admins only), which queues one job per Workspace with files, archived ones included. "Not now" leaves the index as is, and a save that changed no chunking knob shows no prompt. No embedding knob exists: an embedding-model change re-embeds on its own through `start_reembed` (above).
+
+**Index status** (#382). `GET /workspaces/{id}/documents/index-status` returns, per file, its status, error, passage count, embedding coverage and count of stale vectors (made by another model). `POST /workspaces/{id}/documents/{file_id}/reindex` re-indexes one file (owners and editors, `Action.UPLOAD_FILE`); "Re-index all" uses `/documents/reindex`. The "Document index" panel in the Workspace tree shows them and polls while indexing runs.
+
+**Retrieval playground** (#383). `GET /workspaces/{id}/documents/search/explain` (any member) runs the real search with a `SearchTrace` and returns the full-text, vector, fused, reranked and final rankings with scores and `above_floor` flags. It uses the same settings, scope, permissions and data-sharing gates as real search (a level below `documents` skips the embed and rerank calls); the chunk-row query is shared (`_chunk_rows`), so normal search is unchanged. UI: `RetrievalPlayground`, below the table on the Document index page.
 
 Retrieved text is passed to the model as quoted data (`<data source="tool:search_documents">`), so instructions inside documents are not followed.
 
@@ -799,11 +870,11 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | Tools | `assistant/internal/tools.py` |
 | Conversations, runs, jobs | `assistant/service.py`, `assistant/api.py`, `assistant/assembly.py`, `assistant/tables.py` |
 | RAG: extraction | `files/internal/content.py` |
-| RAG: chunking | `files/internal/chunking.py` |
+| RAG: chunking | `files/internal/chunking.py`, `files/internal/parents.py`, `files/internal/context.py` |
 | RAG: Arabic normalisation | `files/internal/arabic.py` |
 | RAG: indexing and hybrid search | `files/search.py`, `files/tables.py` (`DocumentChunkRecord`) |
 | Source-query guard | `sources/source_query_service.py`, `sources/internal/query_guard.py`, `query_guard_catalog.py` |
 | PII validators and redaction | `platform/pii_validators.py`, `sources/internal/pii*.py` |
 | Worker and jobs | `worker.py`, `job_handlers.py`, `modules/jobs/` |
 | Frontend | `frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx` |
-| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |
+| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |

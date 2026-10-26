@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
-from dawam.modules.files import DocumentSearchService, FileService
+from dawam.modules.files import DocumentSearchService, FileService, PassageFilters
 from dawam.modules.jobs import JobService
 from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.lineage import LineageService
@@ -232,6 +232,23 @@ LINEAGE_NODE_LIMIT = 200
 """The most nodes a ``get_lineage`` result names; the rest are counted."""
 
 
+class _ExploreGraph(BaseModel):
+    object_id: uuid.UUID = Field(
+        description="A source column, DW column, DW table or KPI id to start from."
+    )
+    depth: int = Field(default=1, ge=1, le=2, description="At most this many hops away (1 or 2).")
+    system_id: uuid.UUID | None = Field(
+        default=None,
+        description="The Source System's id, to include its source columns' relationships.",
+    )
+
+
+GRAPH_NODE_LIMIT = 100
+"""The most nodes an ``explore_graph`` result names; the rest are counted."""
+GRAPH_DOCUMENT_LIMIT = 5
+GRAPH_PASSAGE_CHARS = 500
+
+
 class _GetScore(BaseModel):
     limit: int = Field(
         default=30, ge=1, le=100, description="At most this many failed checks, errors first."
@@ -293,7 +310,16 @@ class _SearchDocuments(BaseModel):
     system_id: uuid.UUID | None = Field(
         default=None, description="Only this Source System's documents."
     )
+    document_type: str | None = Field(default=None, description="Only this type, e.g. pdf, xlsx.")
+    language: str | None = Field(default=None, description="Only ar or en passages.")
+    page: int | None = Field(default=None, ge=1, description="Only this PDF page.")
+    sheet: str | None = Field(default=None, description="Only this worksheet.")
+    tag: str | None = Field(default=None, description="Only documents in this folder.")
     limit: int = Field(default=5, ge=1, le=20)
+
+
+class _DescribeImage(BaseModel):
+    file_id: uuid.UUID
 
 
 class _ListFiles(BaseModel):
@@ -1044,6 +1070,124 @@ def _get_lineage(ctx: ToolContext, args: _GetLineage) -> Any:
     }
 
 
+def _explore_graph(ctx: ToolContext, args: _ExploreGraph) -> Any:
+    """A breadth-first walk where one hop is a lineage step (KPI links included) or an
+    accepted or suggested relationship; each service call authorizes as the member."""
+    lineage = ctx.services.lineage
+    around: dict[uuid.UUID, Any] = {}
+
+    def near(node_id: uuid.UUID) -> Any:
+        if node_id not in around:
+            around[node_id] = lineage.graph(ctx.user, ctx.workspace_id, node_id, "both", 1)
+        return around[node_id]
+
+    related: dict[uuid.UUID, list[Any]] = {}
+    if args.system_id is not None:
+        for r in ctx.services.relationships.list_relationships(
+            ctx.user, ctx.workspace_id, args.system_id
+        ):
+            if r.status != "rejected":
+                related.setdefault(r.from_column.column_id, []).append(r)
+                related.setdefault(r.to_column.column_id, []).append(r)
+
+    start = near(args.object_id).start
+    nodes: dict[uuid.UUID, tuple[Any, int]] = {start.id: (start, 0)}
+    left_out: set[uuid.UUID] = set()
+    edges: dict[tuple[str, uuid.UUID, uuid.UUID], dict[str, Any]] = {}
+
+    def reach(node: Any, hop: int) -> bool:
+        if node.id in nodes:
+            return False
+        if len(nodes) >= GRAPH_NODE_LIMIT:
+            left_out.add(node.id)
+            return False
+        nodes[node.id] = (node, hop)
+        return True
+
+    frontier = [start.id]
+    for hop in range(1, args.depth + 1):
+        reached = []
+        for node_id in frontier:
+            if len(nodes) >= GRAPH_NODE_LIMIT:
+                break
+            step = near(node_id)
+            for e in step.edges:
+                edges.setdefault((e.kind, e.from_id, e.to_id), {"kind": e.kind})
+            reached += [n.id for n in step.nodes if reach(n, hop)]
+            for r in related.get(node_id, []):
+                ends = (r.from_column.column_id, r.to_column.column_id)
+                other = ends[1] if ends[0] == node_id else ends[0]
+                if other not in nodes and len(nodes) >= GRAPH_NODE_LIMIT:
+                    left_out.add(other)
+                    continue
+                if reach(near(other).start, hop):
+                    reached.append(other)
+                edges.setdefault(
+                    ("relationship", *ends),
+                    {"kind": "relationship", "status": r.status, "confidence": r.confidence},
+                )
+        frontier = reached
+
+    named = {i: f"{n.label} ({n.layer})" for i, (n, _) in nodes.items()}
+    note = (
+        "Edge kinds: value, uses and lookup (lineage), kpi (a KPI links the column), "
+        "relationship (between source columns). More with get_lineage, get_relationships "
+        "and search_documents."
+    )
+    if args.system_id is None:
+        note += " Give the Source System's system_id to include its relationships."
+    return _without_none(
+        {
+            "start": {
+                "id": start.id,
+                "type": start.type,
+                "label": start.label,
+                "layer": start.layer,
+            },
+            "depth": args.depth,
+            "nodes": [
+                {"id": n.id, "type": n.type, "label": n.label, "layer": n.layer, "distance": d}
+                for n, d in nodes.values()
+            ],
+            "edges": [
+                {**shown, "from": named[f], "to": named[t]}
+                for (_, f, t), shown in edges.items()
+                if f in named and t in named
+            ],
+            "nodes_left_out": len(left_out - nodes.keys()),
+            **_mentions(ctx, start),
+            "note": note,
+        }
+    )
+
+
+def _mentions(ctx: ToolContext, start: Any) -> dict[str, Any]:
+    """The passages that name the object, when the Workspace shares documents."""
+    if not ctx.policy.allows(DataSharingLevel.DOCUMENTS):
+        return {
+            "documents": [],
+            "documents_note": "Withheld: the Workspace's data-sharing level does not share "
+            "documents.",
+        }
+    name = start.label.rsplit(".", 1)[-1] if start.type.endswith("column") else start.label
+    passages = ctx.services.documents.search(
+        ctx.user, ctx.workspace_id, name, limit=GRAPH_DOCUMENT_LIMIT
+    )
+    return {
+        "documents": [
+            {
+                "file_id": p.file_id,
+                "document": p.document,
+                "section": p.section,
+                "text": p.text[:GRAPH_PASSAGE_CHARS],
+                "link": f"?folder=systems/{p.source_system_id}/documents&file={p.file_id}",
+            }
+            for p in passages
+            if name.casefold() in p.text.casefold()
+        ]
+    }
+
+
 def _get_score(ctx: ToolContext, args: _GetScore) -> Any:
     score = ctx.services.scores.current(ctx.user, ctx.workspace_id)
     return {
@@ -1193,19 +1337,40 @@ def _evaluate_dw(ctx: ToolContext, args: _EvaluateDw) -> Any:
 
 def _search_documents(ctx: ToolContext, args: _SearchDocuments) -> Any:
     passages = ctx.services.documents.search(
-        ctx.user, ctx.workspace_id, args.query, system_id=args.system_id, limit=args.limit
+        ctx.user,
+        ctx.workspace_id,
+        args.query,
+        system_id=args.system_id,
+        limit=args.limit,
+        filters=PassageFilters(args.document_type, args.language, args.page, args.sheet, args.tag),
     )
-    return [
+    found = [
         {
             "file_id": p.file_id,
             "document": p.document,
             "section": p.section,
             "text": p.text,
+            "document_type": p.document_type,
+            "language": p.language,
+            "page": p.page,
+            "sheet": p.sheet,
             "source_system_id": p.source_system_id,
             "link": f"?folder=systems/{p.source_system_id}/documents&file={p.file_id}",
         }
         for p in passages
     ]
+    if found:
+        return {"passages": found}
+    return {
+        "passages": [],
+        "note": "Nothing relevant found in the documents for this query. Say so; do not "
+        "guess an answer from them.",
+    }
+
+
+def _describe_image(ctx: ToolContext, args: _DescribeImage) -> Any:
+    image = ctx.services.documents.describe_image(ctx.user, ctx.workspace_id, args.file_id)
+    return {"file_id": image.file_id, "name": image.name, "description": image.description}
 
 
 def _list_files(ctx: ToolContext, args: _ListFiles) -> Any:
@@ -1884,6 +2049,16 @@ TOOLS: tuple[Tool, ...] = (
         _get_lineage,
     ),
     Tool(
+        "explore_graph",
+        "An object's neighbours (source column, DW column or table, KPI) at most 2 hops "
+        "away, in one call: lineage, KPI links, a source column's relationships (give "
+        "system_id) and the documents that mention it (when the Workspace shares documents).",
+        _ExploreGraph,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _explore_graph,
+    ),
+    Tool(
         "get_score",
         "The Data Warehouse's rule-based design score (0-100) and grade, each Layer's score, "
         "and the failed checks with severity, the object at fault and a fix hint.",
@@ -1927,6 +2102,16 @@ TOOLS: tuple[Tool, ...] = (
         "read",
         Action.VIEW_WORKSPACE,
         _search_documents,
+        level=DataSharingLevel.DOCUMENTS,
+    ),
+    Tool(
+        "describe_image",
+        "Look at an uploaded image (an ERD, a diagram, a report mock-up) and get a text "
+        "description of it. Use a file_id from search_documents or list_files.",
+        _DescribeImage,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _describe_image,
         level=DataSharingLevel.DOCUMENTS,
     ),
     Tool(

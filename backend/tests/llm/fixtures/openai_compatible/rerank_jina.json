@@ -1,0 +1,26 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "model": "jina-reranker-v2-base-multilingual",
+    "usage": {
+      "total_tokens": 31
+    },
+    "results": [
+      {
+        "index": 1,
+        "document": {
+          "text": "b"
+        },
+        "relevance_score": 0.8744
+      },
+      {
+        "index": 0,
+        "document": {
+          "text": "a"
+        },
+        "relevance_score": 0.1205
+      }
+    ]
+  }
+}

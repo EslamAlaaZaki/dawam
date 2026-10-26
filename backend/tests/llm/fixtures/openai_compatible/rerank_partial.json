@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": {
+    "results": [
+      {
+        "index": 1,
+        "relevance_score": 0.5
+      }
+    ]
+  }
+}

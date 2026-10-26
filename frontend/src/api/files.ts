@@ -47,11 +47,24 @@ export function fileDownloadUrl(workspaceId: string, fileId: string): string {
   return `/api/v1/workspaces/${workspaceId}/files/${fileId}/download`;
 }
 
-/** Every file of the file area, ordered by name (all pages). */
+/** Whether a file's indexing job is still to finish (it ends as `indexed` or `failed`). */
+export function isIndexing(file: WorkspaceFile): boolean {
+  return file.index_status !== "indexed" && file.index_status !== "failed";
+}
+
+/** How often the file list is fetched again while a file is still being indexed. */
+const INDEXING_POLL_MS = 2000;
+
+/** Every file of the file area, ordered by name (all pages). Refreshes while any file is
+ * still being indexed. */
 export function useAreaFiles(workspaceId: string, area: FileArea) {
   const client = useApiClient();
   return useQuery({
     queryKey: filesKey(workspaceId, area),
+    refetchInterval: (query) =>
+      query.state.status !== "error" && query.state.data?.some(isIndexing)
+        ? INDEXING_POLL_MS
+        : false,
     queryFn: async () => {
       const files: WorkspaceFile[] = [];
       let cursor: string | undefined;
@@ -217,6 +230,75 @@ export function useSaveFileText(
   });
 }
 
+export type FileIndexStatus = components["schemas"]["FileIndexStatus"];
+
+const indexStatusKey = (workspaceId: string) =>
+  ["workspace", workspaceId, "document-index-status"] as const;
+
+/** Where indexing stands for each file of the Workspace; refreshes while any is unfinished. */
+export function useIndexStatus(workspaceId: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: indexStatusKey(workspaceId),
+    refetchInterval: (query) =>
+      query.state.status !== "error" &&
+      query.state.data?.some(
+        (row) =>
+          row.index_status !== "indexed" && row.index_status !== "failed",
+      )
+        ? INDEXING_POLL_MS
+        : false,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/documents/index-status",
+        { params: { path: { workspace_id: workspaceId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data.items;
+    },
+  });
+}
+
+/** Index one file again (owners and editors). */
+export function useReindexDocument(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (fileId: string) => {
+      const { error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/documents/{file_id}/reindex",
+        { params: { path: { workspace_id: workspaceId, file_id: fileId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: indexStatusKey(workspaceId) }),
+  });
+}
+
+/** Index every file of the Workspace again, as a background job (owners and editors). */
+export function useReindexAllDocuments(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/documents/reindex",
+        { params: { path: { workspace_id: workspaceId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: indexStatusKey(workspaceId) }),
+  });
+}
+
 /** Replace a file's content with an upload of the same type, keeping its name. */
 export function useReplaceFile(
   workspaceId: string,
@@ -241,5 +323,25 @@ export function useReplaceFile(
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: filesKey(workspaceId, area) }),
+  });
+}
+
+export type RetrievalTrace = components["schemas"]["RetrievalTrace"];
+export type TraceEntry = components["schemas"]["TraceEntry"];
+
+/** The retrieval playground: runs a search and returns each stage's ranking and scores. */
+export function useExplainSearch(workspaceId: string) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (q: string) => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/documents/search/explain",
+        { params: { path: { workspace_id: workspaceId }, query: { q } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
   });
 }

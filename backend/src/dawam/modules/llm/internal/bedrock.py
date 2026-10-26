@@ -15,6 +15,7 @@ renewed after a 403). The secret and tokens are never logged or put into an erro
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -36,6 +37,7 @@ from ..gateway import (
     UNAVAILABLE,
     ChatEvent,
     Done,
+    Image,
     LlmError,
     Message,
     TextDelta,
@@ -317,6 +319,10 @@ class BedrockAdapter:
         finally:
             response.close()
 
+    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """One user turn with the images, then the prompt; the reply is a chat reply."""
+        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         raise LlmError(BAD_REQUEST, "Bedrock has no common embeddings call: use another provider.")
 
@@ -439,7 +445,21 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
             if message.content:
                 system.append(message.content)
         elif message.role == "user":
-            add("user", [{"text": message.content or ""}])
+            add(
+                "user",
+                [
+                    *(
+                        {
+                            "image": {
+                                "format": image.media_type.removeprefix("image/"),
+                                "source": {"bytes": base64.b64encode(image.data).decode("ascii")},
+                            }
+                        }
+                        for image in message.images
+                    ),
+                    {"text": message.content or ""},
+                ],
+            )
         elif message.role == "tool":
             result = {
                 "toolUseId": message.tool_call_id,

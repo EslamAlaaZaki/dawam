@@ -23,7 +23,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 from dawam.platform.storage import FileStorage, new_key
 
-from .internal.content import TEXT_TYPES, Unsupported, detect, extract_text
+from .internal.content import TEXT_TYPES, Unsupported, detect
 from .search import DocumentSearchService
 from .tables import PATH_MAX_LENGTH, WorkspaceFileRecord
 
@@ -42,6 +42,9 @@ class WorkspaceFile:
     mime: str
     size: int
     text_status: str
+    index_status: str
+    index_error: str | None
+    index_note: str | None
     updated_by: uuid.UUID | None
     updated_at: datetime
 
@@ -86,6 +89,9 @@ def _view(record: WorkspaceFileRecord) -> WorkspaceFile:
         mime=record.mime,
         size=record.size,
         text_status=record.text_status,
+        index_status=record.index_status,
+        index_error=record.index_error,
+        index_note=record.index_note,
         updated_by=record.updated_by,
         updated_at=record.updated_at,
     )
@@ -215,7 +221,6 @@ class FileService:
             file_type = detect(name, data)
         except Unsupported as exc:
             raise ApiError(415, "unsupported_file_type", str(exc)) from None
-        text, text_status = extract_text(file_type, data)
 
         key = new_key()
         self._storage.put(key, data)
@@ -245,7 +250,7 @@ class FileService:
                 else:
                     replaced_key = record.storage_key
                 record.kind = kind
-                self._store(db, record, user, file_type.mime, key, data, text, text_status)
+                self._store(db, record, user, file_type.mime, key, data)
                 record_activity(
                     db,
                     workspace_id=workspace_id,
@@ -268,10 +273,7 @@ class FileService:
             raise
         if replaced_key is not None:
             self._storage.delete(replaced_key)
-        try:
-            self._search.index_file(workspace_id, view.id)
-        except Exception:  # the upload stands; a re-index repairs the search index
-            logger.exception("indexing document %s failed", view.id)
+        self._search.queue_index(workspace_id, view.id)
         return view
 
     def _store(
@@ -282,14 +284,17 @@ class FileService:
         mime: str,
         key: str,
         data: bytes,
-        text: str | None,
-        text_status: str,
     ) -> None:
+        """Keep the new bytes. Their text is extracted and indexed by the
+        ``index_document`` job, so the file is ``queued`` until then."""
         record.mime = mime
         record.storage_key = key
         record.size = len(data)
-        record.extracted_text = text
-        record.text_status = text_status
+        record.extracted_text = None
+        record.text_status = "none"
+        record.index_status = "queued"
+        record.index_error = None
+        record.index_note = None
         record.updated_by = user.id
         record.updated_at = self._clock()
         db.flush()
@@ -318,7 +323,6 @@ class FileService:
             raise ApiError(415, "unsupported_file_type", str(exc)) from None
         if text_only and file_type not in TEXT_TYPES:
             raise _not_editable()
-        text, text_status = extract_text(file_type, data)
 
         key = new_key()
         self._storage.put(key, data)
@@ -332,7 +336,7 @@ class FileService:
                 if record is None:
                     raise _not_found()
                 old_key = record.storage_key
-                self._store(db, record, user, file_type.mime, key, data, text, text_status)
+                self._store(db, record, user, file_type.mime, key, data)
                 record_activity(
                     db,
                     workspace_id=workspace_id,
@@ -349,10 +353,7 @@ class FileService:
             self._storage.delete(key)
             raise
         self._storage.delete(old_key)
-        try:
-            self._search.index_file(workspace_id, view.id)
-        except Exception:  # the save stands; a re-index repairs the search index
-            logger.exception("indexing document %s failed", view.id)
+        self._search.queue_index(workspace_id, view.id)
         return view
 
     def replace(

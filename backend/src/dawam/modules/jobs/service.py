@@ -91,12 +91,34 @@ class JobRunner(Protocol):
         """The handler of ``job_type``; ``UnknownJobTypeError`` if none is registered."""
         ...
 
+    def on_abandoned(self, job_type: str, hook: AbandonedHook) -> None:
+        """Register what runs when a job of ``job_type`` is cancelled or lost."""
+        ...
+
+    def abandoned(self, job_type: str) -> AbandonedHook | None:
+        """The hook of ``job_type``, if any."""
+        ...
+
+
+AbandonedHook = Callable[[Session, Mapping[str, Any], str], None]
+"""``hook(db, params, reason)``: a job of the type ended without its handler finishing
+(cancelled before or while it ran, or its worker was lost), in ``db``'s transaction."""
+
 
 class _Handlers:
     inline = False
 
     def __init__(self) -> None:
         self._handlers: dict[str, JobHandler] = {}
+        self._abandoned: dict[str, AbandonedHook] = {}
+
+    def on_abandoned(self, job_type: str, hook: AbandonedHook) -> None:
+        """Tell a module when its jobs of ``job_type`` are cancelled or lost. The first
+        hook for a type stays (tests build several apps on one runner)."""
+        self._abandoned.setdefault(job_type, hook)
+
+    def abandoned(self, job_type: str) -> AbandonedHook | None:
+        return self._abandoned.get(job_type)
 
     def register(self, job_type: str, handler: JobHandler) -> None:
         if job_type in self._handlers:
@@ -259,11 +281,20 @@ class JobService:
     def cancel_for_workspace(self, db: Session, workspace_id: uuid.UUID, at: datetime) -> None:
         """Cancel the Workspace's queued and running jobs, in ``db``'s transaction (the
         archive hook). A running handler notices at its next ``raise_if_cancelled``."""
+        active = list(
+            db.scalars(
+                sa.select(JobRecord).where(
+                    JobRecord.workspace_id == workspace_id, JobRecord.status.in_(ACTIVE)
+                )
+            )
+        )
         db.execute(
             sa.update(JobRecord)
             .where(JobRecord.workspace_id == workspace_id, JobRecord.status.in_(ACTIVE))
             .values(status="cancelled", finished_at=at)
         )
+        for record in active:
+            self._abandon(db, record, "The job was cancelled.")
 
     # -- for users -----------------------------------------------------------------
 
@@ -319,6 +350,7 @@ class JobService:
                 raise ApiError(409, "job_finished", f"This job has already {record.status}.", {})
             record.status = "cancelled"
             record.finished_at = self._clock()
+            self._abandon(db, record, "The job was cancelled.")
             db.flush()
             return _view(record)
 
@@ -368,6 +400,7 @@ class JobService:
             )
             for record in lost:
                 self._end(db, record, "failed", WORKER_LOST, now)
+                self._abandon(db, record, WORKER_LOST)
         return len(lost)
 
     # -- internals -------------------------------------------------------------------
@@ -434,6 +467,11 @@ class JobService:
             record = self._record(db, job_id, lock=True)
             if record.status == "running":
                 self._end(db, record, status, error, self._clock())
+
+    def _abandon(self, db: Session, record: JobRecord, reason: str) -> None:
+        hook = self._runner.abandoned(record.type)
+        if hook is not None:
+            hook(db, record.params, reason)
 
     def _end(
         self, db: Session, record: JobRecord, status: str, error: str | None, at: datetime

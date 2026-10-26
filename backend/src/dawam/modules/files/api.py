@@ -15,7 +15,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
-from dawam.modules.auth import CurrentUser
+from dawam.modules.auth import CurrentUser, User
 from dawam.modules.lineage import InventoryFormatParam, PiiInventoryServiceDep
 from dawam.modules.sources import DataDictionaryServiceDep, SourceSystemService
 from dawam.modules.warehouse import (
@@ -28,14 +28,16 @@ from dawam.modules.warehouse import (
     SheetFormat,
     SheetLayer,
 )
-from dawam.modules.workspaces import WorkspaceService
+from dawam.modules.workspaces import INSTALLATION, Action, WorkspaceService, can
+from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
-from .search import DocumentSearchService, Passage
+from .search import DocumentSearchService, Passage, PassageFilters, StageEntry
 from .service import FileService
 from .service import WorkspaceFile as WorkspaceFileView
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["files"])
+admin_router = APIRouter(prefix="/admin/llm/document-ai", tags=["files"])
 
 
 def file_service(request: Request) -> FileService:
@@ -57,6 +59,15 @@ def file_service(request: Request) -> FileService:
 FileServiceDep = Annotated[FileService, Depends(file_service)]
 
 
+def installation_admin(user: CurrentUser) -> User:
+    if not can(user, Action.MANAGE_SYSTEM_SETTINGS, INSTALLATION):
+        raise ApiError(403, "forbidden", "Only admins can do this.")
+    return user
+
+
+InstallationAdmin = Annotated[User, Depends(installation_admin)]
+
+
 def document_search(request: Request) -> DocumentSearchService:
     return request.app.state.document_search
 
@@ -76,7 +87,19 @@ class WorkspaceFile(BaseModel):
     mime: str = Field(description="The type found in the content, not the one the client sent.")
     size: int = Field(description="Bytes.")
     text_status: str = Field(
-        description="`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image)."
+        description="`extracted`, `no_text_found` (e.g. a scanned PDF) or `none` (an image, "
+        "or a file whose text is not extracted yet)."
+    )
+    index_status: str = Field(
+        description="Where indexing for search is: `queued`, `extracting`, `ocr`, `chunking`, "
+        "`embedding`, then `indexed` or `failed`."
+    )
+    index_error: str | None = Field(description="Why indexing `failed`; null otherwise.")
+    index_note: str | None = Field(
+        default=None,
+        description="Something worth knowing about the last indexing that did not fail it, "
+        "e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's "
+        "vision model; null otherwise.",
     )
     updated_by: uuid.UUID | None
     updated_at: datetime
@@ -381,6 +404,11 @@ class DocumentPassage(BaseModel):
     text: str
     score: float = Field(description="Relative rank: higher is a better match.")
     source_system_id: uuid.UUID
+    document_type: str | None = Field(default=None, description="`pdf`, `xlsx`, `md`...")
+    language: str | None = Field(default=None, description="`ar` or `en`.")
+    page: int | None = Field(default=None, description="The page of a PDF passage.")
+    sheet: str | None = Field(default=None, description="The worksheet of a spreadsheet passage.")
+    tags: list[str] = Field(default_factory=list, description="Labels: the document's folders.")
 
 
 class DocumentSearchResults(BaseModel):
@@ -402,6 +430,11 @@ def _passage(passage: Passage) -> DocumentPassage:
         text=passage.text,
         score=passage.score,
         source_system_id=passage.source_system_id,
+        document_type=passage.document_type,
+        language=passage.language,
+        page=passage.page,
+        sheet=passage.sheet,
+        tags=list(passage.tags),
     )
 
 
@@ -412,14 +445,81 @@ def search_documents(
     search: DocumentSearchDep,
     q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
     system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
-    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    limit: Annotated[
+        int | None,
+        Query(ge=1, le=50, description="Left out: the Workspace's Document AI `top_k`."),
+    ] = None,
+    document_type: Annotated[str | None, Query(description="Only this type, e.g. `pdf`.")] = None,
+    language: Annotated[str | None, Query(description="Only `ar` or `en` passages.")] = None,
+    page: Annotated[int | None, Query(ge=1, description="Only this PDF page.")] = None,
+    sheet: Annotated[str | None, Query(description="Only this worksheet.")] = None,
+    tag: Annotated[str | None, Query(description="Only documents with this label.")] = None,
 ) -> DocumentSearchResults:
     """Search the Workspace's uploaded documents (any member). Full-text search with Arabic
     normalisation, combined with vector search when the Workspace's data-sharing level
     includes documents and its internal-only setting allows the embedding provider. Each
     result is a cited passage: the document and its section."""
-    passages = search.search(user, workspace_id, q, system_id=system_id, limit=limit)
+    filters = PassageFilters(document_type, language, page, sheet, tag)
+    passages = search.search(
+        user, workspace_id, q, system_id=system_id, limit=limit, filters=filters
+    )
     return DocumentSearchResults(items=[_passage(p) for p in passages])
+
+
+class TraceEntry(BaseModel):
+    rank: int = Field(description="Position in this stage, from 1.")
+    file_id: uuid.UUID
+    document: str
+    section: str
+    text: str
+    score: float = Field(
+        description="This stage's own number: `ts_rank_cd` (full-text), cosine similarity "
+        "(vector), fused RRF score, or the rerank model's score."
+    )
+    above_floor: bool | None = Field(
+        default=None,
+        description="Full-text and vector only: whether the score clears the relevance floor.",
+    )
+
+
+class RetrievalTrace(BaseModel):
+    queries: list[str] = Field(description="The query as typed, then any rewrites.")
+    vector_used: bool = Field(description="False when the Workspace's policy keeps vectors off.")
+    reranked: bool = Field(description="Whether a rerank model reordered the fused results.")
+    full_text: list[TraceEntry]
+    vector: list[TraceEntry]
+    fused: list[TraceEntry]
+    reranked_results: list[TraceEntry]
+    final: list[TraceEntry] = Field(description="What a real search returns.")
+
+
+def _stage(entries: list[StageEntry]) -> list[TraceEntry]:
+    return [TraceEntry(rank=i, **vars(e)) for i, e in enumerate(entries, start=1)]
+
+
+@router.get("/documents/search/explain", operation_id="explainDocumentSearch")
+def explain_document_search(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    search: DocumentSearchDep,
+    q: Annotated[str, Query(max_length=500, description="What to look for.")] = "",
+    system_id: Annotated[uuid.UUID | None, Query(description="Only this Source System.")] = None,
+    limit: Annotated[int | None, Query(ge=1, le=50)] = None,
+) -> RetrievalTrace:
+    """The retrieval playground (any member): runs a real search with the Workspace's
+    effective Document AI settings and returns each stage's ranking and scores (full-text,
+    vector, fused, reranked, final). Permissions and data-sharing levels apply as in search."""
+    t = search.explain(user, workspace_id, q, system_id=system_id, limit=limit)
+    return RetrievalTrace(
+        queries=t.queries,
+        vector_used=t.vector_used,
+        reranked=t.reranked,
+        full_text=_stage(t.full_text),
+        vector=_stage(t.vector),
+        fused=_stage(t.fused),
+        reranked_results=_stage(t.reranked_results),
+        final=_stage(t.final),
+    )
 
 
 @router.post("/documents/reindex", operation_id="reindexDocuments", status_code=202)
@@ -430,3 +530,59 @@ def reindex_documents(
     job: run it after the embedding model or its dimension changes."""
     job = search.start_reindex(user, workspace_id)
     return ReindexStarted(job_id=job.id, status=job.status)
+
+
+class ReindexAllStarted(BaseModel):
+    job_ids: list[uuid.UUID] = Field(
+        description="One `reindex_documents` job per Workspace that has files."
+    )
+
+
+@admin_router.post("/reindex", operation_id="reindexAllDocuments", status_code=202)
+def reindex_all_documents(
+    _admin: InstallationAdmin, search: DocumentSearchDep
+) -> ReindexAllStarted:
+    """Index the documents of every Workspace again (admins only), as one background job
+    per Workspace: offered after the installation's Document AI settings change."""
+    return ReindexAllStarted(job_ids=[j.id for j in search.start_reindex_everywhere(_admin)])
+
+
+class FileIndexStatus(BaseModel):
+    file_id: uuid.UUID
+    name: str
+    index_status: str = Field(
+        description="`queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` "
+        "or `failed`."
+    )
+    index_error: str | None = Field(description="Why indexing `failed`; null otherwise.")
+    index_note: str | None = Field(description="Something worth knowing that did not fail it.")
+    chunk_count: int = Field(description="Passages the file is cut into.")
+    embedded_count: int = Field(description="Passages that have a vector.")
+    stale_count: int = Field(
+        description="Embedded passages whose vector was made by a model other than the one in "
+        "use: a re-index replaces them."
+    )
+    updated_at: datetime
+
+
+class DocumentIndexStatus(BaseModel):
+    items: list[FileIndexStatus]
+
+
+@router.get("/documents/index-status", operation_id="getDocumentIndexStatus")
+def get_document_index_status(
+    workspace_id: uuid.UUID, user: CurrentUser, search: DocumentSearchDep
+) -> DocumentIndexStatus:
+    """Where indexing stands for each file of the Workspace (any member): status, passages,
+    embedding coverage, stale vectors and the last error."""
+    rows = search.index_overview(user, workspace_id)
+    return DocumentIndexStatus(items=[FileIndexStatus(**vars(row)) for row in rows])
+
+
+@router.post("/documents/{file_id}/reindex", operation_id="reindexDocument", status_code=202)
+def reindex_document(
+    workspace_id: uuid.UUID, file_id: uuid.UUID, user: CurrentUser, search: DocumentSearchDep
+) -> None:
+    """Index one file again (owners and editors), in the background; its status on
+    `GET /documents/index-status` follows."""
+    search.reindex_file(user, workspace_id, file_id)

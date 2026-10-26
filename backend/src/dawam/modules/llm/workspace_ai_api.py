@@ -35,7 +35,12 @@ def workspace_ai_service(request: Request) -> WorkspaceAiService:
     workspaces = WorkspaceService(
         state.engine, clock=clock, events=SecurityEventRecorder(state.engine, clock=clock)
     )
-    return WorkspaceAiService(state.engine, workspaces=workspaces, clock=clock)
+    return WorkspaceAiService(
+        state.engine,
+        workspaces=workspaces,
+        clock=clock,
+        on_embedding_changed=getattr(state, "on_embedding_model_changed", None),
+    )
 
 
 WorkspaceAiServiceDep = Annotated[WorkspaceAiService, Depends(workspace_ai_service)]
@@ -59,6 +64,8 @@ class ModelChoices(BaseModel):
     agent: list[ModelChoice]
     light: list[ModelChoice]
     embedding: list[ModelChoice]
+    vision: list[ModelChoice]
+    rerank: list[ModelChoice]
 
 
 class LightFeature(BaseModel):
@@ -74,6 +81,18 @@ LIGHT_FEATURES = (
         "Conversation compaction",
         "Summarises the oldest turns of a long assistant conversation instead of dropping them.",
     ),
+    (
+        "chunk_context",
+        "Passage context",
+        "Prepends a one-sentence context to each document passage before it is embedded and "
+        "full-text indexed.",
+    ),
+    (
+        "query_rewriting",
+        "Query rewriting",
+        "Searches documents with a few rewordings of the question, including its Arabic or "
+        "English translation, and fuses the results.",
+    ),
 )
 """The features that use the light role; each light-role ticket adds its own entry. They are
 all off while the Workspace has no light model."""
@@ -81,11 +100,16 @@ all off while the Workspace has no light model."""
 
 class WorkspaceAiSettings(BaseModel):
     internal_only: bool = Field(
-        description="Every model role (agent, light, embedding) is refused an external provider."
+        description="Every model role (agent, light, embedding, vision, rerank) is refused an "
+        "external provider."
     )
     data_sharing_level: DataSharingLevel = Field(
         description="What the AI may see, cumulative: `metadata` < `profiles` < `documents` "
         "< `samples`."
+    )
+    auto_retrieve: bool = Field(
+        description="On: the first message of an assistant conversation carries the top 3 "
+        "document passages for it, quoted as data (needs the `documents` level)."
     )
     agent_models: list[WorkspaceModel] = Field(
         description="The Workspace's agent models; the default answers unless a message "
@@ -100,8 +124,20 @@ class WorkspaceAiSettings(BaseModel):
     embedding_model: WorkspaceModel | None = Field(
         description="The Workspace's embedding model; null: document search matches text only."
     )
-    embedding_locked: bool = Field(
-        description="The Workspace has indexed documents, so its embedding model is fixed."
+    embedding_rebuilding: bool = Field(
+        description="The documents are being embedded again with a new embedding model; "
+        "document search matches text only until they all are."
+    )
+    vision_model: WorkspaceModel | None = Field(
+        description="The Workspace's vision model, which reads scanned pages when the "
+        "data-sharing level allows sending documents to its provider (an internal one always "
+        "may); null, or not allowed: the self-hosted OCR engine reads them."
+    )
+    rerank_model: WorkspaceModel | None = Field(
+        description="The Workspace's rerank model, which reorders the top document-search "
+        "results by relevance when the data-sharing level allows sending documents to its "
+        "provider (an internal one always may); null, or not allowed: results keep their "
+        "fused order."
     )
     choices: ModelChoices = Field(
         description="Per role, the tested models an admin enabled for it, for an owner to choose "
@@ -121,6 +157,9 @@ class WorkspaceAiSettingsRequest(BaseModel):
 
     internal_only: bool
     data_sharing_level: DataSharingLevel
+    auto_retrieve: bool | None = Field(
+        default=None, description="Left out: keeps the current value."
+    )
     agent_model_ids: list[uuid.UUID] = Field(
         default_factory=list,
         description="Models enabled for the agent role; required when there is any to choose.",
@@ -136,8 +175,14 @@ class WorkspaceAiSettingsRequest(BaseModel):
     )
     embedding_model_id: uuid.UUID | None = Field(
         default=None,
-        description="A model enabled for the embedding role; changes only while the Workspace "
-        "has no indexed documents.",
+        description="A model enabled for the embedding role. Changing it once documents are "
+        "indexed embeds them again in the background; search matches text only meanwhile.",
+    )
+    vision_model_id: uuid.UUID | None = Field(
+        default=None, description="A model enabled for the vision role; optional."
+    )
+    rerank_model_id: uuid.UUID | None = Field(
+        default=None, description="A model enabled for the rerank role; optional."
     )
 
 
@@ -161,15 +206,20 @@ def _choices(choices: dict[str, list[ApprovedModel]]) -> ModelChoices:
         agent=[_choice(m) for m in choices["agent"]],
         light=[_choice(m) for m in choices["light"]],
         embedding=[_choice(m) for m in choices["embedding"]],
+        vision=[_choice(m) for m in choices["vision"]],
+        rerank=[_choice(m) for m in choices["rerank"]],
     )
 
 
 def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     settings = view.settings
     embedding = view.chosen["embedding"]
+    vision = view.chosen["vision"]
+    rerank = view.chosen["rerank"]
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
         data_sharing_level=settings.data_sharing_level,
+        auto_retrieve=settings.auto_retrieve,
         agent_models=[_chosen(m) for m in view.chosen["agent"]],
         light_models=[_chosen(m) for m in view.chosen["light"]],
         light_features=[
@@ -179,7 +229,9 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
             for key, name, description in LIGHT_FEATURES
         ],
         embedding_model=_chosen(embedding[0]) if embedding else None,
-        embedding_locked=view.embedding_locked,
+        embedding_rebuilding=view.embedding_rebuilding,
+        vision_model=_chosen(vision[0]) if vision else None,
+        rerank_model=_chosen(rerank[0]) if rerank else None,
         choices=_choices(view.choices),
         internal_agent_available=view.internal_agent_available,
         banner=view.banner,
@@ -207,8 +259,8 @@ def set_ai_settings(
     422 `model_not_allowed` for an external model in an internal-only Workspace;
     422 `no_internal_model` when internal-only has no internal agent model to use;
     422 `agent_model_required` without an agent model; 422 `invalid_default_model` when the
-    default is not one of the chosen models; 422 `embedding_model_fixed` for a different
-    embedding model once documents are indexed."""
+    default is not one of the chosen models. A different embedding model once documents are
+    indexed starts a `reindex_documents` job that embeds them again (`embedding_rebuilding`)."""
     sent = body.model_fields_set
     current = service.settings(workspace_id).models
     agents = "agent_model_ids" in sent
@@ -219,6 +271,7 @@ def set_ai_settings(
             workspace_id,
             internal_only=body.internal_only,
             data_sharing_level=body.data_sharing_level,
+            auto_retrieve=body.auto_retrieve,
             agent_model_ids=body.agent_model_ids if agents else list(current.agent),
             default_agent_model_id=(
                 body.default_agent_model_id
@@ -234,6 +287,8 @@ def set_ai_settings(
             embedding_model_id=(
                 body.embedding_model_id if "embedding_model_id" in sent else current.embedding
             ),
+            vision_model_id=body.vision_model_id if "vision_model_id" in sent else current.vision,
+            rerank_model_id=body.rerank_model_id if "rerank_model_id" in sent else current.rerank,
         )
     )
 

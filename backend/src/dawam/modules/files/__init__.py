@@ -19,8 +19,22 @@ Public interface. Other modules import only what is re-exported here:
 - ``DocumentSearchService``: indexes uploaded documents (Postgres full-text with Arabic
   normalisation; pgvector embeddings only when the Workspace's ``DocumentAiPolicy`` lets
   documents reach the embedding model), searches them hybrid with cited passages, and
-  re-indexes on demand (the ``reindex_documents`` job, ``REINDEX_JOB``).
-- ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
+  re-indexes on demand (the ``reindex_documents`` job, ``REINDEX_JOB``). An upload or
+  replacement returns at once with ``index_status`` ``queued``; the ``index_document`` job
+  (``INDEX_JOB``) extracts the text and indexes it, moving the file through ``extracting``,
+  ``ocr``, ``chunking`` and ``embedding`` to ``indexed``, or to ``failed`` with ``index_error``.
+- ``DocumentParser`` / ``DoclingParser``: the layout-aware parsing port and its Docling engine;
+  PDF, DOCX and XLSX are parsed to Markdown (headings, reading order, tables) before chunking.
+- ``OcrEngine`` / ``DoclingOcr``: the OCR port and its Docling engine (RapidOCR, on the CPU
+  or an NVIDIA GPU: setting ``document_accelerator``); a PDF's pages with too little text
+  are read by OCR (stage ``ocr``). A Workspace's vision model (``VisionModels``,
+  ``RegisteredVisionModels``) reads them instead when the ``DocumentAiPolicy`` lets the
+  document reach its provider (an internal one always may); otherwise, or when it fails, the
+  self-hosted engine does and the file's ``index_note`` says so.
+- ``DocumentSearchService.describe_image``: an uploaded image's description (made on indexing
+  by the Workspace's vision model, under the same policy rule), for the assistant's tool.
+- ``router``: also ``POST /admin/llm/document-ai/reindex`` (admins: every Workspace's
+  documents again), ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
   Confluence pages by URL (``SourceLink``, story 65), and link documents to tables and
@@ -46,32 +60,48 @@ Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
 
 from fastapi import APIRouter
 
+from .api import admin_router as _admin_router
 from .api import router as _files_router
 from .deletion import FileRef, SystemFiles, purge_system_files, system_files
 from .handlers import FileContentHandler
+from .internal.ocr import DoclingOcr, OcrEngine
+from .internal.parsing import DoclingParser, DocumentParser
+from .internal.rerank import NoRerankModels, RegisteredRerankModels, RerankModel, RerankModels
 from .link_api import router as _links_router
 from .link_service import FileObjectLink, LinkService, SourceLink, SourceLinkPage
 from .search import (
+    INDEX_JOB,
     REINDEX_JOB,
     DocumentAiPolicy,
     DocumentAiSettings,
     DocumentSearchService,
     EmbeddingModel,
     EmbeddingModels,
+    ImageDescription,
     NoDocumentAi,
     Passage,
+    PassageFilters,
     RegisteredEmbeddingModels,
+    RegisteredLightModels,
+    RegisteredVisionModels,
+    VisionModel,
+    VisionModels,
 )
 from .service import FileContent, FileService, TextFile, WorkspaceFile, WorkspaceFilePage
 
 router = APIRouter()
 router.include_router(_files_router)
+router.include_router(_admin_router)
 router.include_router(_links_router)
 
 __all__ = [
+    "INDEX_JOB",
     "REINDEX_JOB",
+    "DoclingOcr",
+    "DoclingParser",
     "DocumentAiPolicy",
     "DocumentAiSettings",
+    "DocumentParser",
     "DocumentSearchService",
     "EmbeddingModel",
     "EmbeddingModels",
@@ -80,14 +110,25 @@ __all__ = [
     "FileObjectLink",
     "FileRef",
     "FileService",
+    "ImageDescription",
     "LinkService",
     "NoDocumentAi",
+    "NoRerankModels",
+    "OcrEngine",
     "Passage",
+    "PassageFilters",
     "RegisteredEmbeddingModels",
+    "RegisteredLightModels",
+    "RegisteredRerankModels",
+    "RegisteredVisionModels",
+    "RerankModel",
+    "RerankModels",
     "SourceLink",
     "SourceLinkPage",
     "SystemFiles",
     "TextFile",
+    "VisionModel",
+    "VisionModels",
     "WorkspaceFile",
     "WorkspaceFilePage",
     "purge_system_files",

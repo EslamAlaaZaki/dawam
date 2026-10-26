@@ -21,12 +21,13 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import dawam
 from dawam import job_handlers
+from dawam.job_handlers import default_ocr, default_parser
 from dawam.modules import ALL_MODULES
 from dawam.modules.admin import SystemSettingsService
 from dawam.modules.assistant import readable_conversations
 from dawam.modules.auth import AuthService
 from dawam.modules.changesets import reject_pending_change_sets
-from dawam.modules.files import DocumentAiPolicy
+from dawam.modules.files import DocumentAiPolicy, DocumentParser, OcrEngine
 from dawam.modules.jobs import JobRunner, JobService, QueuedJobRunner
 from dawam.modules.kpis import kpi_formulas_check, kpis_for_score
 from dawam.modules.llm import (
@@ -88,6 +89,12 @@ class Services:
     document_ai: DocumentAiPolicy | None = None
     """What each Workspace lets documents share with a model; ``None``: nothing (full-text
     search only) until the Workspace AI settings exist."""
+    document_parser: DocumentParser | None = None
+    """Layout-aware parser for indexed documents; ``None`` uses the one the settings name
+    (tests pass a fake)."""
+    ocr_engine: OcrEngine | None = None
+    """OCR for the scanned pages of indexed PDFs; ``None`` uses the one the settings name
+    (tests pass a fake)."""
 
 
 def default_services() -> Services:
@@ -114,6 +121,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         # Looked up when a job runs: tests swap in a fake provider after the app is built.
         llm_adapters=lambda kind, config: (services.llm_adapters or adapter_for)(kind, config),
         document_ai=services.document_ai,
+        parser=lambda: services.document_parser or default_parser(settings),
+        ocr=lambda: services.ocr_engine or default_ocr(settings),
     )
 
     # Revocations of a Layer's approval are timed like the change that caused them.
@@ -167,6 +176,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
         services.clock,
         llm_adapters=services.llm_adapters,
         document_ai=services.document_ai,
+        parser=lambda: services.document_parser or default_parser(settings),
+        ocr=lambda: services.ocr_engine or default_ocr(settings),
     )
     # Where uploaded files live (local volume or S3-compatible bucket).
     app.state.storage = create_storage(settings)
@@ -220,6 +231,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     # A new Workspace gets its AI settings (llm) as it is created: workspaces cannot import llm.
     app.state.on_workspace_created = on_workspace_created
+    # A new embedding model (llm) has the documents embedded again (files): llm cannot import files.
+    app.state.on_embedding_model_changed = app.state.document_search.start_reembed
 
     install_error_handlers(app)
     app.add_middleware(CsrfCookieMiddleware)

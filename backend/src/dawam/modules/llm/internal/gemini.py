@@ -33,6 +33,7 @@ from ..gateway import (
     UNAVAILABLE,
     ChatEvent,
     Done,
+    Image,
     ListingUnsupported,
     LlmError,
     Message,
@@ -249,6 +250,10 @@ class GeminiAdapter:
         finally:
             response.close()
 
+    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """One user turn with the images, then the prompt; the reply is a chat reply."""
+        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         if "aiplatform.googleapis.com" in self._base_url:
             raise LlmError(BAD_REQUEST, "Embeddings are not supported on Vertex AI here.")
@@ -417,7 +422,21 @@ def _wire_contents(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
             if message.content:
                 system.append(message.content)
         elif message.role == "user":
-            add("user", [{"text": message.content or ""}])
+            add(
+                "user",
+                [
+                    *(
+                        {
+                            "inlineData": {
+                                "mimeType": image.media_type,
+                                "data": base64.b64encode(image.data).decode("ascii"),
+                            }
+                        }
+                        for image in message.images
+                    ),
+                    {"text": message.content or ""},
+                ],
+            )
         elif message.role == "tool":
             call_id = message.tool_call_id or ""
             response = {

@@ -44,10 +44,12 @@ from .tables import (
 
 API_KEY_CONTEXT = "llm.provider.api_key"
 API_KEY_MAX_LENGTH = 1000
-ROLES = ("agent", "light", "embedding")
+ROLES = ("agent", "light", "embedding", "vision", "rerank")
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 600
 MAX_CONTEXT_WINDOW = 100_000_000
+NON_CHAT_ROLES = ("embedding", "rerank")
+"""Roles whose model is never asked to chat."""
 AGENT_MIN_CONTEXT = 32_768
 """The smallest context window (tokens) a model may have to fill the agent role: below
 it the tool schemas alone crowd out the prompt."""
@@ -470,9 +472,11 @@ class ProviderService:
         ollama = gateway.ollama_context() if "agent" in roles else None
         result: ProbeResult = probe(
             gateway,
-            chat=roles != ["embedding"],
+            chat=not roles or any(r not in NON_CHAT_ROLES for r in roles),
             embedding="embedding" in roles,
             context_window=window,
+            vision="vision" in roles,
+            rerank="rerank" in roles,
         )
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)

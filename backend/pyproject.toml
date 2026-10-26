@@ -30,13 +30,22 @@ dependencies = [
     "regex>=2024.11",
     "tiktoken>=0.8",
     "tokenizers>=0.20",
+    "docling>=2.142",  # RapidOCR options (native language codes, model folder)
+    "python-bidi>=0.6",  # RapidOCR needs it for right-to-left (Arabic) recognition
+    "pypdfium2>=4",  # renders scanned pages for the vision model (also Docling's renderer)
+    "pillow>=10",  # encodes the rendered pages as PNG
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
 
 [project.optional-dependencies]
 s3 = ["boto3>=1.34"]
+# RapidOCR's inference backend, for OCR of scanned PDFs: install exactly one (the two
+# packages conflict). The Dockerfile picks it with its ACCELERATOR build arg.
+ocr-cpu = ["onnxruntime>=1.17,<2"]
+ocr-gpu = ["onnxruntime-gpu[cuda,cudnn]>=1.17,<2"]
 dev = [
+    "dawam[ocr-cpu]",
     "pytest>=8.2",
     "httpx2>=2.13",
     "testcontainers[postgres,mssql,mysql]>=4.15",
@@ -44,16 +53,23 @@ dev = [
     "aiosmtpd>=1.4.6",
 ]
 
+[tool.uv]
+conflicts = [
+    [{ extra = "ocr-cpu" }, { extra = "ocr-gpu" }],
+    [{ extra = "dev" }, { extra = "ocr-gpu" }],
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/dawam"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -m 'not oracle and not ollama and not real_model'"
+addopts = "-ra -m 'not oracle and not ollama and not real_model and not docling'"
 pythonpath = ["."]
 markers = [
     "oracle: needs an Oracle container (slow and heavy); run with `pytest -m oracle`",
     "ollama: needs a running Ollama server (DAWAM_OLLAMA_URL); run with `pytest -m ollama`",
+    "docling: runs the real Docling engine (layout parsing, OCR) on a tiny fixture (model files cached in CI); run with `pytest -m docling`",
     "real_model: runs the DW generation evaluation set against a real model (DAWAM_EVAL_URL, DAWAM_EVAL_MODEL); run with `pytest -m real_model` before a release",
 ]
 

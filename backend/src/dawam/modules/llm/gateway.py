@@ -10,9 +10,11 @@ unavailability, and token usage (estimated when the provider reports none).
 from __future__ import annotations
 
 import json
+import struct
 import time
+import zlib
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 Role = Literal["system", "user", "assistant", "tool"]
@@ -29,6 +31,8 @@ MAX_RETRIES = 3
 BACKOFF_BASE_SECONDS = 0.5
 BACKOFF_MAX_SECONDS = 30.0
 CHARS_PER_TOKEN = 4
+IMAGE_TOKENS = 1000
+"""A rough count for one page image, for when the provider reports no usage."""
 
 
 class LlmError(Exception):
@@ -70,6 +74,15 @@ class ToolSpec:
 
 
 @dataclass(frozen=True)
+class Image:
+    """An image sent to a vision model: ``media_type`` is ``image/png``, ``image/jpeg``,
+    ``image/gif`` or ``image/webp``."""
+
+    media_type: str
+    data: bytes = field(repr=False)
+
+
+@dataclass(frozen=True)
 class Message:
     role: Role
     content: str | None = None
@@ -77,6 +90,8 @@ class Message:
     """On an ``assistant`` message: the calls the model made."""
     tool_call_id: str | None = None
     """On a ``tool`` message: the call it answers."""
+    images: tuple[Image, ...] = ()
+    """On a ``user`` message: images for a vision model, sent before the text."""
 
 
 @dataclass(frozen=True)
@@ -157,6 +172,10 @@ class Adapter(Protocol):
         """The model's context window from the server's metadata, if it reports one."""
         ...
 
+    # Optional: ``vision(self, model, prompt, images) -> Iterator[ChatEvent]`` (one user turn
+    # with ``images`` and the ``prompt``; absent: the provider cannot read images).
+    # Optional: ``rerank(self, model, query, documents) -> list[float]`` (one relevance score per
+    # document, in order, higher is better; absent: the provider has no rerank endpoint).
     # Optional: ``count_tokens(self, model, text) -> int | None`` (the provider's own count of
     # ``text``; ``None``/absent: not available, the gateway estimates).
     # Optional: ``list_models(self) -> list[str]`` (the names the provider offers); an
@@ -172,6 +191,11 @@ def estimate_tokens(text: str) -> int:
 def _message_text(message: Message) -> str:
     calls = "".join(f"{c.name}{json.dumps(c.arguments)}" for c in message.tool_calls)
     return (message.content or "") + calls
+
+
+def estimate_prompt_tokens(messages: Sequence[Message]) -> int:
+    """A rough count of what ``messages`` cost as a prompt, images included."""
+    return sum(estimate_tokens(_message_text(m)) + IMAGE_TOKENS * len(m.images) for m in messages)
 
 
 class Gateway:
@@ -243,9 +267,38 @@ class Gateway:
         """Send the conversation and yield events. A rate limit or an unavailable provider
         is retried with backoff, but only until the first event: a stream already begun
         is never restarted. Token usage is estimated when the provider reports none."""
-        events = self._retrying(
-            lambda: self._adapter.chat(self._model, messages, tools, stream, json_schema)
+        yield from self._estimated(
+            self._retrying(
+                lambda: self._adapter.chat(self._model, messages, tools, stream, json_schema)
+            ),
+            messages,
         )
+
+    def vision(self, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+        """Send ``images`` (page images, say) with ``prompt`` in one user turn and yield the
+        reply's events, without streaming. Retried and estimated like ``chat``. Raises
+        ``LlmError`` ``bad_request`` when the provider's adapter cannot read images."""
+        reader = getattr(self._adapter, "vision", None)
+        if reader is None:
+            raise LlmError(BAD_REQUEST, "This provider cannot read images.")
+        yield from self._estimated(
+            self._retrying(lambda: reader(self._model, prompt, tuple(images))),
+            [Message("user", prompt, images=tuple(images))],
+        )
+
+    def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
+        """One relevance score per document, in order (higher is better), from a rerank
+        model. Retried like ``chat``. Raises ``LlmError`` ``bad_request`` when the provider's
+        adapter has no rerank endpoint."""
+        ranker = getattr(self._adapter, "rerank", None)
+        if ranker is None:
+            raise LlmError(BAD_REQUEST, "This provider has no rerank endpoint.")
+        [scores] = self._retrying(lambda: iter([ranker(self._model, query, tuple(documents))]))
+        return list(scores)
+
+    def _estimated(
+        self, events: Iterator[ChatEvent], messages: Sequence[Message]
+    ) -> Iterator[ChatEvent]:
         produced: list[str] = []
         for event in events:
             if isinstance(event, TextDelta):
@@ -253,7 +306,7 @@ class Gateway:
             elif isinstance(event, ToolCallEvent):
                 produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
             elif isinstance(event, Done) and event.usage is None:
-                prompt = sum(estimate_tokens(_message_text(m)) for m in messages)
+                prompt = estimate_prompt_tokens(messages)
                 completion = estimate_tokens("".join(produced))
                 event = Done(Usage(prompt, completion, estimated=True), event.finish_reason)
             yield event
@@ -315,6 +368,26 @@ _PROBE_SCHEMA: dict[str, Any] = {
 }
 
 
+def solid_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+    """A PNG of one colour, built by hand (no imaging library needed)."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    row = b"\x00" + bytes(rgb) * width
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(row * height))
+        + chunk(b"IEND", b"")
+    )
+
+
+_PROBE_IMAGE = Image("image/png", solid_png(64, 64, (220, 30, 30)))
+
+
 def _collect(events: Iterator[ChatEvent]) -> tuple[str, list[ToolCall]]:
     text: list[str] = []
     calls: list[ToolCall] = []
@@ -332,11 +405,14 @@ def probe(
     chat: bool,
     embedding: bool,
     context_window: int | None = None,
+    vision: bool = False,
+    rerank: bool = False,
 ) -> ProbeResult:
     """Run "Test connection": a short prompt, a streamed one, a dummy tool call, a
-    JSON-schema request and, for embedding models, one embedding. A failure of the
-    short prompt (or of the embedding) fails the test with its error code; failures of
-    the optional features just mean the model does not support them.
+    JSON-schema request, for vision models a small image to read and, for embedding
+    models, one embedding and for rerank models a two-document ranking. A failure of the short
+    prompt (or of the image, the embedding or the ranking) fails the test with its error code;
+    failures of the optional features just mean the model does not support them.
     ``context_window`` (the admin's input) wins over the server's metadata."""
     tool_calling = streaming = json_schema = dimension = None
     try:
@@ -372,6 +448,16 @@ def probe(
                     )[0]
                 )
             )
+        if vision:
+            seen, _ = _collect(
+                gateway.vision("What colour is this image? Answer in one word.", [_PROBE_IMAGE])
+            )
+            if not seen.strip():
+                raise LlmError(INVALID_RESPONSE, "The model gave an empty reply to the image.")
+        if rerank:
+            scores = gateway.rerank("ping", ["ping", "pong"])
+            if len(scores) != 2:
+                raise LlmError(INVALID_RESPONSE, "The model returned the wrong number of scores.")
         if embedding:
             [vector] = gateway.embed(["ping"])
             if not vector:

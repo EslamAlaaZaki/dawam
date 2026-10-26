@@ -22,6 +22,7 @@ import { toast } from "../components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DetailsFields, readDetails } from "./DetailsFields";
+import { DocumentAiPanel } from "./DocumentAiPanel";
 import { LifecyclePanel } from "./LifecyclePanel";
 import {
   Actions,
@@ -87,6 +88,9 @@ export function WorkspaceSettingsDialog({
             <TabsTrigger value="ai" className={tabClasses}>
               AI
             </TabsTrigger>
+            <TabsTrigger value="document-ai" className={tabClasses}>
+              Document AI
+            </TabsTrigger>
             {showLifecycle && (
               <TabsTrigger value="lifecycle" className={tabClasses}>
                 Archive &amp; delete
@@ -99,6 +103,9 @@ export function WorkspaceSettingsDialog({
             </TabsContent>
             <TabsContent value="ai">
               <AiSettingsPanel workspace={workspace} />
+            </TabsContent>
+            <TabsContent value="document-ai">
+              <DocumentAiPanel workspace={workspace} />
             </TabsContent>
             {showLifecycle && (
               <TabsContent value="lifecycle">

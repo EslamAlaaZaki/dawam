@@ -430,10 +430,33 @@ def test_search_documents_cites_the_document_and_section_at_the_documents_level(
     status, seen = use(roles, fake_llm, "search_documents", query="settlement runs")
 
     assert status == "ok"
-    [passage, *_] = payload(seen)
+    [passage, *_] = payload(seen)["passages"]
     assert passage["document"] == "design.md" and passage["section"]
     assert "Settlement runs nightly" in passage["text"]
     assert file_id in passage["link"] and passage["file_id"] == file_id
+
+
+def test_search_documents_filters_by_metadata_through_the_gateway(roles, model, fake_llm, source):
+    upload(roles, source, "design.md", "# Settlement\nSettlement runs nightly.")
+    level(roles, "documents")
+
+    _, kept = use(roles, fake_llm, "search_documents", query="settlement", document_type="md")
+    _, dropped = use(roles, fake_llm, "search_documents", query="settlement", document_type="pdf")
+
+    [passage] = payload(kept)["passages"]
+    assert passage["document_type"] == "md" and passage["language"] == "en"
+    assert payload(dropped)["passages"] == []
+
+
+def test_search_documents_reports_nothing_relevant_when_nothing_matches(
+    roles, model, fake_llm, source
+):
+    upload(roles, source, "design.md", "# Settlement\nSettlement runs nightly.")
+    level(roles, "documents")
+
+    _, seen = use(roles, fake_llm, "search_documents", query="zebra")
+
+    assert payload(seen)["passages"] == [] and "Nothing relevant" in payload(seen)["note"]
 
 
 def test_search_documents_is_refused_below_the_documents_level(roles, model, fake_llm, source):
@@ -475,13 +498,20 @@ METADATA_TOOLS = {
     "evaluate_dw",
     "explain_check",
     "get_lineage",
+    "explore_graph",
     "get_relationships",
 }
 LEVELS = [
     ("metadata", METADATA_TOOLS),
     ("profiles", METADATA_TOOLS | {"get_profile"}),
-    ("documents", METADATA_TOOLS | {"get_profile", "search_documents", "read_file"}),
-    ("samples", METADATA_TOOLS | {"get_profile", "search_documents", "read_file"}),
+    (
+        "documents",
+        METADATA_TOOLS | {"get_profile", "search_documents", "read_file", "describe_image"},
+    ),
+    (
+        "samples",
+        METADATA_TOOLS | {"get_profile", "search_documents", "read_file", "describe_image"},
+    ),
 ]
 
 
