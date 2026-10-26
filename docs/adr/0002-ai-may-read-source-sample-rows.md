@@ -1,5 +1,7 @@
 # The AI may read sample rows from source systems
 
+Amended by ADR 0007 (no character slicing or pattern extraction on protected columns).
+
 During source analysis the AI may read sample rows and run its own `SELECT` queries (e.g. `COUNT(*)` overlap checks) against a Source System to find undeclared relationships and understand the business, even though this means real source data reaches the model. We accepted this because statistics alone are often not enough to confirm a relationship or the meaning of a column, and source understanding is a core reason the AI exists in DAWAM.
 
 ## Guardrails

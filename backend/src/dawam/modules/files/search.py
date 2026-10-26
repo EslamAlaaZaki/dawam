@@ -35,7 +35,14 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
-from dawam.modules.jobs import Job, JobCancelledError, JobContext, JobRunner, JobService
+from dawam.modules.jobs import (
+    PRIORITY_LOW,
+    Job,
+    JobCancelledError,
+    JobContext,
+    JobRunner,
+    JobService,
+)
 from dawam.modules.llm import (
     DocumentAiConfig,
     LlmError,
@@ -946,6 +953,7 @@ class DocumentSearchService:
                 params,
                 title="Re-index documents",
                 created_by=user.id,
+                priority=PRIORITY_LOW,
                 db=db,
             )
 
@@ -1031,6 +1039,7 @@ class DocumentSearchService:
             {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)},
             title="Re-embed documents",
             created_by=actor_id,
+            priority=PRIORITY_LOW,
             db=db,
         )
 
