@@ -80,7 +80,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/dawam-ner
-          key: ner-models-en_core_web_sm-3.8.0-camelbert-msa-ner-${{ env.CAMEL_NER_REVISION }}-${{ steps.ner.outputs.versions }}
+          key: ner-models-v2-en_core_web_sm-3.8.0-camelbert-msa-ner-${{ env.CAMEL_NER_REVISION }}-${{ steps.ner.outputs.versions }}
       - name: Real NER engine tests
         if: matrix.shard == 1
         run: |
@@ -92,8 +92,9 @@ jobs:
           fi
           pip install "$wheel"
           camel="$models/camelbert-msa-ner-$CAMEL_NER_REVISION"
-          if [ ! -f "$camel/config.json" ]; then
-            python -c "import sys; from huggingface_hub import snapshot_download; snapshot_download('CAMeL-Lab/bert-base-arabic-camelbert-msa-ner', revision=sys.argv[1], local_dir=sys.argv[2], allow_patterns=['*.json', '*.txt', '*.safetensors'])" "$CAMEL_NER_REVISION" "$camel"
+          # That revision ships PyTorch weights only (pytorch_model.bin), no safetensors.
+          if [ ! -f "$camel/pytorch_model.bin" ]; then
+            python -c "import sys; from huggingface_hub import snapshot_download; snapshot_download('CAMeL-Lab/bert-base-arabic-camelbert-msa-ner', revision=sys.argv[1], local_dir=sys.argv[2], allow_patterns=['*.json', 'vocab.txt', 'pytorch_model.bin'])" "$CAMEL_NER_REVISION" "$camel"
           fi
           DAWAM_PII_NER_ARABIC_MODEL="$camel" HF_HUB_OFFLINE=1 pytest -m ner tests/platform/test_pii_entities.py
 
