@@ -67,6 +67,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.pagination import MAX_PAGE_SIZE
 from dawam.platform.pii_validators import STRUCTURED_KEYS, redact_text
 
+from . import diagrams
 from .agent import ToolOutcome
 
 logger = logging.getLogger(__name__)
@@ -660,6 +661,46 @@ def _propose_kpi_links(ctx: ToolContext, args: _ProposeKpiLinks) -> Any:
         "status": "proposed",
         "note": "The user reviews these changes; nothing has been changed yet.",
         "items": len(detail.items),
+    }
+
+
+class _RenderDiagram(BaseModel):
+    kind: Literal["star_schema", "lineage"] = Field(
+        description="`star_schema`: the DW model's fact tables and their dimensions; "
+        "`lineage`: the lineage graph around a node."
+    )
+    scope: str | None = Field(
+        default=None,
+        max_length=200,
+        description="star_schema: a Layer (core, mart), a table name or id; leave out for every "
+        "fact table. lineage: the node's id (source column, DW column or table, KPI), needed.",
+    )
+    direction: Literal["upstream", "downstream", "both"] = Field(
+        default="upstream", description="lineage only."
+    )
+
+
+def _render_diagram(ctx: ToolContext, args: _RenderDiagram) -> Any:
+    """The diagram is built from the DW model or the lineage graph, not from the model."""
+    if args.kind == "lineage":
+        try:
+            node_id = uuid.UUID(args.scope or "")
+        except ValueError:
+            raise ApiError(422, "scope_required", "A lineage diagram needs a node id.") from None
+        graph = ctx.services.lineage.graph(ctx.user, ctx.workspace_id, node_id, args.direction, 64)
+        source, left_out = diagrams.lineage(graph)
+    else:
+        schema = ctx.services.kpis.link_candidates(ctx.user, ctx.workspace_id).schema
+        if schema is None:
+            raise ApiError(409, "no_data_warehouse", "The Data Warehouse is not set up yet.")
+        source, left_out = diagrams.star_schema(schema.tables, args.scope)
+        if not source:
+            raise _not_found("A fact table for that scope")
+    return {
+        "mermaid": source,
+        "tables_or_nodes_left_out": left_out,
+        "note": "Show the user this diagram by putting `mermaid` unchanged in a ```mermaid "
+        "code block in your answer, then explain it briefly.",
     }
 
 
@@ -2452,6 +2493,16 @@ TOOLS: tuple[Tool, ...] = (
         Action.EDIT_DW_SCHEMA,
         _draft_mappings,
         compact=True,
+    ),
+    Tool(
+        "render_diagram",
+        "Draw the Data Warehouse's star schema (facts and their dimensions) or the lineage "
+        "around a node as a Mermaid diagram built from DAWAM's own model. Put the returned "
+        "`mermaid` text in a ```mermaid block of your answer.",
+        _RenderDiagram,
+        "read",
+        Action.VIEW_WORKSPACE,
+        _render_diagram,
     ),
     Tool(
         "start_job",

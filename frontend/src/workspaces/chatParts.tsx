@@ -1,9 +1,10 @@
 // The pieces of an Assistant message: who sent it, when, and the reply's markdown.
-import type { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "../lib/utils";
+import { MermaidDiagram } from "./MermaidDiagram";
 import { monoClasses } from "./parts";
 
 /** Up to two letters for an email's avatar: "grace.hopper@…" is "GH", "ada@…" is "AD". */
@@ -98,7 +99,14 @@ const MARKDOWN: Components = {
       {children}
     </blockquote>
   ),
-  pre: ({ children }) => (
+  pre: ({ children }) => {
+    const only = Children.toArray(children)[0];
+    if (isValidElement<{ className?: string; children?: ReactNode }>(only)) {
+      if ((only.props.className ?? "").split(" ").includes("language-mermaid")) {
+        return <MermaidDiagram code={String(only.props.children ?? "").trim()} />;
+      }
+    }
+    return (
     <pre
       className={cn(
         "my-2 overflow-x-auto rounded-md border border-border bg-surface-raised p-3 leading-relaxed text-foreground [&_code]:border-0 [&_code]:bg-transparent [&_code]:p-0",
@@ -107,7 +115,8 @@ const MARKDOWN: Components = {
     >
       {children}
     </pre>
-  ),
+    );
+  },
   code: ({ children }) => (
     <code
       className={cn("rounded-sm border border-border bg-surface-raised px-1", monoClasses)}
@@ -124,7 +133,7 @@ const MARKDOWN: Components = {
   td: ({ children }) => <td className="border-t border-border px-2.5 py-1.5">{children}</td>,
 };
 
-/** A reply's markdown. Raw HTML in it is never rendered. */
+/** A reply's markdown. Raw HTML in it is never rendered; a `mermaid` code block is drawn. */
 export function Markdown({ children }: { children: string }): ReactNode {
   return (
     <div className="break-words">
