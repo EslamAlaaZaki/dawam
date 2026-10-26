@@ -2740,6 +2740,42 @@ def _shrink(data: Any) -> bool:
     return False
 
 
+BASE_TOOLS = frozenset(
+    {
+        "search_catalog",
+        "get_object",
+        "workspace_overview",
+        "search_workspace",
+        "search_documents",
+        "propose_changes",
+        "render_diagram",
+        "start_job",
+    }
+)
+"""The tools sent on every page once tool search is on (``agent.TOOL_SEARCH_THRESHOLD``)."""
+
+PAGE_TOOLS: dict[str, frozenset[str]] = {
+    "source_system": frozenset(
+        {
+            "get_profile",
+            "get_snapshot_diff",
+            "get_relationships",
+            "get_pii_findings",
+            "run_source_query",
+        }
+    ),
+    "table": frozenset({"get_profile", "get_relationships", "get_pii_findings", "get_lineage"}),
+    "column": frozenset({"get_profile", "get_pii_findings", "get_lineage"}),
+    "kpi": frozenset({"suggest_kpis", "get_kpi_link_candidates", "propose_kpi_links"}),
+    "failed_check": frozenset(
+        {"get_score", "explain_check", "propose_check_fix", "run_validation"}
+    ),
+    "file": frozenset({"list_files", "read_file", "query_file", "describe_image"}),
+    "document": frozenset({"list_files", "read_file", "query_file", "describe_image"}),
+}
+"""Extra tools for the page type the member is on; any other page gets only the base."""
+
+
 class ToolRegistry:
     """The tools of one installation, ready to be bound to a user in a Workspace."""
 
@@ -2821,6 +2857,10 @@ class BoundTools:
             ),
             key=lambda spec: spec.name,
         )
+
+    def core_names(self, page_type: str | None) -> set[str]:
+        """The tools to send up front for a page of ``page_type`` when tool search is on."""
+        return set(BASE_TOOLS | PAGE_TOOLS.get(page_type or "", frozenset()))
 
     def _offered(self, tool: Tool) -> bool:
         if tool.chat_only and self._ctx.proposals is not None:

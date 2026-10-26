@@ -116,6 +116,23 @@ def tool_names(fake_llm: FakeAdapter, call: int = 0) -> set[str]:
 # -- the answer ------------------------------------------------------------------------
 
 
+def test_over_the_threshold_a_chat_sends_a_short_list_plus_find_tools(
+    roles, model, fake_llm, monkeypatch
+):
+    from dawam.modules.assistant.internal import agent
+
+    monkeypatch.setattr(agent, "TOOL_SEARCH_THRESHOLD", 5)
+    fake_llm.script(Reply(text="ok"))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    ask(owner, roles, cid, "What is Net Revenue?")
+
+    names = tool_names(fake_llm)
+    assert "find_tools" in names and "search_catalog" in names
+    assert "generate_dw_schema" not in names
+
+
 def test_the_answer_streams_over_sse_and_is_saved(roles, model, fake_llm):
     fake_llm.script(Reply(text="Net Revenue is a KPI", usage=Usage(11, 4)))
     owner = roles.client("owner")
