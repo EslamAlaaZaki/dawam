@@ -806,7 +806,10 @@ class AssistantService:
             if light is not None and finished.status == "completed" and finished.text:
                 first = history.messages[0] if len(history.messages) == 1 else None
                 if first is not None and history.summary is None:
-                    self._retitle(conversation_id, first.content or "", finished.text, light)
+                    try:
+                        self._retitle(conversation_id, first.content or "", finished.text, light)
+                    except Exception:  # the answer is saved: a title is never worth the stream
+                        logger.exception("conversation title failed")
             yield completed
         finally:
             if not saved:  # the browser went away mid-answer

@@ -54,3 +54,20 @@ def test_a_renamed_conversation_and_later_messages_keep_their_title(
     ask(owner, roles, cid, "Second?")
     assert title_of(owner, roles, cid) == "Mine"
     assert title_calls(fake_llm) == []
+
+
+def test_a_crashing_title_does_not_break_the_stream(
+    roles, model, admin_client, fake_llm, monkeypatch
+):
+    add_light(admin_client, roles, model)
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr("dawam.modules.assistant.service._generated_title", boom)
+    fake_llm.script(Reply(text="It is revenue."))
+    events = ask(owner, roles, cid, "What is Net Revenue?")
+    assert events[-1][0] == "done"
+    assert title_of(owner, roles, cid) == "What is Net Revenue?"
