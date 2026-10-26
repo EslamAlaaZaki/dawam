@@ -379,19 +379,19 @@ flowchart LR
 
 | Gap | Enhancement |
 |---|---|
-| Prompt injection handled by quoting and server-side authz only | Add a **prompt-injection classifier** on retrieved text and tool results (Llama Prompt Guard, a light-model check); flag suspicious documents in the UI |
-| PII detection is regex + checksum (Saudi-focused) | Add **NER-based PII** for names and addresses in Arabic and English (e.g. Presidio with Arabic models, CAMeL Tools); apply to answers and saved text |
-| Reading a protected column piece by piece with `SUBSTR` is closed (ADR 0007): the AI never reads raw PII, only analytics over it; slicing, `LIKE` and regex on protected columns are rejected, with no read budget. An *unflagged* text column can still be read piece by piece (documented in `source_query_service.py`) | Pattern detection across a run, or small-cell suppression (k-anonymity, rejected for Release 1 in ADR 0002) |
+| Prompt injection handled by quoting and server-side authz only | Add a **prompt-injection classifier** on retrieved text and tool results (Llama Prompt Guard, a light-model check); flag suspicious documents in the UI. **Done** ([#384](https://github.com/EslamAlaaZaki/dawam/issues/384)): rules plus an optional light-model check; flagged text is wrapped with a WARNING, not blocked; Llama Prompt Guard not built |
+| PII detection is regex + checksum (Saudi-focused) | Add **NER-based PII** for names and addresses in Arabic and English (e.g. Presidio with Arabic models, CAMeL Tools); apply to answers and saved text. **Done** ([#385](https://github.com/EslamAlaaZaki/dawam/issues/385)): optional (`DAWAM_PII_NER_ENABLED`), saved text only; SQL, identifiers, JSON keys and query result cells stay regex-only |
+| **Done** ([#386](https://github.com/EslamAlaaZaki/dawam/issues/386)): reading a protected column piece by piece with `SUBSTR` is closed (ADR 0007): the AI never reads raw PII, only analytics over it; slicing, `LIKE` and regex on protected columns are rejected, with no read budget. An *unflagged* text column can still be read piece by piece (documented in `source_query_service.py`) | Pattern detection across a run, or small-cell suppression (k-anonymity, rejected for Release 1 in ADR 0002) |
 | No output moderation | Optional moderation/guard model (Llama Guard) on answers |
-| Per-user rate limits for AI | Requests per minute per user and Workspace, besides monthly token budgets |
+| Per-user rate limits for AI | Requests per minute per user and Workspace, besides monthly token budgets. **Done** ([#388](https://github.com/EslamAlaaZaki/dawam/issues/388)): 20 per member and 100 per Workspace per minute, in process memory |
 | Model and data governance | Model cards per registered model (data residency, retention, training-use policy); show in AI settings which provider sees which data level |
 
 ---
 
 ## 10. Platform and performance
 
-- **Async I/O**: the gateway uses blocking `urllib`; with many concurrent streams, move to `httpx` async (or keep threads but size the pool) so streaming answers don't tie up workers.
-- **Worker scaling**: several worker processes and job priorities (chat-started jobs before re-index jobs).
+- **Async I/O**: **Done** ([#390](https://github.com/EslamAlaaZaki/dawam/issues/390)) by keeping threads and sizing the pool (`DAWAM_REQUEST_THREADS`, default 200); the gateway stays on blocking `urllib`, no `httpx`.
+- **Worker scaling**: **Done** ([#391](https://github.com/EslamAlaaZaki/dawam/issues/391)): `DAWAM_WORKERS` replicas in compose and job priorities (chat before re-index).
 - **Resumable streams**: if the browser reconnects, replay the run's events from the server instead of marking it cancelled.
 - **Caching**: cache embeddings of repeated queries, and tool results that don't change within a run (catalog, score).
 - **Batch APIs**: use providers' batch endpoints (50% cheaper) for bulk re-indexing and contextual headers.
@@ -419,7 +419,7 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 13 | Planning + self-verification in jobs | §6 | Medium | M | |
 | 14 | Model fallback + cost tables | §6, §8 | Medium | S | |
 | 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | Only after 6–8 are in place |
-| 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | |
+| 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | **Done** (#384, #385); also SUBSTR leak path closed (#386), rate limits (#388) |
 | 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | **Done** (#372); ADR 0006 supersedes 0005 |
 | 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2. **Done** (#426) |
 | 19 | Discovery tools: `workspace_overview`, KPI and DW search | §6.1 | High | S | Quick win; do in Phase 1 |
