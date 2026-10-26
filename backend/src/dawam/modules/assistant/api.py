@@ -51,6 +51,7 @@ def assistant_service(request: Request) -> AssistantService:
         document_search=state.document_search,
         change_set_handlers=state.change_set_handlers,
         llm_adapters=state.services.llm_adapters,
+        web_network=getattr(state.services, "web_network", None),
     )
 
 

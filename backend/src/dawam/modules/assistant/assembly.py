@@ -37,6 +37,7 @@ from dawam.modules.warehouse import (
     ScoreService,
     ValidationService,
 )
+from dawam.modules.web import Network, WebService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -56,6 +57,7 @@ def build_assistant_service(
     document_search: DocumentSearchService,
     change_set_handlers: ObjectHandlers,
     llm_adapters: AdapterFactory | None = None,
+    web_network: Network | None = None,
 ) -> AssistantService:
     workspaces = WorkspaceService(engine, clock=clock)
     systems = SourceSystemService(engine, workspaces=workspaces, clock=clock)
@@ -71,6 +73,7 @@ def build_assistant_service(
     snapshots = SnapshotService(
         engine, workspaces=workspaces, jobs=jobs, encryption_key=encryption_key, clock=clock
     )
+    ai = WorkspaceAiService(engine, workspaces=workspaces, clock=clock)
     tools = ToolRegistry(
         workspaces,
         ToolServices(
@@ -148,6 +151,13 @@ def build_assistant_service(
             dictionaries=DataDictionaryService(snapshots, systems),
             systems=systems,
             model=model,
+            web=WebService(
+                engine,
+                encryption_key=encryption_key,
+                clock=clock,
+                network=web_network,
+                internal_only=lambda workspace_id: ai.settings(workspace_id).internal_only,
+            ),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )
@@ -155,7 +165,7 @@ def build_assistant_service(
         engine,
         workspaces=workspaces,
         roles=RoleService(engine, providers=providers, clock=clock),
-        ai=WorkspaceAiService(engine, workspaces=workspaces, clock=clock),
+        ai=ai,
         tools=tools,
         clock=clock,
         max_tool_calls=settings.assistant_max_tool_calls,
