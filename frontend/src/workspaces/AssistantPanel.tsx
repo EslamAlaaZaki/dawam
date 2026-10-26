@@ -141,9 +141,15 @@ function canWrite(tools: readonly ToolCall[]) {
   );
 }
 
+/** Documents (or tools) whose text looked like a prompt injection; the model still saw it, with a warning. */
+function flaggedOf(tools: readonly ToolCall[]) {
+  return [...new Set(tools.flatMap((tool) => tool.flagged ?? []))];
+}
+
 /**
- * What a reply's tools left for the member to see: the jobs it started and a warning when
- * a Connection's user can write. The tool calls themselves are not shown.
+ * What a reply's tools left for the member to see: the jobs it started, a warning when
+ * a Connection's user can write and the documents flagged as possible injections. The tool
+ * calls themselves are not shown.
  */
 function ToolNotes({
   tools,
@@ -170,6 +176,22 @@ function ToolNotes({
           Warning: the database user of this Connection can change data. The
           assistant only runs read-only SELECT queries, but an owner should give
           DAWAM a read-only user.
+        </p>
+      )}
+      {flaggedOf(tools).length > 0 && (
+        <p
+          role="alert"
+          className="rounded-md border border-warning/40 bg-warning-subtle px-3 py-2 text-sm text-foreground"
+        >
+          Possible prompt injection in{" "}
+          {flaggedOf(tools).map((name, index) => (
+            <span key={name}>
+              {index > 0 && ", "}
+              <strong className="font-medium">{name}</strong>
+            </span>
+          ))}
+          . The text was still used, marked as untrusted. Check the source
+          before relying on this answer.
         </p>
       )}
     </>
@@ -216,7 +238,8 @@ function hasNotes(run: Run | null | undefined): boolean {
     !!run &&
     (["cancelled", "tool_limit", "failed"].includes(run.status) ||
       jobsOf(run.tool_calls).length > 0 ||
-      canWrite(run.tool_calls))
+      canWrite(run.tool_calls) ||
+      flaggedOf(run.tool_calls).length > 0)
   );
 }
 

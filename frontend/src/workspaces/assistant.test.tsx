@@ -224,6 +224,61 @@ describe("the assistant's chat panel", () => {
     });
   });
 
+  it("flags a document whose passage looked like a prompt injection", async () => {
+    const search = {
+      name: "search_documents",
+      arguments: { query: "refunds" },
+      status: "ok",
+      duration_ms: 12,
+      result: null,
+      flagged: ["refund-policy.md"],
+    };
+    renderApp(
+      backend({
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", search),
+            frame("text", { text: "Refunds take 14 days." }),
+            frame("done", {
+              run: run({ tool_calls: [search] }),
+              message_id: "a",
+            }),
+          ]),
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Refunds?",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [search] }),
+              sender: ADA_SENDER,
+              model: null,
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Refunds take 14 days.",
+              created_at: "2026-01-05T10:00:01Z",
+              run: null,
+              sender: null,
+              model: null,
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await ask("Refunds?");
+
+    const note = await screen.findByText(/Possible prompt injection in/);
+    expect(note).toHaveTextContent("refund-policy.md");
+  });
+
   it("warns when the connection user of a source query can write", async () => {
     const query = {
       name: "run_source_query",

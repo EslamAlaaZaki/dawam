@@ -118,6 +118,12 @@ function ModelRolesSection() {
         A model with no role is offered nowhere. Add models on the Language
         models page.
       </p>
+      {!rows.some(({ model }) => model.roles.includes("light")) && (
+        <WarningNote>
+          Injection check degraded: no light model assigned. Retrieved text and
+          tool results are screened by built-in rules only.
+        </WarningNote>
+      )}
       <TableCard>
         <Table aria-label="Model roles table">
           <TableHeader>

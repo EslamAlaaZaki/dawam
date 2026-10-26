@@ -46,6 +46,7 @@ from .context import (
     shorten_result,
     summary_block,
 )
+from .injection import Inspector, flagged_parts, rule_based_inspector, warn
 from .prompt import quote_data
 from .prompted import MAX_RETRIES, PromptedInvalid, correction, parse_reply, tools_prompt
 
@@ -120,6 +121,8 @@ class ToolCallRecord:
     """``ToolOutcome.saved``."""
     digest: str | None = None
     """A short digest of the result, so a later turn knows what the call found."""
+    flagged: tuple[str, ...] = ()
+    """What of the result looked like a prompt injection (document names or the tool)."""
 
 
 @dataclass(frozen=True)
@@ -195,12 +198,15 @@ def run_agent(
     delta_poll_seconds: float = 0.0,
     summary: str | None = None,
     summarize: Summarizer | None = None,
+    inspect: Inspector = rule_based_inspector,
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer.
 
     ``summary`` stands for turns left out earlier. With ``summarize`` (compaction on), turns
     that no longer fit the window are summarised into it (and reported as ``Compacted``)
-    instead of being lost; if summarising fails they are dropped as without it."""
+    instead of being lost; if summarising fails they are dropped as without it. Every ok tool
+    result goes through ``inspect`` (the light-model check, or the built-in rules): a flagged
+    one still reaches the model, with a warning, and is reported on its record."""
     run = _Run()
     capabilities = gateway.capabilities()
     window = capabilities.context_window
@@ -315,6 +321,11 @@ def run_agent(
                         span.result(outcome.status, outcome.content)
                     duration = round((timer() - started) * 1000)
                     executed += 1
+                flagged = (
+                    flagged_parts(call.name, outcome.content, inspect)
+                    if outcome.status == "ok"
+                    else []
+                )
                 record = ToolCallRecord(
                     call.id,
                     call.name,
@@ -323,6 +334,7 @@ def run_agent(
                     duration,
                     outcome.saved,
                     _digest(outcome),
+                    tuple(flagged),
                 )
                 run.calls.append(record)
                 yield ToolFinished(record)
@@ -330,6 +342,8 @@ def run_agent(
                     f"tool:{call.name if call.name in known_tools else 'unknown'}",
                     shorten_result(outcome.content, window),
                 )
+                if flagged:
+                    quoted = warn(quoted)
                 if prompted:
                     messages.append(Message("user", quoted))
                 else:
