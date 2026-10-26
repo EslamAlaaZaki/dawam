@@ -2,8 +2,9 @@
 
 Regex and checksum only, no AI. Nothing here reads a database, logs or keeps a value, so
 the value-based PII scan, the query-time check on AI results (§6.8) and redaction all use
-the same rules. A validator never raises: a value it cannot read (``None``, bytes, a float,
-anything very long) simply does not match.
+the same rules (``redact_text`` alone also masks names and addresses, through the optional
+NER port in ``pii_entities``). A validator never raises: a value it cannot read (``None``,
+bytes, a float, anything very long) simply does not match.
 
 ``VALIDATORS`` is keyed by rule id; the ids are the ones of the name rules in
 ``dawam.modules.sources.internal.pii_rules`` so a name match and a value match on the same
@@ -21,6 +22,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
+
+from dawam.platform.pii_entities import entity_detector, mask_entities
 
 MAX_VALUE_LENGTH = 256
 """A longer value is free text, never an identifier."""
@@ -273,10 +276,18 @@ def _strip_invisible(text: str) -> str:
     return text.translate(dict.fromkeys(map(ord, _INVISIBLE)))
 
 
-def redact_text(text: str, *, today: date | None = None, found: list[str] | None = None) -> str:
+def redact_text(
+    text: str,
+    *,
+    today: date | None = None,
+    found: list[str] | None = None,
+    entities: bool = True,
+) -> str:
     """``text`` with every IBAN, email, ID/Iqama number, mobile number or card number the
-    validators recognise replaced by ``[redacted: <rule>]``. Pure; a model-written string
-    goes through here before it is saved (ADR 0002). ``found`` collects the rules that hit."""
+    validators recognise replaced by ``[redacted: <rule>]``, then, when NER-based masking is
+    on (``pii_entities``), every person name and address. A model-written string goes
+    through here before it is saved (ADR 0002). ``found`` collects the rules that hit;
+    ``entities=False`` keeps to the regex rules."""
     day = today or date.today()
 
     def mark(rule: str) -> str:
@@ -331,7 +342,10 @@ def redact_text(text: str, *, today: date | None = None, found: list[str] | None
     text = _IBAN_IN_TEXT.sub(whole(("iban",)), text)
     text = _IPV4_IN_TEXT.sub(whole(("ip_address",)), text)
     text = _IPV6_IN_TEXT.sub(whole(("ip_address",)), text)
-    return _DIGITS_IN_TEXT.sub(numbers, text)
+    text = _DIGITS_IN_TEXT.sub(numbers, text)
+    if entities and (detector := entity_detector()) is not None:
+        text = mask_entities(text, detector, mark)
+    return text
 
 
 def redact_json(value: Any) -> Any:

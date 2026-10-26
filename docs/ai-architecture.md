@@ -569,6 +569,8 @@ Supported source engines: PostgreSQL, SQL Server, MySQL, Oracle (`sources/intern
 
 Everything the model writes is run through `redact_text` / `redact_json` before saving: answers, run tool-call arguments (also cut to 500 characters), error messages, job summaries and Change Set titles.
 
+With `DAWAM_PII_NER_ENABLED` on (#385), `redact_text` also masks person names and addresses in Arabic and English as `[redacted: person_name]` / `[redacted: address]`, after the regex rules: Presidio with spaCy (English) and CAMeL Tools (Arabic), self-hosted, behind the `EntityDetector` port (`platform/pii_entities.py`, `platform/pii_ner_presidio.py`, optional `ner` extra). A place counts as an address only next to a street word, house number or postal code, so "sales in Riyadh" stays. The query-time check on result cells stays regex-only (`entities=False`).
+
 ### 7.5 Data residency
 
 Internal-only Workspaces (default when the installation has a tested internal agent model) refuse external providers for **every** role, including embeddings. Combined with the data-sharing level, an owner controls whether anything leaves the network.

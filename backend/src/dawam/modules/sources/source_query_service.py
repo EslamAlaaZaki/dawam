@@ -459,7 +459,7 @@ def _value_rule(values: Any) -> str | None:
             return rule
         text = value if isinstance(value, str) else str(value)
         embedded: list[str] = []
-        redact_text(text, found=embedded)
+        redact_text(text, found=embedded, entities=False)
         if embedded:
             return embedded[0]
     return None
