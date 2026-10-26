@@ -440,7 +440,6 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 21 | `query_file` with DuckDB over uploaded CSV/XLSX | §6.2 | Medium | M | **Done** (#398); safer than a Python sandbox |
 | 22 | `render_diagram` (Mermaid ERD / lineage) | §6.2 | Medium | S | **Done** (#399); chat renders Mermaid |
 | 23 | Web search + web fetch, off by default, SearXNG for internal-only | §6.2 | Low–Medium | M | After #16 (injection check) |
-
 | 24 | Count tool schemas in the context budget (`fit_messages`) | §7.1 | High | S | Fixes overflows on small windows; do first |
 | 25 | Minimum context window for the agent role + Ollama `num_ctx` warning | §7.1 | High | S | |
 | 26 | Shorten the three largest tool schemas | §7.1 | Medium | S | Saves tokens on every model call |
