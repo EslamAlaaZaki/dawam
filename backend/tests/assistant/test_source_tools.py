@@ -541,6 +541,7 @@ METADATA_TOOLS = {
     "get_object",
     "get_snapshot_diff",
     "list_files",
+    "workspace_overview",
     "run_validation",
     "get_score",
     "evaluate_dw",
