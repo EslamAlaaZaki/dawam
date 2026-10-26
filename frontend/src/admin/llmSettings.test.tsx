@@ -195,6 +195,28 @@ describe("AI roles, budgets and usage page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("says the injection check is degraded while no model has the light role", async () => {
+    renderApp(api(), "/admin/llm/settings");
+
+    expect(
+      await screen.findByText(
+        /Injection check degraded: no light model assigned/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("drops the degraded note once a model has the light role", async () => {
+    renderApp(
+      withModels([model(BIG.id, "big", { roles: ["agent", "light"] })]),
+      "/admin/llm/settings",
+    );
+
+    await screen.findByRole("row", { name: "Roles of big" });
+    expect(
+      screen.queryByText(/Injection check degraded/),
+    ).not.toBeInTheDocument();
+  });
+
   it("lists every model with provider, internal flag, last test and role checkboxes", async () => {
     renderApp(api(), "/admin/llm/settings");
 

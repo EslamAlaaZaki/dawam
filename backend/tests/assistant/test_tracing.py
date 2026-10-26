@@ -31,6 +31,9 @@ class _Usage:
     def ensure_within_budget(self, workspace_id: Any) -> None:
         pass
 
+    def ensure_within_rate_limit(self, workspace_id: Any, user_id: Any) -> None:
+        pass
+
     def record_usage(self, usage: Usage, **_: Any) -> None:
         pass
 

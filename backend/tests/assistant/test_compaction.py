@@ -126,6 +126,7 @@ def test_past_tool_calls_come_back_as_digests(roles, model, admin_client, fake_l
     cid = conversation(owner, roles)
     fake_llm.script(
         Reply(tool_calls=(tool("get_object", kind="kpi", id=add_kpi(roles)),), usage=Usage(1, 1)),
+        Reply(text='{"injection": false}'),  # the light model screens the tool result
         Reply(text="It is Net Revenue."),
     )
     ask(owner, roles, cid, "which KPIs exist?")

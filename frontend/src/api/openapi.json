@@ -30417,6 +30417,14 @@
             ],
             "title": "Result",
             "description": "What the tool kept of its result. A source query: `columns`, `row_count`, `duration_ms` and `can_write` (the Connection user could change data: warn), never a row."
+          },
+          "flagged": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flagged",
+            "description": "Documents (or the tool) whose result looked like a prompt injection. The text still reached the model, wrapped with a warning."
           }
         },
         "type": "object",

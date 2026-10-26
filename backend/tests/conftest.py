@@ -41,7 +41,7 @@ from testcontainers.community.postgres import PostgresContainer
 from dawam.app import Services, create_app
 from dawam.modules.auth import AuthService, SystemRole
 from dawam.modules.jobs import InlineJobRunner
-from dawam.modules.llm import FakeAdapter
+from dawam.modules.llm import FakeAdapter, role_service
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
@@ -143,6 +143,13 @@ def outbox() -> InMemoryOutbox:
 @pytest.fixture
 def jobs() -> InlineJobRunner:
     return InlineJobRunner()
+
+
+@pytest.fixture(autouse=True)
+def _reset_ai_rate_limits() -> None:
+    """The rate-limit counts are module state: start every test with none."""
+    role_service._rate_counts.clear()
+    role_service._rate_window[0] = 0
 
 
 @pytest.fixture
