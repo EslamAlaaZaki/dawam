@@ -200,6 +200,13 @@ def _cost_budget_exhausted(scope: str, budget: CostBudget, used: Decimal) -> Api
     )
 
 
+_rate_lock = threading.Lock()
+_rate_window = [0]
+_rate_counts: dict[tuple[str, uuid.UUID], int] = {}
+"""The minute's request counts, shared by every ``RoleService`` (the API builds one per
+request) in this process."""
+
+
 def _rate_limited(scope: str, limit: int, retry_after: int) -> ApiError:
     who = "You have" if scope == "member" else "This Workspace has"
     return ApiError(
@@ -351,7 +358,7 @@ class MeteredGateway:
 
     def _ensure_allowed(self) -> None:
         """Refuse an external provider for an internal-only Workspace, whatever the role,
-        then check the budgets."""
+        then check the budgets. (Rate limits count member requests, not model calls.)"""
         if self._refuse_external:
             raise ApiError(
                 409,
@@ -361,7 +368,6 @@ class MeteredGateway:
                 {"role": self._role, "model": self._model_name},
             )
         self._service.ensure_within_budget(self._workspace_id)
-        self._service.ensure_within_rate_limit(self._workspace_id, self._user_id)
 
     def _record(self, usage: Usage) -> None:
         self._service.record_usage(
@@ -378,9 +384,6 @@ class RoleService:
         self._engine = engine
         self._providers = providers
         self._clock = clock
-        self._rate_lock = threading.Lock()
-        self._rate_minute = 0
-        self._rate_counts: dict[tuple[str, uuid.UUID], int] = {}
 
     # -- using a role ----------------------------------------------------------------
 
@@ -537,28 +540,29 @@ class RoleService:
     def ensure_within_rate_limit(
         self, workspace_id: uuid.UUID | None, user_id: uuid.UUID | None
     ) -> None:
-        """Count a member's model call and raise 429 ``ai_rate_limited`` when it is over
-        the member's or the Workspace's requests per minute. Counts reset every minute
-        (per process); calls made for no member (background jobs) are not limited."""
+        """Count one member-initiated AI request (an assistant message) and raise 429
+        ``ai_rate_limited`` when it is over the member's or the Workspace's requests per
+        minute. Counts reset every minute (per process); calls made for no member (background
+        jobs) are not limited."""
         if user_id is None:
             return
         now = self._clock()
         minute = int(now.timestamp()) // 60
         retry_after = 60 - int(now.timestamp()) % 60
-        with self._rate_lock:
-            if minute != self._rate_minute:
-                self._rate_minute = minute
-                self._rate_counts = {}
+        with _rate_lock:
+            if minute != _rate_window[0]:
+                _rate_window[0] = minute
+                _rate_counts.clear()
             keys = [("member", user_id)]
             limits = {"member": MEMBER_REQUESTS_PER_MINUTE}
             if workspace_id is not None:
                 keys.append(("workspace", workspace_id))
                 limits["workspace"] = WORKSPACE_REQUESTS_PER_MINUTE
             for scope, ident in keys:
-                if self._rate_counts.get((scope, ident), 0) >= limits[scope]:
+                if _rate_counts.get((scope, ident), 0) >= limits[scope]:
                     raise _rate_limited(scope, limits[scope], retry_after)
             for key in keys:
-                self._rate_counts[key] = self._rate_counts.get(key, 0) + 1
+                _rate_counts[key] = _rate_counts.get(key, 0) + 1
 
     def ensure_within_budget(self, workspace_id: uuid.UUID | None) -> None:
         """Raise 429 ``token_budget_exhausted`` (or ``cost_budget_exhausted`` for a budget
