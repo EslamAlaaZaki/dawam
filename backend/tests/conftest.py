@@ -41,7 +41,7 @@ from testcontainers.community.postgres import PostgresContainer
 from dawam.app import Services, create_app
 from dawam.modules.auth import AuthService, SystemRole
 from dawam.modules.jobs import InlineJobRunner
-from dawam.modules.llm import FakeAdapter
+from dawam.modules.llm import FakeAdapter, role_service
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import FakeClock
 from dawam.platform.config import Settings
@@ -49,7 +49,6 @@ from dawam.platform.csrf import CSRF_HEADER
 from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
 from tests.docker_pulls import retry_image_pulls
-from dawam.modules.llm import role_service
 from tests.helpers import csrf_token, sign_in
 from tests.no_real_model import _no_real_model_calls  # noqa: F401  (autouse guard)
 from tests.roles import RoleClients
