@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from dawam.modules.assistant.internal.agent import (
+    Checkpoint,
     Finished,
     Text,
     ToolFinished,
@@ -485,3 +486,90 @@ def test_a_window_too_small_for_the_system_prompt_and_tools_fails_before_sending
     assert events[-1].status == "failed"
     assert events[-1].error_code == "context_window_too_small"
     assert "context window is too small" in (events[-1].error_message or "")
+
+
+# -- checkpoints (jobs resume from the last one) ------------------------------------------
+
+
+def checkpoints_of(adapter: FakeAdapter, tools: Tools | None = None, **options: Any):
+    saved: list[Checkpoint] = []
+    events = run(adapter, tools, checkpoint=saved.append, **options)
+    # What a job stores is JSON: every checkpoint survives the round trip.
+    assert all(Checkpoint.from_json(json.loads(json.dumps(c.to_json()))) == c for c in saved)
+    return saved, events
+
+
+def test_the_loop_checkpoints_after_the_model_step_and_after_each_tool_call():
+    adapter = FakeAdapter().script(
+        Reply(text="Looking", tool_calls=(call(1, id=1), call(2, id=2)), usage=Usage(7, 3)),
+        Reply(text="Found both"),
+    )
+
+    saved, _ = checkpoints_of(adapter)
+
+    assert [len(c.pending) for c in saved] == [2, 1, 0]
+    assert [len(c.calls) for c in saved] == [0, 1, 2]
+    first = saved[0]
+    assert [m.role for m in first.messages] == ["system", "user", "assistant"]
+    assert first.messages[2].tool_calls == (call(1, id=1), call(2, id=2))
+    assert (first.prompt_tokens, first.completion_tokens, first.text) == (7, 3, "Looking")
+    assert [m.role for m in saved[-1].messages][-2:] == ["tool", "tool"]
+
+
+def test_a_resumed_run_does_not_repeat_finished_tool_calls():
+    first = FakeAdapter().script(
+        Reply(tool_calls=(call(1, id=1), call(2, id=2)), usage=Usage(7, 3)), Reply(text="x")
+    )
+    saved, _ = checkpoints_of(first)
+    after_one = saved[1]  # the worker died while the second call ran
+    adapter = FakeAdapter().script(Reply(text="Found both", usage=Usage(5, 2)))
+    tools = Tools()
+
+    events = run(adapter, tools, resume=after_one)
+
+    assert tools.ran == [("lookup", {"id": 2})]
+    sent = adapter.calls[0].messages
+    assert [m.role for m in sent] == ["system", "user", "assistant", "tool", "tool"]
+    assert [m.tool_call_id for m in sent[3:]] == ["c1", "c2"]
+    done = events[-1]
+    assert done.status == "completed" and done.text == "Found both"
+    assert [c.id for c in done.tool_calls] == ["c1", "c2"]
+    assert (done.prompt_tokens, done.completion_tokens) == (12, 5)
+
+
+def test_a_run_resumed_after_its_tool_calls_asks_the_model_next():
+    first = FakeAdapter().script(Reply(tool_calls=(call(1, id=1),)), Reply(text="x"))
+    saved, _ = checkpoints_of(first)
+    adapter = FakeAdapter().script(Reply(text="Found it"))
+    tools = Tools()
+
+    events = run(adapter, tools, resume=saved[-1])
+
+    assert tools.ran == []
+    assert [m.role for m in adapter.calls[0].messages] == ["system", "user", "assistant", "tool"]
+    assert events[-1].text == "Found it" and len(events[-1].tool_calls) == 1
+
+
+def test_a_resumed_run_keeps_the_tool_call_cap_of_the_whole_run():
+    first = FakeAdapter().script(Reply(tool_calls=(call(1), call(2))), Reply(text="x"))
+    saved, _ = checkpoints_of(first, max_tool_calls=2)
+    adapter = FakeAdapter().script(Reply(tool_calls=(call(3),)), Reply(text="Done"))
+    tools = Tools()
+
+    events = run(adapter, tools, resume=saved[-1], max_tool_calls=2)
+
+    assert tools.ran == [] and adapter.calls[0].tools == ()
+    assert events[-1].status == "completed"
+
+
+def test_a_limited_mode_run_resumes_too():
+    first = FakeAdapter().script(Reply(text=json_call(id=7)), Reply(text="x"))
+    saved, _ = checkpoints_of(first, gateway=gateway(first, capabilities=LIMITED))
+    adapter = FakeAdapter().script(Reply(text="Found at row 7"))
+    tools = Tools()
+
+    events = limited(adapter, tools, resume=saved[-1])
+
+    assert tools.ran == []
+    assert [m.role for m in adapter.calls[0].messages] == ["system", "user", "assistant", "user"]
+    assert events[-1].text == "Found at row 7" and events[-1].tool_calls[0].id == "call_1"

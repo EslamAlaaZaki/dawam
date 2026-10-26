@@ -57,3 +57,8 @@ class JobRecord(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """Set by the worker running the job; a running job whose heartbeat is stale lost
     its worker."""
+    checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    """The handler's last saved state; a job with one resumes from it when its worker dies.
+    Cleared when the job ends."""
+    attempts: Mapped[int] = mapped_column(server_default="0")
+    """How many times a worker has claimed the job (more than once: it was resumed)."""

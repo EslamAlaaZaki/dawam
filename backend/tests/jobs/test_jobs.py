@@ -8,6 +8,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -153,6 +154,87 @@ def test_a_job_whose_worker_died_is_failed_with_a_reason(queued, roles, clock):
     assert body["status"] == "failed"
     assert "worker" in body["error"]
     assert len(unread(roles)) == 1
+
+
+class WorkerKilled(BaseException):
+    """The worker process dies: nothing in the job sees it coming or records it."""
+
+
+def handle_steps(params, ctx):
+    """Two steps, checkpointed; its worker dies after the first step of a fresh run (or
+    every time, with ``always_die``)."""
+    resumed = ctx.checkpoint
+    if params.get("always_die"):
+        ctx.save_checkpoint({"done": []})
+        raise WorkerKilled
+    done = list((resumed or {}).get("done", []))
+    for step in ("first", "second"):
+        if step in done:
+            continue
+        ctx.log(f"ran {step}")
+        done.append(step)
+        ctx.save_checkpoint({"done": done})
+        if resumed is None:
+            raise WorkerKilled
+
+
+@pytest.fixture
+def resumable(app, clock) -> JobService:
+    runner = QueuedJobRunner()
+    runner.register("steps", handle_steps)
+    return JobService(app.state.engine, runner=runner, clock=clock)
+
+
+def kill_and_restart(service: JobService, clock) -> int:
+    """Run the next job until its worker dies, then let the queue notice."""
+    with pytest.raises(WorkerKilled):
+        service.execute(service.claim_next())
+    clock.advance(timedelta(seconds=120))
+    return service.fail_lost()
+
+
+def test_a_checkpointed_job_whose_worker_died_resumes_from_its_checkpoint(
+    resumable, roles, clock, app
+):
+    job = submit_steps(resumable, roles)
+
+    assert kill_and_restart(resumable, clock) == 1
+    assert get(roles, job.id).json()["status"] == "queued"
+    resumable.execute(resumable.claim_next())
+
+    body = get(roles, job.id).json()
+    assert body["status"] == "succeeded"
+    assert body["log"].count("ran first") == 1 and body["log"].count("ran second") == 1
+    assert "resum" in body["log"]
+    assert _checkpoint(app, job.id) is None  # an ended job keeps no checkpoint
+
+
+def test_a_job_that_keeps_killing_its_worker_is_failed_in_the_end(resumable, roles, clock, app):
+    job = submit_steps(resumable, roles, always_die=True)
+
+    for _ in range(3):
+        assert kill_and_restart(resumable, clock) == 1
+
+    body = get(roles, job.id).json()
+    assert body["status"] == "failed" and "worker" in body["error"]
+    assert resumable.claim_next() is None
+
+
+def submit_steps(service: JobService, roles: RoleClients, **params):
+    roles.client("owner")
+    return service.submit(
+        roles.workspace_id,
+        "steps",
+        params,
+        title="steps job",
+        created_by=roles.user("owner").id,
+    )
+
+
+def _checkpoint(app, job_id):
+    with app.state.engine.connect() as db:
+        query = sa.text("select checkpoint from jobs where id = :id")
+        return db.execute(query, {"id": job_id}).scalar()
 
 
 def test_a_heartbeat_keeps_a_running_job_alive(queued, roles, clock):

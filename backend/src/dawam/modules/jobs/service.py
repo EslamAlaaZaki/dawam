@@ -41,6 +41,9 @@ logger = logging.getLogger("dawam.jobs")
 STALE_AFTER = timedelta(seconds=60)
 """A running job whose worker has not reported for this long lost its worker."""
 WORKER_LOST = "The worker running this job stopped before it finished."
+MAX_ATTEMPTS = 3
+"""Runs of a checkpointed job whose worker keeps dying before it is failed."""
+RESUMING = "The worker running this job stopped; it will resume from its last checkpoint."
 
 ACTIVE = ("queued", "running")
 
@@ -79,6 +82,17 @@ class JobContext(Protocol):
         ...
 
     def raise_if_cancelled(self) -> None: ...
+
+    @property
+    def checkpoint(self) -> dict[str, Any] | None:
+        """The state saved by ``save_checkpoint`` before the worker running the job died;
+        ``None`` on a fresh run."""
+        ...
+
+    def save_checkpoint(self, state: Mapping[str, Any]) -> None:
+        """Save JSON ``state`` to resume from: a job with a checkpoint whose worker dies is
+        queued again (up to ``MAX_ATTEMPTS`` runs) instead of failed."""
+        ...
 
 
 JobHandler = Callable[[Mapping[str, Any], JobContext], None]
@@ -225,6 +239,14 @@ class _Context:
         if self.cancelled:
             raise JobCancelledError
 
+    @property
+    def checkpoint(self) -> dict[str, Any] | None:
+        with Session(self._service._engine) as db:
+            return db.scalar(sa.select(JobRecord.checkpoint).where(JobRecord.id == self._job_id))
+
+    def save_checkpoint(self, state: Mapping[str, Any]) -> None:
+        self._service._update(self._job_id, checkpoint=dict(state))
+
 
 class JobService:
     def __init__(
@@ -302,7 +324,7 @@ class JobService:
         db.execute(
             sa.update(JobRecord)
             .where(JobRecord.workspace_id == workspace_id, JobRecord.status.in_(ACTIVE))
-            .values(status="cancelled", finished_at=at)
+            .values(status="cancelled", finished_at=at, checkpoint=None)
         )
         for record in active:
             self._abandon(db, record, "The job was cancelled.")
@@ -361,6 +383,7 @@ class JobService:
                 raise ApiError(409, "job_finished", f"This job has already {record.status}.", {})
             record.status = "cancelled"
             record.finished_at = self._clock()
+            record.checkpoint = None
             self._abandon(db, record, "The job was cancelled.")
             db.flush()
             return _view(record)
@@ -396,8 +419,9 @@ class JobService:
         self._update(job_id)
 
     def fail_lost(self) -> int:
-        """Fail running jobs whose worker stopped reporting (it died or was restarted);
-        returns how many."""
+        """Deal with running jobs whose worker stopped reporting (it died or was restarted):
+        one with a checkpoint is queued again to resume from it, until it has run
+        ``MAX_ATTEMPTS`` times; the others are failed. Returns how many were lost."""
         now = self._clock()
         with Session(self._engine) as db, db.begin():
             lost = list(
@@ -411,6 +435,11 @@ class JobService:
                 )
             )
             for record in lost:
+                if record.checkpoint is not None and record.attempts < MAX_ATTEMPTS:
+                    record.status = "queued"
+                    record.heartbeat_at = None
+                    record.log = (record.log + f"{now.isoformat()} {RESUMING}\n")[-LOG_MAX_LENGTH:]
+                    continue
                 self._end(db, record, "failed", WORKER_LOST, now)
                 self._abandon(db, record, WORKER_LOST)
         return len(lost)
@@ -451,8 +480,9 @@ class JobService:
                 return None
             now = self._clock()
             record.status = "running"
-            record.started_at = now
+            record.started_at = record.started_at or now
             record.heartbeat_at = now
+            record.attempts += 1
             db.flush()
             return _view(record)
 
@@ -494,6 +524,7 @@ class JobService:
         record.status = status
         record.error = error[:ERROR_MAX_LENGTH] if error else None
         record.finished_at = at
+        record.checkpoint = None
         if status == "succeeded":
             record.progress = 100
         if record.created_by is not None:

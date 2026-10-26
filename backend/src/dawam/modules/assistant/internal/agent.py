@@ -10,6 +10,10 @@ provider or a budget refused; the reason is kept).
 A model known to lack native tool calling runs in limited mode (``prompted.py``): the tools
 are described in the system prompt and a JSON reply is parsed strictly. Before every model
 call the conversation is fitted to the model's context window (``context.py``).
+
+With ``checkpoint`` the loop reports a ``Checkpoint`` after each model step and after each
+tool call; given one as ``resume`` it carries on from there, so a background job whose worker
+died does not repeat the tool calls it had finished.
 """
 
 from __future__ import annotations
@@ -163,6 +167,83 @@ class Compacted:
 AgentEvent = Text | ToolFinished | Compacted | Finished
 
 
+@dataclass(frozen=True)
+class Checkpoint:
+    """Where a run stands after a step: the messages so far, the calls made, the calls the
+    model asked for that have not run yet, and the tokens used. JSON-safe through
+    ``to_json`` / ``from_json`` (jobs send no images, so none are kept)."""
+
+    messages: tuple[Message, ...]
+    calls: tuple[ToolCallRecord, ...]
+    pending: tuple[ToolCall, ...]
+    text: str
+    prompt_tokens: int
+    completion_tokens: int
+    protect_from: int
+    limit_hit: bool = False
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "messages": [_message_json(m) for m in self.messages],
+            "calls": [_record_json(c) for c in self.calls],
+            "pending": [_call_json(c) for c in self.pending],
+            "text": self.text,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "protect_from": self.protect_from,
+            "limit_hit": self.limit_hit,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Checkpoint:
+        return cls(
+            messages=tuple(
+                Message(
+                    m["role"],
+                    m["content"],
+                    tuple(ToolCall(**c) for c in m["tool_calls"]),
+                    m["tool_call_id"],
+                )
+                for m in data["messages"]
+            ),
+            calls=tuple(
+                ToolCallRecord(**{**c, "flagged": tuple(c["flagged"])}) for c in data["calls"]
+            ),
+            pending=tuple(ToolCall(**c) for c in data["pending"]),
+            text=data["text"],
+            prompt_tokens=data["prompt_tokens"],
+            completion_tokens=data["completion_tokens"],
+            protect_from=data["protect_from"],
+            limit_hit=data["limit_hit"],
+        )
+
+
+def _call_json(call: ToolCall) -> dict[str, Any]:
+    return {"id": call.id, "name": call.name, "arguments": call.arguments}
+
+
+def _message_json(message: Message) -> dict[str, Any]:
+    return {
+        "role": message.role,
+        "content": message.content,
+        "tool_calls": [_call_json(c) for c in message.tool_calls],
+        "tool_call_id": message.tool_call_id,
+    }
+
+
+def _record_json(record: ToolCallRecord) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "name": record.name,
+        "arguments": record.arguments,
+        "status": record.status,
+        "duration_ms": record.duration_ms,
+        "result": record.result,
+        "digest": record.digest,
+        "flagged": list(record.flagged),
+    }
+
+
 @dataclass
 class _Run:
     text: list[str] = field(default_factory=list)
@@ -199,6 +280,8 @@ def run_agent(
     summary: str | None = None,
     summarize: Summarizer | None = None,
     inspect: Inspector = rule_based_inspector,
+    checkpoint: Callable[[Checkpoint], None] | None = None,
+    resume: Checkpoint | None = None,
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer.
 
@@ -206,7 +289,11 @@ def run_agent(
     that no longer fit the window are summarised into it (and reported as ``Compacted``)
     instead of being lost; if summarising fails they are dropped as without it. Every ok tool
     result goes through ``inspect`` (the light-model check, or the built-in rules): a flagged
-    one still reaches the model, with a warning, and is reported on its record."""
+    one still reaches the model, with a warning, and is reported on its record.
+
+    ``checkpoint`` gets the run's state after each model step and each tool call; a run
+    given ``resume`` starts from that state (``system`` and ``history`` are then unused):
+    the calls it had not run yet run first, the finished ones are not repeated."""
     run = _Run()
     capabilities = gateway.capabilities()
     window = capabilities.context_window
@@ -216,20 +303,90 @@ def run_agent(
     messages = [Message("system", system + (summary_block(summary) if summary else "")), *history]
     protect_from = len(history)  # the member's latest message
     limit_hit = False
+    pending: list[ToolCall] = []
+    if resume is not None:
+        messages = list(resume.messages)
+        protect_from = resume.protect_from
+        limit_hit = resume.limit_hit
+        pending = list(resume.pending)
+        run.text, run.calls = [resume.text], list(resume.calls)
+        run.prompt, run.completion = resume.prompt_tokens, resume.completion_tokens
+        summarize = None  # whatever was compacted is in the saved messages already
     all_specs = list(tools.specs())  # one snapshot: the tool list stays identical per call
     specs = {spec.name: spec for spec in all_specs}
     known_tools = set(specs)
     retries = 0
     compaction_tried = summarize is None
     last_poll = timer()
+
+    def save() -> None:
+        if checkpoint is not None:
+            checkpoint(
+                Checkpoint(
+                    tuple(messages),
+                    tuple(run.calls),
+                    tuple(pending),
+                    "".join(run.text),
+                    run.prompt,
+                    run.completion,
+                    protect_from,
+                    limit_hit,
+                )
+            )
+
     try:
         while True:
+            if pending:  # the calls of the last model step (left over when resuming)
+                executed = sum(1 for c in run.calls if c.status != "skipped")
+                while pending:
+                    call = pending[0]
+                    if is_cancelled():
+                        yield run.finish("cancelled")
+                        return
+                    if executed >= max_tool_calls:
+                        limit_hit = True
+                        outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0
+                    else:
+                        started = timer()
+                        with tracing().tool_call(call.name, call.arguments) as span:
+                            outcome = tools.execute(call.name, call.arguments)
+                            span.result(outcome.status, outcome.content)
+                        duration = round((timer() - started) * 1000)
+                        executed += 1
+                    flagged = (
+                        flagged_parts(call.name, outcome.content, inspect)
+                        if outcome.status == "ok"
+                        else []
+                    )
+                    record = ToolCallRecord(
+                        call.id,
+                        call.name,
+                        call.arguments,
+                        outcome.status,
+                        duration,
+                        outcome.saved,
+                        _digest(outcome),
+                        tuple(flagged),
+                    )
+                    run.calls.append(record)
+                    yield ToolFinished(record)
+                    quoted = quote_data(
+                        f"tool:{call.name if call.name in known_tools else 'unknown'}",
+                        shorten_result(outcome.content, window),
+                    )
+                    if flagged:
+                        quoted = warn(quoted)
+                    if prompted:
+                        messages.append(Message("user", quoted))
+                    else:
+                        messages.append(Message("tool", quoted, tool_call_id=call.id))
+                    del pending[0]
+                    save()
             if is_cancelled():
                 yield run.finish("cancelled")
                 return
             under_cap = len(run.calls) < max_tool_calls
             offered = all_specs if under_cap else ()
-            pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
             extra = tools_prompt(offered) if prompted and offered else ""
@@ -306,48 +463,7 @@ def run_agent(
                 messages.append(Message("assistant", "".join(answer)))
             else:
                 messages.append(Message("assistant", "".join(answer) or None, tuple(pending)))
-            executed = sum(1 for c in run.calls if c.status != "skipped")
-            for call in pending:
-                if is_cancelled():
-                    yield run.finish("cancelled")
-                    return
-                if executed >= max_tool_calls:
-                    limit_hit = True
-                    outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0
-                else:
-                    started = timer()
-                    with tracing().tool_call(call.name, call.arguments) as span:
-                        outcome = tools.execute(call.name, call.arguments)
-                        span.result(outcome.status, outcome.content)
-                    duration = round((timer() - started) * 1000)
-                    executed += 1
-                flagged = (
-                    flagged_parts(call.name, outcome.content, inspect)
-                    if outcome.status == "ok"
-                    else []
-                )
-                record = ToolCallRecord(
-                    call.id,
-                    call.name,
-                    call.arguments,
-                    outcome.status,
-                    duration,
-                    outcome.saved,
-                    _digest(outcome),
-                    tuple(flagged),
-                )
-                run.calls.append(record)
-                yield ToolFinished(record)
-                quoted = quote_data(
-                    f"tool:{call.name if call.name in known_tools else 'unknown'}",
-                    shorten_result(outcome.content, window),
-                )
-                if flagged:
-                    quoted = warn(quoted)
-                if prompted:
-                    messages.append(Message("user", quoted))
-                else:
-                    messages.append(Message("tool", quoted, tool_call_id=call.id))
+            save()  # the model is not asked for this step again
     except LlmError as exc:
         yield run.finish("failed", exc.code, exc.message)
     except ApiError as exc:
