@@ -55,7 +55,6 @@ from .internal.arabic import language, stemmed, stems
 from .internal.chunking import Chunk
 from .internal.content import (
     ALLOWED_TYPES,
-    EXTRACTED_TEXT_MAX_CHARS,
     IMAGE_TYPES,
     detect,
     extract_text,
@@ -570,7 +569,8 @@ class DocumentSearchService:
             return None, IMAGE_VISION_FAILED.format(reason=exc.message)
         if not description:
             return None, IMAGE_VISION_FAILED.format(reason="it said nothing")
-        return f"# Description of {name}\n\n{description}"[:EXTRACTED_TEXT_MAX_CHARS], None
+        cap = document_ai_config(self._engine, workspace_id).max_extracted_chars
+        return f"# Description of {name}\n\n{description}"[:cap], None
 
     def describe_image(
         self, user: User, workspace_id: uuid.UUID, file_id: uuid.UUID

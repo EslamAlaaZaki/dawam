@@ -12,7 +12,7 @@ import threading
 from typing import Protocol
 
 from .accelerator import DocumentAccelerator, pdf_pipeline_options
-from .content import DOCX, PDF, PDF_MAX_PAGES, XLSX, FileType
+from .content import DOCX, PDF, PDF_PAGE_CEILING, XLSX, FileType
 
 
 class DocumentParser(Protocol):
@@ -52,6 +52,7 @@ class DoclingParser:
         name = f"document{file_type.extensions[0]}"
         with self._lock:
             result = self._convert().convert(
-                DocumentStream(name=name, stream=io.BytesIO(data)), max_num_pages=PDF_MAX_PAGES
+                DocumentStream(name=name, stream=io.BytesIO(data)),
+                max_num_pages=PDF_PAGE_CEILING,  # the Workspace's cap is checked before
             )
             return result.document.export_to_markdown()

@@ -28,6 +28,10 @@ _IMAGE_PLACEHOLDER = re.compile(r"<!--\s*image\s*-->")
 
 EXTRACTED_TEXT_MAX_CHARS = 2_000_000
 PDF_MAX_PAGES = 1_000
+PDF_PAGE_CEILING = 10_000
+"""The most pages any setting lets a PDF have read (the ``max_pdf_pages`` hard limit).
+The engines that take a page cap get this one; the Workspace's own cap is checked
+before a PDF reaches them (``_within_caps``, ``pages_needing_ocr``)."""
 DOCX_MAX_PARAGRAPHS = 50_000
 XLSX_MAX_ROWS = 200_000
 XLSX_MAX_CELLS = 2_000_000
@@ -185,18 +189,24 @@ def extract_text(
     except Exception:
         return None, "no_text_found"
     if ocr is not None and file_type is PDF:
-        text = _with_ocr(ocr, data, text, on_ocr)
+        text = _with_ocr(ocr, data, text, on_ocr, max_pages)
     text = text.replace("\x00", "").strip()[:max_chars]
     if not _IMAGE_PLACEHOLDER.sub("", text).strip():
         return None, "no_text_found"
     return text, "extracted"
 
 
-def _with_ocr(ocr: OcrEngine, data: bytes, text: str, on_ocr: Callable[[], None] | None) -> str:
+def _with_ocr(
+    ocr: OcrEngine,
+    data: bytes,
+    text: str,
+    on_ocr: Callable[[], None] | None,
+    max_pages: int = PDF_MAX_PAGES,
+) -> str:
     from .ocr import pages_needing_ocr
 
     try:
-        pages = pages_needing_ocr(data)
+        pages = pages_needing_ocr(data, max_pages)
     except Exception:
         return text
     if not pages:

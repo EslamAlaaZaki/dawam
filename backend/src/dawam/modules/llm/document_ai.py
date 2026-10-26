@@ -17,7 +17,8 @@ overrides clamped to the current bounds (an admin may tighten them after an owne
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from typing import Any, Literal
@@ -428,6 +429,21 @@ def _stale(expected: int, current: int) -> None:
         )
 
 
+@contextmanager
+def _first_write_races() -> Iterator[None]:
+    """Two first writes both find no row and both insert it: the loser is refused as a
+    stale write (409), like any other concurrent change."""
+    try:
+        yield
+    except sa.exc.IntegrityError:
+        raise ApiError(
+            409,
+            "settings_changed",
+            "Someone changed these settings meanwhile. Reload them and try again.",
+            {},
+        ) from None
+
+
 class DocumentAiService:
     def __init__(
         self,
@@ -488,7 +504,7 @@ class DocumentAiService:
                     min=_number(b.min),
                     max=_number(b.max),
                 )
-        with Session(self._engine) as db, db.begin():
+        with _first_write_races(), Session(self._engine) as db, db.begin():
             record = db.scalars(
                 sa.select(DocumentAiSettingsRecord)
                 .where(DocumentAiSettingsRecord.id == 1)
@@ -538,7 +554,7 @@ class DocumentAiService:
         """Replace the Workspace's overrides (owners of an active Workspace; audited). Each
         is a knob owners may override, within the installation's bounds."""
         self._workspaces.authorize(user, Action.CHANGE_AI_SETTINGS, workspace_id)
-        with Session(self._engine) as db, db.begin():
+        with _first_write_races(), Session(self._engine) as db, db.begin():
             installation = _installation(db.get(DocumentAiSettingsRecord, 1))
             checked: dict[str, Value] = {}
             for key, value in overrides.items():
