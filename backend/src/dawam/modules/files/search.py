@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -354,6 +354,41 @@ class Passage:
     page: int | None = None
     sheet: str | None = None
     tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StageEntry:
+    """One passage at one stage of a search, with that stage's score."""
+
+    file_id: uuid.UUID
+    document: str
+    section: str
+    text: str
+    score: float
+    """The stage's own number: ``ts_rank_cd`` (full-text), cosine similarity (vector), the
+    fused RRF score, or the rerank model's score."""
+    above_floor: bool | None = None
+    """For the two rankings: whether the score clears the Workspace's relevance floor."""
+
+
+@dataclass
+class SearchTrace:
+    """What each stage of one search produced (the retrieval playground). Filled by
+    ``search`` itself, so it shows exactly what a real search did."""
+
+    queries: list[str]
+    """The query as typed, then the light model's rewrites (if any)."""
+    vector_used: bool = False
+    reranked: bool = False
+    full_text: list[StageEntry] = field(default_factory=list)
+    vector: list[StageEntry] = field(default_factory=list)
+    fused: list[StageEntry] = field(default_factory=list)
+    reranked_results: list[StageEntry] = field(default_factory=list)
+    final: list[StageEntry] = field(default_factory=list)
+
+
+def _entry(p: Passage) -> StageEntry:
+    return StageEntry(p.file_id, p.document, p.section, p.text, p.score)
 
 
 @dataclass(frozen=True)
@@ -1083,11 +1118,13 @@ class DocumentSearchService:
         limit: int | None = None,
         filters: PassageFilters | None = None,
         tuning: SearchTuning | None = None,
+        trace: SearchTrace | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
         where the passages were embedded, vector rankings are fused (weighted RRF), passages
         below the relevance floor are dropped and the rest are diversified (MMR). The
-        Workspace's Document AI settings tune every step and give ``limit`` its default."""
+        Workspace's Document AI settings tune every step and give ``limit`` its default.
+        A ``trace`` is filled with what each stage produced."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         config = document_ai_config(self._engine, workspace_id)
         tune = tuning or SearchTuning.of(config)
@@ -1107,6 +1144,8 @@ class DocumentSearchService:
             boosts, boost_params = _match_boosts(query, terms)
             params.update(boost_params)
             queries = [query, *self._variants(workspace_id, query)]
+            if trace is not None:
+                trace.queries = queries
             term_sets = [t for t in (stems(q) for q in queries) if t]
             embedded = self._embed_queries(db, workspace_id, user.id, queries)
             fts = sa.text(
@@ -1173,31 +1212,7 @@ class DocumentSearchService:
                         if signal >= floor:
                             relevant.add(chunk_id)
                 ordered = sorted(relevant, key=lambda cid: (-scores[cid], str(cid)))
-                rows = {
-                    row.id: row
-                    for row in db.execute(
-                        sa.select(
-                            DocumentChunkRecord.id,
-                            DocumentChunkRecord.section,
-                            DocumentChunkRecord.content,
-                            DocumentChunkRecord.parent_ordinal,
-                            DocumentChunkRecord.parent_content,
-                            DocumentChunkRecord.document_type,
-                            DocumentChunkRecord.language,
-                            DocumentChunkRecord.page,
-                            DocumentChunkRecord.sheet,
-                            DocumentChunkRecord.tags,
-                            WorkspaceFileRecord.id.label("file_id"),
-                            WorkspaceFileRecord.path,
-                            WorkspaceFileRecord.owner_id,
-                        )
-                        .join(
-                            WorkspaceFileRecord,
-                            WorkspaceFileRecord.id == DocumentChunkRecord.file_id,
-                        )
-                        .where(DocumentChunkRecord.id.in_(ordered))
-                    )
-                }
+                rows = self._chunk_rows(db, ordered)
                 passages = self._parents(ordered, rows, scores)
                 # A ranking that ran into the floor has nothing more to give: growing the pool
                 # would only add passages below it.
@@ -1209,8 +1224,108 @@ class DocumentSearchService:
                     reranked = self._rerank(workspace_id, user.id, query, passages, config)
                     top = max(config.rerank_top_n, limit)
                     diverse = self._diversify(reranked[:top], limit, tune)
-                    return _promote_exact(db, diverse, params, scope)[:limit]
+                    final = _promote_exact(db, diverse, params, scope)[:limit]
+                    if trace is not None:
+                        self._fill_trace(
+                            db,
+                            trace,
+                            ranked,
+                            floors,
+                            embedded is not None,
+                            len(term_sets),
+                            passages,
+                            reranked,
+                        )
+                        trace.final = [_entry(p) for p in final]
+                    return final
                 grow *= 2
+
+    @staticmethod
+    def _chunk_rows(db: Session, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Any]:
+        """The passage columns and the document of each chunk in ``ids``."""
+        return {
+            row.id: row
+            for row in db.execute(
+                sa.select(
+                    DocumentChunkRecord.id,
+                    DocumentChunkRecord.section,
+                    DocumentChunkRecord.content,
+                    DocumentChunkRecord.parent_ordinal,
+                    DocumentChunkRecord.parent_content,
+                    DocumentChunkRecord.document_type,
+                    DocumentChunkRecord.language,
+                    DocumentChunkRecord.page,
+                    DocumentChunkRecord.sheet,
+                    DocumentChunkRecord.tags,
+                    WorkspaceFileRecord.id.label("file_id"),
+                    WorkspaceFileRecord.path,
+                    WorkspaceFileRecord.owner_id,
+                )
+                .join(WorkspaceFileRecord, WorkspaceFileRecord.id == DocumentChunkRecord.file_id)
+                .where(DocumentChunkRecord.id.in_(list(ids)))
+            )
+        }
+
+    def _fill_trace(
+        self,
+        db: Session,
+        trace: SearchTrace,
+        ranked: list[list[tuple[uuid.UUID, float]]],
+        floors: list[float],
+        vector_used: bool,
+        vector_start: int,
+        fused: list[Passage],
+        reranked: list[Passage],
+    ) -> None:
+        """The two rankings shown are the typed query's: the first full-text ranking, and
+        (when vectors were used) the first vector ranking, which follows the text ones."""
+        picks = [(0, "full_text")] + ([(vector_start, "vector")] if vector_used else [])
+        wanted = [ranked[i] for i, _ in picks]
+        rows = self._chunk_rows(db, list({cid for r in wanted for cid, _ in r}))
+        for (index, name), ranking in zip(picks, wanted, strict=True):
+            setattr(
+                trace,
+                name,
+                [
+                    StageEntry(
+                        rows[cid].file_id,
+                        rows[cid].path,
+                        rows[cid].section,
+                        rows[cid].parent_content or rows[cid].content,
+                        signal,
+                        signal >= floors[index],
+                    )
+                    for cid, signal in ranking
+                ],
+            )
+        trace.vector_used = vector_used
+        trace.fused = [_entry(p) for p in fused]
+        trace.reranked = reranked is not fused
+        trace.reranked_results = [_entry(p) for p in reranked] if trace.reranked else []
+
+    def explain(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        query: str,
+        *,
+        system_id: uuid.UUID | None = None,
+        limit: int | None = None,
+        filters: PassageFilters | None = None,
+    ) -> SearchTrace:
+        """Run a real search and return what each stage produced (any member): the same
+        pipeline, settings, permissions and data-sharing rules as ``search``."""
+        trace = SearchTrace(queries=[query])
+        self.search(
+            user,
+            workspace_id,
+            query,
+            system_id=system_id,
+            limit=limit,
+            filters=filters,
+            trace=trace,
+        )
+        return trace
 
     @staticmethod
     def _diversify(passages: list[Passage], limit: int, tune: SearchTuning) -> list[Passage]:

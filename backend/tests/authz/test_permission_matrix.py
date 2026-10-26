@@ -1459,6 +1459,12 @@ ROWS: list[Row] = [
     ),
     Row(
         "GET",
+        "/api/v1/workspaces/{workspace_id}/documents/search/explain",
+        "Open Workspace content (explain a document search)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
         "/api/v1/workspaces/{workspace_id}/documents/index-status",
         "Open Workspace content (index status of documents)",
         workspace(admin=False, owner=True, editor=True, viewer=True),
