@@ -232,33 +232,19 @@ ACCEPTED = [
     # derived from protected columns: returned, masked
     ("select * from core.customers", ("national_id", "email", "salary")),
     ("select c.* from core.customers c", ("national_id", "email", "salary")),
-    ("select substring(national_id, 1, 3) as p from core.customers", ("p",)),
     ("select cust_no, concat(national_id, email) as j from core.customers", ("j",)),
     ("select cast(national_id as varchar(20)) as c from core.customers", ("c",)),
     ("select sum(salary) as s from core.customers", ("s",)),
     ("select avg(salary), count(*) from core.customers", ("col1",)),
     ("select lower(email) as e, branch_code from core.customers", ("e",)),
     ("select upper(email) from core.customers", ("col1",)),
-    ("select p from (select substring(national_id, 1, 3) as p from core.customers) t", ("p",)),
     ("with t as (select upper(email) as e from core.customers) select e from t", ("e",)),
     (
         "select sum(c.salary) as s from core.customers c join core.accounts a on a.cust_no = c.cust_no",
         ("s",),
     ),
-    (
-        "select substring(national_id, 1, 2) as p from core.customers union all select branch_code from core.branches",
-        ("p",),
-    ),
-    (
-        "select (select substring(national_id, 1, 1) from core.customers where cust_no = 1) as s",
-        ("s",),
-    ),
     ("select cust_no, prefix from core.v_pii", ("prefix",)),
     ("select * from core.v_pii", ("prefix",)),
-    (
-        "select count(*) from (select substring(national_id, 1, 1) as p from core.customers union all select '1') t",
-        (),
-    ),
     ("select prefix from core.v_chain", ("prefix",)),
     ("select * from core.v_ids", ("nid",)),
     # a column joined to a protected one holds its values: returned masked, never compared
@@ -644,7 +630,7 @@ def test_the_reason_names_the_protected_column():
 
 def test_masking_is_by_position_so_repeated_names_are_safe():
     result = accepted(
-        "select cust_no, substring(national_id, 1, 1), cust_no, upper(email) from core.customers",
+        "select cust_no, cast(national_id as varchar(20)), cust_no, upper(email) from core.customers",
         "postgresql",
     )
 
@@ -663,6 +649,116 @@ def test_the_output_columns_follow_the_select_list():
         ("n", False),
         ("col3", False),
     ]
+
+
+# --- character slicing and pattern extraction on protected columns (ADR 0007) ---------------------
+# Masking the output is not enough: a slice small enough that no cell passes a validator reads
+# the value piece by piece. Every function that cuts out or locates part of the text is rejected
+# on a protected column, in every dialect's spelling.
+
+SLICING_EVERYWHERE = [
+    "select substring(national_id, 1, 3) as p from core.customers",
+    "select substr(national_id, 1, 3) as p from core.customers",
+    "select left(national_id, 2) from core.customers",
+    "select right(email, 4) from core.customers",
+    "select p from (select substring(national_id, 1, 3) as p from core.customers) t",
+    "with t as (select substring(email, 2, 1) as p from core.customers) select p from t",
+    "select substring(national_id, 1, 2) as p from core.customers union all select branch_code from core.branches",
+    "select (select substring(national_id, 1, 1) from core.customers where cust_no = 1) as s",
+    "select count(*) from (select substring(national_id, 1, 1) as p from core.customers union all select '1') t",
+    "select substring(upper(email), 1, 1) from core.customers",
+    "select concat(cust_no, substring(national_id, 3, 1)) from core.customers",
+    "select substring(c.national_id, 1, 1) from core.customers c join core.accounts a on a.cust_no = c.cust_no",
+    "select substring(nid, 1, 1) from core.v_ids",
+    "select left(iban, 4) from core.accounts",
+]
+SLICING_BY_ENGINE = [
+    ("postgresql", "select substring(national_id from 1 for 2) from core.customers"),
+    ("postgresql", "select substring(email from '@.*') from core.customers"),
+    ("postgresql", "select strpos(email, '@') from core.customers"),
+    ("postgresql", "select position('@' in email) from core.customers"),
+    ("postgresql", "select split_part(email, '@', 2) from core.customers"),
+    ("postgresql", "select regexp_replace(email, '^(.).*$', '\\1') from core.customers"),
+    ("postgresql", "select regexp_match(email, '^.') from core.customers"),
+    ("postgresql", "select overlay(national_id placing 'x' from 1) from core.customers"),
+    ("sqlserver", "select substring(national_id, 1, 2) from core.customers"),
+    ("sqlserver", "select charindex('1', national_id) from core.customers"),
+    ("sqlserver", "select patindex('%1%', national_id) from core.customers"),
+    ("sqlserver", "select stuff(national_id, 1, 9, '') from core.customers"),
+    ("mysql", "select mid(national_id, 1, 2) from core.customers"),
+    ("mysql", "select instr(email, '@') from core.customers"),
+    ("mysql", "select locate('@', email) from core.customers"),
+    ("mysql", "select substring_index(email, '@', -1) from core.customers"),
+    ("mysql", "select regexp_substr(email, '^.') from core.customers"),
+    ("mysql", "select regexp_instr(email, '@') from core.customers"),
+    ("oracle", "select substr(national_id, 1, 3) as p from core.customers"),
+    ("oracle", "select substrb(national_id, 1, 3) from core.customers"),
+    ("oracle", "select instr(national_id, '1') from core.customers"),
+    ("oracle", "select regexp_substr(email, '^.') from core.customers"),
+    ("oracle", "select regexp_instr(email, '@') from core.customers"),
+    ("oracle", "select regexp_replace(email, '@.*', '') from core.customers"),
+]
+
+
+@pytest.mark.parametrize(
+    ("engine", "sql"),
+    [*each_engine([(q,) for q in SLICING_EVERYWHERE]), *SLICING_BY_ENGINE],
+)
+def test_slicing_or_pattern_extraction_on_a_protected_column_is_rejected(engine, sql):
+    result = rejected(sql, engine, "character-slicing")
+
+    assert "core." in result.reason.lower()  # names the protected column
+
+
+@pytest.mark.parametrize(
+    ("engine", "sql"),
+    [
+        *each_engine(
+            [
+                ("select substring(full_name, 1, 3) as p from core.customers",),
+                ("select left(full_name, 2), right(branch_code, 1) from core.customers",),
+                ("select count(*) from core.customers where substring(full_name, 1, 1) = 'A'",),
+                (
+                    "select substring(branch_name, 1, 1) as s, count(*) from core.branches group by 1",
+                ),
+            ]
+        ),
+        (
+            "postgresql",
+            "select strpos(full_name, ' '), split_part(full_name, ' ', 1) from core.customers",
+        ),
+        (
+            "sqlserver",
+            "select charindex(' ', full_name), stuff(full_name, 1, 1, '') from core.customers",
+        ),
+        ("mysql", "select instr(full_name, ' '), locate(' ', full_name) from core.customers"),
+        ("oracle", "select substr(full_name, 1, 3), instr(full_name, ' ') from core.customers"),
+    ],
+)
+def test_slicing_a_column_that_is_not_protected_is_unaffected(engine, sql):
+    result = accepted(sql, engine)
+
+    assert result.masked_columns == ()
+
+
+@pytest.mark.parametrize(
+    ("engine", "sql"),
+    [
+        *each_engine([("select count(*) from core.customers where email like '%@gmail.com'",)]),
+        ("postgresql", "select count(*) from core.customers where national_id ~ '^2'"),
+        ("mysql", "select count(*) from core.customers where national_id regexp '^2'"),
+        ("mysql", "select count(*) from core.customers where regexp_like(national_id, '^2')"),
+        ("oracle", "select count(*) from core.customers where regexp_like(national_id, '^2')"),
+    ],
+)
+def test_pattern_predicates_on_a_protected_column_stay_rejected(engine, sql):
+    rejected(sql, engine)
+
+
+def test_a_view_that_slices_a_protected_column_itself_stays_queryable_and_masked():
+    """The guard judges the model's SQL; a view is the source's own definition."""
+    for engine in ENGINES:
+        assert accepted("select prefix from core.v_pii", engine).masked_ordinals == (0,)
 
 
 # --- the SQL that comes out -----------------------------------------------------------------------
@@ -761,7 +857,6 @@ def test_a_safe_query_passes_the_guard_again_unchanged(engine):
             "select nvl(branch_code, 'x'), to_char(sysdate), listagg(branch_name, ',') within group (order by branch_name) from core.branches group by branch_code",
             (),
         ),
-        ("oracle", "select substr(national_id, 1, 3) as p from core.customers", ("P",)),
     ],
     ids=lambda v: v if isinstance(v, str) and len(v) < 70 else None,
 )
