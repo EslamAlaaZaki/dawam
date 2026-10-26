@@ -6,6 +6,7 @@ import EmailSettingsPage from "../app/(signed-in)/admin/email/page";
 import LinksToSharePage from "../app/(signed-in)/admin/email/links/page";
 import LlmSettingsPage from "../app/(signed-in)/admin/llm/page";
 import LlmRolesBudgetsUsagePage from "../app/(signed-in)/admin/llm/settings/page";
+import DocumentAiPage from "../app/(signed-in)/admin/llm/document-ai/page";
 import SignedInLayout from "../app/(signed-in)/layout";
 import InvitationsPage from "../app/(signed-in)/admin/invitations/page";
 import AdminWorkspacesPage from "../app/(signed-in)/admin/workspaces/page";
@@ -105,6 +106,12 @@ function Page({ pathname }: { pathname: string }) {
       return (
         <SignedInLayout>
           <LlmRolesBudgetsUsagePage />
+        </SignedInLayout>
+      );
+    case "/admin/llm/document-ai":
+      return (
+        <SignedInLayout>
+          <DocumentAiPage />
         </SignedInLayout>
       );
     case "/admin/email/links":

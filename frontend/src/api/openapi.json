@@ -12491,12 +12491,20 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 50,
-              "minimum": 1,
-              "default": 10,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 50,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Left out: the Workspace's Document AI `top_k`.",
               "title": "Limit"
-            }
+            },
+            "description": "Left out: the Workspace's Document AI `top_k`."
           },
           {
             "name": "document_type",
@@ -14790,6 +14798,98 @@
         }
       }
     },
+    "/api/v1/admin/llm/document-ai": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Document Ai Settings",
+        "description": "The installation's Document AI settings and the bounds of owners' overrides (admins\nonly).",
+        "operationId": "getDocumentAiSettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDocumentAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Document Ai Settings",
+        "description": "Replace the installation's Document AI settings (admins only; recorded as a\n`document_ai_settings_changed` security event). 409 `settings_changed` when `version`\nis not the current one; 422 `unknown_setting`, `invalid_setting`, `out_of_range` (outside\nthe knob's hard limits), `invalid_bounds`, `not_overridable` (bounds for a knob owners\ncannot override) or `out_of_bounds` (a value outside its own bounds).",
+        "operationId": "setDocumentAiSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallationDocumentAiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDocumentAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/ai-settings": {
       "get": {
         "tags": [
@@ -14879,6 +14979,122 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/document-ai": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Workspace Document Ai",
+        "description": "The Workspace's Document AI overrides and effective settings (any member).",
+        "operationId": "getWorkspaceDocumentAi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDocumentAiSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Workspace Document Ai",
+        "description": "Replace the Workspace's overrides (owners of an active Workspace; audited). 409\n`settings_changed` when `version` is not the current one; 422 `not_overridable` for an\nadmin-only knob, `out_of_bounds` outside the installation's bounds, and the value errors\nof the installation settings.",
+        "operationId": "setWorkspaceDocumentAi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceDocumentAiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDocumentAiSettings"
                 }
               }
             }
@@ -17031,6 +17247,36 @@
           "files"
         ],
         "title": "Body_validateSchemaImport"
+      },
+      "BoundsInput": {
+        "properties": {
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min",
+            "description": "Left out: the hard lower limit."
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "Left out: the hard upper limit."
+          }
+        },
+        "type": "object",
+        "title": "BoundsInput"
       },
       "BranchError": {
         "properties": {
@@ -21418,6 +21664,115 @@
         ],
         "title": "InferenceStarted"
       },
+      "InstallationDocumentAiRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The version these settings were read at."
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Knobs left out take their default."
+          },
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BoundsInput"
+            },
+            "type": "object",
+            "title": "Bounds",
+            "description": "Knobs left out are bounded by their hard limits."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "InstallationDocumentAiRequest"
+      },
+      "InstallationDocumentAiSettings": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with a change; 0: never changed."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Every knob's installation value."
+          },
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumberBounds"
+            },
+            "type": "object",
+            "title": "Bounds",
+            "description": "For each numeric knob owners may override, the range they may choose in."
+          },
+          "knobs": {
+            "items": {
+              "$ref": "#/components/schemas/KnobInfo"
+            },
+            "type": "array",
+            "title": "Knobs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "updated_at",
+          "values",
+          "bounds",
+          "knobs"
+        ],
+        "title": "InstallationDocumentAiSettings"
+      },
       "InvitationLinkOut": {
         "properties": {
           "email": {
@@ -21645,6 +22000,117 @@
           "next_cursor"
         ],
         "title": "JobPage"
+      },
+      "KnobInfo": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "chunking",
+              "indexing",
+              "retrieval",
+              "reranking"
+            ],
+            "title": "Group"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "int",
+              "float",
+              "bool",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "owner": {
+            "type": "boolean",
+            "title": "Owner",
+            "description": "Workspace owners may override it."
+          },
+          "reindex": {
+            "type": "boolean",
+            "title": "Reindex",
+            "description": "A change applies to documents indexed from then on: re-index the Workspace's documents to apply it to the others."
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Default",
+            "description": "The value in code, when an admin sets none."
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min",
+            "description": "Hard lower limit (numbers only)."
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "Hard upper limit (numbers only)."
+          },
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Choices",
+            "description": "The allowed values (`choice` only)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "group",
+          "kind",
+          "label",
+          "description",
+          "owner",
+          "reindex",
+          "default",
+          "min",
+          "max",
+          "choices"
+        ],
+        "title": "KnobInfo"
       },
       "Kpi": {
         "properties": {
@@ -24541,6 +25007,24 @@
           "created_at"
         ],
         "title": "Notification"
+      },
+      "NumberBounds": {
+        "properties": {
+          "min": {
+            "type": "number",
+            "title": "Min"
+          },
+          "max": {
+            "type": "number",
+            "title": "Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "NumberBounds"
       },
       "PageContextIn": {
         "properties": {
@@ -31036,16 +31520,6 @@
             "$ref": "#/components/schemas/DataSharingLevel",
             "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
           },
-          "chunking_strategy": {
-            "type": "string",
-            "enum": [
-              "headings",
-              "recursive",
-              "semantic"
-            ],
-            "title": "Chunking Strategy",
-            "description": "How documents are cut into passages: `headings` (sections, the default), `recursive` (paragraphs, then sentences, then words) or `semantic` (split where the embedding similarity of neighbouring sentences drops). Applies to documents indexed from now on; re-index to apply it to the others."
-          },
           "auto_retrieve": {
             "type": "boolean",
             "title": "Auto Retrieve",
@@ -31132,7 +31606,6 @@
         "required": [
           "internal_only",
           "data_sharing_level",
-          "chunking_strategy",
           "auto_retrieve",
           "agent_models",
           "light_models",
@@ -31155,23 +31628,6 @@
           },
           "data_sharing_level": {
             "$ref": "#/components/schemas/DataSharingLevel"
-          },
-          "chunking_strategy": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "headings",
-                  "recursive",
-                  "semantic"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chunking Strategy",
-            "description": "Left out: keeps the current strategy."
           },
           "auto_retrieve": {
             "anyOf": [
@@ -31276,6 +31732,151 @@
         ],
         "title": "WorkspaceAiSettingsRequest",
         "description": "Model fields left out keep their current value."
+      },
+      "WorkspaceDocumentAiRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The version these settings were read at."
+          },
+          "overrides": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Overrides",
+            "description": "Knobs left out inherit the installation's value."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "WorkspaceDocumentAiRequest"
+      },
+      "WorkspaceDocumentAiSettings": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with a change; 0: never changed."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Overrides",
+            "description": "The knobs this Workspace overrides; the others inherit."
+          },
+          "inherited": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Inherited",
+            "description": "The installation's value of every knob owners may override."
+          },
+          "effective": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Effective",
+            "description": "What indexing and search use: overrides clamped to the bounds, else the installation's values."
+          },
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumberBounds"
+            },
+            "type": "object",
+            "title": "Bounds"
+          },
+          "knobs": {
+            "items": {
+              "$ref": "#/components/schemas/KnobInfo"
+            },
+            "type": "array",
+            "title": "Knobs",
+            "description": "The knobs owners may override."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "updated_at",
+          "overrides",
+          "inherited",
+          "effective",
+          "bounds",
+          "knobs"
+        ],
+        "title": "WorkspaceDocumentAiSettings"
       },
       "WorkspaceFile": {
         "properties": {

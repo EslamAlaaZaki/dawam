@@ -37,11 +37,12 @@ from sqlalchemy.orm import Session
 from dawam.modules.auth import User
 from dawam.modules.jobs import Job, JobCancelledError, JobContext, JobRunner, JobService
 from dawam.modules.llm import (
+    DocumentAiConfig,
     LlmError,
     MeteredGateway,
     ProviderService,
     RoleService,
-    workspace_chunking_strategy,
+    document_ai_config,
     workspace_embedding_model_id,
     workspace_model_id,
 )
@@ -55,7 +56,6 @@ from .internal.arabic import language, stemmed, stems
 from .internal.chunking import Chunk
 from .internal.content import (
     ALLOWED_TYPES,
-    EXTRACTED_TEXT_MAX_CHARS,
     IMAGE_TYPES,
     detect,
     extract_text,
@@ -74,39 +74,43 @@ logger = logging.getLogger(__name__)
 REINDEX_JOB = "reindex_documents"
 INDEX_JOB = "index_document"
 INDEX_ERROR_MAX_LENGTH = 1000
-EMBED_BATCH = 32
-CANDIDATES = 20
 MAX_POOL_GROWTH = 8  # how far the pool may grow to find ``limit`` distinct parents
-"""How many passages each ranking contributes before they are fused."""
-RRF_K = 60
-DEFAULT_LIMIT = 10
-RERANK_TOP_N = 30
-"""How many of the fused top passages the rerank model rescores."""
 RERANK_DOC_CHARS = 4000
+_DEFAULTS = DocumentAiConfig()
 
 
 @dataclass(frozen=True)
 class SearchTuning:
-    """How rankings are fused and trimmed. Code constants for now; they become admin
-    settings with the Document AI settings (24.1)."""
+    """How rankings are fused and trimmed: the Workspace's Document AI settings (24.1)."""
 
-    fts_weight: float = 1.0
-    vector_weight: float = 1.0
-    rrf_k: int = RRF_K
-    fts_candidates: int = CANDIDATES
-    vector_candidates: int = CANDIDATES
-    mmr_lambda: float = 0.7
+    fts_weight: float = _DEFAULTS.fts_weight
+    vector_weight: float = _DEFAULTS.vector_weight
+    rrf_k: int = _DEFAULTS.rrf_k
+    fts_candidates: int = _DEFAULTS.fts_candidates
+    """How many passages the full-text ranking contributes before they are fused."""
+    vector_candidates: int = _DEFAULTS.vector_candidates
+    mmr_lambda: float = _DEFAULTS.mmr_lambda
     """1.0 is pure relevance; lower values trade it for variety."""
     same_document_similarity: float = 0.3
     """How alike two passages of one document (other sections) count for MMR."""
-    min_text_rank: float = 0.01
+    min_text_rank: float = _DEFAULTS.min_text_rank
     """The ``ts_rank_cd`` a full-text match needs to count as relevant."""
-    min_vector_similarity: float = 0.3
+    min_vector_similarity: float = _DEFAULTS.min_vector_similarity
     """The cosine similarity a vector match needs to count as relevant. A passage is returned
     only if it clears the floor of at least one of its rankings; below both, nothing is."""
 
-
-DEFAULT_TUNING = SearchTuning()
+    @classmethod
+    def of(cls, config: DocumentAiConfig) -> SearchTuning:
+        return cls(
+            fts_weight=config.fts_weight,
+            vector_weight=config.vector_weight,
+            rrf_k=config.rrf_k,
+            fts_candidates=config.fts_candidates,
+            vector_candidates=config.vector_candidates,
+            mmr_lambda=config.mmr_lambda,
+            min_text_rank=config.min_text_rank,
+            min_vector_similarity=config.min_vector_similarity,
+        )
 
 
 @dataclass(frozen=True)
@@ -406,16 +410,23 @@ def ensure_vector_index(engine: sa.Engine, model_id: uuid.UUID, dimension: int) 
     return True
 
 
-def _embed_all(gateway: Any, texts: list[str]) -> list[list[float]]:
-    """Vectors of ``texts`` through the embedding model's gateway, in batches."""
+def _embed_all(gateway: Any, texts: list[str], batch: int) -> list[list[float]]:
+    """Vectors of ``texts`` through the embedding model's gateway, ``batch`` at a time."""
     vectors: list[list[float]] = []
-    for start in range(0, len(texts), EMBED_BATCH):
-        vectors.extend(gateway.embed(texts[start : start + EMBED_BATCH]))
+    for start in range(0, len(texts), batch):
+        vectors.extend(gateway.embed(texts[start : start + batch]))
     return vectors
 
 
-def _chunks(text: str, counter: Any, strategy: str, embed: Any) -> list[Any]:
-    options: dict[str, Any] = {"strategy": strategy, "embed": embed}
+def _chunks(
+    text: str, counter: Any, strategy: str, embed: Any, config: DocumentAiConfig
+) -> list[Any]:
+    options: dict[str, Any] = {
+        "strategy": strategy,
+        "embed": embed,
+        "target": config.chunk_size,
+        "overlap": config.chunk_overlap,
+    }
     if counter:
         return chunk_with_parents(text, counter, **options)
     return chunk_with_parents(text, **options)
@@ -529,11 +540,17 @@ class DocumentSearchService:
         return model
 
     def _headers(
-        self, workspace_id: uuid.UUID, name: str, text: str, chunks: Sequence[Chunk]
+        self,
+        workspace_id: uuid.UUID,
+        name: str,
+        text: str,
+        chunks: Sequence[Chunk],
+        config: DocumentAiConfig,
     ) -> list[str]:
         """The context sentence of each passage (empty where there is none). All empty when
         the feature is off. A failing call costs only the headers (the file still indexes)."""
-        model = self._light_model(workspace_id) if chunks else None
+        wanted = chunks and config.contextual_headers
+        model = self._light_model(workspace_id) if wanted else None
         if model is None:
             return [""] * len(chunks)
         headers: list[str] = []
@@ -568,7 +585,8 @@ class DocumentSearchService:
             return None, IMAGE_VISION_FAILED.format(reason=exc.message)
         if not description:
             return None, IMAGE_VISION_FAILED.format(reason="it said nothing")
-        return f"# Description of {name}\n\n{description}"[:EXTRACTED_TEXT_MAX_CHARS], None
+        cap = document_ai_config(self._engine, workspace_id).max_extracted_chars
+        return f"# Description of {name}\n\n{description}"[:cap], None
 
     def describe_image(
         self, user: User, workspace_id: uuid.UUID, file_id: uuid.UUID
@@ -687,8 +705,15 @@ class DocumentSearchService:
                 if note:
                     notes.append(note)
             else:
+                config = document_ai_config(self._engine, workspace_id)
                 text, text_status = extract_text(
-                    file_type, data, self._parser(), ocr, on_ocr=reading_scan
+                    file_type,
+                    data,
+                    self._parser(),
+                    ocr,
+                    on_ocr=reading_scan,
+                    max_chars=config.max_extracted_chars,
+                    max_pages=config.max_pdf_pages,
                 )
             with Session(self._engine) as db, db.begin():
                 updated = db.execute(
@@ -777,17 +802,18 @@ class DocumentSearchService:
         # Passage size is measured in the embedding model's own tokens, counted locally
         # (never a provider call); without a local tokenizer the estimate is used.
         counter = model.gateway.local_token_counter() if model else None
-        strategy = workspace_chunking_strategy(self._engine, workspace_id)
-        embed = (lambda texts: _embed_all(model.gateway, texts)) if model else None
+        config = document_ai_config(self._engine, workspace_id)
+        batch = config.embed_batch
+        embed = (lambda texts: _embed_all(model.gateway, texts, batch)) if model else None
         try:
-            chunks = _chunks(text or "", counter, strategy, embed)
+            chunks = _chunks(text or "", counter, config.chunking_strategy, embed, config)
         except (LlmError, ApiError) as exc:  # semantic chunking embeds sentences
             _unless_other_api_error(exc)
             logger.warning("semantic chunking failed, using recursive: %s", exc)
-            chunks = _chunks(text or "", counter, "recursive", None)
+            chunks = _chunks(text or "", counter, "recursive", None, config)
         if not chunks:
             model = None
-        headers = self._headers(workspace_id, name, text or "", [c.chunk for c in chunks])
+        headers = self._headers(workspace_id, name, text or "", [c.chunk for c in chunks], config)
         indexed = [
             f"{h}\n{c.chunk.text}" if h else c.chunk.text
             for h, c in zip(headers, chunks, strict=True)
@@ -799,10 +825,7 @@ class DocumentSearchService:
         if model is not None:
             stage("embedding")
             try:
-                vectors = []
-                for start in range(0, len(chunks), EMBED_BATCH):
-                    batch = indexed[start : start + EMBED_BATCH]
-                    vectors.extend(model.gateway.embed(batch))
+                vectors = _embed_all(model.gateway, indexed, batch)
             except (LlmError, ApiError) as exc:
                 _unless_other_api_error(exc)
                 logger.warning("embedding failed, indexing full-text only: %s", exc)
@@ -1057,15 +1080,18 @@ class DocumentSearchService:
         query: str,
         *,
         system_id: uuid.UUID | None = None,
-        limit: int = DEFAULT_LIMIT,
+        limit: int | None = None,
         filters: PassageFilters | None = None,
         tuning: SearchTuning | None = None,
     ) -> list[Passage]:
         """The passages that best match ``query``, any member, best first. Full-text and,
         where the passages were embedded, vector rankings are fused (weighted RRF), passages
-        below the relevance floor are dropped and the rest are diversified (MMR)."""
-        tune = tuning or DEFAULT_TUNING
+        below the relevance floor are dropped and the rest are diversified (MMR). The
+        Workspace's Document AI settings tune every step and give ``limit`` its default."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        config = document_ai_config(self._engine, workspace_id)
+        tune = tuning or SearchTuning.of(config)
+        limit = limit or config.top_k
         terms = stems(query)
         if not terms:
             return []
@@ -1180,8 +1206,9 @@ class DocumentSearchService:
                     for r, size, floor in zip(ranked, pools, floors, strict=True)
                 )
                 if len(passages) >= limit or not full or grow >= MAX_POOL_GROWTH:
-                    reranked = self._rerank(workspace_id, user.id, query, passages)
-                    diverse = self._diversify(reranked[: max(RERANK_TOP_N, limit)], limit, tune)
+                    reranked = self._rerank(workspace_id, user.id, query, passages, config)
+                    top = max(config.rerank_top_n, limit)
+                    diverse = self._diversify(reranked[:top], limit, tune)
                     return _promote_exact(db, diverse, params, scope)[:limit]
                 grow *= 2
 
@@ -1216,13 +1243,21 @@ class DocumentSearchService:
         return picked
 
     def _rerank(
-        self, workspace_id: uuid.UUID, user_id: uuid.UUID, query: str, passages: list[Passage]
+        self,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
+        query: str,
+        passages: list[Passage],
+        config: DocumentAiConfig,
     ) -> list[Passage]:
-        """Reorder the fused top passages by the Workspace's rerank model, best first, each
-        passage's score becoming the model's. Without a rerank model, one the data-sharing
+        """Reorder the fused top passages (``rerank_top_n``) by the Workspace's rerank model,
+        best first, each passage's score becoming the model's. With reranking switched off in
+        the Document AI settings, without a rerank model, one the data-sharing
         level (an internal model always may) or internal-only setting keeps from the
         documents, or when the call fails or the
         budget is used up, the fused order stands."""
+        if not config.rerank:
+            return passages
         settings = self._ai.document_settings(workspace_id)
         model = self._rerank_models.current(workspace_id, user_id)
         if (
@@ -1232,7 +1267,7 @@ class DocumentSearchService:
             or (settings.internal_only and not model.is_internal)
         ):
             return passages
-        top, rest = passages[:RERANK_TOP_N], passages[RERANK_TOP_N:]
+        top, rest = passages[: config.rerank_top_n], passages[config.rerank_top_n :]
         try:
             scores = model.gateway.rerank(query, [p.text[:RERANK_DOC_CHARS] for p in top])
         except (LlmError, ApiError) as exc:
@@ -1334,7 +1369,7 @@ def _signals(rows: Any) -> list[tuple[uuid.UUID, float]]:
 
 
 def vector_ranking_sql(
-    model_id: uuid.UUID, dimension: int, scope: str = "", pool: int = CANDIDATES
+    model_id: uuid.UUID, dimension: int, scope: str = "", pool: int = _DEFAULTS.vector_candidates
 ) -> str:
     """The vector query. Its cast and predicate are those of the model's HNSW index (see
     ``ensure_vector_index``); the model id and dimension are literals so the planner can prove

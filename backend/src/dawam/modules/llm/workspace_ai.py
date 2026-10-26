@@ -33,8 +33,6 @@ from .tables import ModelRecord, ProviderRecord, WorkspaceAiSettingsRecord, Work
 
 AUDIT_ENTITY = "workspace_ai_settings"
 ROLES = ("agent", "light", "embedding", "vision", "rerank")
-CHUNKING_STRATEGIES = ("headings", "recursive", "semantic")
-DEFAULT_CHUNKING_STRATEGY = "headings"
 
 
 class DataSharingLevel(StrEnum):
@@ -90,8 +88,6 @@ class WorkspaceAiSettings:
     data_sharing_level: DataSharingLevel
     models: WorkspaceModels
     updated_at: datetime | None
-    chunking_strategy: str = DEFAULT_CHUNKING_STRATEGY
-    """How documents are cut into passages (``CHUNKING_STRATEGIES``)."""
     auto_retrieve: bool = False
     """The first message of a conversation carries the top document passages."""
 
@@ -198,7 +194,6 @@ def load_settings(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
         data_sharing_level=DataSharingLevel(record.data_sharing_level),
         models=models,
         updated_at=record.updated_at,
-        chunking_strategy=record.chunking_strategy,
         auto_retrieve=record.auto_retrieve,
     )
 
@@ -217,19 +212,6 @@ def default_model_id(db: Session, workspace_id: uuid.UUID, role: str) -> uuid.UU
 def workspace_embedding_model_id(engine: sa.Engine, workspace_id: uuid.UUID) -> uuid.UUID | None:
     """The Workspace's embedding model; ``None``: it has none."""
     return workspace_model_id(engine, workspace_id, "embedding")
-
-
-def workspace_chunking_strategy(engine: sa.Engine, workspace_id: uuid.UUID) -> str:
-    """How the Workspace's documents are cut into passages."""
-    with Session(engine) as db:
-        return (
-            db.scalar(
-                sa.select(WorkspaceAiSettingsRecord.chunking_strategy).where(
-                    WorkspaceAiSettingsRecord.workspace_id == workspace_id
-                )
-            )
-            or DEFAULT_CHUNKING_STRATEGY
-        )
 
 
 def workspace_model_id(engine: sa.Engine, workspace_id: uuid.UUID, role: str) -> uuid.UUID | None:
@@ -442,7 +424,6 @@ def new_workspace_settings(
         workspace_id=workspace_id,
         internal_only=_internal_agent_available(db),
         data_sharing_level=DataSharingLevel.METADATA.value,
-        chunking_strategy=DEFAULT_CHUNKING_STRATEGY,
         auto_retrieve=False,
         updated_at=at,
     )
@@ -571,7 +552,6 @@ class WorkspaceAiService:
         embedding_model_id: uuid.UUID | None = None,
         vision_model_id: uuid.UUID | None = None,
         rerank_model_id: uuid.UUID | None = None,
-        chunking_strategy: str | None = None,
         auto_retrieve: bool | None = None,
     ) -> WorkspaceAiView:
         """Owners only, while the Workspace is active. Replaces the settings and the
@@ -606,17 +586,9 @@ class WorkspaceAiService:
             reembed = models.embedding != current.embedding and has_indexed_documents(
                 db, workspace_id
             )
-            if chunking_strategy is not None and chunking_strategy not in CHUNKING_STRATEGIES:
-                raise _invalid(
-                    "Choose headings, recursive or semantic.",
-                    "chunking_strategy",
-                    "invalid_chunking_strategy",
-                )
             old = _audited(record, current)
             record.internal_only = internal_only
             record.data_sharing_level = data_sharing_level.value
-            if chunking_strategy is not None:
-                record.chunking_strategy = chunking_strategy
             if auto_retrieve is not None:
                 record.auto_retrieve = auto_retrieve
             record.updated_at = now
@@ -684,7 +656,6 @@ def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict
     return {
         "internal_only": record.internal_only,
         "data_sharing_level": record.data_sharing_level,
-        "chunking_strategy": record.chunking_strategy,
         "auto_retrieve": record.auto_retrieve,
         "agent_model_ids": ids(models.agent),
         "default_agent_model_id": one(models.default_agent),

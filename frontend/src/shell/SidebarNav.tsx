@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Cpu,
+  FileSearch,
   ListTree,
   Folders,
   Link2,
@@ -152,6 +153,7 @@ const ADMIN_GROUPS: {
         icon: Wallet,
         name: "Roles, budgets & usage",
       },
+      { href: "/admin/llm/document-ai", icon: FileSearch, name: "Document AI" },
       { href: "/admin/ai-runs", icon: ListTree, name: "Assistant runs" },
     ],
   },

@@ -25,8 +25,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-# Code constants until Document AI settings (24.1) make them admin settings. The numbers
-# equal the former 1,000 / 1,500 characters at about four characters a token.
+# The defaults; the Workspace's Document AI settings (24.1) choose the size and overlap. The
+# numbers equal the former 1,000 / 1,500 characters at about four characters a token.
 TARGET_TOKENS = 250
 MAX_TOKENS = 375
 OVERLAP_TOKENS = 40

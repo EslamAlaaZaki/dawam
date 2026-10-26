@@ -24,7 +24,7 @@ from typing import Any, Protocol
 from dawam.modules.llm import ChatEvent, Image, TextDelta
 
 from .accelerator import DocumentAccelerator, pdf_pipeline_options
-from .content import PDF_MAX_PAGES
+from .content import PDF_MAX_PAGES, PDF_PAGE_CEILING
 
 OCR_MIN_CHARS_PER_PAGE = 50
 """A PDF page with fewer characters of its own text than this is read by OCR."""
@@ -47,13 +47,14 @@ class OcrEngine(Protocol):
         ...
 
 
-def pages_needing_ocr(data: bytes) -> list[int]:
+def pages_needing_ocr(data: bytes, max_pages: int = PDF_MAX_PAGES) -> list[int]:
     """The 1-based numbers of the PDF's pages with fewer than ``OCR_MIN_CHARS_PER_PAGE``
-    characters of text; none for a PDF over the page caps. Raises when it cannot be read."""
+    characters of text; none for a PDF over the page caps (``max_pages``: the Workspace's
+    Document AI setting). Raises when it cannot be read."""
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
-    if len(reader.pages) > PDF_MAX_PAGES:
+    if len(reader.pages) > max_pages:
         return []
     short = [
         number
@@ -133,7 +134,7 @@ class DoclingOcr:
             results = [
                 converter.convert(
                     DocumentStream(name="document.pdf", stream=io.BytesIO(data)),
-                    max_num_pages=PDF_MAX_PAGES,
+                    max_num_pages=PDF_PAGE_CEILING,
                 )
                 for converter in self._convert()
             ]

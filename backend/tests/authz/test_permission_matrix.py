@@ -361,6 +361,15 @@ ROWS: list[Row] = [
         setup=use_fake_llm,
     ),
     Row("GET", "/api/v1/admin/llm/setup", "AI setup status (story 158)", admin_only()),
+    # Document AI settings of the installation (24.1).
+    Row("GET", "/api/v1/admin/llm/document-ai", "see the Document AI settings", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/document-ai",
+        "set the Document AI settings and owners' bounds",
+        admin_only(),
+        json=lambda roles: {"version": 0, "values": {}},
+    ),
     # Token budgets and AI usage (stories 159, 162).
     Row("GET", "/api/v1/admin/llm/budgets", "see the token budgets (story 159)", admin_only()),
     Row(
@@ -691,6 +700,20 @@ ROWS: list[Row] = [
         "Choose the Workspace Models, data-sharing level and internal-only restriction",
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"internal_only": False, "data_sharing_level": "profiles"},
+    ),
+    # Document AI overrides of a Workspace (24.1).
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/document-ai",
+        "Open Workspace content (read the Document AI settings)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "PUT",
+        "/api/v1/workspaces/{workspace_id}/document-ai",
+        "Override the Workspace's Document AI settings",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"version": 0, "overrides": {"top_k": 5}},
     ),
     # The assistant's chat (stories 141, 149, 151, 152). Asking is open to every member; the
     # conversation of the path is the owner's, shared with the Workspace: everyone reads it,

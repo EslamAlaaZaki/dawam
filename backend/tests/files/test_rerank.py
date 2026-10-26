@@ -10,7 +10,7 @@ import pytest
 
 from dawam.modules.llm import LlmError
 from tests.files.test_files import system
-from tests.files.test_search import ADMIN, Policy, policy, search, upload_ok
+from tests.files.test_search import ADMIN, Policy, policy, search, set_document_ai, upload_ok
 from tests.roles import RoleClients
 
 __all__ = ["policy"]  # the autouse fixture, shared
@@ -83,6 +83,15 @@ def test_results_are_reordered_by_the_rerank_models_scores(roles, policy, fake_l
     [call] = rerank_calls(fake_llm)
     assert call.query == "postings" and len(call.texts) == 3
     assert call.texts[0].startswith("postings postings postings")
+
+
+def test_an_owner_can_switch_reranking_off(roles, policy, fake_llm, documents):
+    register_rerank_model(roles)
+    assert set_document_ai(roles, rerank=False).status_code == 200
+    fake_llm.calls.clear()
+
+    assert order(roles) == ["a.md", "b.md", "c.md"]
+    assert rerank_calls(fake_llm) == []
 
 
 def test_the_limit_applies_after_reranking(roles, policy, fake_llm, documents):

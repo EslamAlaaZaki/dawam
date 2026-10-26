@@ -37,20 +37,30 @@ Public interface. Other modules import only what is re-exported here:
   internal agent model, decided in code. Changing the embedding model of a Workspace with
   indexed documents calls the ``EmbeddingModelChangedHook``
   (``app.state.on_embedding_model_changed``), which embeds them again (ADR 0006).
-- ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` (members read, owners
+- ``document_ai_config(engine, workspace_id)``: the Workspace's effective Document AI
+  settings (``DocumentAiConfig``: the RAG pipeline's chunking, indexing, retrieval and
+  reranking knobs), which indexing and search read. Admins set the installation's values and
+  the bounds owners override within; owners override the retrieval and chunking knobs per
+  Workspace (``document_ai``: validated, versioned and audited).
+- ``router``: ``GET|PUT /workspaces/{workspace_id}/ai-settings`` and
+  ``GET|PUT /workspaces/{workspace_id}/document-ai`` (members read, owners
   change), ``GET /ai/new-workspace-models`` (the "New workspace" form's choices), then,
-  admins only, ``/admin/llm/budgets[...]``,
+  admins only, ``/admin/llm/document-ai``, ``/admin/llm/budgets[...]``,
   ``/admin/llm/usage``, ``/admin/llm/providers[/{provider_id}[/models]]``,
   ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
 
 Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
-``llm_usage``, ``llm_workspace_settings`` and ``llm_workspace_models`` tables. Imports
+``llm_usage``, ``llm_workspace_settings``, ``llm_workspace_models``,
+``llm_document_ai_settings`` and ``llm_workspace_document_ai`` tables. Imports
 ``auth``, ``activity``, ``audit`` and ``workspaces`` (for the admin policy).
 """
 
 from fastapi import APIRouter
 
 from .api import router as admin_router
+from .document_ai import DocumentAiConfig, document_ai_config
+from .document_ai_api import admin_router as document_ai_admin_router
+from .document_ai_api import router as document_ai_router
 from .gateway import (
     Adapter,
     Capabilities,
@@ -93,7 +103,6 @@ from .workspace_ai import (
     WorkspaceAiSettings,
     WorkspaceAiView,
     on_workspace_created,
-    workspace_chunking_strategy,
     workspace_embedding_model_id,
     workspace_model_id,
 )
@@ -102,7 +111,9 @@ from .workspace_ai_api import router as workspace_ai_router
 
 router = APIRouter()
 router.include_router(admin_router)
+router.include_router(document_ai_admin_router)
 router.include_router(workspace_ai_router)
+router.include_router(document_ai_router)
 router.include_router(new_workspace_router)
 
 __all__ = [
@@ -114,6 +125,7 @@ __all__ = [
     "ChatEvent",
     "DataSharingLevel",
     "DataSharingPolicy",
+    "DocumentAiConfig",
     "Done",
     "EmbeddingModelChangedHook",
     "FakeAdapter",
@@ -143,10 +155,10 @@ __all__ = [
     "WorkspaceAiView",
     "adapter_for",
     "call_cost",
+    "document_ai_config",
     "fake_adapter_factory",
     "on_workspace_created",
     "router",
-    "workspace_chunking_strategy",
     "workspace_embedding_model_id",
     "workspace_model_id",
 ]

@@ -56,11 +56,10 @@ def test_the_cell_cap_stops_a_wide_sheet(monkeypatch):
     assert "z" not in text
 
 
-def test_text_stops_being_built_at_the_character_cap(monkeypatch):
-    monkeypatch.setattr(content, "EXTRACTED_TEXT_MAX_CHARS", 50)
+def test_text_stops_being_built_at_the_character_cap():
     data = docx([f"paragraph {n:04d} " + "x" * 20 for n in range(1000)])
 
-    text, status = content.extract_text(content.DOCX, data)
+    text, status = content.extract_text(content.DOCX, data, max_chars=50)
 
     assert status == "extracted"
     assert len(text) <= 50
@@ -73,3 +72,59 @@ def test_the_paragraph_cap_limits_a_docx(monkeypatch):
     text, _ = content.extract_text(content.DOCX, docx([f"para{n}" for n in range(10)]))
 
     assert text == "para0\npara1\npara2"
+
+
+# -- the Workspace's PDF page cap (Document AI ``max_pdf_pages``) ----------------------
+
+
+class _Parser:
+    types = (content.PDF,)
+
+    def __init__(self) -> None:
+        self.seen = 0
+
+    def parse(self, file_type, data: bytes) -> str:
+        self.seen += 1
+        return "# Parsed\n\nby the layout parser"
+
+
+class _Ocr:
+    def __init__(self) -> None:
+        self.pages: list[list[int]] = []
+
+    def recognise(self, data: bytes, pages) -> str:
+        self.pages.append(list(pages))
+        return "read by OCR"
+
+
+def three_pages() -> bytes:
+    from tests.files.test_files import text_pdf
+    from tests.files.test_ocr import pdf_of
+
+    return pdf_of(text_pdf("one"), text_pdf("two"), text_pdf("three"))
+
+
+def test_the_page_cap_decides_whether_the_parser_reads_a_pdf():
+    parser = _Parser()
+
+    content.extract_text(content.PDF, three_pages(), parser, max_pages=2)
+    assert parser.seen == 0  # over the cap: the basic extraction reads it, up to the cap
+
+    content.extract_text(content.PDF, three_pages(), parser, max_pages=3)
+    assert parser.seen == 1
+
+
+def test_the_page_cap_decides_whether_a_pdf_goes_to_ocr():
+    ocr = _Ocr()
+
+    content.extract_text(content.PDF, three_pages(), None, ocr, max_pages=2)
+    assert ocr.pages == []
+
+    content.extract_text(content.PDF, three_pages(), None, ocr, max_pages=5)
+    assert ocr.pages == [[1, 2, 3]]  # each page holds a few characters: short of text
+
+
+def test_the_engines_page_ceiling_is_the_settings_hard_limit():
+    from dawam.modules.llm.document_ai import BY_KEY
+
+    assert BY_KEY["max_pdf_pages"].high == content.PDF_PAGE_CEILING
