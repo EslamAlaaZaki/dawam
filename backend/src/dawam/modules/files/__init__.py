@@ -33,7 +33,8 @@ Public interface. Other modules import only what is re-exported here:
   self-hosted engine does and the file's ``index_note`` says so.
 - ``DocumentSearchService.describe_image``: an uploaded image's description (made on indexing
   by the Workspace's vision model, under the same policy rule), for the assistant's tool.
-- ``router``: also ``GET /workspaces/{workspace_id}/documents/search`` and
+- ``router``: also ``POST /admin/llm/document-ai/reindex`` (admins: every Workspace's
+  documents again), ``GET /workspaces/{workspace_id}/documents/search`` and
   ``POST /workspaces/{workspace_id}/documents/reindex``.
 - ``LinkService``: owners and editors link a Source System to repositories, Jira issues and
   Confluence pages by URL (``SourceLink``, story 65), and link documents to tables and
@@ -59,6 +60,7 @@ Owns the ``workspace_files``, ``document_chunks``, ``source_links`` and
 
 from fastapi import APIRouter
 
+from .api import admin_router as _admin_router
 from .api import router as _files_router
 from .deletion import FileRef, SystemFiles, purge_system_files, system_files
 from .handlers import FileContentHandler
@@ -89,6 +91,7 @@ from .service import FileContent, FileService, TextFile, WorkspaceFile, Workspac
 
 router = APIRouter()
 router.include_router(_files_router)
+router.include_router(_admin_router)
 router.include_router(_links_router)
 
 __all__ = [

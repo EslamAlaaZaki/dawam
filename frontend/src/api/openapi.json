@@ -12802,6 +12802,48 @@
         }
       }
     },
+    "/api/v1/admin/llm/document-ai/reindex": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Reindex All Documents",
+        "description": "Index the documents of every Workspace again (admins only), as one background job\nper Workspace: offered after the installation's Document AI settings change.",
+        "operationId": "reindexAllDocuments",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReindexAllStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links": {
       "get": {
         "tags": [
@@ -25973,6 +26015,24 @@
           "open"
         ],
         "title": "RegistrationStatus"
+      },
+      "ReindexAllStarted": {
+        "properties": {
+          "job_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Job Ids",
+            "description": "One `reindex_documents` job per Workspace that has files."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_ids"
+        ],
+        "title": "ReindexAllStarted"
       },
       "ReindexStarted": {
         "properties": {

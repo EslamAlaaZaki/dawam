@@ -336,6 +336,18 @@ def test_only_owners_and_editors_reindex(roles, policy):
     assert roles.client("owner").post(url).status_code == 202
 
 
+def test_only_admins_reindex_every_workspace(roles, policy):
+    sid = system(roles)
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+    url = "/api/v1/admin/llm/document-ai/reindex"
+
+    assert roles.client("owner").post(url).status_code == 403
+    response = roles.client("admin").post(url)
+
+    assert response.status_code == 202, response.text
+    assert len(response.json()["job_ids"]) == 1
+
+
 def _soft_delete(roles: RoleClients, system_id: str) -> None:
     response = roles.client("owner").delete(
         f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id}"

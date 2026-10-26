@@ -63,6 +63,21 @@ export function useSetInstallationDocumentAi() {
   });
 }
 
+/** Index every Workspace's documents again, one background job each (admins only). */
+export function useReindexEverywhere() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error, response } = await client.POST(
+        "/api/v1/admin/llm/document-ai/reindex",
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+  });
+}
+
 /** The Workspace's overrides and effective settings (any member). */
 export function useWorkspaceDocumentAi(workspaceId: string) {
   const client = useApiClient();

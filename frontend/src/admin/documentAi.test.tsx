@@ -147,6 +147,69 @@ describe("the Document AI settings page", () => {
     });
   });
 
+  async function saveStrategy() {
+    const REINDEX = `${PATH}/reindex`;
+    const requests = renderApp(
+      api((r) => {
+        if (r.method === "PUT" && r.path === PATH) {
+          return json({
+            ...SETTINGS,
+            version: 4,
+            values: { ...SETTINGS.values, chunking_strategy: "recursive" },
+          });
+        }
+        if (r.method === "POST" && r.path === REINDEX) {
+          return json({ job_ids: ["j1"] }, 202);
+        }
+        return undefined;
+      }),
+      "/admin/llm/document-ai",
+    );
+    fireEvent.change(await screen.findByLabelText("Chunking strategy"), {
+      target: { value: "recursive" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText(/Re-index every Workspace's documents/);
+    return { requests, REINDEX };
+  }
+
+  it("queues a re-index of every Workspace when the admin accepts", async () => {
+    const { requests, REINDEX } = await saveStrategy();
+    fireEvent.click(screen.getByRole("button", { name: "Re-index now" }));
+    expect(
+      await screen.findByText("Re-indexing every Workspace's documents."),
+    ).toBeInTheDocument();
+    expect(requests.filter((r) => r.path === REINDEX)).toHaveLength(1);
+  });
+
+  it("leaves the index as is when the admin declines", async () => {
+    const { requests, REINDEX } = await saveStrategy();
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    expect(
+      screen.queryByText(/Re-index every Workspace's documents/),
+    ).not.toBeInTheDocument();
+    expect(requests.some((r) => r.path === REINDEX)).toBe(false);
+  });
+
+  it("does not ask when no indexing knob changed", async () => {
+    renderApp(
+      api((r) =>
+        r.method === "PUT" && r.path === PATH
+          ? json({ ...SETTINGS, version: 4 })
+          : undefined,
+      ),
+      "/admin/llm/document-ai",
+    );
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Rerank results" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Document AI settings saved.");
+    expect(
+      screen.queryByRole("button", { name: "Re-index now" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows why a change was refused", async () => {
     renderApp(
       api((r) =>

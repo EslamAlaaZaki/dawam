@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import {
   useInstallationDocumentAi,
+  useReindexEverywhere,
   useSetInstallationDocumentAi,
   type InstallationDocumentAi,
   type KnobInfo,
@@ -35,6 +36,9 @@ export function DocumentAiSettingsPage() {
   const isAdmin = me.data?.system_role === "admin";
   const settings = useInstallationDocumentAi({ enabled: isAdmin });
   const update = useSetInstallationDocumentAi();
+  // Held here, not in the form, which remounts with every saved version.
+  const reindexAll = useReindexEverywhere();
+  const [reindex, setReindex] = useState(false);
 
   let content;
   if (!isAdmin) {
@@ -58,6 +62,9 @@ export function DocumentAiSettingsPage() {
         key={settings.data.version}
         settings={settings.data}
         update={update}
+        reindexAll={reindexAll}
+        reindex={reindex}
+        setReindex={setReindex}
       />
     );
   }
@@ -75,9 +82,15 @@ export function DocumentAiSettingsPage() {
 function SettingsForm({
   settings,
   update,
+  reindexAll,
+  reindex,
+  setReindex,
 }: {
   settings: InstallationDocumentAi;
   update: ReturnType<typeof useSetInstallationDocumentAi>;
+  reindexAll: ReturnType<typeof useReindexEverywhere>;
+  reindex: boolean;
+  setReindex: (on: boolean) => void;
 }) {
   const [values, setValues] = useState<Record<string, SettingValue>>(
     settings.values,
@@ -86,6 +99,8 @@ function SettingsForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    reindexAll.reset();
+    const before = settings.values;
     update.mutate(
       {
         version: settings.version,
@@ -97,7 +112,16 @@ function SettingsForm({
           ]),
         ),
       },
-      { onSuccess: () => toast.success("Document AI settings saved.") },
+      {
+        onSuccess: (saved) => {
+          toast.success("Document AI settings saved.");
+          setReindex(
+            saved.knobs.some(
+              (k) => k.reindex && saved.values[k.key] !== before[k.key],
+            ),
+          );
+        },
+      },
     );
   }
 
@@ -129,6 +153,36 @@ function SettingsForm({
         </section>
       ))}
       {update.isError && <ErrorText>{update.error.message}</ErrorText>}
+      {reindex && (
+        <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+          <p role="status" className="text-sm text-muted-foreground">
+            The new settings apply to documents indexed from now on. Re-index
+            every Workspace&apos;s documents to apply them to the others?
+          </p>
+          {reindexAll.isError && (
+            <ErrorText>{reindexAll.error.message}</ErrorText>
+          )}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              disabled={reindexAll.isPending}
+              onClick={() =>
+                reindexAll.mutate(undefined, {
+                  onSuccess: () => {
+                    toast.success("Re-indexing every Workspace's documents.");
+                    setReindex(false);
+                  },
+                })
+              }
+            >
+              Re-index now
+            </Button>
+            <Button type="button" onClick={() => setReindex(false)}>
+              Not now
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="primary" disabled={update.isPending}>
           Save settings
