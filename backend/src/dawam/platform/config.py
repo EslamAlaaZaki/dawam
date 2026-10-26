@@ -100,6 +100,11 @@ class Settings(DatabaseSettings):
     hsts_max_age_seconds: int = Field(default=31_536_000, ge=0)
     """``Strict-Transport-Security`` max-age, sent only on HTTPS requests; 0 turns HSTS off."""
 
+    request_threads: int = Field(default=200, ge=1)
+    """Worker threads for the API's blocking work. Each streaming answer holds one while it
+    waits on the provider (the gateway's HTTP is blocking), so size it for the streams you
+    expect at once, not for CPU cores."""
+
     forwarded_allow_ips: str = "127.0.0.1"
     """Proxies whose ``X-Forwarded-Proto``/``-For`` the app trusts (comma-separated IPs or
     networks, or ``*``): in Compose, the ``edge`` proxy. Only a request from one of them
