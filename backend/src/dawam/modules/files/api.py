@@ -15,7 +15,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
-from dawam.modules.auth import CurrentUser
+from dawam.modules.auth import CurrentUser, User
 from dawam.modules.lineage import InventoryFormatParam, PiiInventoryServiceDep
 from dawam.modules.sources import DataDictionaryServiceDep, SourceSystemService
 from dawam.modules.warehouse import (
@@ -28,7 +28,8 @@ from dawam.modules.warehouse import (
     SheetFormat,
     SheetLayer,
 )
-from dawam.modules.workspaces import WorkspaceService
+from dawam.modules.workspaces import INSTALLATION, Action, WorkspaceService, can
+from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
 from .search import DocumentSearchService, Passage, PassageFilters, StageEntry
@@ -36,6 +37,7 @@ from .service import FileService
 from .service import WorkspaceFile as WorkspaceFileView
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["files"])
+admin_router = APIRouter(prefix="/admin/llm/document-ai", tags=["files"])
 
 
 def file_service(request: Request) -> FileService:
@@ -55,6 +57,15 @@ def file_service(request: Request) -> FileService:
 
 
 FileServiceDep = Annotated[FileService, Depends(file_service)]
+
+
+def installation_admin(user: CurrentUser) -> User:
+    if not can(user, Action.MANAGE_SYSTEM_SETTINGS, INSTALLATION):
+        raise ApiError(403, "forbidden", "Only admins can do this.")
+    return user
+
+
+InstallationAdmin = Annotated[User, Depends(installation_admin)]
 
 
 def document_search(request: Request) -> DocumentSearchService:
@@ -519,6 +530,21 @@ def reindex_documents(
     job: run it after the embedding model or its dimension changes."""
     job = search.start_reindex(user, workspace_id)
     return ReindexStarted(job_id=job.id, status=job.status)
+
+
+class ReindexAllStarted(BaseModel):
+    job_ids: list[uuid.UUID] = Field(
+        description="One `reindex_documents` job per Workspace that has files."
+    )
+
+
+@admin_router.post("/reindex", operation_id="reindexAllDocuments", status_code=202)
+def reindex_all_documents(
+    _admin: InstallationAdmin, search: DocumentSearchDep
+) -> ReindexAllStarted:
+    """Index the documents of every Workspace again (admins only), as one background job
+    per Workspace: offered after the installation's Document AI settings change."""
+    return ReindexAllStarted(job_ids=[j.id for j in search.start_reindex_everywhere(_admin)])
 
 
 class FileIndexStatus(BaseModel):

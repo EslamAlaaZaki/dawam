@@ -921,6 +921,21 @@ class DocumentSearchService:
         after the embedding model or its dimension changes. A re-embed left unfinished
         (its job lost) is taken over: this job switches to the new vectors instead."""
         self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
+        return self._submit_reindex(user, workspace_id)
+
+    def start_reindex_everywhere(self, admin: User) -> list[Job]:
+        """Queue a ``reindex_documents`` job for every Workspace that has files (the
+        caller has checked the admin may; used after the installation's Document AI settings
+        change)."""
+        with Session(self._engine) as db:
+            ids = db.scalars(
+                sa.select(WorkspaceFileRecord.workspace_id)
+                .distinct()
+                .order_by(WorkspaceFileRecord.workspace_id)
+            ).all()
+        return [self._submit_reindex(admin, workspace_id) for workspace_id in ids]
+
+    def _submit_reindex(self, user: User, workspace_id: uuid.UUID) -> Job:
         with Session(self._engine) as db, db.begin():
             params = {"workspace_id": str(workspace_id)}
             if db.get(EmbeddingRebuildRecord, workspace_id, with_for_update=True) is not None:

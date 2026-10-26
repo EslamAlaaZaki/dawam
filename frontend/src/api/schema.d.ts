@@ -3517,6 +3517,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/llm/document-ai/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex All Documents
+         * @description Index the documents of every Workspace again (admins only), as one background job
+         *     per Workspace: offered after the installation's Document AI settings change.
+         */
+        post: operations["reindexAllDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/links": {
         parameters: {
             query?: never;
@@ -8771,6 +8792,14 @@ export interface components {
              * @description Whether visitors may sign up on their own.
              */
             open: boolean;
+        };
+        /** ReindexAllStarted */
+        ReindexAllStarted: {
+            /**
+             * Job Ids
+             * @description One `reindex_documents` job per Workspace that has files.
+             */
+            job_ids: string[];
         };
         /** ReindexStarted */
         ReindexStarted: {
@@ -19493,6 +19522,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindexAllDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexAllStarted"];
                 };
             };
             /** @description Validation error */

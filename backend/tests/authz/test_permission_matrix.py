@@ -370,6 +370,12 @@ ROWS: list[Row] = [
         admin_only(),
         json=lambda roles: {"version": 0, "values": {}},
     ),
+    Row(
+        "POST",
+        "/api/v1/admin/llm/document-ai/reindex",
+        "re-index every Workspace's documents",
+        admin_only(),
+    ),
     # Token budgets and AI usage (stories 159, 162).
     Row("GET", "/api/v1/admin/llm/budgets", "see the token budgets (story 159)", admin_only()),
     Row(

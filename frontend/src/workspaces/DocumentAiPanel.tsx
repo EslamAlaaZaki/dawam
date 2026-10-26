@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
+import { useReindexAllDocuments } from "../api/files";
 import {
   useSetWorkspaceDocumentAi,
   useWorkspaceDocumentAi,
@@ -102,6 +103,7 @@ function OwnerForm({
   const [overrides, setOverrides] = useState<Record<string, SettingValue>>(
     settings.overrides,
   );
+  const reindexAll = useReindexAllDocuments(workspaceId);
   const [reindex, setReindex] = useState(false);
 
   function toggle(knob: KnobInfo, on: boolean) {
@@ -116,6 +118,7 @@ function OwnerForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    reindexAll.reset();
     const before = settings.effective;
     update.mutate(
       { version: settings.version, overrides },
@@ -172,10 +175,34 @@ function OwnerForm({
       })}
       {update.isError && <ErrorText>{update.error.message}</ErrorText>}
       {reindex && (
-        <p role="status" className="text-sm text-muted-foreground">
-          The new chunking applies to documents indexed from now on. Re-index
-          the Workspace&apos;s documents to apply it to the others.
-        </p>
+        <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+          <p role="status" className="text-sm text-muted-foreground">
+            The new chunking applies to documents indexed from now on. Re-index
+            the Workspace&apos;s documents to apply it to the others?
+          </p>
+          {reindexAll.isError && (
+            <ErrorText>{reindexAll.error.message}</ErrorText>
+          )}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              disabled={reindexAll.isPending}
+              onClick={() =>
+                reindexAll.mutate(undefined, {
+                  onSuccess: () => {
+                    toast.success("Re-indexing all documents.");
+                    setReindex(false);
+                  },
+                })
+              }
+            >
+              Re-index now
+            </Button>
+            <Button type="button" onClick={() => setReindex(false)}>
+              Not now
+            </Button>
+          </div>
+        </div>
       )}
       <Actions>
         <Button type="submit" variant="primary" disabled={update.isPending}>
