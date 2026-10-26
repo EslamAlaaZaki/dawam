@@ -48,7 +48,7 @@ All code paths are under `backend/src/dawam/modules/` unless stated otherwise.
 ```mermaid
 flowchart TD
     UI["Browser: Next.js AssistantPanel"] -->|"POST message, SSE response"| API["assistant/api.py"]
-    API --> SVC["AssistantService.send_message<br/>authorize, store message, create run"]
+    API --> SVC["AssistantService.send_message<br/>authorize, rate limit, store message, create run"]
     SVC --> LOOP["run_agent<br/>assistant/internal/agent.py"]
     WORKER["Worker process<br/>assistant_task job"] --> LOOP
 
@@ -235,7 +235,7 @@ sequenceDiagram
     M->>UI: types a question
     UI->>API: POST message with page context and model pick
     API->>S: send_message
-    S->>DB: authorize, store user message, create run row
+    S->>DB: authorize, check rate limit (429 if over), store user message, create run row
     S-->>UI: SSE started
     S->>A: system prompt + last 30 messages
     loop until an answer or the tool-call cap
@@ -251,6 +251,7 @@ sequenceDiagram
             T->>DB: authorize and run as the member
             DB-->>T: result
             T-->>A: ToolOutcome
+            A->>A: injection check, WARNING if flagged
             A-->>UI: SSE tool event
             A->>A: append quoted result as a tool message
         end
@@ -539,7 +540,7 @@ Each tool names a workspace policy `Action` (`VIEW_WORKSPACE`, `REVIEW_PII`, `RU
 1. The user may run source queries (Owners/Editors); the system has a live Connection and a Snapshot.
 2. Name-based PII rules have run on the latest Snapshot.
 3. `check_query` parses the SQL against the Snapshot as a **whitelist over the parse tree**: exactly one `SELECT` (or set operation of `SELECT`s); only known node types; only allow-listed side-effect-free functions per engine; every table resolves to one table/view in an allowed schema of the same database (no synonyms, other databases or linked servers); every column resolves to one source column; `SELECT *` expanded; views traced through their definitions.
-4. **Protected Columns** (flagged sensitive or with a suggested/confirmed PII finding) may only be counted, null-checked or equated with another column (for finding join keys such as national ID, Iqama or mobile numbers). Projecting, grouping, ordering, MIN/MAX, comparing them to literals (`LIKE` and regex included) and character-slicing or pattern-extraction functions (`SUBSTR`, `LEFT`, `INSTR`, `REGEXP_SUBSTR`...) are rejected; the AI never reads raw PII, only analytics over it (counts, duplicate counts, aggregates whose result is not a raw value), and there is no read budget (ADR 0007); outputs derived from them are masked, with taint tracking through joins, views and derived tables.
+4. **Protected Columns** (flagged sensitive or with a suggested/confirmed PII finding) may only be counted, null-checked or equated with another column (for finding join keys such as national ID, Iqama or mobile numbers). Projecting, grouping, ordering, MIN/MAX, comparing them to literals (`LIKE` and regex included) and character-slicing or pattern-extraction functions (`SUBSTR`, `LEFT`, `INSTR`, `REGEXP_SUBSTR`...) are rejected; the AI never reads raw PII, only analytics over it (counts, duplicate counts, aggregates whose result is not a raw value), and there is no per-column read budget, unrelated to the per-run source-query time budget (ADR 0007); outputs derived from them are masked, with taint tracking through joins, views and derived tables.
 5. Only the **SQL regenerated from the verified tree** is sent to the source, never the model's text. It runs in a read-only transaction with a statement timeout and a 100-row cap, with the timeout cut to what remains of the run's budget.
 6. Every result cell is checked with the **Saudi PII validators** (`platform/pii_validators.py`: national ID/Iqama checksum, IBAN, mobile, email, card…). A hit masks that column and records a `suggested` finding.
 7. Database error text is replaced with DAWAM's own message per error code (it could echo a value).
@@ -781,7 +782,7 @@ sequenceDiagram
     M->>C: "Generate the whole Core Layer"
     C->>Q: start_job(task), queued as assistant_task
     C-->>M: "Started a job"
-    W->>Q: claim with FOR UPDATE SKIP LOCKED
+    W->>Q: claim highest priority, then oldest, FOR UPDATE SKIP LOCKED
     W->>W: member still active and allowed?
     W->>A: SYSTEM_PROMPT + JOB_PROMPT, cap 150
     loop tool calls
