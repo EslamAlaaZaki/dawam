@@ -540,10 +540,10 @@ class RoleService:
     def ensure_within_rate_limit(
         self, workspace_id: uuid.UUID | None, user_id: uuid.UUID | None
     ) -> None:
-        """Count one member-initiated AI request (an assistant message) and raise 429
-        ``ai_rate_limited`` when it is over the member's or the Workspace's requests per
-        minute. Counts reset every minute (per process); calls made for no member (background
-        jobs) are not limited."""
+        """Count one member assistant message and raise 429 ``ai_rate_limited`` when it is
+        over the member's or the Workspace's requests per minute. Only
+        ``AssistantService.send_message`` calls it: background jobs, internal model calls and
+        other gateway uses are not counted. Counts reset every minute (per process)."""
         if user_id is None:
             return
         now = self._clock()

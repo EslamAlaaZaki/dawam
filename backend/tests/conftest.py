@@ -49,6 +49,7 @@ from dawam.platform.csrf import CSRF_HEADER
 from dawam.platform.db import Base
 from dawam.platform.email import InMemoryOutbox
 from tests.docker_pulls import retry_image_pulls
+from dawam.modules.llm import role_service
 from tests.helpers import csrf_token, sign_in
 from tests.no_real_model import _no_real_model_calls  # noqa: F401  (autouse guard)
 from tests.roles import RoleClients
@@ -143,6 +144,13 @@ def outbox() -> InMemoryOutbox:
 @pytest.fixture
 def jobs() -> InlineJobRunner:
     return InlineJobRunner()
+
+
+@pytest.fixture(autouse=True)
+def _reset_ai_rate_limits() -> None:
+    """The rate-limit counts are module state: start every test with none."""
+    role_service._rate_counts.clear()
+    role_service._rate_window[0] = 0
 
 
 @pytest.fixture
