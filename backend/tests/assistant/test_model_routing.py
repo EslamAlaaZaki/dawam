@@ -14,6 +14,11 @@ from tests.assistant.test_chat import (  # noqa: F401 (model and settings are fi
 from tests.assistant.test_compaction import add_light, chats
 
 
+def answers(fake_llm, name):
+    """The calls that answered the member (they carry tools), not the title call."""
+    return [c for c in chats(fake_llm, name) if c.tools]
+
+
 def test_a_plain_question_is_answered_by_the_light_model(roles, model, admin_client, fake_llm):
     add_light(admin_client, roles, model)
     owner = roles.client("owner")
@@ -23,8 +28,8 @@ def test_a_plain_question_is_answered_by_the_light_model(roles, model, admin_cli
 
     assert done(ask(owner, roles, cid, "What is a KPI?"))["run"]["status"] == "completed"
 
-    assert len(chats(fake_llm, "light-model")) == 1
-    assert chats(fake_llm, "assistant-model") == []
+    assert len(answers(fake_llm, "light-model")) == 1
+    assert answers(fake_llm, "assistant-model") == []
 
 
 def test_a_request_to_generate_goes_to_the_agent_model(roles, model, admin_client, fake_llm):
@@ -36,8 +41,8 @@ def test_a_request_to_generate_goes_to_the_agent_model(roles, model, admin_clien
 
     done(ask(owner, roles, cid, "Create a staging table for orders"))
 
-    assert len(chats(fake_llm, "assistant-model")) == 1
-    assert chats(fake_llm, "light-model") == []
+    assert len(answers(fake_llm, "assistant-model")) == 1
+    assert answers(fake_llm, "light-model") == []
 
 
 def test_without_a_light_model_the_agent_model_answers(roles, model, fake_llm):
@@ -48,4 +53,4 @@ def test_without_a_light_model_the_agent_model_answers(roles, model, fake_llm):
 
     done(ask(owner, roles, cid, "What is a KPI?"))
 
-    assert len(chats(fake_llm, "assistant-model")) == 1
+    assert len(answers(fake_llm, "assistant-model")) == 1
