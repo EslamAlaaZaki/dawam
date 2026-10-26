@@ -17,10 +17,12 @@ this order, failing closed at every step:
 6. what the model learns about a failure is a message of our own per error code: a database's
    error text can echo a value.
 
-Known limitation: a model can read an unflagged text column piece by piece with
-``SUBSTR``/``LEFT``/``RIGHT``/``REVERSE`` so that no single cell passes a validator. The guard
-does not block this (it would block most legitimate exploration); the per-run budget, the row
-cap and the audit trail of every query limit and expose it.
+On a protected column the guard rejects character-slicing and pattern-extraction functions
+(``SUBSTR``, ``LEFT``, ``INSTR``, ``REGEXP_SUBSTR``...; ADR 0007) as well as ``LIKE``/regex
+predicates. Known limitation: a model can still read an *unflagged* text column piece by piece
+so that no single cell passes a validator. The guard does not block this (it would block most
+legitimate exploration); the per-run budget, the row cap and the audit trail of every query
+limit and expose it.
 
 Every run is audited (``source_query`` entity, channel ``ai``): the model's SQL with
 validator-detectable PII redacted, the outcome, column names, row count and duration, never a

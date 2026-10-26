@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends, FastAPI
 from sqlalchemy.orm import Session
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -143,6 +144,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Streaming answers hold a thread while they wait on the provider: size the pool.
+        anyio.to_thread.current_default_thread_limiter().total_tokens = settings.request_threads
         if settings.run_migrations_on_startup:
             upgrade_to_head(engine)
         try:

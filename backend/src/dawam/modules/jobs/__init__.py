@@ -2,7 +2,7 @@
 
 Public interface. Other modules import only what is re-exported here:
 
-- ``JobService``: ``submit(workspace_id, job_type, params, title=, created_by=, db=)``
+- ``JobService``: ``submit(workspace_id, job_type, params, title=, created_by=, priority=, db=)``
   queues a job, in the caller's transaction when given ``db`` (the caller authorizes
   first); ``get`` / ``list`` / ``cancel`` act for a user through the workspaces policy.
   The worker uses ``claim_next``, ``execute``, ``heartbeat`` and ``fail_lost``.
@@ -23,6 +23,9 @@ Owns the ``jobs`` table. Imports ``auth``, ``notifications`` and ``workspaces``.
 
 from .api import router
 from .service import (
+    PRIORITY_CHAT,
+    PRIORITY_LOW,
+    PRIORITY_NORMAL,
     InlineJobRunner,
     Job,
     JobCancelledError,
@@ -36,6 +39,9 @@ from .service import (
 )
 
 __all__ = [
+    "PRIORITY_CHAT",
+    "PRIORITY_LOW",
+    "PRIORITY_NORMAL",
     "InlineJobRunner",
     "Job",
     "JobCancelledError",
