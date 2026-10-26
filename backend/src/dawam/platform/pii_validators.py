@@ -348,12 +348,25 @@ def redact_text(
     return text
 
 
-def redact_json(value: Any) -> Any:
-    """``value`` (JSON-like) with ``redact_text`` applied to every string, keys included."""
+STRUCTURED_KEYS = frozenset(
+    {"sql", "name", "table", "column", "schema", "db_schema", "data_type", "expression", "code"}
+)
+"""JSON fields that hold SQL or identifiers, not prose: the regex rules still apply to them,
+NER-based masking (names, addresses) does not, so ``Customers.FullName`` is never mangled."""
+
+
+def redact_json(value: Any, *, entities: bool = True) -> Any:
+    """``value`` (JSON-like) with ``redact_text`` applied to every string, keys included.
+    Keys, and values under a ``STRUCTURED_KEYS`` key, get the regex rules only."""
     if isinstance(value, str):
-        return redact_text(value)
+        return redact_text(value, entities=entities)
     if isinstance(value, dict):
-        return {redact_text(str(k)): redact_json(v) for k, v in value.items()}
+        return {
+            redact_text(str(k), entities=False): redact_json(
+                v, entities=entities and str(k) not in STRUCTURED_KEYS
+            )
+            for k, v in value.items()
+        }
     if isinstance(value, list | tuple):
-        return [redact_json(v) for v in value]
+        return [redact_json(v, entities=entities) for v in value]
     return value

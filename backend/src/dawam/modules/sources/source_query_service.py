@@ -269,7 +269,7 @@ class SourceQueryService:
         masked |= set(hits) | weak
         written = self._record_findings(workspace_id, snapshot_id, checked, hits)
         # Names are the model's own aliases; redacted all the same.
-        names = tuple(redact_text(str(n)) for n in raw.columns)
+        names = tuple(redact_text(str(n), entities=False) for n in raw.columns)
         rows = tuple(
             tuple(MASK if i in masked else _shown(v) for i, v in enumerate(row[: len(raw.columns)]))
             for row in raw.rows
@@ -422,7 +422,7 @@ class SourceQueryService:
                 entity_type=AUDIT_ENTITY,
                 entity_id=system_id,
                 old=None,
-                new={"sql": redact_text(sql)[:MAX_AUDIT_SQL_CHARS], **outcome},
+                new={"sql": redact_text(sql, entities=False)[:MAX_AUDIT_SQL_CHARS], **outcome},
                 at=self._clock(),
                 via="ai",
             )

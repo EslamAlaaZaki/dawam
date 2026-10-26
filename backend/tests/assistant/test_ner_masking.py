@@ -3,6 +3,8 @@ the NER engine faked at its port (``FakeEntityDetector``)."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from dawam.modules.llm import Reply
@@ -23,6 +25,7 @@ def ner():
                 "Riyadh": "location",
                 "عمر الحداد": "person",
                 "الرياض": "location",
+                "FullName": "person",
             }
         )
     )
@@ -67,3 +70,22 @@ def test_names_in_a_saved_file_are_masked(roles, model, fake_llm, ner):
     assert content(roles, saved) == (
         "Ask [redacted: person_name] or [redacted: person_name] about `orders`.\n"
     )
+
+
+def test_identifiers_in_saved_sql_are_left_alone(roles, model, fake_llm, ner):
+    client = roles.client("owner")
+    cid = conversation(client, roles)
+    sql = "SELECT COUNT(DISTINCT FullName) FROM dbo.Customers"
+    fake_llm.script(
+        Reply(tool_calls=(tool("run_source_query", system_id=str(uuid.uuid4()), sql=sql),)),
+        Reply(text="FullName is unique."),
+    )
+
+    ask(client, roles, cid, "Is the name unique?")
+
+    saved = client.get(f"{base(roles)}/conversations/{cid}").json()
+    [run] = [m["run"] for m in saved["messages"] if m["run"]]
+    [call] = run["tool_calls"]
+    assert call["arguments"]["sql"] == sql
+    [answer] = [m for m in saved["messages"] if m["role"] == "assistant"]
+    assert answer["content"] == "[redacted: person_name] is unique."  # prose is still masked

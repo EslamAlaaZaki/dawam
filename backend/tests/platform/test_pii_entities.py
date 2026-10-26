@@ -7,6 +7,7 @@ spaCy (English) and CAMeL Tools (Arabic) on a tiny fixture.
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from pathlib import Path
 
@@ -109,6 +110,17 @@ def test_entities_can_be_left_out_and_json_is_masked_too(ner):
     assert redact_json({"by": ["Omar Haddad"]}) == {"by": ["[redacted: person_name]"]}
 
 
+def test_json_keys_and_sql_or_identifier_fields_skip_ner(ner):
+    value = {"Omar Haddad": "Omar Haddad", "sql": "SELECT Omar Haddad", "name": ["Omar Haddad"]}
+
+    assert redact_json(value) == {
+        "Omar Haddad": "[redacted: person_name]",
+        "sql": "SELECT Omar Haddad",
+        "name": ["Omar Haddad"],
+    }
+    assert redact_json({"sql": "x a.b@example.com"}) == {"sql": "x [redacted: email]"}
+
+
 def test_without_a_detector_only_the_regex_rules_run():
     assert entity_detector() is None
     assert redact_text("Omar Haddad, a.b@example.com", today=TODAY) == (
@@ -135,6 +147,10 @@ def test_configure_leaves_ner_off_unless_turned_on():
 def test_real_presidio_masks_arabic_and_english_names_and_addresses():
     settings = _Settings()
     settings.pii_ner_enabled = True
+    # CI points this at a folder holding the pinned model revision.
+    settings.pii_ner_arabic_model = os.environ.get(
+        "DAWAM_PII_NER_ARABIC_MODEL", settings.pii_ner_arabic_model
+    )
     try:
         configure_entity_detector(settings)  # type: ignore[arg-type]
         for case in ("en", "ar"):
