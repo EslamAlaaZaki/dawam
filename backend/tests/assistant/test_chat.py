@@ -269,6 +269,7 @@ def test_a_viewer_can_still_use_read_tools(roles, model, fake_llm):
     assert [d["status"] for n, d in events if n == "tool"] == ["ok"]
     assert tool_names(fake_llm) == {
         "get_object",
+        "search_workspace",
         "get_score",
         "evaluate_dw",
         "explain_check",

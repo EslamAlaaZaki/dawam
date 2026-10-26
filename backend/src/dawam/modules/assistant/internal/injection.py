@@ -112,9 +112,10 @@ def _verdict(reply: str) -> bool:
 def flagged_parts(name: str, content: str, inspect: Inspector) -> list[str]:
     """What in a tool result looks injected: the names of the documents whose passages are
     flagged (for a document search), else the tool's own name when the whole result is."""
-    if name == "search_documents":
+    if name in ("search_documents", "search_workspace"):
+        key = "passages" if name == "search_documents" else "document"
         try:
-            passages = json.loads(content).get("passages")
+            passages = json.loads(content).get(key)
         except (ValueError, AttributeError):
             passages = None
         if isinstance(passages, list):
