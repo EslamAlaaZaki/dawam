@@ -191,6 +191,39 @@ def test_a_specialist_whose_worker_died_resumes_without_repeating_its_finished_c
     assert [m.role for m in sent] == ["system", "user", "assistant", "tool", "assistant", "tool"]
     [created] = change_sets(roles)
     assert created["item_counts"] == {"pending": 2}
+    # Six model calls of 10 + 5 tokens, three before the restart and three after.
+    assert "60 prompt and 30 completion tokens" in resumed["log"]
+
+
+def test_a_resumed_job_keeps_finished_specialists_tokens_and_the_mode_it_began_in(
+    app, services, roles, model
+):
+    kpi = add_kpi(roles)
+    adapter = _DyingAdapter(at=4).script(
+        Reply(tool_calls=(delegate("kpi_analyst", "Read KPI " + kpi),)),
+        Reply(tool_calls=(tool("get_object", "k1", kind="kpi", id=kpi),)),
+        Reply(text="Read it."),  # the specialist has finished when the worker dies
+        Reply(text="Done."),
+    )
+    services.llm_adapters = lambda kind, config: adapter
+    handler = services.jobs.handler(JOB_TYPE)
+    runner = QueuedJobRunner()
+    runner.register(JOB_TYPE, handler)
+    queue = JobService(app.state.engine, runner=runner, clock=services.clock)
+    submit(app, services, roles, queue=queue)
+    with pytest.raises(WorkerKilled):
+        queue.execute(queue.claim_next())
+
+    handler.__self__._job_supervisor = False  # the flag is turned off meanwhile
+    services.clock.advance(timedelta(minutes=5))
+    assert queue.fail_lost() == 1
+    queue.execute(queue.claim_next())
+
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded", resumed["log"]
+    assert "delegate" in tool_names(adapter, 3)  # still the supervisor
+    assert resumed["log"].count("get_object ok") == 1
+    assert "40 prompt and 20 completion tokens" in resumed["log"]
 
 
 def test_the_supervisor_asks_the_member_and_resumes_with_the_answer(

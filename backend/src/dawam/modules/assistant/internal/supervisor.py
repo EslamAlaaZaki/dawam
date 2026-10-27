@@ -222,11 +222,17 @@ class Supervisor:
         """Calls of the job so far that count against its cap, at both levels."""
         child = saved.get("child") if saved else None
         self._child: dict[str, Any] | None = dict(child) if child else None
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
+        self.prompt_tokens: int = int(saved.get("prompt_tokens", 0)) if saved else 0
+        """What the finished specialists used (the one in progress keeps its own count)."""
+        self.completion_tokens: int = int(saved.get("completion_tokens", 0)) if saved else 0
 
     def saved(self) -> dict[str, Any]:
-        return {"spent": self._spent, "child": self._child}
+        return {
+            "spent": self._spent,
+            "child": self._child,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+        }
 
     def specs(self) -> Sequence[ToolSpec]:
         own = [s for s in self._tools.specs() if s.name in SUPERVISOR_TOOLS]
@@ -265,6 +271,9 @@ class Supervisor:
         resume: Checkpoint | None = None
         start = self._spent
         if self._child is not None and self._child.get("key") == key:  # the worker died in it
+            done = self._child.get("done")
+            if done is not None:  # after it finished: its report stands
+                return ToolOutcome(done["content"], done["status"], done["saved"])
             start = int(self._child["start"])
             resume = Checkpoint.from_json(self._child.get("run") or {})
         self._child = {"key": key, "start": start, "run": None}
@@ -292,21 +301,38 @@ class Supervisor:
             elif isinstance(event, Finished):
                 finished = event
                 break
-        self._child = None
         self._spent = start + _counted(finished.tool_calls)
         self.prompt_tokens += finished.prompt_tokens
         self.completion_tokens += finished.completion_tokens
-        saved = {
-            "specialist": specialist.name,
-            "status": finished.status,
-            "tool_calls": _counted(finished.tool_calls),
+        outcome = _outcome(specialist, finished)
+        # Kept until the supervisor's own checkpoint has the result (``settle``), so a worker
+        # that dies in between hands back this report instead of running the specialist again.
+        self._child = {
+            "key": key,
+            "start": start,
+            "done": {"content": outcome.content, "status": outcome.status, "saved": outcome.saved},
         }
-        if finished.status == "cancelled":
-            return ToolOutcome("The job was cancelled.", "error", saved)
-        if finished.status == "failed":
-            reason = finished.error_message or "The specialist could not finish."
-            return ToolOutcome(f"The specialist failed: {reason}", "error", saved)
-        report = finished.text.strip() or "The specialist reported nothing."
-        if finished.status == "tool_limit":
-            report += "\n\n(The job's tool-call limit was reached.)"
-        return ToolOutcome(report, "ok", saved)
+        self._on_save()
+        return outcome
+
+    def settle(self) -> None:
+        """The supervisor's run checkpointed: a finished specialist's report is in it."""
+        if self._child is not None and "done" in self._child:
+            self._child = None
+
+
+def _outcome(specialist: Specialist, finished: Finished) -> ToolOutcome:
+    saved = {
+        "specialist": specialist.name,
+        "status": finished.status,
+        "tool_calls": _counted(finished.tool_calls),
+    }
+    if finished.status == "cancelled":
+        return ToolOutcome("The job was cancelled.", "error", saved)
+    if finished.status == "failed":
+        reason = finished.error_message or "The specialist could not finish."
+        return ToolOutcome(f"The specialist failed: {reason}", "error", saved)
+    report = finished.text.strip() or "The specialist reported nothing."
+    if finished.status == "tool_limit":
+        report += "\n\n(The job's tool-call limit was reached.)"
+    return ToolOutcome(report, "ok", saved)

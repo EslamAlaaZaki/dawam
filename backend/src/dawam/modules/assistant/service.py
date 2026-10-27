@@ -648,6 +648,7 @@ class AssistantService:
                 # Stored like the run's other records: redacted (ADR 0002). The proposals stay
                 # as they are; they become the Change Set's items.
                 data = {
+                    "mode": "supervisor" if supervisor is not None else "single",
                     "run": latest["run"],
                     "proposals": tools.saved_proposals(),
                     "plan": redact_json(tools.saved_plan()),
@@ -658,6 +659,8 @@ class AssistantService:
 
             def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
                 latest["run"] = redact_json(state.to_json())
+                if supervisor is not None:
+                    supervisor.settle()
                 write()
 
             def logged(event: ToolFinished) -> None:
@@ -670,7 +673,10 @@ class AssistantService:
             system = SYSTEM_PROMPT + JOB_PROMPT + today_line()
             toolset: Any = tools
             verify = Verify(tools.written_names(), check=tools.check_proposals)
-            if self._job_supervisor:  # ADR 0009: behind a flag, off by default
+            # ADR 0009: behind a flag, off by default. A resumed job keeps the mode it began
+            # in (a checkpoint from before modes were stored is a single agent's).
+            mode = (saved.get("mode") or "single") if resume and saved else None
+            if mode == "supervisor" or (mode is None and self._job_supervisor):
                 supervisor = Supervisor(
                     tools,
                     gateway,
