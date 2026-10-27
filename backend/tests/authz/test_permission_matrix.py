@@ -1602,6 +1602,13 @@ ROWS: list[Row] = [
         "Cancel a job (your own; anyone's is owner-only)",
         workspace(admin=False, owner=True, editor=False, viewer=False),
     ),
+    Row(
+        "POST",
+        "/api/v1/jobs/{job_id}/answer",
+        "Answer a paused job (only the member who started it)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"answer": "Use the invoices table."},
+    ),
     # Connections (stories 40-43): owners only, including seeing them (host and user are
     # owner-only information). Nothing here connects anywhere that answers. Seeing one
     # (connection.view) works in an archived Workspace too; changing one does not.

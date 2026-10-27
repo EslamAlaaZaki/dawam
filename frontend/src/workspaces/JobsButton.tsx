@@ -23,6 +23,7 @@ import { ErrorText } from "./parts";
 const STATUS_LABELS: Record<JobStatus, string> = {
   queued: "Queued",
   running: "Running",
+  paused: "Waiting for your answer",
   succeeded: "Succeeded",
   failed: "Failed",
   cancelled: "Cancelled",
@@ -109,11 +110,7 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
                 >
                   {job.progress}%
                 </progress>
-                {job.error && (
-                  <ErrorText>
-                    {job.error}
-                  </ErrorText>
-                )}
+                {job.error && <ErrorText>{job.error}</ErrorText>}
                 {job.log && (
                   <details>
                     <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
@@ -138,11 +135,7 @@ function JobsPopover({ workspace }: { workspace: Workspace }) {
             ))}
           </ul>
         )}
-        {cancel.isError && (
-          <ErrorText>
-            {cancel.error.message}
-          </ErrorText>
-        )}
+        {cancel.isError && <ErrorText>{cancel.error.message}</ErrorText>}
       </PopoverContent>
     </Popover>
   );

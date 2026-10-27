@@ -102,6 +102,7 @@ function extractJob(status: Job["status"]): Job {
     progress: status === "succeeded" ? 100 : 0,
     log: "",
     error: null,
+    question: null,
     created_by: ADA.id,
     created_at: "2026-01-05T10:00:00Z",
     started_at: null,

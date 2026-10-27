@@ -39,7 +39,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
-import { isActive, useCancelJob, useJob } from "../api/jobs";
+import { isActive, useAnswerJob, useCancelJob, useJob } from "../api/jobs";
 import { useWorkspaceAiSettings } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
@@ -84,6 +84,8 @@ function JobProgress({
 }) {
   const job = useJob(jobId);
   const cancel = useCancelJob(workspaceId);
+  const answer = useAnswerJob(workspaceId);
+  const [reply, setReply] = useState("");
   const current = job.data;
   return (
     <div
@@ -112,6 +114,40 @@ function JobProgress({
           )}
           {current.error && (
             <p className="w-full text-danger-strong">{current.error}</p>
+          )}
+          {current.status === "paused" && current.question && (
+            <form
+              className="flex w-full flex-col gap-2"
+              aria-label="Answer the job"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const text = reply.trim();
+                if (text) {
+                  answer.mutate(
+                    { jobId, answer: text },
+                    { onSuccess: () => setReply("") },
+                  );
+                }
+              }}
+            >
+              <p className="font-medium">{current.question}</p>
+              <Textarea
+                aria-label="Your answer"
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                rows={2}
+              />
+              {answer.error && <ErrorText>{answer.error.message}</ErrorText>}
+              <div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!reply.trim() || answer.isPending}
+                >
+                  Send answer
+                </Button>
+              </div>
+            </form>
           )}
         </>
       ) : (

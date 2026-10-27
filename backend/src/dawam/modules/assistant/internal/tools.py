@@ -167,6 +167,8 @@ class Tool:
     """The data-sharing level the Workspace needs for the tool to be used at all."""
     chat_only: bool = False
     """Not offered to a job (a job does not start jobs)."""
+    job_only: bool = False
+    """Offered to a job only (a chat just answers)."""
     compact: bool = False
     """Drop the schema's generated titles: the tool's schema is large and sent on every call."""
     offered: Callable[[ToolContext], bool] | None = None
@@ -734,6 +736,14 @@ class _StartJob(BaseModel):
         min_length=1,
         max_length=4000,
         description="The whole task, self-contained: the job does not see this conversation.",
+    )
+
+
+class _AskMember(BaseModel):
+    question: str = Field(
+        min_length=1,
+        max_length=1000,
+        description="One clear question for the member, with the options if there are a few.",
     )
 
 
@@ -1951,6 +1961,11 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     }
 
 
+def _ask_member(ctx: ToolContext, args: _AskMember) -> Any:
+    """The agent loop stops at this call and resumes it with the answer; it never runs."""
+    raise RuntimeError("ask_member is handled by the agent loop")
+
+
 def _start_job(ctx: ToolContext, args: _StartJob) -> Any:
     return _submit_job(ctx, args.title, args.task)
 
@@ -2728,6 +2743,18 @@ TOOLS: tuple[Tool, ...] = (
         offered=_web_fetch_offered,
     ),
     Tool(
+        "ask_member",
+        "Pause this job and ask the member one question when you cannot go on without a "
+        "decision only they can make (which of two readings of the task, a business rule you "
+        "cannot find). The job waits, possibly for days, and resumes with their answer as "
+        "this tool's result. Use it sparingly and never for what your other tools can find.",
+        _AskMember,
+        "read",
+        Action.ASK_ASSISTANT,
+        _ask_member,
+        job_only=True,
+    ),
+    Tool(
         "start_job",
         "Hand a large task (exploring many tables, generating a whole layer) to a background "
         "job that can make many more tool calls than this chat. It reports progress here and "
@@ -2804,6 +2831,7 @@ BASE_TOOLS = frozenset(
         "propose_changes",
         "render_diagram",
         "start_job",
+        "ask_member",
     }
 )
 """The tools sent on every page once tool search is on (``agent.TOOL_SEARCH_THRESHOLD``)."""
@@ -2931,7 +2959,8 @@ class BoundTools:
         return names
 
     def _offered(self, tool: Tool) -> bool:
-        if tool.chat_only and self._ctx.proposals is not None:
+        in_job = self._ctx.proposals is not None
+        if (tool.chat_only and in_job) or (tool.job_only and not in_job):
             return False
         return tool.offered is None or tool.offered(self._ctx)
 

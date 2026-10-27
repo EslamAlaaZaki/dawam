@@ -100,6 +100,7 @@ interface Options {
   stopped?: () => void;
   rated?: (body: unknown) => Response;
   job?: Record<string, unknown>;
+  answered?: (body: unknown) => Response;
   ai?: Record<string, unknown>;
 }
 
@@ -134,6 +135,8 @@ function backend(options: Options = {}) {
         return options.answer?.();
       case `GET /api/v1/jobs/${JOB_ID}`:
         return json(options.job);
+      case `POST /api/v1/jobs/${JOB_ID}/answer`:
+        return options.answered?.(r.body);
       case `PUT ${ASSISTANT}/${CONVERSATION_ID}/runs/${RUN_ID}/feedback`:
         return options.rated?.(r.body);
       case `POST ${ASSISTANT}/${CONVERSATION_ID}/stop`:
@@ -457,6 +460,83 @@ describe("the assistant's chat panel", () => {
     expect(
       within(job).getByRole("button", { name: "Cancel job" }),
     ).toBeInTheDocument();
+  });
+
+  it("lets the member answer the question a paused job asked", async () => {
+    const start = {
+      name: "start_job",
+      arguments: { title: "Explore tables", task: "x" },
+      status: "ok",
+      duration_ms: 5,
+      result: { job_id: JOB_ID, title: "Explore tables" },
+    };
+    const paused = {
+      id: JOB_ID,
+      status: "paused",
+      progress: 40,
+      error: null,
+      log: "",
+      question: "Which KPIs matter?",
+    };
+    const answered = vi.fn((body: unknown) =>
+      json({
+        ...paused,
+        status: "queued",
+        question: null,
+        ...(body as object),
+      }),
+    );
+    renderApp(
+      backend({
+        job: paused,
+        answered,
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Explore everything",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [start] }),
+              sender: ADA_SENDER,
+              model: null,
+            },
+          ],
+        },
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", start),
+            frame("done", {
+              run: run({ tool_calls: [start] }),
+              message_id: "a",
+            }),
+          ]),
+      }),
+      PATH,
+    );
+    await openAssistant();
+    await ask("Explore everything");
+
+    const job = await screen.findByRole("status", {
+      name: "Job: Explore tables",
+    });
+    expect(await within(job).findByText("Which KPIs matter?")).toBeVisible();
+    expect(
+      within(job).getByRole("button", { name: "Cancel job" }),
+    ).toBeInTheDocument();
+    const send = within(job).getByRole("button", { name: "Send answer" });
+    expect(send).toBeDisabled();
+
+    fireEvent.change(within(job).getByLabelText("Your answer"), {
+      target: { value: "The revenue ones." },
+    });
+    fireEvent.click(send);
+
+    await waitFor(() =>
+      expect(answered).toHaveBeenCalledWith({ answer: "The revenue ones." }),
+    );
   });
 
   it("stops the running answer with the Stop button", async () => {

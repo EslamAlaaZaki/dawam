@@ -1920,6 +1920,70 @@
         }
       }
     },
+    "/api/v1/jobs/{job_id}/answer": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Answer Job",
+        "description": "Answer the question a paused job asked; the job is queued again and resumes with the\nanswer. Only the member who started the job may. 409 `job_not_paused` if it is not\nwaiting for an answer, 422 `invalid_answer`.",
+        "operationId": "answerJob",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobAnswer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs": {
       "get": {
         "tags": [
@@ -22295,6 +22359,7 @@
             "enum": [
               "queued",
               "running",
+              "paused",
               "succeeded",
               "failed",
               "cancelled"
@@ -22322,6 +22387,18 @@
             ],
             "title": "Error",
             "description": "Why the job failed; null otherwise."
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question",
+            "description": "What a paused job asks its creator; null unless the status is `paused`."
           },
           "created_by": {
             "anyOf": [
@@ -22375,12 +22452,27 @@
           "progress",
           "log",
           "error",
+          "question",
           "created_by",
           "created_at",
           "started_at",
           "finished_at"
         ],
         "title": "Job"
+      },
+      "JobAnswer": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "The member's answer to the job's question."
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "JobAnswer"
       },
       "JobPage": {
         "properties": {

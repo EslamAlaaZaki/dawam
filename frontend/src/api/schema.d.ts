@@ -603,6 +603,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Job
+         * @description Answer the question a paused job asked; the job is queued again and resumes with the
+         *     answer. Only the member who started the job may. 409 `job_not_paused` if it is not
+         *     waiting for an answer, 422 `invalid_answer`.
+         */
+        post: operations["answerJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs": {
         parameters: {
             query?: never;
@@ -7044,7 +7066,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            status: "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
             /**
              * Progress
              * @description Percent done, 0 to 100.
@@ -7060,6 +7082,11 @@ export interface components {
              * @description Why the job failed; null otherwise.
              */
             error: string | null;
+            /**
+             * Question
+             * @description What a paused job asks its creator; null unless the status is `paused`.
+             */
+            question: string | null;
             /** Created By */
             created_by: string | null;
             /**
@@ -7071,6 +7098,14 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /** JobAnswer */
+        JobAnswer: {
+            /**
+             * Answer
+             * @description The member's answer to the job's question.
+             */
+            answer: string;
         };
         /** JobPage */
         JobPage: {
@@ -12933,6 +12968,50 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    answerJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobAnswer"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
