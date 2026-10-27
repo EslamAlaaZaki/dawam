@@ -4326,6 +4326,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Conversations
+         * @description Search the titles and messages of your conversations and those members shared,
+         *     including the outcomes of assistant jobs, newest first. Somebody else's private
+         *     conversation never matches (any member; 404 for non-members).
+         */
+        get: operations["searchAssistantConversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -9626,13 +9648,43 @@ export interface components {
              */
             status: "present" | "source_removed" | "out_of_scope" | "deleted";
         };
-        /** SearchResults */
-        SearchResults: {
+        /** SearchHitOut */
+        SearchHitOut: {
             /**
-             * Items
-             * @description Exact name matches first, then names starting with the query.
+             * Kind
+             * @description A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one.
+             * @enum {string}
              */
-            items: components["schemas"]["SearchHit"][];
+            kind: "conversation" | "message" | "job_summary";
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Conversation Title */
+            conversation_title: string;
+            /** Shared With Workspace */
+            shared_with_workspace: boolean;
+            /**
+             * Mine
+             * @description You started the conversation.
+             */
+            mine: boolean;
+            /**
+             * Message Id
+             * @description The matching message; none for a title.
+             */
+            message_id: string | null;
+            /**
+             * Snippet
+             * @description A short stretch of text around the match.
+             */
+            snippet: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
         };
         /** SecurityEventOut */
         SecurityEventOut: {
@@ -11770,6 +11822,11 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** SearchResults */
+        dawam__modules__assistant__api__SearchResults: {
+            /** Items */
+            items: components["schemas"]["SearchHitOut"][];
+        };
         /** ProposedChangeSet */
         dawam__modules__propagation__api__ProposedChangeSet: {
             /**
@@ -11788,6 +11845,14 @@ export interface components {
              * @description Stored SQL sqlglot could not translate, flagged "manual" (platform changes).
              */
             manual: string[];
+        };
+        /** SearchResults */
+        dawam__modules__sources__snapshot_api__SearchResults: {
+            /**
+             * Items
+             * @description Exact name matches first, then names starting with the query.
+             */
+            items: components["schemas"]["SearchHit"][];
         };
         /** ProposedChangeSet */
         dawam__modules__warehouse__staging_api__ProposedChangeSet: {
@@ -15884,7 +15949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SearchResults"];
+                    "application/json": components["schemas"]["dawam__modules__sources__snapshot_api__SearchResults"];
                 };
             };
             /** @description Validation error */
@@ -21972,6 +22037,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchAssistantConversations: {
+        parameters: {
+            query: {
+                /** @description Text to look for (case-insensitive). */
+                q: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["dawam__modules__assistant__api__SearchResults"];
                 };
             };
             /** @description Validation error */

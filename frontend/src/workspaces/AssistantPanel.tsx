@@ -51,6 +51,11 @@ import { allows, type Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
 import { ConversationChangeSets } from "./ChangeSetReview";
 import { Avatar, Markdown, MessageTime } from "./chatParts";
+import {
+  ConversationSearchBox,
+  ConversationSearchResults,
+  useSearchTerm,
+} from "./ConversationSearch";
 import type { AssistantRequest } from "./FailedChecksPanel";
 import {
   ErrorText,
@@ -628,6 +633,7 @@ export function AssistantPanel({
   const me = useMe();
   const conversations = useConversations(workspace.id);
   const create = useCreateConversation(workspace.id);
+  const search = useSearchTerm();
   const [chosen, setChosen] = useState<string | null>(null);
   const selected = chosen ?? conversations.data?.[0]?.id ?? null;
   const detail = useConversation(workspace.id, selected);
@@ -748,6 +754,7 @@ export function AssistantPanel({
   }
 
   function choose(id: string) {
+    search.setTyped("");
     setChosen(id);
     setPicked(null);
     setFailed(null);
@@ -1056,35 +1063,51 @@ export function AssistantPanel({
                 </Button>
               </div>
             )}
-            {conversations.isError && (
+            <ConversationSearchBox
+              value={search.typed}
+              onChange={search.setTyped}
+            />
+            {search.term !== "" && (
+              <ConversationSearchResults
+                workspaceId={workspace.id}
+                term={search.term}
+                disabled={running}
+                onOpen={choose}
+              />
+            )}
+            {search.term === "" && conversations.isError && (
               <div className="px-3">
                 <ErrorText>Could not load the conversations.</ErrorText>
               </div>
             )}
-            {conversations.isSuccess && conversations.data.length === 0 && (
-              <Hint className="px-3">No conversations yet.</Hint>
-            )}
+            {search.term === "" &&
+              conversations.isSuccess &&
+              conversations.data.length === 0 && (
+                <Hint className="px-3">No conversations yet.</Hint>
+              )}
             {/* Room around the items so their focus ring is not cut off by the scroll box. */}
-            <ul className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-1 pb-3">
-              {conversations.data?.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className={conversationClasses}
-                    aria-current={c.id === selected ? "true" : undefined}
-                    disabled={running}
-                    onClick={() => choose(c.id)}
-                  >
-                    <span className="min-w-0 truncate">{c.title}</span>
-                    {!c.mine && (
-                      <span className="shrink-0 text-xs text-subtle-foreground">
-                        (shared)
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {search.term === "" && (
+              <ul className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-1 pb-3">
+                {conversations.data?.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className={conversationClasses}
+                      aria-current={c.id === selected ? "true" : undefined}
+                      disabled={running}
+                      onClick={() => choose(c.id)}
+                    >
+                      <span className="min-w-0 truncate">{c.title}</span>
+                      {!c.mine && (
+                        <span className="shrink-0 text-xs text-subtle-foreground">
+                          (shared)
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </nav>
         </>
       )}

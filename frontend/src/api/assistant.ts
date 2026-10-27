@@ -38,6 +38,27 @@ export function useConversations(workspaceId: string) {
   });
 }
 
+export type SearchHit = components["schemas"]["SearchHitOut"];
+
+/** Search the titles and messages (job summaries included) of the conversations the member
+ * may read; waits for a non-blank term. */
+export function useSearchConversations(workspaceId: string, term: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workspace", workspaceId, "assistant", "search", term] as const,
+    enabled: term !== "",
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(`${ROOT}/search`, {
+        params: { path: { workspace_id: workspaceId }, query: { q: term } },
+      });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data.items;
+    },
+  });
+}
+
 export function useConversation(
   workspaceId: string,
   conversationId: string | null,
