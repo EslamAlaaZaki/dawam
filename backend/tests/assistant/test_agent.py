@@ -17,6 +17,7 @@ from dawam.modules.assistant.internal.agent import (
     Text,
     ToolFinished,
     ToolOutcome,
+    Verify,
     run_agent,
 )
 from dawam.modules.llm import (
@@ -705,3 +706,142 @@ def test_other_answers_make_no_structuring_call():
     run(adapter)
 
     assert all(c.json_schema is None for c in adapter.calls)
+
+
+# -- self-verification (jobs check their own work) ----------------------------------------
+
+WRITE = ToolSpec("write_it", "Write it.", {"type": "object"})
+VALIDATE = ToolSpec("run_validation", "Validate.", {"type": "object"})
+SCORE = ToolSpec("get_score", "Score.", {"type": "object"})
+
+
+class Verifying:
+    """A tool set whose warehouse validation and score are fixed; it records what ran."""
+
+    def __init__(self) -> None:
+        self.ran: list[str] = []
+
+    def specs(self) -> Sequence[ToolSpec]:
+        return [WRITE, VALIDATE, SCORE]
+
+    def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+        self.ran.append(name)
+        if name == "run_validation":
+            return ToolOutcome(json.dumps({"error_count": 2, "warning_count": 1}), "ok")
+        if name == "get_score":
+            return ToolOutcome(json.dumps({"score": 80, "grade": "B"}), "ok")
+        return ToolOutcome("written", "ok")
+
+
+def written(n: int = 1) -> Reply:
+    return Reply(tool_calls=(ToolCall(f"w{n}", "write_it", {}),))
+
+
+def verified(adapter: FakeAdapter, tools: Verifying, *errors: list[str] | None, **options: Any):
+    """Run with a proposal check that reports ``errors`` one run at a time (the last repeats)."""
+    queue = list(errors)
+    checks: list[int] = []
+
+    def check() -> list[str] | None:
+        checks.append(1)
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    verify = Verify(frozenset({"write_it"}), check=check)
+    return run(adapter, tools, verify=verify, **options), len(checks)  # type: ignore[arg-type]
+
+
+def test_valid_proposals_add_both_results_to_the_final_summary():
+    tools = Verifying()
+    events, _ = verified(FakeAdapter().script(written(), Reply(text="Done.")), tools, [])
+
+    final = events[-1]
+    assert final.status == "completed"
+    assert final.text == (
+        "Done.\n\nVerification: Proposed changes: 0 errors. "
+        "Current warehouse: validation 2 errors / 1 warnings; score 80 (grade B)."
+    )
+    assert tools.ran == ["write_it", "run_validation", "get_score"]
+
+
+def test_invalid_proposals_send_the_model_back_to_fix_them_and_are_checked_again():
+    tools = Verifying()
+    adapter = FakeAdapter().script(
+        written(1), Reply(text="First try."), written(2), Reply(text="Fixed.")
+    )
+
+    events, checks = verified(adapter, tools, ["`x` names no table"], [])
+
+    final = events[-1]
+    assert final.text.startswith("Fixed.") and "Proposed changes: 0 errors" in final.text
+    assert "First try." not in final.text and checks == 2
+    assert tools.ran.count("run_validation") == 1  # the baseline runs once, at the end
+    retry = adapter.calls[2].messages[-1]
+    assert retry.role == "user" and "`x` names no table" in (retry.content or "")
+
+
+def test_the_retry_is_bounded_and_the_summary_reports_the_remaining_errors():
+    adapter = FakeAdapter().script(
+        written(1), Reply(text="a"), written(2), Reply(text="b"), written(3), Reply(text="c")
+    )
+
+    events, checks = verified(adapter, Verifying(), ["bad"])
+
+    assert events[-1].status == "completed" and checks == 3
+    assert "Proposed changes: 1 errors" in events[-1].text
+
+
+def test_the_checks_do_not_count_against_the_tool_call_cap():
+    tools = Verifying()
+    adapter = FakeAdapter().script(written(1), Reply(text="a"), written(2), Reply(text="Fixed."))
+
+    events, _ = verified(adapter, tools, ["bad"], [], max_tool_calls=2)
+
+    final = events[-1]
+    assert final.status == "completed" and "Verification:" in final.text
+    assert [(c.name, c.status) for c in final.tool_calls if c.name == "write_it"] == [
+        ("write_it", "ok"),
+        ("write_it", "ok"),
+    ]
+    assert [c.name for c in final.tool_calls].count("validate_proposals") == 2
+
+
+def test_a_retry_round_without_new_writes_still_reports_the_errors_and_the_baseline():
+    tools = Verifying()
+    adapter = FakeAdapter().script(
+        written(), Reply(text="a"), Reply(text="b"), Reply(text="Could not fix.")
+    )
+
+    events, _ = verified(adapter, tools, ["bad"])
+
+    final = events[-1]
+    assert final.text.startswith("Could not fix.")
+    assert "Proposed changes: 1 errors. Current warehouse: validation 2 errors" in final.text
+    assert tools.ran.count("run_validation") == 1
+
+
+def test_nothing_is_verified_when_the_run_wrote_nothing():
+    tools = Verifying()
+    events, checks = verified(FakeAdapter().script(Reply(text="Just reading.")), tools, [])
+
+    assert events[-1].text == "Just reading." and tools.ran == [] and checks == 0
+
+
+def test_the_fix_rounds_used_survive_a_checkpoint_resume():
+    verify = Verify(frozenset({"write_it"}), 1, check=lambda: ["bad"])
+    adapter = FakeAdapter().script(written(), Reply(text="a"), written(2), Reply(text="b"))
+    saved, _ = checkpoints_of(adapter, Verifying(), verify=verify)
+    mid = next(c for c in saved if c.verify_rounds == 1 and len(c.calls) == 3)  # 2nd write ran
+
+    resumed = list(
+        run_agent(
+            gateway(FakeAdapter().script(Reply(text="c"))),
+            Verifying(),
+            system="",
+            history=[],
+            resume=mid,
+            verify=verify,
+        )
+    )
+
+    # the round is already used: the resumed run reports instead of retrying
+    assert "Proposed changes: 1 errors" in resumed[-1].text

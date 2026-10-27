@@ -35,9 +35,11 @@ from .internal.agent import (
     Checkpoint,
     Compacted,
     Finished,
+    Reasoning,
     Text,
     ToolCallRecord,
     ToolFinished,
+    Verify,
     run_agent,
 )
 from .internal.context import CHARS_PER_TOKEN, PROMPT_SHARE
@@ -55,6 +57,7 @@ from .internal.prompt import (
     quote_data,
     today_line,
 )
+from .internal.routing import is_simple_question
 from .internal.structured import strip_cards
 from .internal.tools import ToolRegistry
 from .tables import (
@@ -226,7 +229,7 @@ class Completed:
     """The display name of the model that answered."""
 
 
-StreamEvent = Started | Text | ToolFinished | Completed
+StreamEvent = Started | Text | Reasoning | ToolFinished | Completed
 
 
 def _not_found() -> ApiError:
@@ -651,6 +654,7 @@ class AssistantService:
                 delta_poll_seconds=STOP_POLL_SECONDS,
                 checkpoint=save,
                 resume=resume,
+                verify=Verify(tools.written_names(), check=tools.check_proposals),
             ):
                 if isinstance(event, Finished):
                     finished = event
@@ -753,7 +757,10 @@ class AssistantService:
         try:
             yield started
             try:
-                if model_id is None:
+                if model_id is None and _routes_to_light(light, history):
+                    gateway = light
+                    answered_by = self._ai.light_model_id(workspace_id)
+                elif model_id is None:
                     gateway = self._roles.gateway_for_role(
                         "agent", workspace_id=workspace_id, user_id=user.id
                     )
@@ -805,7 +812,7 @@ class AssistantService:
                         continue
                     if isinstance(event, Text):
                         text.append(event.text)
-                    else:
+                    elif isinstance(event, ToolFinished):
                         calls.append(event.call)
                     yield event
                 else:  # pragma: no cover - run_agent always ends with Finished
@@ -1213,3 +1220,12 @@ def readable_conversations(engine: sa.Engine) -> Callable[..., set[uuid.UUID]]:
             )
 
     return readable
+
+
+def _routes_to_light(light: Any, history: _History) -> bool:
+    """A plain question, when the Workspace has a light model that can call tools, goes to
+    the light model (ticket #406). The member's own model pick always wins."""
+    if light is None or light.capabilities().tool_calling is not True:
+        return False
+    last = next((m for m in reversed(history.messages) if m.role == "user"), None)
+    return last is not None and is_simple_question(last.content or "")

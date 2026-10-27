@@ -13972,7 +13972,7 @@
           "llm"
         ],
         "summary": "Update Model",
-        "description": "Change a model's context window (admins only); nothing else about it is editable.",
+        "description": "Change a model's context window and thinking settings (admins only); nothing else\nabout it is editable.",
         "operationId": "updateLlmModel",
         "parameters": [
           {
@@ -14319,6 +14319,115 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LlmSetupStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/fallbacks": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Fallbacks",
+        "description": "The ordered fallback models of the agent and light roles (admins only).",
+        "operationId": "getLlmFallbacks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmFallbackList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/fallbacks/{role}": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Role Fallbacks",
+        "description": "Replace a role's ordered fallback list (admins only). 422 `invalid_fallback_model`\nwhen a model is not enabled and tested for the role.",
+        "operationId": "setLlmRoleFallbacks",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "light"
+              ],
+              "type": "string",
+              "title": "Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmRoleFallbacksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmFallbackList"
                 }
               }
             }
@@ -15868,7 +15977,7 @@
         },
         "responses": {
           "200": {
-            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`).",
+            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`).",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -23538,6 +23647,22 @@
         ],
         "title": "LlmCostBudgetRequest"
       },
+      "LlmFallbackList": {
+        "properties": {
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/LlmRoleFallbacks"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "roles"
+        ],
+        "title": "LlmFallbackList"
+      },
       "LlmListedModel": {
         "properties": {
           "name": {
@@ -23706,6 +23831,9 @@
             "title": "Warnings",
             "description": "Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking."
           },
+          "reasoning": {
+            "$ref": "#/components/schemas/LlmReasoning"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -23734,6 +23862,7 @@
           "test_error",
           "last_tested_at",
           "warnings",
+          "reasoning",
           "created_at",
           "updated_at"
         ],
@@ -23944,6 +24073,17 @@
             ],
             "title": "Context Window",
             "description": "Tokens. Null: take the server's figure on the next test."
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmReasoning"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The thinking settings. Leave out to keep the stored ones."
           }
         },
         "type": "object",
@@ -24216,6 +24356,98 @@
           "internal"
         ],
         "title": "LlmProviderRequest"
+      },
+      "LlmReasoning": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "A reasoning model: it is asked to think (Anthropic extended thinking, OpenAI-style `reasoning_effort`) or its `<think>` tags are split out of the reply (Qwen3, DeepSeek-R1), and its reasoning tokens are counted.",
+            "default": false
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort",
+            "description": "Null: the provider's default."
+          },
+          "budget_tokens": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Tokens",
+            "description": "A cap on thinking tokens, for providers that take one (Anthropic)."
+          },
+          "show": {
+            "type": "boolean",
+            "title": "Show",
+            "description": "Stream the reasoning to members in the assistant. Off: hidden, but still counted.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "LlmReasoning"
+      },
+      "LlmRoleFallbacks": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "light"
+            ],
+            "title": "Role"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids",
+            "description": "The models tried, in this order, when the role's model is unavailable or times out. Never after a budget or policy refusal; a model that fails a Workspace's internal-only check is skipped for that Workspace."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "model_ids"
+        ],
+        "title": "LlmRoleFallbacks"
+      },
+      "LlmRoleFallbacksRequest": {
+        "properties": {
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_ids"
+        ],
+        "title": "LlmRoleFallbacksRequest"
       },
       "LlmSetupStatus": {
         "properties": {

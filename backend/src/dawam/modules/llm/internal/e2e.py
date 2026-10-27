@@ -12,7 +12,7 @@ import json
 from collections.abc import Iterator, Sequence
 from typing import Any
 
-from ..gateway import ChatEvent, Message, ToolCall, ToolSpec
+from ..gateway import ChatEvent, Message, ReasoningSettings, ToolCall, ToolSpec
 from .fake import FakeAdapter, Reply
 
 TOOL = "generate_dw_schema"
@@ -114,11 +114,12 @@ class E2eAdapter(FakeAdapter):
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
         reply = self._reply(messages, tools)
         if reply is not None:
             self.script(reply)
-        return super().chat(model, messages, tools, stream, json_schema)
+        return super().chat(model, messages, tools, stream, json_schema, reasoning)
 
     @staticmethod
     def _reply(messages: Sequence[Message], tools: Sequence[ToolSpec]) -> Reply | None:

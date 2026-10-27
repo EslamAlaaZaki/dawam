@@ -385,6 +385,15 @@ ROWS: list[Row] = [
         "re-index every Workspace's documents",
         admin_only(),
     ),
+    Row("GET", "/api/v1/admin/llm/fallbacks", "see the model fallback lists", admin_only()),
+    Row(
+        "PUT",
+        "/api/v1/admin/llm/fallbacks/{role}",
+        "set a role's model fallback list",
+        admin_only(),
+        path_params={"role": lambda roles: "agent"},
+        json=lambda roles: {"model_ids": []},
+    ),
     # Token budgets and AI usage (stories 159, 162).
     Row("GET", "/api/v1/admin/llm/budgets", "see the token budgets (story 159)", admin_only()),
     Row(
