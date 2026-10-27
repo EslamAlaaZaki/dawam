@@ -105,11 +105,11 @@ A thread of messages between members and the AI assistant inside a Workspace. Pr
 _Avoid_: Chat, thread, session
 
 **Model Role**:
-What a registered model may be used for: `agent`, `light` or `embedding`. An admin enables any combination per model; a model with no role cannot be used anywhere.
+What a registered model may be used for: `agent`, `light`, `embedding`, `vision` (reading scanned pages and images) or `rerank` (reordering search results). An admin enables any combination per model; a model with no role cannot be used anywhere.
 _Avoid_: Model type, capability
 
 **Workspace Models**:
-The models a Workspace uses, chosen by its owner from the models enabled for each Model Role: one embedding model, and one or more agent and light models with one of each marked as the Workspace's default. Every per-message pick in a Conversation comes from the Workspace's agent models.
+The models a Workspace uses, chosen by its owner from the models enabled for each Model Role: one embedding model, one or more agent and light models with one of each marked as the Workspace's default, and optionally one vision and one rerank model. Every per-message pick in a Conversation comes from the Workspace's agent models.
 _Avoid_: Allowed Models (the former admin-set list it replaces), approved list
 
 **Workspace Memory**:

@@ -75,14 +75,17 @@ Across all stages:
 - **Collaboration.** Workspaces with Owner, Editor and Viewer roles, invitations, activity,
   notifications and an audit trail.
 - **Source engines.** Live connections to PostgreSQL, SQL Server, MySQL/MariaDB and Oracle.
-  Schema Import from files also covers Snowflake and BigQuery.
+  Schema Import from files works without a connection, with helper queries for those
+  engines plus IBM Db2 and Teradata. The warehouse can target PostgreSQL, SQL Server,
+  Oracle, Snowflake or BigQuery.
 - **Security built in.** Credentials encrypted with AES-256-GCM, database-backed sessions,
   CSRF protection, account lockout and rate limiting, a strict Content-Security-Policy, and
   a security event log. Details are in [`docs/reference.md`](docs/reference.md).
 
 ## AI providers
 
-Add a provider in **Admin > LLM providers** and pick its **Type**:
+Add a provider in **Admin > Language models** and pick its **Type**. Then add its models
+there, and assign them to roles in **Admin > Roles, budgets & usage**:
 
 | Type | Covers | Base URL | API key field | Model name | Embeddings |
 |------|--------|----------|---------------|------------|------------|
@@ -152,7 +155,7 @@ docker compose up -d --build
 ```
 
 Open **<http://localhost:8000>** and sign in. To use AI features, add a model in
-**Admin > LLM**.
+**Admin > Language models**.
 
 **Want everything at once?** The all-in-one file also starts a local LLM (Ollama, with
 models pulled automatically), a mail catcher and a demo source database:
@@ -180,12 +183,17 @@ Only `DAWAM_ENCRYPTION_KEY` is required.
 |----------|--------------|
 | [`deploy/README.md`](deploy/README.md) | Deployment methods, components and the production checklist |
 | [`docs/install.md`](docs/install.md) | Configuration, local LLM servers, air-gapped installation |
+| [`docs/configuration.md`](docs/configuration.md) | Every setting with its default, and how each Compose service gets it |
 | [`docs/operations.md`](docs/operations.md) | Backups, upgrades, key rotation, monitoring, troubleshooting |
 | [`docs/reference.md`](docs/reference.md) | Accounts, security controls, email, Workspaces, files and their API endpoints |
 | [`docs/spec.md`](docs/spec.md) | The full product specification (large; search it by heading) |
+| [`docs/ai-architecture.md`](docs/ai-architecture.md) | How the AI side works today: gateway, agent loop, tools, RAG, safety |
+| [`docs/ai-enhancements.md`](docs/ai-enhancements.md) | The AI roadmap and the status of each item |
+| [`DESIGN.md`](DESIGN.md) | The UI design system |
 | [`CONTEXT.md`](CONTEXT.md) | The domain glossary: Workspace, Source System, Snapshot, Change Set… |
 | [`docs/adr/`](docs/adr/) | Architecture decision records |
 | [`samples/bank/README.md`](samples/bank/README.md) | A ready-to-run bank demo (Core Banking on PostgreSQL, CRM on MySQL, documents, KPIs) with a step-by-step demo script |
+| [`samples/retail/README.md`](samples/retail/README.md) | The same for retail (POS on PostgreSQL, e-commerce on MySQL) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, conventions, tests and the pull request process |
 
 The API is documented live at `/api/v1/docs`, and its OpenAPI spec is at

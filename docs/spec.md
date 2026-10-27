@@ -907,8 +907,8 @@ These are recommended defaults. Any of them can be changed during review.
 
 ### 8.1 Architecture
 
-- **Modular monolith.** One backend service, one frontend service (Next.js, which proxies `/api` to the backend so the browser sees one origin; see ADR 0003), one Postgres database, one background worker. This fits a solo maintainer and keeps self-hosting simple.
-- **Deep modules with narrow interfaces**, each owning its tables and exposing a service API: `auth`, `admin`, `workspaces` (incl. membership & authorization policy), `sources` (connections, extraction, snapshots), `schema_import`, `analysis` (profiling, inference), `documents`, `staging`, `design` (DW Schema, KPIs), `mapping`, `lineage`, `propagation` (impact analysis, change sets, audit), `scoring`, `collaboration` (comments, activity), `exports`, `jobs`, `pii`, `kpi_suggestions`, `files`, `assistant` (agent loop, tools), `llm_gateway` (provider adapters, capability detection, budgets).
+- **Modular monolith.** One backend service, one frontend service (Next.js), with an nginx entry proxy (`edge`) that sends `/api` to the backend and everything else to Next.js so the browser sees one origin (ADR 0003), one Postgres database, one background worker. This fits a solo maintainer and keeps self-hosting simple.
+- **Deep modules with narrow interfaces**, each owning its tables and exposing a service API. As built: `auth`, `admin`, `workspaces` (incl. membership & authorization policy), `sources` (connections, extraction, snapshots, Schema Import, profiling, relationship inference, PII), `warehouse` (staging, DW Schema, mappings, scoring, DDL and mapping exports), `kpis`, `lineage`, `propagation`, `changesets`, `audit`, `activity`, `collaboration`, `notifications`, `deletions`, `docpack` (documentation export), `jobs`, `files` (files, documents, search), `assistant` (agent loop, tools), `llm` (provider adapters, capability detection, budgets), `memory`, `web` and `mail`. `backend/src/dawam/modules/README.md` has the rules.
 - Modules talk only through service interfaces, never by reading another module's tables directly.
 
 ### 8.2 Stack
@@ -916,18 +916,18 @@ These are recommended defaults. Any of them can be changed during review.
 | Layer | Choice | Reason |
 |---|---|---|
 | Backend | Python 3.12 + FastAPI | Best ecosystem for DB introspection and SQL parsing |
-| DB introspection | SQLAlchemy `inspect()` + engine drivers (psycopg, PyMySQL, pyodbc/pymssql, oracledb) plus engine-specific catalog queries for routines and view definitions | One API across engines |
+| DB introspection | SQLAlchemy `inspect()` + engine drivers (psycopg, PyMySQL, pymssql, oracledb) plus engine-specific catalog queries for routines and view definitions | One API across engines |
 | SQL parsing / DDL | sqlglot | Parses and transpiles many dialects; used for lineage, routine JOIN parsing, AI query guarding and DDL |
 | Metadata store | PostgreSQL 16 (only) | JSONB, recursive CTEs, full-text search, pgvector, `SKIP LOCKED` |
 | Migrations | Alembic | Standard with SQLAlchemy |
 | Background jobs | Postgres-backed queue (`SELECT … FOR UPDATE SKIP LOCKED`) worker | No extra infrastructure (no Redis needed) |
 | File storage | Local volume by default, S3-compatible optional | Self-host friendly |
-| Frontend | Next.js (App Router) + React + TypeScript, TanStack Query, React Flow (diagrams & lineage) | Framework routing and layouts; mature graph tooling (ADR 0003) |
+| Frontend | Next.js (App Router) + React + TypeScript, TanStack Query, React Flow (`@xyflow/react`, diagrams & lineage) | Framework routing and layouts; mature graph tooling (ADR 0003) |
 | XLSX | openpyxl | Schema Import, mapping import/export |
-| Packaging | Docker Compose (`web`, `app`, `worker`, `db`, optional `ollama` profile) | One-command install; fully local AI optional |
-| LLM access | Own thin gateway: the `openai` SDK for every OpenAI-compatible server, plus Anthropic, Azure OpenAI, Gemini and Bedrock adapters | One internal interface; self-hosted and cloud models are interchangeable |
+| Packaging | Docker Compose (`edge`, `web`, `app`, `worker`, `db`, optional `ollama` profile) | One-command install; fully local AI optional |
+| LLM access | Own thin gateway over raw HTTP (no vendor SDK): an OpenAI-compatible adapter for every such server, plus Anthropic, Azure OpenAI, Gemini and Bedrock adapters | One internal interface; self-hosted and cloud models are interchangeable |
 | Chat streaming | Server-Sent Events | Simple one-way streaming |
-| Document text | pypdf, python-docx, openpyxl | Text extraction for assistant search (no OCR) |
+| Document text | Docling (PDF, DOCX, XLSX to Markdown) and RapidOCR for scanned pages, with pypdf, python-docx and openpyxl as the fallback | Text extraction for assistant search, English and Arabic OCR on the server |
 | Document search | Postgres full-text search + pgvector | Hybrid search with no extra infrastructure |
 | SSO / MFA | Authlib (OIDC), pyotp (TOTP) | Standard, well-maintained libraries |
 
@@ -974,13 +974,14 @@ GET    /workspaces/{id}/activity   GET /workspaces/{id}/audit
 …/workspaces/{id}/assistant/conversations, /conversations/{cid}/messages (POST → SSE stream), /conversations/{cid}/stop
 …/workspaces/{id}/change-sets/{csid} (GET), /apply, /reject    POST /workspaces/{id}/fix-impacts
 …/workspaces/{id}/notifications
-GET|POST /admin/llm/providers   PATCH|DELETE /admin/llm/providers/{id}   POST /admin/llm/providers/{id}/test
-GET|POST /admin/llm/models      PUT /admin/llm/roles    GET|PUT /admin/llm/budgets    GET /admin/ai-usage
+GET|POST /admin/llm/providers   GET|PUT|DELETE /admin/llm/providers/{id}   GET /admin/llm/providers/{id}/available-models
+POST /admin/llm/providers/{id}/models   PUT|DELETE /admin/llm/models/{id}   POST /admin/llm/models/{id}/test
+PUT /admin/llm/models/{id}/roles   GET /admin/llm/budgets (+ PUT|DELETE per installation/Workspace)   GET /admin/llm/usage
 GET|PUT  /workspaces/{id}/ai-settings
-GET|PUT  /admin/sso            GET /auth/oidc/login     GET /auth/oidc/callback
-POST     /auth/mfa/enroll | /auth/mfa/verify | /auth/mfa/disable
+GET|PUT  /admin/sso            GET /auth/oidc/login     GET /auth/oidc/callback       (Backlog, not built)
+POST     /auth/mfa/enroll | /auth/mfa/verify | /auth/mfa/disable                     (Backlog, not built)
 
-GET    /jobs/{id}              POST /jobs/{id}/cancel
+GET    /jobs/{id}              POST /jobs/{id}/cancel   POST /jobs/{id}/answer
 ```
 
 ### 8.4 Security baseline

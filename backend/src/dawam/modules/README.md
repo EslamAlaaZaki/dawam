@@ -60,7 +60,7 @@ Every module has `__init__.py` and `service.py`; the rest exist only when needed
    import.** `auth` is upstream of every module (any module may import it for
    `CurrentUser`, `SecurityEventRecorder`, ...), so it imports none; `notifications`
    (the `Notification` rows) imports only `auth`, so `workspaces` (the `can()` policy)
-   imports `auth`, `notifications` and `activity` and nothing else. What such a module needs from a module
+   imports `auth`, `notifications`, `activity` and `audit` and nothing else. What such a module needs from a module
    that imports it, it gets as a kernel port that a composition root fills (rule 4).
    Email is the example: `mail` imports `auth` and `workspaces`, so those two send
    through the `dawam.platform.email.Mailer` port (`app.state.mailer`, the `mail`
@@ -140,9 +140,12 @@ cannot see. It reads imports and attribute chains only, so it misses:
    (`tests/authz/test_permission_matrix.py`): the endpoint and what each role gets,
    copied from the §4.3 matrix. The suite fails for a route without one.
 
-## Planned modules
+## Current modules
 
-`auth`, `admin`, `workspaces`, `notifications`, `sources`, `schema_import`, `analysis`,
-`documents`, `staging`, `design`, `mapping`, `lineage`, `propagation`, `scoring`,
-`collaboration`, `exports`, `jobs`, `pii`, `kpi_suggestions`, `files`,
-`assistant`, `llm_gateway`, `mail`. Each is created by the ticket that first needs it.
+`activity`, `admin`, `assistant`, `audit`, `auth`, `changesets`, `collaboration`,
+`deletions`, `docpack`, `files`, `jobs`, `kpis`, `lineage`, `llm`, `mail`, `memory`,
+`notifications`, `propagation`, `sources`, `warehouse`, `web` and `workspaces`, all listed
+in `ALL_MODULES`. Schema Import, profiling and PII live in `sources`; staging, design,
+mappings, scoring, DDL and mapping exports in `warehouse`; the LLM gateway in `llm`; the
+documentation pack export in `docpack`. A new module is created by the ticket that first
+needs it.
