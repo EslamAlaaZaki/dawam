@@ -35,6 +35,12 @@ function model(id: string, name: string, test_ok: boolean | null): LlmModel {
     test_error: null,
     last_tested_at: null,
     warnings: [],
+    reasoning: {
+      enabled: false,
+      effort: null,
+      budget_tokens: null,
+      show: false,
+    },
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-01-05T09:00:00Z",
   };

@@ -3760,7 +3760,8 @@ export interface paths {
         get?: never;
         /**
          * Update Model
-         * @description Change a model's context window (admins only); nothing else about it is editable.
+         * @description Change a model's context window and thinking settings (admins only); nothing else
+         *     about it is editable.
          */
         put: operations["updateLlmModel"];
         post?: never;
@@ -7715,6 +7716,7 @@ export interface components {
              * @description Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking.
              */
             warnings: string[];
+            reasoning: components["schemas"]["LlmReasoning"];
             /**
              * Created At
              * Format: date-time
@@ -7810,6 +7812,8 @@ export interface components {
              * @description Tokens. Null: take the server's figure on the next test.
              */
             context_window?: number | null;
+            /** @description The thinking settings. Leave out to keep the stored ones. */
+            reasoning?: components["schemas"]["LlmReasoning"] | null;
         };
         /** LlmModelUsage */
         LlmModelUsage: {
@@ -7942,6 +7946,31 @@ export interface components {
              * @default 60
              */
             timeout_seconds: number;
+        };
+        /** LlmReasoning */
+        LlmReasoning: {
+            /**
+             * Enabled
+             * @description A reasoning model: it is asked to think (Anthropic extended thinking, OpenAI-style `reasoning_effort`) or its `<think>` tags are split out of the reply (Qwen3, DeepSeek-R1), and its reasoning tokens are counted.
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Effort
+             * @description Null: the provider's default.
+             */
+            effort?: ("low" | "medium" | "high") | null;
+            /**
+             * Budget Tokens
+             * @description A cap on thinking tokens, for providers that take one (Anthropic).
+             */
+            budget_tokens?: number | null;
+            /**
+             * Show
+             * @description Stream the reasoning to members in the assistant. Off: hidden, but still counted.
+             * @default false
+             */
+            show: boolean;
         };
         /** LlmRoleFallbacks */
         LlmRoleFallbacks: {
@@ -21971,7 +22000,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`). */
+            /** @description A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`). */
             200: {
                 headers: {
                     [name: string]: unknown;

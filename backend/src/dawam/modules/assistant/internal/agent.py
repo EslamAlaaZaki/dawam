@@ -38,6 +38,7 @@ from dawam.modules.llm import (
     Done,
     LlmError,
     Message,
+    ReasoningDelta,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -238,6 +239,14 @@ class Text:
     text: str
 
 
+@dataclass(frozen=True)
+class Reasoning:
+    """A piece of the model's reasoning, for a model set to show it: streamed to the member,
+    never saved with the answer."""
+
+    text: str
+
+
 TOO_SMALL_MESSAGE = (
     "The model's context window is too small for the assistant: its instructions and tools "
     "alone do not fit. Choose a model with a larger window."
@@ -268,7 +277,7 @@ class Compacted:
     turns: int
 
 
-AgentEvent = Text | ToolFinished | Compacted | Finished
+AgentEvent = Text | Reasoning | ToolFinished | Compacted | Finished
 
 
 CHECKPOINT_VERSION = 1
@@ -624,7 +633,9 @@ def run_agent(
                         if is_cancelled():
                             yield run.finish("cancelled")
                             return
-                    if isinstance(event, TextDelta):
+                    if isinstance(event, ReasoningDelta):
+                        yield Reasoning(event.text)
+                    elif isinstance(event, TextDelta):
                         answer.append(event.text)
                         if not prompted:
                             run.text.append(event.text)

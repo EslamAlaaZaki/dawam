@@ -459,6 +459,47 @@ describe("the assistant's chat panel", () => {
     ).toBeInTheDocument();
   });
 
+  it("streams the model's reasoning while it answers, when its model shows it", async () => {
+    let finish: () => void = () => {};
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        controller.enqueue(
+          encoder.encode(
+            frame("reasoning", { text: "Weighing the refund rules" }),
+          ),
+        );
+        finish = () => {
+          controller.enqueue(
+            encoder.encode(
+              frame("done", {
+                run: run({ status: "cancelled" }),
+                message_id: null,
+              }),
+            ),
+          );
+          controller.close();
+        };
+      },
+    });
+    renderApp(
+      backend({
+        answer: () =>
+          new Response(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await ask("Refunds?");
+
+    expect(await screen.findByText("Weighing the refund rules")).toBeVisible();
+    expect(screen.getByText("Reasoning")).toBeInTheDocument();
+    finish();
+  });
+
   it("stops the running answer with the Stop button", async () => {
     let finish: () => void = () => {};
     const stream = new ReadableStream<Uint8Array>({

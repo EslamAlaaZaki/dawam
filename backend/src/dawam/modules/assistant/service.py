@@ -35,6 +35,7 @@ from .internal.agent import (
     Checkpoint,
     Compacted,
     Finished,
+    Reasoning,
     Text,
     ToolCallRecord,
     ToolFinished,
@@ -228,7 +229,7 @@ class Completed:
     """The display name of the model that answered."""
 
 
-StreamEvent = Started | Text | ToolFinished | Completed
+StreamEvent = Started | Text | Reasoning | ToolFinished | Completed
 
 
 def _not_found() -> ApiError:
@@ -811,7 +812,7 @@ class AssistantService:
                         continue
                     if isinstance(event, Text):
                         text.append(event.text)
-                    else:
+                    elif isinstance(event, ToolFinished):
                         calls.append(event.call)
                     yield event
                 else:  # pragma: no cover - run_agent always ends with Finished
