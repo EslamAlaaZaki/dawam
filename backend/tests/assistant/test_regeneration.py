@@ -21,6 +21,7 @@ from tests.assistant.test_generate_dw import (
     ORDERS,
     accept,
     again,
+    approve_all,
     dw,
     generate_first,
     pending,
@@ -246,7 +247,8 @@ def run_scoped(app, services, roles: RoleClients, fake_llm, table: str, *answers
         ),
         Reply(text="Regenerated the table."),
     )
-    return submit(app, services, roles, task=f"Regenerate {table}")
+    job = submit(app, services, roles, task=f"Regenerate {table}")
+    return approve_all(app, services, roles, job)
 
 
 def test_a_table_regeneration_changes_only_that_table(app, services, staged, model, fake_llm):

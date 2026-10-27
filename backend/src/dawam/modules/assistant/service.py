@@ -60,7 +60,7 @@ from .internal.prompt import (
 )
 from .internal.routing import is_simple_question
 from .internal.structured import strip_cards
-from .internal.supervisor import DELEGATE, SUPERVISOR_PROMPT, Supervisor
+from .internal.supervisor import DELEGATE, SUPERVISOR_PROMPT, SpecialistAsked, Supervisor
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -683,6 +683,7 @@ class AssistantService:
                     system=SYSTEM_PROMPT + today_line(),
                     max_tool_calls=cap,
                     saved=saved.get("supervisor") if resume and saved else None,
+                    answer=answer if isinstance(answer, str) else None,
                     on_save=write,
                     on_event=logged,
                     is_cancelled=lambda: ctx.cancelled,
@@ -723,6 +724,8 @@ class AssistantService:
                     prompt_tokens=finished.prompt_tokens + supervisor.prompt_tokens,
                     completion_tokens=finished.completion_tokens + supervisor.completion_tokens,
                 )
+        except SpecialistAsked as exc:  # its checkpoint is saved: wait for the member's answer
+            asked = Asked(exc.question)
         except ApiError as exc:  # no model assigned, internal-only refusal
             finished = Finished("failed", "", [], 0, 0, exc.code, exc.message)
         except Exception:

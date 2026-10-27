@@ -9,6 +9,7 @@ then the chat's answer.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any
@@ -26,6 +27,7 @@ from tests.assistant.test_chat import (
     done,
     tool,
 )
+from tests.assistant.test_source_tools import level
 from tests.llm.test_roles_budgets import BASE as LLM
 from tests.llm.test_roles_budgets import register, use_models
 from tests.roles import RoleClients
@@ -725,3 +727,112 @@ def test_a_blank_plan_step_is_refused(roles, model, fake_llm):
 
     [job] = jobs_of(roles)
     assert "write_plan error" in job["log"] and job["plan"] == []
+
+
+# -- approval before expensive actions -----------------------------------------------------
+
+
+def test_reindexing_the_workspace_pauses_for_approval_and_runs_on_a_yes(
+    app, services, roles, model, fake_llm
+):
+    fake_llm.script(
+        Reply(tool_calls=(tool("reindex_documents", "c1"),)),
+        Reply(text="Re-indexed."),
+    )
+    job = submit(app, services, roles)
+
+    [paused] = jobs_of(roles)
+    assert paused["status"] == "paused" and "re-index every document" in paused["question"]
+    assert "reindex_documents" not in paused["log"]  # nothing ran yet
+
+    assert answer_job(roles, job.id, "Yes").status_code == 200
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded" and "reindex_documents ok" in resumed["log"]
+
+
+def test_a_no_leaves_the_action_unrun_and_tells_the_model(app, services, roles, model, fake_llm):
+    fake_llm.script(
+        Reply(tool_calls=(tool("reindex_documents", "c1"),)),
+        Reply(text="Skipped it."),
+    )
+    job = submit(app, services, roles)
+
+    assert answer_job(roles, job.id, "No, not now").status_code == 200
+    [done] = jobs_of(roles)
+    assert done["status"] == "succeeded" and "reindex_documents refused" in done["log"]
+    sent = fake_llm.calls[-1].messages
+    assert any("did not approve" in (m.content or "") for m in sent if m.role == "tool")
+
+
+def test_a_source_query_without_a_limit_or_above_the_cap_pauses(
+    app, services, roles, model, fake_llm
+):
+    level(roles, "samples")  # the tool is offered at this data-sharing level
+    sid = str(uuid.uuid4())
+    fake_llm.script(
+        Reply(tool_calls=(tool("run_source_query", "c1", system_id=sid, sql="SELECT * FROM a.b"),)),
+        Reply(text="Done."),
+    )
+    job = submit(app, services, roles)
+    [paused] = jobs_of(roles)
+    assert paused["status"] == "paused" and "no LIMIT" in paused["question"]
+    assert answer_job(roles, job.id, "no").status_code == 200
+
+
+def test_a_source_query_within_the_cap_and_other_actions_do_not_pause(
+    app, services, roles, model, fake_llm
+):
+    kpi = add_kpi(roles)
+    sid = str(uuid.uuid4())
+    fake_llm.script(
+        Reply(
+            tool_calls=(
+                tool("get_object", "c1", kind="kpi", id=kpi),
+                tool("run_source_query", "c2", system_id=sid, sql="SELECT a FROM s.t LIMIT 100"),
+            )
+        ),
+        Reply(text="Done."),
+    )
+    submit(app, services, roles)
+    [done] = jobs_of(roles)
+    assert done["status"] == "succeeded" and "get_object ok" in done["log"]
+
+
+@pytest.mark.parametrize(
+    ("sql", "engine", "gated"),
+    [
+        ("SELECT * FROM a.b", "postgresql", True),
+        ("SELECT * FROM a.b LIMIT 101", "postgresql", True),
+        ("SELECT * FROM a.b LIMIT 100", "postgresql", False),
+        ("SELECT * FROM a.b LIMIT 5", None, False),
+        ("SELECT * FROM a.b LIMIT n", "postgresql", True),
+        ("SELECT TOP 500 [a] FROM [t]", "sqlserver", True),
+        ("SELECT TOP 5 [a] FROM [t]", "sqlserver", False),
+        ("SELECT `a` FROM t", "mysql", True),
+        ("SELECT `a` FROM t LIMIT 10", "mysql", False),
+        ("SELECT a FROM t FETCH FIRST 5 ROWS ONLY", "oracle", False),
+        ("SELECT a FROM t FETCH FIRST 500 ROWS ONLY", "oracle", True),
+        ("not sql at all (", "postgresql", True),
+        ("SELECT TOP 5 [a] FROM [t]", "postgresql", True),  # the wrong dialect: fails closed
+    ],
+)
+def test_the_source_query_rule_uses_the_engine_dialect_and_fails_closed(sql, engine, gated):
+    from dawam.modules.sources.internal.query_guard import is_row_bounded
+
+    assert is_row_bounded(sql, engine=engine, cap=100) is (not gated)
+
+
+@pytest.mark.parametrize("answer", ["yes", " Yes. ", "OK", "go ahead", "Approve!"])
+def test_only_an_exact_yes_approves(answer):
+    from dawam.modules.assistant.internal.agent import is_approval
+
+    assert is_approval(answer)
+
+
+@pytest.mark.parametrize(
+    "answer", ["yes but don't touch X", "y, no", "no", "yes please skip the big one", "", "maybe"]
+)
+def test_a_yes_with_a_condition_is_not_approval(answer):
+    from dawam.modules.assistant.internal.agent import is_approval
+
+    assert not is_approval(answer)

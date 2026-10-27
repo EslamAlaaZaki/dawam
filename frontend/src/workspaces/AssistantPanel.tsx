@@ -185,7 +185,28 @@ function JobProgress({
                 rows={2}
               />
               {answer.error && <ErrorText>{answer.error.message}</ErrorText>}
-              <div>
+              <div className="flex gap-2">
+                {current.question.startsWith("May I ") && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={answer.isPending}
+                      onClick={() => answer.mutate({ jobId, answer: "Yes" })}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={answer.isPending}
+                      onClick={() => answer.mutate({ jobId, answer: "No" })}
+                    >
+                      Decline
+                    </Button>
+                  </>
+                )}
                 <Button
                   type="submit"
                   size="sm"

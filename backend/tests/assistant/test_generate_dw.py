@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import sqlalchemy as sa
 
+from dawam.modules.jobs import JobService
 from dawam.modules.llm import LlmError, Reply
 from dawam.modules.warehouse import GenerationService
 from dawam.modules.workspaces import WorkspaceService
@@ -133,7 +134,20 @@ def run(app, services, roles: RoleClients, fake_llm, *answers: list[dict[str, An
         ),
         Reply(text="Generated the model."),
     )
-    return submit(app, services, roles, task="Generate the DW Schema")
+    job = submit(app, services, roles, task="Generate the DW Schema")
+    return approve_all(app, services, roles, job)
+
+
+def approve_all(app, services, roles: RoleClients, job):
+    """Regenerating an existing Layer asks the member first: say yes until the job is done."""
+    queue = JobService(app.state.engine, runner=services.jobs, clock=services.clock)
+    while job.status == "paused":
+        response = roles.client("owner").post(
+            f"/api/v1/jobs/{job.id}/answer", json={"answer": "yes"}
+        )
+        assert response.status_code == 200, response.text
+        job = queue.get(roles.user("owner"), job.id)
+    return job
 
 
 def results(fake_llm) -> list[str]:
@@ -528,3 +542,21 @@ def test_a_viewer_cannot_generate(staged, model, fake_llm):
 
     assert [e[1]["status"] for e in events if e[0] == "tool"] == ["refused"]
     assert jobs_of(staged) == []
+
+
+def test_regenerating_an_existing_layer_pauses_but_the_first_generation_does_not(
+    app, services, staged, model, fake_llm
+):
+    first = run(app, services, staged, fake_llm, [customer(), sales()])
+    assert first.status == "succeeded"  # no Core or Mart Layer yet: no question
+    accept(staged, pending(staged)["change_set"]["id"])
+
+    fake_llm.script(
+        Reply(tool_calls=(tool("generate_dw_schema", "g", tables=[again(staged)]),)),
+        Reply(text="Done."),
+    )
+    job = submit(app, services, staged, task="Generate the DW Schema")
+
+    [paused] = [j for j in jobs_of(staged) if j["id"] == str(job.id)]
+    assert paused["status"] == "paused" and "regenerate" in paused["question"]
+    assert approve_all(app, services, staged, job).status == "succeeded"

@@ -28,6 +28,7 @@ from .agent import (
     ASK_MEMBER,
     LIMIT_MESSAGE,
     VERIFY_TOOLS,
+    Asked,
     ChatGateway,
     Checkpoint,
     Finished,
@@ -74,6 +75,7 @@ SPECIALISTS: Mapping[str, Specialist] = {
                 "read_file",
                 "query_file",
                 "run_source_query",
+                "reindex_documents",
                 "propose_changes",
             },
         ),
@@ -168,6 +170,15 @@ def _key(arguments: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+class SpecialistAsked(Exception):
+    """A specialist's run stopped for the member's answer (a call that needs approval; its
+    checkpoint is saved). The job pauses and resumes the specialist with the answer."""
+
+    def __init__(self, question: str) -> None:
+        super().__init__(question)
+        self.question = question
+
+
 class _Narrowed:
     """The bound tools as a specialist sees them: only its ``names`` are offered or run."""
 
@@ -180,6 +191,10 @@ class _Narrowed:
 
     def is_read(self, name: str, arguments: dict[str, Any]) -> bool:
         return name in self._names and bool(self._tools.is_read(name, arguments))
+
+    def approval(self, name: str, arguments: dict[str, Any]) -> str | None:
+        fn = getattr(self._tools, "approval", None)
+        return fn(name, arguments) if name in self._names and fn is not None else None
 
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         if name not in self._names:
@@ -206,6 +221,7 @@ class Supervisor:
         on_event: Callable[[ToolFinished], None] = lambda _: None,
         is_cancelled: Callable[[], bool] = lambda: False,
         run: Callable[..., Any] = run_agent,
+        answer: str | None = None,
         **loop: Any,
     ) -> None:
         self._tools = tools
@@ -216,6 +232,8 @@ class Supervisor:
         self._on_event = on_event
         self._is_cancelled = is_cancelled
         self._run = run
+        self._answer = answer
+        """The member's answer for the specialist that asked, used once when the job resumes."""
         self._loop = loop
         self._lock = threading.Lock()
         self._spent: int = int(saved.get("spent", 0)) if saved else 0
@@ -276,6 +294,8 @@ class Supervisor:
                 return ToolOutcome(done["content"], done["status"], done["saved"])
             start = int(self._child["start"])
             resume = Checkpoint.from_json(self._child.get("run") or {})
+        answer = self._answer if self._child and self._child.get("asked") else None
+        self._answer = None
         self._child = {"key": key, "start": start, "run": None}
         child = self._child
 
@@ -294,8 +314,13 @@ class Supervisor:
             is_cancelled=self._is_cancelled,
             checkpoint=save,
             resume=resume,
+            member_answer=answer,
             **self._loop,
         ):
+            if isinstance(event, Asked):  # its checkpoint is saved: the job waits
+                child["asked"] = True
+                self._on_save()
+                raise SpecialistAsked(event.question)
             if isinstance(event, ToolFinished):
                 self._on_event(event)
             elif isinstance(event, Finished):

@@ -78,6 +78,16 @@ DEFAULT_MAX_JOB_TOOL_CALLS = 150
 ToolStatus = Literal["ok", "refused", "error", "skipped"]
 RunStatus = Literal["completed", "tool_limit", "cancelled", "failed"]
 
+APPROVALS = ("yes", "y", "approve", "approved", "ok", "okay", "go ahead", "proceed", "sure")
+NOT_APPROVED = "The member did not approve this action, so it was not run. Do not try it again."
+
+
+def is_approval(answer: str) -> bool:
+    """Whether the member's answer to an approval question is a yes (a fixed word list: a
+    doubtful answer is a no)."""
+    return answer.strip().lower().rstrip(".! ") in APPROVALS
+
+
 ASK_MEMBER = "ask_member"
 """A job's tool that stops the run until the member answers; the loop itself handles it."""
 LIMIT_MESSAGE = (
@@ -225,6 +235,9 @@ class ToolSet(Protocol):
 
     # Optionally ``is_read(name, arguments) -> bool``: True for a call that saves nothing and
     # may run beside other reads of the same turn. A set without it runs every call in order.
+    # Optionally ``approval(name, arguments) -> str | None``: the question to put to the member
+    # before the call may run (the run pauses like ``ask_member``); such a call never runs in a
+    # batch. Only a member's yes (``is_approval``) lets it run.
 
 
 @dataclass(frozen=True)
@@ -626,6 +639,7 @@ def run_agent(
                     1 for c in run.calls if c.status != "skipped" and c.id[:7] != VERIFY_PREFIX
                 )
                 is_read = getattr(tools, "is_read", None)
+                approval = getattr(tools, "approval", None)
                 while pending:
                     if is_cancelled():
                         yield run.finish("cancelled")
@@ -638,6 +652,7 @@ def run_agent(
                             if (
                                 c.name not in specs
                                 or c.name == ASK_MEMBER  # waits for a person: never in a batch
+                                or (approval is not None and approval(c.name, c.arguments))
                                 or not is_read(c.name, c.arguments)
                             ):
                                 break
@@ -667,7 +682,20 @@ def run_agent(
                         )
                         member_answer, duration = None, 0
                         executed += 1
+                    elif (
+                        approval is not None
+                        and call.name in known_tools
+                        and (question := approval(call.name, call.arguments))
+                        and (member_answer is None or not is_approval(member_answer))
+                    ):
+                        if member_answer is None:
+                            save()  # pending still holds this call: the answer decides it
+                            yield Asked(question)
+                            return
+                        outcome, duration = ToolOutcome(NOT_APPROVED, "refused"), 0
+                        member_answer = None
                     else:
+                        member_answer = None  # an approved call: the answer is used up
                         started = timer()
                         with tracing().tool_call(call.name, call.arguments) as span:
                             if searching and call.name == FIND_TOOLS.name:
