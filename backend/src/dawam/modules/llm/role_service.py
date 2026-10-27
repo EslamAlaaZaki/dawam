@@ -26,11 +26,13 @@ from dawam.platform.errors import ApiError
 from dawam.platform.tracing import tracing
 
 from .gateway import (
+    UNAVAILABLE,
     Capabilities,
     ChatEvent,
     Done,
     Gateway,
     Image,
+    LlmError,
     Message,
     TextDelta,
     ToolCallEvent,
@@ -46,13 +48,15 @@ from .tables import (
     MODEL_NAME_MAX_LENGTH,
     ModelPriceRecord,
     ModelRecord,
+    RoleFallbackRecord,
     SettingsRecord,
     UsageRecord,
     WorkspaceBudgetRecord,
     WorkspaceCostBudgetRecord,
 )
-from .workspace_ai import default_model_id, load_settings, model_is_internal
+from .workspace_ai import default_model_id, enabled_models, load_settings, model_is_internal
 
+FALLBACK_ROLES = ("agent", "light")
 MAX_BUDGET = 10**15
 MAX_COST_BUDGET = Decimal(10**9)
 MEMBER_REQUESTS_PER_MINUTE = 20
@@ -262,8 +266,10 @@ class MeteredGateway:
         workspace_id: uuid.UUID | None,
         user_id: uuid.UUID | None,
         refuse_external: bool = False,
+        fallbacks: Sequence[MeteredGateway] = (),
     ) -> None:
         self._gateway = gateway
+        self._fallbacks = tuple(fallbacks)
         self._refuse_external = refuse_external
         self._service = service
         self._role = role
@@ -298,11 +304,36 @@ class MeteredGateway:
         json_schema: dict[str, Any] | None = None,
     ) -> Iterator[ChatEvent]:
         """Like ``Gateway.chat``, but raises 429 ``token_budget_exhausted`` before the
-        call when a budget is used up, and records the usage when the reply is done."""
+        call when a budget is used up, and records the usage when the reply is done.
+
+        When the model is ``unavailable`` (timeouts included, after the gateway's retries)
+        before it produced anything, the role's fallback models are tried in order. A budget
+        or policy refusal is never a reason to fall back, and a reply already begun is never
+        restarted."""
         self._ensure_allowed()
-        yield from self._metered(
-            lambda: self._gateway.chat(messages, tools, stream, json_schema=json_schema), messages
-        )
+        attempts = [
+            lambda: self._metered(
+                lambda: self._gateway.chat(messages, tools, stream, json_schema=json_schema),
+                messages,
+            ),
+            *(
+                (lambda fb=fb: fb.chat(messages, tools, stream, json_schema=json_schema))
+                for fb in self._fallbacks
+            ),
+        ]
+        for index, start in enumerate(attempts):
+            events = start()
+            try:
+                first = next(events)
+            except StopIteration:
+                return
+            except LlmError as exc:
+                if exc.code == UNAVAILABLE and index < len(attempts) - 1:
+                    continue
+                raise
+            yield first
+            yield from events
+            return
 
     def vision(self, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
         """Like ``Gateway.vision``, checked and metered like ``chat``: the images count
@@ -409,7 +440,9 @@ class RoleService:
                 "Workspace's AI settings.",
                 {"role": role},
             )
-        return self.metered_gateway(model_id, role, workspace_id=workspace_id, user_id=user_id)
+        return self.metered_gateway(
+            model_id, role, workspace_id=workspace_id, user_id=user_id, with_fallbacks=True
+        )
 
     def light_gateway(
         self, *, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
@@ -421,7 +454,9 @@ class RoleService:
             model_id = default_model_id(db, workspace_id, "light")
         if model_id is None:
             return None
-        return self.metered_gateway(model_id, "light", workspace_id=workspace_id, user_id=user_id)
+        return self.metered_gateway(
+            model_id, "light", workspace_id=workspace_id, user_id=user_id, with_fallbacks=True
+        )
 
     def metered_gateway(
         self,
@@ -430,9 +465,20 @@ class RoleService:
         *,
         workspace_id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
+        with_fallbacks: bool = False,
     ) -> MeteredGateway:
         """A metered gateway for a specific registered model, used under ``role``. For an
-        internal-only Workspace its calls are refused when the model's provider is external."""
+        internal-only Workspace its calls are refused when the model's provider is external.
+        With ``with_fallbacks`` it carries the role's fallback models that pass the same
+        checks as any model the Workspace uses."""
+        fallbacks = (
+            [
+                self.metered_gateway(m, role, workspace_id=workspace_id, user_id=user_id)
+                for m in self._permitted_fallbacks(role, workspace_id, exclude=model_id)
+            ]
+            if with_fallbacks
+            else []
+        )
         with Session(self._engine) as db:
             name = db.scalar(sa.select(ModelRecord.name).where(ModelRecord.id == model_id))
             refuse = (
@@ -448,7 +494,62 @@ class RoleService:
             workspace_id=workspace_id,
             user_id=user_id,
             refuse_external=refuse,
+            fallbacks=fallbacks,
         )
+
+    # -- fallbacks -------------------------------------------------------------------
+
+    def fallbacks(self, role: str) -> list[uuid.UUID]:
+        """The ordered fallback models of ``role`` (``agent`` or ``light``)."""
+        with Session(self._engine) as db:
+            return list(
+                db.scalars(
+                    sa.select(RoleFallbackRecord.model_id)
+                    .where(RoleFallbackRecord.role == role)
+                    .order_by(RoleFallbackRecord.position)
+                )
+            )
+
+    def set_fallbacks(self, role: str, model_ids: Sequence[uuid.UUID]) -> None:
+        """Replace the ordered fallback list of ``role``. 422 ``invalid_fallback_model``
+        for a model not enabled (and tested) for the role; 422 ``invalid_model_role`` for a
+        role without fallbacks."""
+        if role not in FALLBACK_ROLES:
+            raise _invalid("Only the agent and light roles have fallback models.", "role")
+        ids = list(dict.fromkeys(model_ids))
+        with Session(self._engine) as db, db.begin():
+            enabled = {m.id for m in enabled_models(db, role)}
+            if any(m not in enabled for m in ids):
+                raise _invalid(
+                    f"Every fallback model must be enabled and tested for the {role} role.",
+                    "model_ids",
+                    "invalid_fallback_model",
+                )
+            db.execute(sa.delete(RoleFallbackRecord).where(RoleFallbackRecord.role == role))
+            db.flush()
+            db.add_all(
+                RoleFallbackRecord(role=role, model_id=m, position=i) for i, m in enumerate(ids)
+            )
+
+    def _permitted_fallbacks(
+        self, role: str, workspace_id: uuid.UUID | None, *, exclude: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """The role's fallback models this Workspace may use: the primary is left out, and a
+        model is skipped when it is no longer enabled and tested for the role or, for an
+        internal-only Workspace, runs on an external provider. The data-sharing level is the
+        Workspace's, not the model's, so every fallback sees exactly what the primary would."""
+        if role not in FALLBACK_ROLES:
+            return []
+        with Session(self._engine) as db:
+            enabled = {m.id for m in enabled_models(db, role)}
+            internal_only = (
+                workspace_id is not None and load_settings(db, workspace_id).internal_only
+            )
+            return [
+                m
+                for m in self.fallbacks(role)
+                if m != exclude and m in enabled and (not internal_only or model_is_internal(db, m))
+            ]
 
     # -- budgets ---------------------------------------------------------------------
 
