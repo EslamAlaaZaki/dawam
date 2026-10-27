@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -80,6 +80,24 @@ class ConversationOut(BaseModel):
 
 class ConversationList(BaseModel):
     items: list[ConversationOut]
+
+
+class ConversationSearchHit(BaseModel):
+    kind: Literal["conversation", "message", "job_summary"] = Field(
+        description="A conversation matched by its title, a message of one, or the outcome "
+        "an assistant job wrote into one."
+    )
+    conversation_id: uuid.UUID
+    conversation_title: str
+    shared_with_workspace: bool
+    mine: bool = Field(description="You started the conversation.")
+    message_id: uuid.UUID | None = Field(description="The matching message; none for a title.")
+    snippet: str = Field(description="A short stretch of text around the match.")
+    at: datetime
+
+
+class ConversationSearchResults(BaseModel):
+    items: list[ConversationSearchHit]
 
 
 class ToolCallOut(BaseModel):
@@ -298,6 +316,33 @@ def list_conversations(
     member; read-only once the Workspace is archived)."""
     return ConversationList(
         items=[_conversation(c) for c in service.list_conversations(user, workspace_id)]
+    )
+
+
+@router.get("/conversations/search", operation_id="searchAssistantConversations")
+def search_conversations(
+    workspace_id: uuid.UUID,
+    user: CurrentUser,
+    service: AssistantServiceDep,
+    q: Annotated[str, Query(max_length=200, description="Text to look for (case-insensitive).")],
+) -> ConversationSearchResults:
+    """Search the titles and messages of your conversations and those members shared,
+    including the outcomes of assistant jobs, newest first. Somebody else's private
+    conversation never matches (any member; 404 for non-members)."""
+    return ConversationSearchResults(
+        items=[
+            ConversationSearchHit(
+                kind=h.kind,
+                conversation_id=h.conversation_id,
+                conversation_title=h.conversation_title,
+                shared_with_workspace=h.shared_with_workspace,
+                mine=h.mine,
+                message_id=h.message_id,
+                snippet=h.snippet,
+                at=h.at,
+            )
+            for h in service.search_conversations(user, workspace_id, q)
+        ]
     )
 
 

@@ -784,6 +784,13 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=True),
     ),
     Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/search",
+        "See conversations other members shared with the Workspace (search them)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        query={"q": "report"},
+    ),
+    Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/assistant/conversations",
         "Ask the assistant questions (start a conversation)",
