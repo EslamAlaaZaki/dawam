@@ -7,13 +7,13 @@
   "quality": "showcase",
   "specification": {
     "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\candidate.json",
-    "sha256": "d4f7c620e9cdc57a146d704b9ff142f761382e86739610082293b35376a98ae3",
-    "bytes": 16225
+    "sha256": "e2df36a46f5ad8dd4b81faa74075219729c8b215ee0dc6e009b4027499f58296",
+    "bytes": 16968
   },
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
-    "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
-    "bytes": 869190
+    "sha256": "9a01ef636378e8ab28c421bf37583b9284d589fde78952b568116e522a033483",
+    "bytes": 871225
   },
   "gates": {
     "validate": "pass",
@@ -43,7 +43,7 @@
     "noticeText": null
   },
   "visualReview": "not-requested",
-  "durationMs": 5065,
+  "durationMs": 4573,
   "browserCheck": {
     "requested": true,
     "ran": true

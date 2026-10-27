@@ -42,16 +42,21 @@
     "legend": {
       "entries": {
         "frontend": {
-          "label": "User screens"
+          "label": "User steps"
         },
         "backend": {
-          "label": "DAWAM services and AI tools"
+          "label": "DAWAM pipeline"
+        },
+        "messagebus": {
+          "label": "AI assistant"
         },
         "security": {
           "label": "Quality gate"
         }
       }
-    }
+    },
+    "visual_preset": "signal-flow",
+    "animation": "trace"
   },
   "lanes": [
     {
@@ -72,13 +77,15 @@
       "id": "p0",
       "label": "1 Connect",
       "fromCol": 0,
-      "toCol": 0
+      "toCol": 0,
+      "variant": "default"
     },
     {
       "id": "p1",
       "label": "2 Documents",
       "fromCol": 1,
-      "toCol": 1
+      "toCol": 1,
+      "variant": "default"
     },
     {
       "id": "p2",
@@ -91,7 +98,8 @@
       "id": "p3",
       "label": "4 KPIs",
       "fromCol": 3,
-      "toCol": 3
+      "toCol": 3,
+      "variant": "default"
     },
     {
       "id": "p4",
@@ -104,7 +112,8 @@
       "id": "p5",
       "label": "6 Evaluate",
       "fromCol": 5,
-      "toCol": 5
+      "toCol": 5,
+      "variant": "security"
     }
   ],
   "mainPath": [
@@ -136,7 +145,8 @@
           "end_line": 8,
           "label": "Schema Import"
         }
-      ]
+      ],
+      "icon": "person"
     },
     {
       "id": "u1",
@@ -158,7 +168,8 @@
           "end_line": 180,
           "label": "upload"
         }
-      ]
+      ],
+      "icon": "person"
     },
     {
       "id": "u2",
@@ -186,7 +197,8 @@
           "end_line": 30,
           "label": "source schema"
         }
-      ]
+      ],
+      "icon": "person"
     },
     {
       "id": "u3",
@@ -202,7 +214,8 @@
           "end_line": 30,
           "label": "KPI panels"
         }
-      ]
+      ],
+      "icon": "person"
     },
     {
       "id": "u4",
@@ -224,7 +237,8 @@
           "end_line": 30,
           "label": "model editor"
         }
-      ]
+      ],
+      "icon": "person"
     },
     {
       "id": "u5",
@@ -246,7 +260,8 @@
           "end_line": 470,
           "label": "approve Layer"
         }
-      ]
+      ],
+      "icon": "person"
     },
     {
       "id": "d0",
@@ -255,7 +270,7 @@
       "type": "backend",
       "label": "Source Schema",
       "sublabel": "Snapshots",
-      "tag": "extract job",
+      "tag": "step 1",
       "sources": [
         {
           "path": "backend/src/dawam/modules/sources/snapshot_service.py",
@@ -269,7 +284,8 @@
           "end_line": 214,
           "label": "import as Snapshot"
         }
-      ]
+      ],
+      "icon": "database"
     },
     {
       "id": "d1",
@@ -278,7 +294,7 @@
       "type": "backend",
       "label": "Document index",
       "sublabel": "parse, OCR, chunk",
-      "tag": "index job",
+      "tag": "step 2",
       "sources": [
         {
           "path": "backend/src/dawam/modules/files/search.py",
@@ -292,7 +308,8 @@
           "end_line": 760,
           "label": "run_index"
         }
-      ]
+      ],
+      "icon": "database"
     },
     {
       "id": "d2",
@@ -320,7 +337,9 @@
           "end_line": 12,
           "label": "relationship inference"
         }
-      ]
+      ],
+      "icon": "active",
+      "tag": "step 3"
     },
     {
       "id": "d3",
@@ -342,7 +361,9 @@
           "end_line": 710,
           "label": "set_links"
         }
-      ]
+      ],
+      "icon": "flag",
+      "tag": "step 4"
     },
     {
       "id": "d4",
@@ -370,7 +391,9 @@
           "end_line": 9,
           "label": "mappings → lineage"
         }
-      ]
+      ],
+      "icon": "database",
+      "tag": "step 5"
     },
     {
       "id": "d5",
@@ -398,13 +421,15 @@
           "end_line": 2,
           "label": "DDL package"
         }
-      ]
+      ],
+      "icon": "success",
+      "tag": "step 6"
     },
     {
       "id": "a1",
       "lane": "ai",
       "col": 1,
-      "type": "backend",
+      "type": "messagebus",
       "label": "Read documents",
       "sublabel": "RAG search, images",
       "sources": [
@@ -420,13 +445,14 @@
           "end_line": 2712,
           "label": "describe_image"
         }
-      ]
+      ],
+      "tag": "AI"
     },
     {
       "id": "a2",
       "lane": "ai",
       "col": 2,
-      "type": "backend",
+      "type": "messagebus",
       "label": "Explain sources",
       "sublabel": "descriptions, safe SQL",
       "sources": [
@@ -448,13 +474,14 @@
           "end_line": 2596,
           "label": "get_profile"
         }
-      ]
+      ],
+      "tag": "AI"
     },
     {
       "id": "a3",
       "lane": "ai",
       "col": 3,
-      "type": "backend",
+      "type": "messagebus",
       "label": "Suggest KPIs",
       "sublabel": "from sources, docs",
       "sources": [
@@ -464,13 +491,14 @@
           "end_line": 2806,
           "label": "suggest_kpis"
         }
-      ]
+      ],
+      "tag": "AI"
     },
     {
       "id": "a4",
       "lane": "ai",
       "col": 4,
-      "type": "backend",
+      "type": "messagebus",
       "label": "Propose the model",
       "sublabel": "Core, Mart, mappings",
       "sources": [
@@ -480,13 +508,14 @@
           "end_line": 2858,
           "label": "generate_dw_schema, draft_mappings"
         }
-      ]
+      ],
+      "tag": "AI"
     },
     {
       "id": "a5",
       "lane": "ai",
       "col": 5,
-      "type": "backend",
+      "type": "messagebus",
       "label": "Evaluate + draw",
       "sublabel": "advisory review, diagrams",
       "sources": [
@@ -502,7 +531,8 @@
           "end_line": 2870,
           "label": "render_diagram"
         }
-      ]
+      ],
+      "tag": "AI"
     }
   ],
   "edges": [
@@ -577,7 +607,8 @@
       "from": "a1",
       "to": "d1",
       "label": "search",
-      "variant": "dashed"
+      "variant": "dashed",
+      "route": "straight"
     },
     {
       "id": "y2",

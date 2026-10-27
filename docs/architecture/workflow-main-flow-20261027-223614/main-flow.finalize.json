@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "workflow",
   "quality": "showcase",
-  "startedAt": "2026-10-27T19:37:22.415Z",
+  "startedAt": "2026-10-27T19:41:53.703Z",
   "specification": {
     "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\candidate.json",
-    "sha256": "d4f7c620e9cdc57a146d704b9ff142f761382e86739610082293b35376a98ae3",
-    "bytes": 16225
+    "sha256": "e2df36a46f5ad8dd4b81faa74075219729c8b215ee0dc6e009b4027499f58296",
+    "bytes": 16968
   },
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
-    "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
-    "bytes": 869190
+    "sha256": "9a01ef636378e8ab28c421bf37583b9284d589fde78952b568116e522a033483",
+    "bytes": 871225
   },
   "stages": {
     "validate": {
@@ -40,8 +40,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "d4f7c620e9cdc57a146d704b9ff142f761382e86739610082293b35376a98ae3",
-          "bytes": 16225
+          "sha256": "e2df36a46f5ad8dd4b81faa74075219729c8b215ee0dc6e009b4027499f58296",
+          "bytes": 16968
         },
         "validation": {
           "checksPassed": 9,
@@ -56,7 +56,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 1907,
+      "durationMs": 1623,
       "command": [
         "C:\\Users\\Eslam\\AppData\\Local\\Author Software\\nvm\\installs\\v24.21.0\\node.exe",
         "C:\\Users\\Eslam\\.claude\\skills\\archify\\bin\\archify.mjs",
@@ -72,19 +72,19 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "82e3cb42-13ca-45c7-9505-940a5c214ba7",
+        "receiptId": "8cb04322-46bb-47aa-839f-7d23d2f93547",
         "ok": true,
         "command": "deliver",
         "type": "workflow",
         "input": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\candidate.json",
         "output": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
         "specification": {
-          "sha256": "d4f7c620e9cdc57a146d704b9ff142f761382e86739610082293b35376a98ae3",
-          "bytes": 16225
+          "sha256": "e2df36a46f5ad8dd4b81faa74075219729c8b215ee0dc6e009b4027499f58296",
+          "bytes": 16968
         },
         "artifact": {
-          "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
-          "bytes": 869190
+          "sha256": "9a01ef636378e8ab28c421bf37583b9284d589fde78952b568116e522a033483",
+          "bytes": 871225
         },
         "validation": {
           "checksPassed": 9,
@@ -116,7 +116,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 150,
+      "durationMs": 160,
       "command": [
         "C:\\Users\\Eslam\\AppData\\Local\\Author Software\\nvm\\installs\\v24.21.0\\node.exe",
         "C:\\Users\\Eslam\\.claude\\skills\\archify\\bin\\archify.mjs",
@@ -128,8 +128,8 @@
         "ok": true,
         "file": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
         "artifact": {
-          "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
-          "bytes": 869190
+          "sha256": "9a01ef636378e8ab28c421bf37583b9284d589fde78952b568116e522a033483",
+          "bytes": 871225
         },
         "checks": [
           {
@@ -246,13 +246,13 @@
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "82e3cb42-13ca-45c7-9505-940a5c214ba7"
+        "deliveryReceiptId": "8cb04322-46bb-47aa-839f-7d23d2f93547"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 2088,
+      "durationMs": 1854,
       "command": [
         "C:\\Users\\Eslam\\AppData\\Local\\Author Software\\nvm\\installs\\v24.21.0\\node.exe",
         "C:\\Users\\Eslam\\.claude\\skills\\archify\\bin\\archify.mjs",
@@ -270,11 +270,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "82e3cb42-13ca-45c7-9505-940a5c214ba7",
+        "deliveryReceiptId": "8cb04322-46bb-47aa-839f-7d23d2f93547",
         "artifact": {
           "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
-          "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
-          "bytes": 869190
+          "sha256": "9a01ef636378e8ab28c421bf37583b9284d589fde78952b568116e522a033483",
+          "bytes": 871225
         },
         "state": {
           "detail": "read",
@@ -305,13 +305,13 @@
               "readerOverflow": null,
               "readerFit": null,
               "ok": true,
-              "readerWidth": 1324,
-              "diagramWidth": 1294,
+              "readerWidth": 1296,
+              "diagramWidth": 1266,
               "pageComposition": {
                 "bodyPaddingPx": 12,
-                "headerPx": 52,
+                "headerPx": 68,
                 "diagramChromePx": 78,
-                "svgPx": 746,
+                "svgPx": 730,
                 "cardsPx": 0,
                 "viewBoxHeight": 534
               },
@@ -319,7 +319,7 @@
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 6,
                   "nodeIds": [
                     "u0",
@@ -329,13 +329,13 @@
                     "u4",
                     "u5"
                   ],
-                  "nodeSpanPx": 73,
-                  "spaceAboveNodesPx": 59,
-                  "spaceBelowNodesPx": 17
+                  "nodeSpanPx": 71,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 16
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 6,
                   "nodeIds": [
                     "d0",
@@ -345,13 +345,13 @@
                     "d4",
                     "d5"
                   ],
-                  "nodeSpanPx": 95,
-                  "spaceAboveNodesPx": 48,
-                  "spaceBelowNodesPx": 6
+                  "nodeSpanPx": 93,
+                  "spaceAboveNodesPx": 46,
+                  "spaceBelowNodesPx": 5
                 },
                 {
                   "frameId": "lane-2",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 5,
                   "nodeIds": [
                     "a1",
@@ -360,9 +360,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 73,
-                  "spaceAboveNodesPx": 59,
-                  "spaceBelowNodesPx": 17
+                  "nodeSpanPx": 93,
+                  "spaceAboveNodesPx": 46,
+                  "spaceBelowNodesPx": 5
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -459,9 +459,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 76,
-                  "spaceAboveNodesPx": 61,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 99,
+                  "spaceAboveNodesPx": 50,
+                  "spaceBelowNodesPx": 6
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -558,9 +558,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 19
+                  "nodeSpanPx": 109,
+                  "spaceAboveNodesPx": 55,
+                  "spaceBelowNodesPx": 6
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -657,9 +657,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 105,
-                  "spaceAboveNodesPx": 85,
-                  "spaceBelowNodesPx": 24
+                  "nodeSpanPx": 137,
+                  "spaceAboveNodesPx": 69,
+                  "spaceBelowNodesPx": 8
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -754,13 +754,13 @@
               "readerOverflow": null,
               "readerFit": null,
               "ok": true,
-              "readerWidth": 1324,
-              "diagramWidth": 1294,
+              "readerWidth": 1296,
+              "diagramWidth": 1266,
               "pageComposition": {
                 "bodyPaddingPx": 12,
-                "headerPx": 52,
+                "headerPx": 68,
                 "diagramChromePx": 78,
-                "svgPx": 746,
+                "svgPx": 730,
                 "cardsPx": 0,
                 "viewBoxHeight": 534
               },
@@ -768,7 +768,7 @@
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 6,
                   "nodeIds": [
                     "u0",
@@ -778,13 +778,13 @@
                     "u4",
                     "u5"
                   ],
-                  "nodeSpanPx": 73,
-                  "spaceAboveNodesPx": 59,
-                  "spaceBelowNodesPx": 17
+                  "nodeSpanPx": 71,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 16
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 6,
                   "nodeIds": [
                     "d0",
@@ -794,13 +794,13 @@
                     "d4",
                     "d5"
                   ],
-                  "nodeSpanPx": 95,
-                  "spaceAboveNodesPx": 48,
-                  "spaceBelowNodesPx": 6
+                  "nodeSpanPx": 93,
+                  "spaceAboveNodesPx": 46,
+                  "spaceBelowNodesPx": 5
                 },
                 {
                   "frameId": "lane-2",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 5,
                   "nodeIds": [
                     "a1",
@@ -809,9 +809,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 73,
-                  "spaceAboveNodesPx": 59,
-                  "spaceBelowNodesPx": 17
+                  "nodeSpanPx": 93,
+                  "spaceAboveNodesPx": 46,
+                  "spaceBelowNodesPx": 5
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -908,9 +908,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 76,
-                  "spaceAboveNodesPx": 61,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 99,
+                  "spaceAboveNodesPx": 50,
+                  "spaceBelowNodesPx": 6
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1007,9 +1007,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 19
+                  "nodeSpanPx": 109,
+                  "spaceAboveNodesPx": 55,
+                  "spaceBelowNodesPx": 6
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1106,9 +1106,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 105,
-                  "spaceAboveNodesPx": 85,
-                  "spaceBelowNodesPx": 24
+                  "nodeSpanPx": 137,
+                  "spaceAboveNodesPx": 69,
+                  "spaceBelowNodesPx": 8
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1155,13 +1155,13 @@
               "readerOverflow": null,
               "readerFit": null,
               "ok": true,
-              "readerWidth": 1324,
-              "diagramWidth": 1294,
+              "readerWidth": 1296,
+              "diagramWidth": 1266,
               "pageComposition": {
                 "bodyPaddingPx": 12,
-                "headerPx": 52,
+                "headerPx": 68,
                 "diagramChromePx": 78,
-                "svgPx": 746,
+                "svgPx": 730,
                 "cardsPx": 0,
                 "viewBoxHeight": 534
               },
@@ -1169,7 +1169,7 @@
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 6,
                   "nodeIds": [
                     "u0",
@@ -1179,13 +1179,13 @@
                     "u4",
                     "u5"
                   ],
-                  "nodeSpanPx": 73,
-                  "spaceAboveNodesPx": 59,
-                  "spaceBelowNodesPx": 17
+                  "nodeSpanPx": 71,
+                  "spaceAboveNodesPx": 57,
+                  "spaceBelowNodesPx": 16
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 6,
                   "nodeIds": [
                     "d0",
@@ -1195,13 +1195,13 @@
                     "d4",
                     "d5"
                   ],
-                  "nodeSpanPx": 95,
-                  "spaceAboveNodesPx": 48,
-                  "spaceBelowNodesPx": 6
+                  "nodeSpanPx": 93,
+                  "spaceAboveNodesPx": 46,
+                  "spaceBelowNodesPx": 5
                 },
                 {
                   "frameId": "lane-2",
-                  "heightPx": 148,
+                  "heightPx": 145,
                   "nodeCount": 5,
                   "nodeIds": [
                     "a1",
@@ -1210,9 +1210,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 73,
-                  "spaceAboveNodesPx": 59,
-                  "spaceBelowNodesPx": 17
+                  "nodeSpanPx": 93,
+                  "spaceAboveNodesPx": 46,
+                  "spaceBelowNodesPx": 5
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1309,9 +1309,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 76,
-                  "spaceAboveNodesPx": 61,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 99,
+                  "spaceAboveNodesPx": 50,
+                  "spaceBelowNodesPx": 6
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1408,9 +1408,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 19
+                  "nodeSpanPx": 109,
+                  "spaceAboveNodesPx": 55,
+                  "spaceBelowNodesPx": 6
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1507,9 +1507,9 @@
                     "a4",
                     "a5"
                   ],
-                  "nodeSpanPx": 105,
-                  "spaceAboveNodesPx": 85,
-                  "spaceBelowNodesPx": 24
+                  "nodeSpanPx": 137,
+                  "spaceAboveNodesPx": 69,
+                  "spaceBelowNodesPx": 8
                 }
               ],
               "minimumProjectedNodeTextPx": 6.6,
@@ -1560,8 +1560,8 @@
     "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-10-27T19:37:27.481Z",
-  "durationMs": 5065,
+  "finishedAt": "2026-10-27T19:41:58.276Z",
+  "durationMs": 4573,
   "update": {
     "status": "current",
     "installedVersion": "3.2.0",

@@ -6,11 +6,11 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "82e3cb42-13ca-45c7-9505-940a5c214ba7",
+  "deliveryReceiptId": "8cb04322-46bb-47aa-839f-7d23d2f93547",
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
-    "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
-    "bytes": 869190
+    "sha256": "9a01ef636378e8ab28c421bf37583b9284d589fde78952b568116e522a033483",
+    "bytes": 871225
   },
   "state": {
     "detail": "read",
@@ -41,13 +41,13 @@
         "readerOverflow": null,
         "readerFit": null,
         "ok": true,
-        "readerWidth": 1324,
-        "diagramWidth": 1294,
+        "readerWidth": 1296,
+        "diagramWidth": 1266,
         "pageComposition": {
           "bodyPaddingPx": 12,
-          "headerPx": 52,
+          "headerPx": 68,
           "diagramChromePx": 78,
-          "svgPx": 746,
+          "svgPx": 730,
           "cardsPx": 0,
           "viewBoxHeight": 534
         },
@@ -55,7 +55,7 @@
         "workflowLanes": [
           {
             "frameId": "lane-0",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 6,
             "nodeIds": [
               "u0",
@@ -65,13 +65,13 @@
               "u4",
               "u5"
             ],
-            "nodeSpanPx": 73,
-            "spaceAboveNodesPx": 59,
-            "spaceBelowNodesPx": 17
+            "nodeSpanPx": 71,
+            "spaceAboveNodesPx": 57,
+            "spaceBelowNodesPx": 16
           },
           {
             "frameId": "lane-1",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 6,
             "nodeIds": [
               "d0",
@@ -81,13 +81,13 @@
               "d4",
               "d5"
             ],
-            "nodeSpanPx": 95,
-            "spaceAboveNodesPx": 48,
-            "spaceBelowNodesPx": 6
+            "nodeSpanPx": 93,
+            "spaceAboveNodesPx": 46,
+            "spaceBelowNodesPx": 5
           },
           {
             "frameId": "lane-2",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 5,
             "nodeIds": [
               "a1",
@@ -96,9 +96,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 73,
-            "spaceAboveNodesPx": 59,
-            "spaceBelowNodesPx": 17
+            "nodeSpanPx": 93,
+            "spaceAboveNodesPx": 46,
+            "spaceBelowNodesPx": 5
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -195,9 +195,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 76,
-            "spaceAboveNodesPx": 61,
-            "spaceBelowNodesPx": 18
+            "nodeSpanPx": 99,
+            "spaceAboveNodesPx": 50,
+            "spaceBelowNodesPx": 6
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -294,9 +294,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 84,
-            "spaceAboveNodesPx": 68,
-            "spaceBelowNodesPx": 19
+            "nodeSpanPx": 109,
+            "spaceAboveNodesPx": 55,
+            "spaceBelowNodesPx": 6
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -393,9 +393,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 105,
-            "spaceAboveNodesPx": 85,
-            "spaceBelowNodesPx": 24
+            "nodeSpanPx": 137,
+            "spaceAboveNodesPx": 69,
+            "spaceBelowNodesPx": 8
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -490,13 +490,13 @@
         "readerOverflow": null,
         "readerFit": null,
         "ok": true,
-        "readerWidth": 1324,
-        "diagramWidth": 1294,
+        "readerWidth": 1296,
+        "diagramWidth": 1266,
         "pageComposition": {
           "bodyPaddingPx": 12,
-          "headerPx": 52,
+          "headerPx": 68,
           "diagramChromePx": 78,
-          "svgPx": 746,
+          "svgPx": 730,
           "cardsPx": 0,
           "viewBoxHeight": 534
         },
@@ -504,7 +504,7 @@
         "workflowLanes": [
           {
             "frameId": "lane-0",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 6,
             "nodeIds": [
               "u0",
@@ -514,13 +514,13 @@
               "u4",
               "u5"
             ],
-            "nodeSpanPx": 73,
-            "spaceAboveNodesPx": 59,
-            "spaceBelowNodesPx": 17
+            "nodeSpanPx": 71,
+            "spaceAboveNodesPx": 57,
+            "spaceBelowNodesPx": 16
           },
           {
             "frameId": "lane-1",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 6,
             "nodeIds": [
               "d0",
@@ -530,13 +530,13 @@
               "d4",
               "d5"
             ],
-            "nodeSpanPx": 95,
-            "spaceAboveNodesPx": 48,
-            "spaceBelowNodesPx": 6
+            "nodeSpanPx": 93,
+            "spaceAboveNodesPx": 46,
+            "spaceBelowNodesPx": 5
           },
           {
             "frameId": "lane-2",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 5,
             "nodeIds": [
               "a1",
@@ -545,9 +545,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 73,
-            "spaceAboveNodesPx": 59,
-            "spaceBelowNodesPx": 17
+            "nodeSpanPx": 93,
+            "spaceAboveNodesPx": 46,
+            "spaceBelowNodesPx": 5
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -644,9 +644,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 76,
-            "spaceAboveNodesPx": 61,
-            "spaceBelowNodesPx": 18
+            "nodeSpanPx": 99,
+            "spaceAboveNodesPx": 50,
+            "spaceBelowNodesPx": 6
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -743,9 +743,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 84,
-            "spaceAboveNodesPx": 68,
-            "spaceBelowNodesPx": 19
+            "nodeSpanPx": 109,
+            "spaceAboveNodesPx": 55,
+            "spaceBelowNodesPx": 6
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -842,9 +842,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 105,
-            "spaceAboveNodesPx": 85,
-            "spaceBelowNodesPx": 24
+            "nodeSpanPx": 137,
+            "spaceAboveNodesPx": 69,
+            "spaceBelowNodesPx": 8
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -891,13 +891,13 @@
         "readerOverflow": null,
         "readerFit": null,
         "ok": true,
-        "readerWidth": 1324,
-        "diagramWidth": 1294,
+        "readerWidth": 1296,
+        "diagramWidth": 1266,
         "pageComposition": {
           "bodyPaddingPx": 12,
-          "headerPx": 52,
+          "headerPx": 68,
           "diagramChromePx": 78,
-          "svgPx": 746,
+          "svgPx": 730,
           "cardsPx": 0,
           "viewBoxHeight": 534
         },
@@ -905,7 +905,7 @@
         "workflowLanes": [
           {
             "frameId": "lane-0",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 6,
             "nodeIds": [
               "u0",
@@ -915,13 +915,13 @@
               "u4",
               "u5"
             ],
-            "nodeSpanPx": 73,
-            "spaceAboveNodesPx": 59,
-            "spaceBelowNodesPx": 17
+            "nodeSpanPx": 71,
+            "spaceAboveNodesPx": 57,
+            "spaceBelowNodesPx": 16
           },
           {
             "frameId": "lane-1",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 6,
             "nodeIds": [
               "d0",
@@ -931,13 +931,13 @@
               "d4",
               "d5"
             ],
-            "nodeSpanPx": 95,
-            "spaceAboveNodesPx": 48,
-            "spaceBelowNodesPx": 6
+            "nodeSpanPx": 93,
+            "spaceAboveNodesPx": 46,
+            "spaceBelowNodesPx": 5
           },
           {
             "frameId": "lane-2",
-            "heightPx": 148,
+            "heightPx": 145,
             "nodeCount": 5,
             "nodeIds": [
               "a1",
@@ -946,9 +946,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 73,
-            "spaceAboveNodesPx": 59,
-            "spaceBelowNodesPx": 17
+            "nodeSpanPx": 93,
+            "spaceAboveNodesPx": 46,
+            "spaceBelowNodesPx": 5
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -1045,9 +1045,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 76,
-            "spaceAboveNodesPx": 61,
-            "spaceBelowNodesPx": 18
+            "nodeSpanPx": 99,
+            "spaceAboveNodesPx": 50,
+            "spaceBelowNodesPx": 6
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -1144,9 +1144,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 84,
-            "spaceAboveNodesPx": 68,
-            "spaceBelowNodesPx": 19
+            "nodeSpanPx": 109,
+            "spaceAboveNodesPx": 55,
+            "spaceBelowNodesPx": 6
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
@@ -1243,9 +1243,9 @@
               "a4",
               "a5"
             ],
-            "nodeSpanPx": 105,
-            "spaceAboveNodesPx": 85,
-            "spaceBelowNodesPx": 24
+            "nodeSpanPx": 137,
+            "spaceAboveNodesPx": 69,
+            "spaceBelowNodesPx": 8
           }
         ],
         "minimumProjectedNodeTextPx": 6.6,
