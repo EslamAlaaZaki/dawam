@@ -667,13 +667,16 @@ def run_agent(
                     if block:  # the intro and cards replace the Markdown list that streamed
                         run.text[:] = [block]
                 if verify is not None and not capped:
-                    wrote = any(
+                    # Any write in the run is checked, so a retry round that wrote nothing new
+                    # still ends with the latest result; only new writes show a check call.
+                    wrote = any(c.name in verify.after and c.status == "ok" for c in run.calls)
+                    fresh = any(
                         c.name in verify.after and c.status == "ok" for c in run.calls[verified_at:]
                     )
                     if wrote:
                         began = timer()
                         errors = verify.check()
-                        if errors is not None:
+                        if errors is not None and fresh:
                             record = ToolCallRecord(
                                 f"{VERIFY_PREFIX}{len(run.calls) + 1}",
                                 PROPOSALS_CHECK,

@@ -468,3 +468,27 @@ def test_a_job_that_wrote_nothing_runs_no_checks(app, services, roles, model, fa
     job = submit(app, services, roles)
 
     assert "run_validation" not in job.log and "get_score" not in job.log
+
+
+def test_a_proposal_the_real_validator_rejects_is_corrected_and_the_summary_reports_zero_errors(
+    app, services, roles, model, fake_llm
+):
+    import uuid
+
+    table, system = schema_ids(roles)
+    fake_llm.script(
+        Reply(tool_calls=(propose(str(uuid.uuid4()), system, "a"),)),  # names no table
+        Reply(tool_calls=(propose(table, system, "a"),)),
+        Reply(text="Described the table."),
+    )
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    job = submit(app, services, roles, cid=cid)
+
+    assert job.status == "succeeded"
+    assert job.log.index("propose_changes error") < job.log.index("propose_changes ok")
+    messages = owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"]
+    [report] = [m["content"] for m in messages if m["content"].startswith("Job finished")]
+    assert "Proposed changes: 0 errors." in report
+    assert change_sets(roles)[0]["item_counts"] == {"pending": 1}

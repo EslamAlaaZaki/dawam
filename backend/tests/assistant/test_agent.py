@@ -792,17 +792,31 @@ def test_the_retry_is_bounded_and_the_summary_reports_the_remaining_errors():
 
 def test_the_checks_do_not_count_against_the_tool_call_cap():
     tools = Verifying()
-    adapter = FakeAdapter().script(written(), Reply(text="Done."))
+    adapter = FakeAdapter().script(written(1), Reply(text="a"), written(2), Reply(text="Fixed."))
 
-    events, _ = verified(adapter, tools, [], max_tool_calls=1)
+    events, _ = verified(adapter, tools, ["bad"], [], max_tool_calls=2)
 
-    assert events[-1].status == "completed" and "Verification:" in events[-1].text
-    assert [c.name for c in events[-1].tool_calls] == [
-        "write_it",
-        "validate_proposals",
-        "run_validation",
-        "get_score",
+    final = events[-1]
+    assert final.status == "completed" and "Verification:" in final.text
+    assert [(c.name, c.status) for c in final.tool_calls if c.name == "write_it"] == [
+        ("write_it", "ok"),
+        ("write_it", "ok"),
     ]
+    assert [c.name for c in final.tool_calls].count("validate_proposals") == 2
+
+
+def test_a_retry_round_without_new_writes_still_reports_the_errors_and_the_baseline():
+    tools = Verifying()
+    adapter = FakeAdapter().script(
+        written(), Reply(text="a"), Reply(text="b"), Reply(text="Could not fix.")
+    )
+
+    events, _ = verified(adapter, tools, ["bad"])
+
+    final = events[-1]
+    assert final.text.startswith("Could not fix.")
+    assert "Proposed changes: 1 errors. Current warehouse: validation 2 errors" in final.text
+    assert tools.ran.count("run_validation") == 1
 
 
 def test_nothing_is_verified_when_the_run_wrote_nothing():
