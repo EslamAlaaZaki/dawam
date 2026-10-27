@@ -738,7 +738,6 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "member_id": colleague_id,
     "system_id": system_id,
     "job_id": job_id,
-    "paused_job_id": paused_job_id,
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
     "change_set_id": change_set_id,
