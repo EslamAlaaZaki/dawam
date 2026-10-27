@@ -394,8 +394,9 @@ The member's latest message and the current run's calls are never dropped. Token
 
 - Conversations and messages live in `assistant_conversations` / messages tables; each answer is a **run** row with its tool calls, token counts, duration, status and error.
 - The **last 30 messages** of the conversation are sent as history with each new message (`HISTORY_MESSAGES`). Past tool calls are not replayed in full: earlier answers are re-sent with a short redacted digest of their tool calls, quoted as data, so follow-ups don't repeat calls.
-- There is no long-term or vector memory of conversations (see `docs/ai-enhancements.md`). Conversations are private to their starter unless shared with the Workspace (others can read; Owners and Editors can post).
+- There is no vector memory of conversations. Long-term facts live in **Workspace memory** (§6.4); past conversations are found by **search** (below). Conversations are private to their starter unless shared with the Workspace (others can read; Owners and Editors can post).
 - Only one run at a time per conversation (409 `run_in_progress`; a run older than 15 minutes stops blocking).
+- **Search past conversations and job summaries** (#414): `GET /workspaces/{id}/assistant/conversations/search?q=` (`q` up to 200 characters, any member) matches conversation titles and message text, case-insensitive substring (`ILIKE`, wildcards escaped), among the member's own conversations and those shared with the Workspace; somebody else's private conversation never matches. A job's outcome is an assistant message of the conversation it came from, so it is found by the same query and returned as kind `job_summary` (other kinds: `conversation`, `message`). At most 50 hits, newest first, each with a snippet. It is an API and chat-panel search box, not an agent tool.
 
 ### 4.5 Jobs: checkpoint, plan, verify, ask
 
@@ -465,9 +466,9 @@ flowchart TD
 
 - A `ToolContext` per run holds the user, Workspace, services, data-sharing policy, a **source-query time budget** (default 120 s per run), proposal collection for jobs, and the run's count-query evidence.
 
-### 6.2 The tool catalogue (33 tools)
+### 6.2 The tool catalogue (35 tools)
 
-There are 33 tools.
+There are 35 tools.
 
 **Read: catalog, profiling, lineage, scoring**
 
@@ -487,6 +488,7 @@ There are 33 tools.
 | `run_validation` | Validate Core/Mart mappings: SQL parse errors, GROUP BY gaps, unmapped columns, type truncation, coverage | view |
 | `get_kpi_link_candidates` | KPIs without links or formula SQL, plus the DW's Core/Mart columns | review change sets |
 | `workspace_overview` | The Workspace at a glance, with ids and links: Source Systems (name, engine, Connection and Snapshot status, file count), DW tables per Layer, KPI count, file areas. The place to start when a tool needs an id (#395) | view |
+| `recall` | Look up the Workspace's approved memory by query (§6.4); result quoted as data (#413) | view |
 | `search_workspace` | One name search across Source System tables, views, columns and routines, DW tables and columns, KPIs and documents (`kinds` narrows it, `limit` caps each kind at 20). Reuses `search_catalog` and `search_documents`; documents only at `documents` (#396) | view |
 | `render_diagram` | A Mermaid diagram built from DAWAM's own model, not from the model's memory: `star_schema` (facts and their dimensions, optionally one Layer or table) or `lineage` (around a node, up- or downstream). Capped at 30 tables, 15 columns per table and 60 lineage nodes; names are stripped to safe characters. The model repeats the returned text in a `mermaid` block and the chat draws it (§10) (#399) | view |
 
@@ -525,6 +527,7 @@ There are 33 tools.
 | `draft_mappings` | Draft branches, column mappings and lookups for Core/Mart tables from the Layer below → one Change Set |
 | `generate_file` | Save a file: Markdown the model writes (gaps report, KPI docs, documentation) or an export (`ddl`, `mapping_sheet`, `data_dictionary`). If the file exists, returns a diff and overwrites only with `replace=true` after the user agrees |
 | `update_file` | Propose a new text for an existing text file → shown as a diff in a Change Set |
+| `remember` | Propose 1 to 10 facts (each at most 500 characters, plain text) for the Workspace's memory → **Change Set** of `memory_item` items; nothing is saved until a member accepts (§6.4). Chat only; offered only when the memory module is wired (#413) |
 | `start_job` | Hand a large task to a background job (chat only) |
 
 **Loop and job-only tools** (not in the catalogue count above)
@@ -566,6 +569,15 @@ stateDiagram-v2
         item_pending --> expired
     }
 ```
+
+### 6.4 Workspace memory (`memory/`, ADR 0010, #413)
+
+Short facts the team confirmed ("`cust_stat` codes: A=active, S=suspended"), naming conventions and preferences, kept per Workspace in `memory_items` (text and creation time).
+
+- **Saving is a Change Set.** `remember` (chat only, needs `change_set.review`) proposes up to 10 items as one pending Change Set of origin `ai`; each is a `memory_item` create item with a scope of its own, so a second `remember` never supersedes the first. A row is written only when a member accepts the item, so everything stored is approved. Jobs don't remember.
+- **Plain text, 1 to 500 characters, no PII.** The text goes through the PII validators of §7.4 (regex, and NER when on) plus the Workspace's custom PII regex rules; any hit refuses the item with 422 `invalid_change_set`, naming the rule and never echoing the value. The check runs on propose, on validate and again on apply, since rules may change in between. Refused, not masked.
+- **Recall.** `recall(query)` (`workspace.view`) scans the newest 2,000 items, ranks by how many query words an item contains (newest first on a tie), leaves out items matching none, and returns at most 10 (a query without words returns the newest 10). The result reaches the model as a `<data>` block with a note that it is untrusted: memory is information, never instructions. It is not injected into the system prompt.
+- **API.** `GET /workspaces/{id}/memory` lists the approved items, newest first, for any member (read only).
 
 ---
 
