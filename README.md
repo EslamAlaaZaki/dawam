@@ -12,7 +12,8 @@ design decision traceable to the real source schema and an AI assistant at each 
 ![Self-hosted](https://img.shields.io/badge/deploy-self--hosted-informational)
 
 [Quick start](#quick-start) · [Use cases](#use-cases) · [Features](#features) ·
-[AI providers](#ai-providers) · [Deployment](deploy/README.md) · [Documentation](#documentation) ·
+[AI providers](#ai-providers) · [Architecture diagrams](https://eslamalaazaki.github.io/dawam/) · [Deployment](deploy/README.md) ·
+[Documentation](#documentation) ·
 [Contributing](CONTRIBUTING.md)
 
 </div>
@@ -56,7 +57,8 @@ sync, arrives as a reviewable **Change Set**.
 
 ## Features
 
-DAWAM follows the stages of a warehouse project:
+DAWAM follows the stages of a warehouse project (see the interactive
+[main flow diagram](https://eslamalaazaki.github.io/dawam/architecture/main-flow.html)):
 
 | Stage | What happens | Outputs |
 |-------|--------------|---------|
@@ -85,7 +87,8 @@ Across all stages:
 ## AI providers
 
 Add a provider in **Admin > Language models** and pick its **Type**. Then add its models
-there, and assign them to roles in **Admin > Roles, budgets & usage**:
+there, and assign them to roles in **Admin > Roles, budgets & usage**. The
+[LLM layer diagram](https://eslamalaazaki.github.io/dawam/architecture/llm-layer.html) shows how roles, budgets and adapters fit together:
 
 | Type | Covers | Base URL | API key field | Model name | Embeddings |
 |------|--------|----------|---------------|------------|------------|
@@ -119,6 +122,13 @@ flowchart LR
     app & worker --> sources[("Source databases<br/>read-only")]
     app --> smtp["SMTP"]
 ```
+
+Interactive diagrams, where every box links to the code it is based on:
+[system overview](https://eslamalaazaki.github.io/dawam/architecture/system-overview.html) ·
+[main flow](https://eslamalaazaki.github.io/dawam/architecture/main-flow.html) ·
+[LLM layer](https://eslamalaazaki.github.io/dawam/architecture/llm-layer.html) ·
+[RAG pipeline](https://eslamalaazaki.github.io/dawam/architecture/rag-pipeline.html).
+More diagrams, with their editable sources, are in [`docs/architecture/`](docs/architecture/README.md).
 
 | Layer | Technology |
 |-------|-----------|
@@ -188,6 +198,7 @@ Only `DAWAM_ENCRYPTION_KEY` is required.
 | [`docs/reference.md`](docs/reference.md) | Accounts, security controls, email, Workspaces, files and their API endpoints |
 | [`docs/spec.md`](docs/spec.md) | The full product specification (large; search it by heading) |
 | [`docs/ai-architecture.md`](docs/ai-architecture.md) | How the AI side works today: gateway, agent loop, tools, RAG, safety |
+| [`docs/architecture/`](docs/architecture/README.md) | Interactive architecture diagrams ([hosted versions](https://eslamalaazaki.github.io/dawam/)): system, use cases and the AI layer |
 | [`docs/ai-enhancements.md`](docs/ai-enhancements.md) | The AI roadmap and the status of each item |
 | [`DESIGN.md`](DESIGN.md) | The UI design system |
 | [`CONTEXT.md`](CONTEXT.md) | The domain glossary: Workspace, Source System, Snapshot, Change Set… |
