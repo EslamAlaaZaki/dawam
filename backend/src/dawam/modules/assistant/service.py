@@ -55,6 +55,7 @@ from .internal.prompt import (
     quote_data,
     today_line,
 )
+from .internal.structured import strip_cards
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -1051,7 +1052,8 @@ class AssistantService:
         return _History(
             [
                 Message(
-                    "user" if m.role == "user" else "assistant", m.content + notes.get(m.id, "")
+                    "user" if m.role == "user" else "assistant",
+                    strip_cards(m.content) + notes.get(m.id, ""),
                 )
                 for m in recent
             ],
