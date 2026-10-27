@@ -644,6 +644,7 @@ class AssistantService:
                 tools,
                 system=SYSTEM_PROMPT + JOB_PROMPT + today_line(),
                 history=[Message("user", task)],
+                core_tools=tools.core_names(None),
                 max_tool_calls=cap,
                 is_cancelled=lambda: ctx.cancelled,
                 timer=self._timer,
@@ -783,6 +784,9 @@ class AssistantService:
                     tools,
                     system=_system_prompt(context),
                     history=messages,
+                    core_tools=tools.core_names(context.type, context.id)
+                    if context
+                    else tools.core_names(None),
                     max_tool_calls=self._max_tool_calls,
                     is_cancelled=lambda: self._cancel_requested(started.run_id),
                     timer=self._timer,
