@@ -716,10 +716,9 @@ SCORE = ToolSpec("get_score", "Score.", {"type": "object"})
 
 
 class Verifying:
-    """Validation reports the given error counts, one per run; the last one repeats."""
+    """A tool set whose warehouse validation and score are fixed; it records what ran."""
 
-    def __init__(self, *errors: int) -> None:
-        self.errors = list(errors)
+    def __init__(self) -> None:
         self.ran: list[str] = []
 
     def specs(self) -> Sequence[ToolSpec]:
@@ -728,8 +727,7 @@ class Verifying:
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         self.ran.append(name)
         if name == "run_validation":
-            count = self.errors.pop(0) if len(self.errors) > 1 else self.errors[0]
-            return ToolOutcome(json.dumps({"error_count": count, "warning_count": 1}), "ok")
+            return ToolOutcome(json.dumps({"error_count": 2, "warning_count": 1}), "ok")
         if name == "get_score":
             return ToolOutcome(json.dumps({"score": 80, "grade": "B"}), "ok")
         return ToolOutcome("written", "ok")
@@ -739,75 +737,97 @@ def written(n: int = 1) -> Reply:
     return Reply(tool_calls=(ToolCall(f"w{n}", "write_it", {}),))
 
 
-def verified(adapter: FakeAdapter, tools: Verifying, **options: Any) -> list[Any]:
-    return run(adapter, tools, verify=Verify(frozenset({"write_it"})), **options)  # type: ignore[arg-type]
+def verified(adapter: FakeAdapter, tools: Verifying, *errors: list[str] | None, **options: Any):
+    """Run with a proposal check that reports ``errors`` one run at a time (the last repeats)."""
+    queue = list(errors)
+    checks: list[int] = []
+
+    def check() -> list[str] | None:
+        checks.append(1)
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    verify = Verify(frozenset({"write_it"}), check=check)
+    return run(adapter, tools, verify=verify, **options), len(checks)  # type: ignore[arg-type]
 
 
-def test_a_clean_validation_adds_its_result_to_the_final_summary():
-    tools = Verifying(0)
-    events = verified(FakeAdapter().script(written(), Reply(text="Done.")), tools)
+def test_valid_proposals_add_both_results_to_the_final_summary():
+    tools = Verifying()
+    events, _ = verified(FakeAdapter().script(written(), Reply(text="Done.")), tools, [])
 
     final = events[-1]
     assert final.status == "completed"
     assert final.text == (
-        "Done.\n\nVerification: validation found 0 errors and 1 warnings; score 80 (grade B)."
+        "Done.\n\nVerification: Proposed changes: 0 errors. "
+        "Current warehouse: validation 2 errors / 1 warnings; score 80 (grade B)."
     )
     assert tools.ran == ["write_it", "run_validation", "get_score"]
 
 
-def test_failed_validation_sends_the_model_back_to_fix_it_and_checks_again():
-    tools = Verifying(2, 0)
+def test_invalid_proposals_send_the_model_back_to_fix_them_and_are_checked_again():
+    tools = Verifying()
     adapter = FakeAdapter().script(
         written(1), Reply(text="First try."), written(2), Reply(text="Fixed.")
     )
 
-    events = verified(adapter, tools)
+    events, checks = verified(adapter, tools, ["`x` names no table"], [])
 
     final = events[-1]
-    assert final.text.startswith("Fixed.") and "found 0 errors" in final.text
-    assert "First try." not in final.text
-    assert tools.ran.count("run_validation") == 2
+    assert final.text.startswith("Fixed.") and "Proposed changes: 0 errors" in final.text
+    assert "First try." not in final.text and checks == 2
+    assert tools.ran.count("run_validation") == 1  # the baseline runs once, at the end
     retry = adapter.calls[2].messages[-1]
-    assert retry.role == "user" and "Validation found errors" in (retry.content or "")
+    assert retry.role == "user" and "`x` names no table" in (retry.content or "")
 
 
 def test_the_retry_is_bounded_and_the_summary_reports_the_remaining_errors():
-    tools = Verifying(3)
     adapter = FakeAdapter().script(
         written(1), Reply(text="a"), written(2), Reply(text="b"), written(3), Reply(text="c")
     )
 
-    final = verified(adapter, tools)[-1]
+    events, checks = verified(adapter, Verifying(), ["bad"])
 
-    assert final.status == "completed"
-    assert tools.ran.count("run_validation") == 3  # the first check and two fix rounds
-    assert "found 3 errors" in final.text
+    assert events[-1].status == "completed" and checks == 3
+    assert "Proposed changes: 1 errors" in events[-1].text
+
+
+def test_the_checks_do_not_count_against_the_tool_call_cap():
+    tools = Verifying()
+    adapter = FakeAdapter().script(written(), Reply(text="Done."))
+
+    events, _ = verified(adapter, tools, [], max_tool_calls=1)
+
+    assert events[-1].status == "completed" and "Verification:" in events[-1].text
+    assert [c.name for c in events[-1].tool_calls] == [
+        "write_it",
+        "validate_proposals",
+        "run_validation",
+        "get_score",
+    ]
 
 
 def test_nothing_is_verified_when_the_run_wrote_nothing():
-    tools = Verifying(0)
-    final = verified(FakeAdapter().script(Reply(text="Just reading.")), tools)[-1]
+    tools = Verifying()
+    events, checks = verified(FakeAdapter().script(Reply(text="Just reading.")), tools, [])
 
-    assert final.text == "Just reading." and tools.ran == []
+    assert events[-1].text == "Just reading." and tools.ran == [] and checks == 0
 
 
 def test_the_fix_rounds_used_survive_a_checkpoint_resume():
-    tools = Verifying(2)
+    verify = Verify(frozenset({"write_it"}), 1, check=lambda: ["bad"])
     adapter = FakeAdapter().script(written(), Reply(text="a"), written(2), Reply(text="b"))
-    saved, _ = checkpoints_of(adapter, tools, verify=Verify(frozenset({"write_it"}), 1))
-    assert saved[-1].verify_rounds == 1
-    mid = next(c for c in saved if c.verify_rounds == 1 and len(c.calls) == 4)  # 2nd write ran
+    saved, _ = checkpoints_of(adapter, Verifying(), verify=verify)
+    mid = next(c for c in saved if c.verify_rounds == 1 and len(c.calls) == 3)  # 2nd write ran
 
     resumed = list(
         run_agent(
             gateway(FakeAdapter().script(Reply(text="c"))),
-            Verifying(2),
+            Verifying(),
             system="",
             history=[],
             resume=mid,
-            verify=Verify(frozenset({"write_it"}), 1),
+            verify=verify,
         )
     )
 
     # the round is already used: the resumed run reports instead of retrying
-    assert "found 2 errors" in resumed[-1].text
+    assert "Proposed changes: 1 errors" in resumed[-1].text

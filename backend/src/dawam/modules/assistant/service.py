@@ -652,7 +652,7 @@ class AssistantService:
                 delta_poll_seconds=STOP_POLL_SECONDS,
                 checkpoint=save,
                 resume=resume,
-                verify=Verify(tools.written_names()),
+                verify=Verify(tools.written_names(), check=tools.check_proposals),
             ):
                 if isinstance(event, Finished):
                     finished = event

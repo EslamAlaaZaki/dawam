@@ -450,11 +450,16 @@ def test_a_job_that_proposed_changes_checks_its_work_and_reports_the_result(
         Reply(text="Described the table."),
     )
 
-    job = submit(app, services, roles)
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+    job = submit(app, services, roles, cid=cid)
 
     assert job.status == "succeeded"
     assert job.log.count("run_validation") == 1 and job.log.count("get_score") == 1
-    assert job.log.index("propose_changes") < job.log.index("run_validation")
+    assert job.log.index("propose_changes") < job.log.index("validate_proposals")
+    messages = owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"]
+    [report] = [m["content"] for m in messages if m["content"].startswith("Job finished")]
+    assert "Verification: Proposed changes: 0 errors. Current warehouse: validation" in report
 
 
 def test_a_job_that_wrote_nothing_runs_no_checks(app, services, roles, model, fake_llm):
