@@ -18,7 +18,9 @@ died does not repeat the tool calls it had finished.
 
 from __future__ import annotations
 
+import contextvars
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Collection, Iterator, Sequence
@@ -315,6 +317,8 @@ class _Run:
         )
 
 
+logger = logging.getLogger(__name__)
+
 MAX_PARALLEL_READS = 8
 """Most read calls of one turn that run at the same time."""
 
@@ -345,13 +349,19 @@ def _run_reads(
 
     def one(call: ToolCall) -> tuple[ToolOutcome, int]:
         started = timer()
-        with tracing().tool_call(call.name, call.arguments) as span:
-            outcome = tools.execute(call.name, call.arguments)
-            span.result(outcome.status, outcome.content)
+        try:
+            with tracing().tool_call(call.name, call.arguments) as span:
+                outcome = tools.execute(call.name, call.arguments)
+                span.result(outcome.status, outcome.content)
+        except Exception:  # a tool set should not raise; one that does costs only its own call
+            logger.exception("assistant tool failed", extra={"tool": call.name})
+            outcome = ToolOutcome(f"The `{call.name}` tool failed.", "error")
         return outcome, round((timer() - started) * 1000)
 
     with ThreadPoolExecutor(min(len(calls), MAX_PARALLEL_READS)) as pool:
-        return list(pool.map(one, calls))
+        # Each call in a copy of the caller's context, so request-scoped log fields follow.
+        futures = [pool.submit(contextvars.copy_context().run, one, call) for call in calls]
+        return [future.result() for future in futures]
 
 
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
@@ -514,14 +524,14 @@ def run_agent(
                     if is_cancelled():
                         yield run.finish("cancelled")
                         return
-                    # Reads of the turn run first and together; writes and find_tools follow
-                    # one by one, so a write never overlaps another call.
-                    reads = (
-                        [c for c in pending if c.name in specs and is_read(c.name, c.arguments)]
-                        if is_read is not None
-                        else []
-                    )
-                    batch = reads[: max_tool_calls - executed] if len(reads) > 1 else []
+                    # The leading run of reads goes together; a write (or find_tools) is a
+                    # barrier, so every call still sees what the calls before it did.
+                    batch: list[ToolCall] = []
+                    if is_read is not None:
+                        for c in pending[: max(0, max_tool_calls - executed)]:
+                            if c.name not in specs or not is_read(c.name, c.arguments):
+                                break
+                            batch.append(c)
                     if len(batch) > 1:
                         done = _run_reads(tools, batch, timer)
                         executed += len(batch)
@@ -529,7 +539,7 @@ def run_agent(
                             yield from record(read, outcome, duration)
                         save()  # once the whole batch has finished
                         continue
-                    call = reads[0] if reads else pending[0]
+                    call = pending[0]
                     if executed >= max_tool_calls:
                         limit_hit = True
                         outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0

@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from dawam.modules.assistant.internal import agent as agent_module
 from dawam.modules.assistant.internal.agent import Checkpoint, ToolOutcome, run_agent
 from dawam.modules.assistant.internal.tools import BoundTools, Tool, ToolContext, ToolRegistry
 from dawam.modules.llm import FakeAdapter, Gateway, Message, Reply, ToolCall, ToolSpec
@@ -69,8 +70,8 @@ def test_reads_overlap_writes_follow_one_by_one_and_results_keep_the_asked_order
     tools = Tools()
     calls = (
         ToolCall("c1", "read_a", {}),
-        ToolCall("c2", "write_a", {}),
-        ToolCall("c3", "read_b", {}),
+        ToolCall("c2", "read_b", {}),
+        ToolCall("c3", "write_a", {}),
         ToolCall("c4", "write_b", {}),
     )
 
@@ -82,10 +83,10 @@ def test_reads_overlap_writes_follow_one_by_one_and_results_keep_the_asked_order
     starts = {n: s for n, k, s, _ in tools.spans if k == "write"}
     assert ends["read_b"] <= ends["read_a"]  # the later read finished first
     assert min(starts.values()) >= max(ends.values())  # writes after all reads
-    # the reads' results in asked order, then the writes' in asked order
+    # a write is a barrier: results keep the asked order
     told = [m.tool_call_id for m in adapter.calls[1].messages if m.role == "tool"]
-    assert told == ["c1", "c3", "c2", "c4"]
-    assert [c.id for c in events[-1].tool_calls] == ["c1", "c3", "c2", "c4"]
+    assert told == ["c1", "c2", "c3", "c4"]
+    assert [c.id for c in events[-1].tool_calls] == ["c1", "c2", "c3", "c4"]
 
 
 def test_the_checkpoint_is_saved_after_the_parallel_batch_not_between_its_reads():
@@ -110,16 +111,66 @@ def test_find_tools_stays_sequential_after_the_reads():
         tools,
         (
             ToolCall("c1", "read_a", {}),
-            ToolCall("c2", "find_tools", {"query": "tool 3"}),
-            ToolCall("c3", "read_b", {}),
+            ToolCall("c2", "read_b", {}),
+            ToolCall("c3", "find_tools", {"query": "tool 3"}),
         ),
         core_tools={"read_a", "read_b"},
     )
 
     done = events[-1].tool_calls
-    assert [c.id for c in done] == ["c1", "c3", "c2"]
+    assert [c.id for c in done] == ["c1", "c2", "c3"]
     assert all(c.status == "ok" for c in done)
     assert tools.peak["read"] == 2
+
+
+def test_a_write_is_a_barrier_a_later_read_does_not_overtake_it():
+    tools = Tools()
+    tools.barrier = threading.Barrier(1, timeout=5)
+    tools.b_done.set()
+
+    events, _ = _drive(tools, (ToolCall("c1", "write_a", {}), ToolCall("c2", "read_b", {})))
+
+    assert [n for n, *_ in tools.spans] == ["write_a", "read_b"]
+    assert [c.id for c in events[-1].tool_calls] == ["c1", "c2"]
+
+
+def test_max_parallel_reads_caps_concurrency(monkeypatch):
+    monkeypatch.setattr(agent_module, "MAX_PARALLEL_READS", 2)
+    lock = threading.Lock()
+    state = {"now": 0, "peak": 0}
+
+    class Counting(_Plain):
+        def is_read(self, name: str, arguments: dict[str, Any]) -> bool:
+            return True
+
+        def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+            with lock:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            time.sleep(0.05)
+            with lock:
+                state["now"] -= 1
+            return ToolOutcome("ok", "ok")
+
+    calls = tuple(ToolCall(f"c{i}", "read_a", {}) for i in range(5))
+    _drive(Counting(), calls)
+
+    assert state["peak"] == 2
+
+
+def test_one_failing_read_does_not_drop_the_others():
+    class Failing(_Plain):
+        def is_read(self, name: str, arguments: dict[str, Any]) -> bool:
+            return True
+
+        def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+            if name == "read_a":
+                raise RuntimeError("boom")
+            return ToolOutcome("fine", "ok")
+
+    events, _ = _drive(Failing(), (ToolCall("c1", "read_a", {}), ToolCall("c2", "read_b", {})))
+
+    assert [c.status for c in events[-1].tool_calls] == ["error", "ok"]
 
 
 class _Plain:
