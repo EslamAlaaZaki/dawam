@@ -1,10 +1,8 @@
 <div align="center">
 
-<h1>
-  <a href="https://eslamalaazaki.github.io/dawam">
-    <img src="frontend/src/app/icon.svg" alt="DAWAM logo" height="40" align="center"> DAWAM
-  </a>
-</h1>
+<a href="https://eslamalaazaki.github.io/dawam">
+  <img src="docs/assets/dawam-banner.svg" alt="DAWAM" width="320">
+</a>
 
 **Data Analysis & Warehouse Architecture Modeler**
 
