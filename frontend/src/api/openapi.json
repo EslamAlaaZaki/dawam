@@ -6310,7 +6310,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dawam__modules__sources__snapshot_api__SearchResults"
+                  "$ref": "#/components/schemas/SearchResults"
                 }
               }
             }
@@ -15901,7 +15901,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dawam__modules__assistant__api__SearchResults"
+                  "$ref": "#/components/schemas/ConversationSearchResults"
                 }
               }
             }
@@ -19389,6 +19389,89 @@
           "model_id"
         ],
         "title": "ConversationOut"
+      },
+      "ConversationSearchHit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "message",
+              "job_summary"
+            ],
+            "title": "Kind",
+            "description": "A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one."
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "conversation_title": {
+            "type": "string",
+            "title": "Conversation Title"
+          },
+          "shared_with_workspace": {
+            "type": "boolean",
+            "title": "Shared With Workspace"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine",
+            "description": "You started the conversation."
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "The matching message; none for a title."
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "description": "A short stretch of text around the match."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "conversation_id",
+          "conversation_title",
+          "shared_with_workspace",
+          "mine",
+          "message_id",
+          "snippet",
+          "at"
+        ],
+        "title": "ConversationSearchHit"
+      },
+      "ConversationSearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSearchHit"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ConversationSearchResults"
       },
       "CoverageOut": {
         "properties": {
@@ -28243,72 +28326,22 @@
         ],
         "title": "SearchHit"
       },
-      "SearchHitOut": {
+      "SearchResults": {
         "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "conversation",
-              "message",
-              "job_summary"
-            ],
-            "title": "Kind",
-            "description": "A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one."
-          },
-          "conversation_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Conversation Id"
-          },
-          "conversation_title": {
-            "type": "string",
-            "title": "Conversation Title"
-          },
-          "shared_with_workspace": {
-            "type": "boolean",
-            "title": "Shared With Workspace"
-          },
-          "mine": {
-            "type": "boolean",
-            "title": "Mine",
-            "description": "You started the conversation."
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id",
-            "description": "The matching message; none for a title."
-          },
-          "snippet": {
-            "type": "string",
-            "title": "Snippet",
-            "description": "A short stretch of text around the match."
-          },
-          "at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "At"
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Exact name matches first, then names starting with the query."
           }
         },
         "type": "object",
         "required": [
-          "kind",
-          "conversation_id",
-          "conversation_title",
-          "shared_with_workspace",
-          "mine",
-          "message_id",
-          "snippet",
-          "at"
+          "items"
         ],
-        "title": "SearchHitOut"
+        "title": "SearchResults"
       },
       "SecurityEventOut": {
         "properties": {
@@ -33390,22 +33423,6 @@
         ],
         "title": "WorkspacePage"
       },
-      "dawam__modules__assistant__api__SearchResults": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/SearchHitOut"
-            },
-            "type": "array",
-            "title": "Items"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items"
-        ],
-        "title": "SearchResults"
-      },
       "dawam__modules__propagation__api__ProposedChangeSet": {
         "properties": {
           "change_set_id": {
@@ -33435,23 +33452,6 @@
           "manual"
         ],
         "title": "ProposedChangeSet"
-      },
-      "dawam__modules__sources__snapshot_api__SearchResults": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/SearchHit"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "Exact name matches first, then names starting with the query."
-          }
-        },
-        "type": "object",
-        "required": [
-          "items"
-        ],
-        "title": "SearchResults"
       },
       "dawam__modules__warehouse__staging_api__ProposedChangeSet": {
         "properties": {

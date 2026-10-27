@@ -5721,6 +5721,49 @@ export interface components {
              */
             model_id: string | null;
         };
+        /** ConversationSearchHit */
+        ConversationSearchHit: {
+            /**
+             * Kind
+             * @description A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one.
+             * @enum {string}
+             */
+            kind: "conversation" | "message" | "job_summary";
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Conversation Title */
+            conversation_title: string;
+            /** Shared With Workspace */
+            shared_with_workspace: boolean;
+            /**
+             * Mine
+             * @description You started the conversation.
+             */
+            mine: boolean;
+            /**
+             * Message Id
+             * @description The matching message; none for a title.
+             */
+            message_id: string | null;
+            /**
+             * Snippet
+             * @description A short stretch of text around the match.
+             */
+            snippet: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** ConversationSearchResults */
+        ConversationSearchResults: {
+            /** Items */
+            items: components["schemas"]["ConversationSearchHit"][];
+        };
         /** CoverageOut */
         CoverageOut: {
             /**
@@ -9648,43 +9691,13 @@ export interface components {
              */
             status: "present" | "source_removed" | "out_of_scope" | "deleted";
         };
-        /** SearchHitOut */
-        SearchHitOut: {
+        /** SearchResults */
+        SearchResults: {
             /**
-             * Kind
-             * @description A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one.
-             * @enum {string}
+             * Items
+             * @description Exact name matches first, then names starting with the query.
              */
-            kind: "conversation" | "message" | "job_summary";
-            /**
-             * Conversation Id
-             * Format: uuid
-             */
-            conversation_id: string;
-            /** Conversation Title */
-            conversation_title: string;
-            /** Shared With Workspace */
-            shared_with_workspace: boolean;
-            /**
-             * Mine
-             * @description You started the conversation.
-             */
-            mine: boolean;
-            /**
-             * Message Id
-             * @description The matching message; none for a title.
-             */
-            message_id: string | null;
-            /**
-             * Snippet
-             * @description A short stretch of text around the match.
-             */
-            snippet: string;
-            /**
-             * At
-             * Format: date-time
-             */
-            at: string;
+            items: components["schemas"]["SearchHit"][];
         };
         /** SecurityEventOut */
         SecurityEventOut: {
@@ -11822,11 +11835,6 @@ export interface components {
              */
             next_cursor: string | null;
         };
-        /** SearchResults */
-        dawam__modules__assistant__api__SearchResults: {
-            /** Items */
-            items: components["schemas"]["SearchHitOut"][];
-        };
         /** ProposedChangeSet */
         dawam__modules__propagation__api__ProposedChangeSet: {
             /**
@@ -11845,14 +11853,6 @@ export interface components {
              * @description Stored SQL sqlglot could not translate, flagged "manual" (platform changes).
              */
             manual: string[];
-        };
-        /** SearchResults */
-        dawam__modules__sources__snapshot_api__SearchResults: {
-            /**
-             * Items
-             * @description Exact name matches first, then names starting with the query.
-             */
-            items: components["schemas"]["SearchHit"][];
         };
         /** ProposedChangeSet */
         dawam__modules__warehouse__staging_api__ProposedChangeSet: {
@@ -15949,7 +15949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dawam__modules__sources__snapshot_api__SearchResults"];
+                    "application/json": components["schemas"]["SearchResults"];
                 };
             };
             /** @description Validation error */
@@ -22079,7 +22079,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dawam__modules__assistant__api__SearchResults"];
+                    "application/json": components["schemas"]["ConversationSearchResults"];
                 };
             };
             /** @description Validation error */

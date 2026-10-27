@@ -38,7 +38,7 @@ export function useConversations(workspaceId: string) {
   });
 }
 
-export type SearchHit = components["schemas"]["SearchHitOut"];
+export type SearchHit = components["schemas"]["ConversationSearchHit"];
 
 /** Search the titles and messages (job summaries included) of the conversations the member
  * may read; waits for a non-blank term. */

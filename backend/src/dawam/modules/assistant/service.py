@@ -104,7 +104,10 @@ LIST_LIMIT = 100
 SEARCH_LIMIT = 50
 """Most hits a search returns."""
 SNIPPET_CHARS = 160
-JOB_OUTCOME_PREFIXES = ("Job finished:", "Job failed:", "Job cancelled:")
+JOB_FINISHED = "Job finished:"
+JOB_FAILED = "Job failed:"
+JOB_CANCELLED = "Job cancelled:"
+JOB_OUTCOME_PREFIXES = (JOB_FINISHED, JOB_FAILED, JOB_CANCELLED)
 """How ``run_job`` starts the message it writes into a conversation when a job ends."""
 STOP_POLL_SECONDS = 1.0
 """How often the stop flag is read while text streams."""
@@ -851,7 +854,7 @@ class AssistantService:
         )
         if finished.status == "cancelled":
             self._post(
-                workspace_id, conversation_id, f"Job cancelled: {title}. No changes were proposed."
+                workspace_id, conversation_id, f"{JOB_CANCELLED} {title}. No changes were proposed."
             )
             raise JobCancelledError
         if finished.status == "failed":
@@ -859,7 +862,7 @@ class AssistantService:
             self._post(
                 workspace_id,
                 conversation_id,
-                f"Job failed: {title}. {reason} No changes were proposed.",
+                f"{JOB_FAILED} {title}. {reason} No changes were proposed.",
             )
             raise RuntimeError(reason)
         try:
@@ -869,12 +872,12 @@ class AssistantService:
             self._post(
                 workspace_id,
                 conversation_id,
-                f"Job failed: {title}. The proposed changes were refused: {exc.message} "
+                f"{JOB_FAILED} {title}. The proposed changes were refused: {exc.message} "
                 "No changes were proposed.",
             )
             raise RuntimeError(exc.message) from exc
         summary = redact_text(finished.text).strip() or "The job has finished."
-        outcome = f"Job finished: {summary}"
+        outcome = f"{JOB_FINISHED} {summary}"
         if proposed:
             ctx.log(f"Proposed one Change Set with {proposed} items.")
             outcome += f"\n\nIt proposed {proposed} changes for your review."

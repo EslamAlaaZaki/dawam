@@ -82,7 +82,7 @@ class ConversationList(BaseModel):
     items: list[ConversationOut]
 
 
-class SearchHitOut(BaseModel):
+class ConversationSearchHit(BaseModel):
     kind: Literal["conversation", "message", "job_summary"] = Field(
         description="A conversation matched by its title, a message of one, or the outcome "
         "an assistant job wrote into one."
@@ -96,8 +96,8 @@ class SearchHitOut(BaseModel):
     at: datetime
 
 
-class SearchResults(BaseModel):
-    items: list[SearchHitOut]
+class ConversationSearchResults(BaseModel):
+    items: list[ConversationSearchHit]
 
 
 class ToolCallOut(BaseModel):
@@ -325,13 +325,13 @@ def search_conversations(
     user: CurrentUser,
     service: AssistantServiceDep,
     q: Annotated[str, Query(max_length=200, description="Text to look for (case-insensitive).")],
-) -> SearchResults:
+) -> ConversationSearchResults:
     """Search the titles and messages of your conversations and those members shared,
     including the outcomes of assistant jobs, newest first. Somebody else's private
     conversation never matches (any member; 404 for non-members)."""
-    return SearchResults(
+    return ConversationSearchResults(
         items=[
-            SearchHitOut(
+            ConversationSearchHit(
                 kind=h.kind,
                 conversation_id=h.conversation_id,
                 conversation_title=h.conversation_title,
