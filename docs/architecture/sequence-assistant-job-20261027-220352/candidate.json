@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Assistant Background Task",
+    "locale": "en",
+    "output": "docs/architecture/sequence-assistant-job-20261027-220352/assistant-job.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "participants": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Member",
+      "sublabel": "chat panel",
+      "sources": [
+        {
+          "path": "frontend/src/api/assistant.ts",
+          "line": 262,
+          "end_line": 305,
+          "label": "chat stream"
+        }
+      ]
+    },
+    {
+      "id": "chat",
+      "type": "backend",
+      "label": "Chat run",
+      "sublabel": "app process",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2115,
+          "end_line": 2135,
+          "label": "start_job → submit assistant_task"
+        }
+      ]
+    },
+    {
+      "id": "jobs",
+      "type": "database",
+      "label": "jobs table",
+      "sublabel": "JobService",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 307,
+          "end_line": 352,
+          "label": "submit"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 430,
+          "end_line": 468,
+          "label": "answer: paused → queued"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 606,
+          "end_line": 628,
+          "label": "_pause"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "worker",
+      "sublabel": "poll loop",
+      "sources": [
+        {
+          "path": "backend/src/dawam/worker.py",
+          "line": 55,
+          "end_line": 104,
+          "label": "claim and run"
+        }
+      ]
+    },
+    {
+      "id": "run",
+      "type": "backend",
+      "label": "run_job",
+      "sublabel": "agent loop",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 704,
+          "end_line": 800,
+          "label": "run_job: gateway, tools, checkpoints"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 800,
+          "end_line": 860,
+          "label": "Asked, finish, proposals"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/supervisor.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "supervisor mode"
+        }
+      ]
+    },
+    {
+      "id": "cs",
+      "type": "security",
+      "label": "Change Sets",
+      "sublabel": "review",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 3168,
+          "end_line": 3240,
+          "label": "check / submit_proposals"
+        },
+        {
+          "path": "backend/src/dawam/modules/changesets/service.py",
+          "line": 321,
+          "end_line": 335,
+          "label": "propose"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 250,
+      "label": "Hand over"
+    },
+    {
+      "from": 258,
+      "to": 488,
+      "label": "Run, checkpoint after each step"
+    },
+    {
+      "from": 494,
+      "to": 700,
+      "label": "Finish"
+    }
+  ],
+  "messages": [
+    {
+      "id": "j1",
+      "from": "ui",
+      "to": "chat",
+      "y": 165,
+      "label": "long task request",
+      "variant": "emphasis"
+    },
+    {
+      "id": "j2",
+      "from": "chat",
+      "to": "jobs",
+      "y": 195,
+      "label": "start_job → queued"
+    },
+    {
+      "id": "j3",
+      "from": "chat",
+      "to": "ui",
+      "y": 225,
+      "label": "job started",
+      "variant": "return"
+    },
+    {
+      "id": "j4",
+      "from": "worker",
+      "to": "jobs",
+      "y": 275,
+      "label": "claim (SKIP LOCKED)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "j5",
+      "from": "worker",
+      "to": "run",
+      "y": 305,
+      "label": "run_job(params)"
+    },
+    {
+      "id": "j6",
+      "from": "run",
+      "to": "jobs",
+      "y": 335,
+      "label": "checkpoint, log",
+      "variant": "dashed",
+      "note": "after every step"
+    },
+    {
+      "id": "j7",
+      "from": "run",
+      "to": "jobs",
+      "y": 390,
+      "label": "ask_member → paused",
+      "variant": "security",
+      "note": "question posted to the conversation"
+    },
+    {
+      "id": "j8",
+      "from": "ui",
+      "to": "jobs",
+      "y": 445,
+      "label": "answer → queued"
+    },
+    {
+      "id": "j9",
+      "from": "worker",
+      "to": "run",
+      "y": 475,
+      "label": "resume from checkpoint"
+    },
+    {
+      "id": "j10",
+      "from": "run",
+      "to": "cs",
+      "y": 510,
+      "label": "verify, propose one Change Set",
+      "variant": "emphasis",
+      "note": "run_validation on proposals"
+    },
+    {
+      "id": "j11",
+      "from": "run",
+      "to": "ui",
+      "y": 565,
+      "label": "report in conversation",
+      "variant": "return"
+    },
+    {
+      "id": "j12",
+      "from": "run",
+      "to": "jobs",
+      "y": 595,
+      "label": "succeeded / failed",
+      "variant": "return"
+    },
+    {
+      "id": "j13",
+      "from": "jobs",
+      "to": "ui",
+      "y": 625,
+      "label": "notification",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Verified behaviour",
+      "items": [
+        "start_job is a chat tool (not offered inside a job); it queues assistant_task at chat priority, as the member.",
+        "run_job runs the same agent loop with the higher job tool-call cap and Verify: after write tools, run_validation checks the proposals and the loop fixes errors for a few rounds.",
+        "Checkpoints after each step: a job whose worker dies resumes without repeating finished tool calls (up to 3 runs, see the job lifecycle)."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Errors and endings",
+      "items": [
+        "The member can no longer sign in, or a refusal (budget, internal-only): the job fails with a message in its log.",
+        "cancelled: a message 'No changes were proposed' is posted; failed: same, with the reason.",
+        "A refused Change Set fails the job; otherwise the collected changes become exactly one Change Set to review."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Conditional / simplified",
+      "items": [
+        "Supervisor mode (setting assistant_job_supervisor): the job plans (write_plan) and delegates parts to specialists, each its own run_agent; a specialist's question pauses the job the same way.",
+        "The member's answer goes through the jobs API (JobService.answer); the UI path to it was not traced in detail."
+      ]
+    }
+  ]
+}

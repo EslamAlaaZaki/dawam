@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "428a649b-c052-4748-8d29-9705dfead8f0",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\background-jobs.html",
+  "specification": {
+    "sha256": "72af4154a9d35d488a92ff11414dee5663df38f0d8494d552f0c155470106caa",
+    "bytes": 7512
+  },
+  "artifact": {
+    "sha256": "4e6389eda509f666df07eb9e269aa195ace0eb43ddd6aa8ce92c69b2ae3a519d",
+    "bytes": 846331
+  }
+}

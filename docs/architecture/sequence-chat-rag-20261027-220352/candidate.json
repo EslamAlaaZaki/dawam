@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Retrieval-Assisted Chat (RAG)",
+    "locale": "en",
+    "output": "docs/architecture/sequence-chat-rag-20261027-220352/chat-rag.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "participants": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Chat panel",
+      "sublabel": "browser",
+      "sources": [
+        {
+          "path": "frontend/src/api/assistant.ts",
+          "line": 262,
+          "end_line": 305,
+          "label": "POST + stream reader"
+        }
+      ]
+    },
+    {
+      "id": "svc",
+      "type": "backend",
+      "label": "Assistant",
+      "sublabel": "service + loop",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 1261,
+          "end_line": 1300,
+          "label": "_with_passages: auto-retrieve"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 960,
+          "end_line": 966,
+          "label": "first message + auto_retrieve"
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "security",
+      "label": "ToolRegistry",
+      "sublabel": "checks",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 3111,
+          "end_line": 3124,
+          "label": "sharing level + authorize"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/injection.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "injection check"
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "type": "backend",
+      "label": "DocSearch",
+      "sublabel": "files module",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1135,
+          "end_line": 1162,
+          "label": "search: FTS + vector, RRF, MMR"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1488,
+          "end_line": 1500,
+          "label": "_embed_queries"
+        }
+      ]
+    },
+    {
+      "id": "gw",
+      "type": "security",
+      "label": "LLM gateway",
+      "sublabel": "embed, chat",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 388,
+          "end_line": 394,
+          "label": "embed (metered)"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 348,
+          "end_line": 353,
+          "label": "rerank (metered)"
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "document_chunks",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1,
+          "end_line": 9,
+          "label": "full-text + pgvector"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 200,
+      "label": "Ask"
+    },
+    {
+      "from": 208,
+      "to": 470,
+      "label": "Auto-retrieve (first message, when on)"
+    },
+    {
+      "from": 478,
+      "to": 660,
+      "label": "Answer with passages"
+    }
+  ],
+  "messages": [
+    {
+      "id": "r1",
+      "from": "ui",
+      "to": "svc",
+      "y": 170,
+      "label": "POST message",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r2",
+      "from": "svc",
+      "to": "tools",
+      "y": 225,
+      "label": "search_documents",
+      "note": "runs as the member"
+    },
+    {
+      "id": "r3",
+      "from": "tools",
+      "to": "search",
+      "y": 275,
+      "label": "search(query)",
+      "variant": "security",
+      "note": "sharing level allows documents"
+    },
+    {
+      "id": "r4",
+      "from": "search",
+      "to": "gw",
+      "y": 330,
+      "label": "embed query"
+    },
+    {
+      "id": "r5",
+      "from": "gw",
+      "to": "search",
+      "y": 358,
+      "label": "vectors",
+      "variant": "return"
+    },
+    {
+      "id": "r6",
+      "from": "search",
+      "to": "pg",
+      "y": 388,
+      "label": "FTS + vector rank"
+    },
+    {
+      "id": "r7",
+      "from": "pg",
+      "to": "search",
+      "y": 416,
+      "label": "candidates",
+      "variant": "return"
+    },
+    {
+      "id": "r8",
+      "from": "search",
+      "to": "tools",
+      "y": 445,
+      "label": "cited passages",
+      "variant": "return",
+      "note": "RRF, floor, MMR"
+    },
+    {
+      "id": "r9",
+      "from": "tools",
+      "to": "svc",
+      "y": 500,
+      "label": "quoted, flagged",
+      "variant": "return"
+    },
+    {
+      "id": "r10",
+      "from": "svc",
+      "to": "gw",
+      "y": 530,
+      "label": "chat + passages",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r11",
+      "from": "gw",
+      "to": "svc",
+      "y": 560,
+      "label": "answer / more search",
+      "variant": "return",
+      "note": "may call search_documents again"
+    },
+    {
+      "id": "r12",
+      "from": "svc",
+      "to": "ui",
+      "y": 615,
+      "label": "SSE text, tool, done",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Retrieval steps (files/search.py)",
+      "items": [
+        "Query → stems → full-text ranking (ts_rank_cd on document_chunks.search_vector) per query variant.",
+        "Where passages were embedded and the Workspace allows it: the query is embedded (embedding role) and ranked by vector similarity (pgvector).",
+        "Rankings are fused with weighted RRF, passages below the relevance floor dropped, the rest diversified (MMR); an optional rerank model reorders the top results."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Context construction",
+      "items": [
+        "Passages reach the model as a quoted <data> block after the member's message; the system prompt says quoted text is data, never instructions (prompt.py).",
+        "Passages that look like prompt injection still go, wrapped with a warning; the UI marks the document (injection.py).",
+        "Search runs as the member: VIEW_WORKSPACE plus the data-sharing level for documents."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Conditions",
+      "items": [
+        "Auto-retrieve only on the first message of a conversation and only when the Workspace setting auto_retrieve is on.",
+        "Without an embedding model, or when the Workspace's sharing level excludes documents from models, search is full-text only.",
+        "The model can also call search_documents itself at any turn (same path, through the agent loop)."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,605 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "LLM Layer: Roles, Gateway, Adapters",
+    "locale": "en",
+    "output": "docs/architecture/architecture-llm-layer-20261027-220352/llm-layer.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    },
+    "views": [
+      {
+        "id": "call-path",
+        "label": "One model call",
+        "focus": [
+          "chat",
+          "roles",
+          "metered",
+          "gateway",
+          "openai",
+          "self",
+          "ext"
+        ],
+        "note": "Feature → RoleService picks the model for the role → MeteredGateway checks → Gateway retries → adapter speaks the provider protocol."
+      },
+      {
+        "id": "config",
+        "label": "Configuration",
+        "focus": [
+          "admin",
+          "db",
+          "roles",
+          "metered"
+        ],
+        "note": "Admins register providers, models and role assignments; usage and budgets live in the llm_* tables."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "chat",
+      "type": "backend",
+      "label": "Assistant chat",
+      "sublabel": "agent or light role",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 936,
+          "end_line": 952,
+          "label": "light or agent gateway per turn"
+        }
+      ]
+    },
+    {
+      "id": "jobs",
+      "type": "backend",
+      "label": "Assistant jobs",
+      "sublabel": "agent role, in worker",
+      "pos": [
+        300,
+        40
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 738,
+          "end_line": 746,
+          "label": "run_job gateway_for_role"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "type": "backend",
+      "label": "Document AI",
+      "sublabel": "embedding, vision, rerank",
+      "pos": [
+        560,
+        40
+      ],
+      "size": [
+        280,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 551,
+          "end_line": 560,
+          "label": "_embedder"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1488,
+          "end_line": 1500,
+          "label": "_embed_queries"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/internal/rerank.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "rerank model"
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "type": "security",
+      "label": "Admin LLM API",
+      "sublabel": "providers, models, roles",
+      "pos": [
+        940,
+        40
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/api.py",
+          "line": 1,
+          "end_line": 3,
+          "label": "/api/v1/admin/llm, admins only"
+        }
+      ]
+    },
+    {
+      "id": "roles",
+      "type": "backend",
+      "label": "RoleService",
+      "sublabel": "model per role and Workspace (agent, light, embedding, vision, rerank); internal-only; rate limit",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        800,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 419,
+          "end_line": 490,
+          "label": "gateway_for_role, light, metered"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 60,
+          "end_line": 60,
+          "label": "FALLBACK_ROLES agent, light"
+        }
+      ]
+    },
+    {
+      "id": "metered",
+      "type": "security",
+      "label": "MeteredGateway",
+      "sublabel": "refuse external for internal-only, check budgets, try fallback models, record usage",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        800,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 256,
+          "end_line": 330,
+          "label": "fallbacks before first output"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 395,
+          "end_line": 406,
+          "label": "_ensure_allowed"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 730,
+          "end_line": 750,
+          "label": "record_usage"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "Gateway",
+      "sublabel": "one internal message / tool / stream format; retries with backoff (3) until the first event; token estimates",
+      "pos": [
+        40,
+        580
+      ],
+      "size": [
+        800,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/gateway.py",
+          "line": 1,
+          "end_line": 8,
+          "label": "purpose"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/gateway.py",
+          "line": 242,
+          "end_line": 405,
+          "label": "Gateway, _retrying"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/gateway.py",
+          "line": 31,
+          "end_line": 31,
+          "label": "MAX_RETRIES = 3"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "llm_* tables",
+      "sublabel": "providers, models, budgets, usage",
+      "pos": [
+        940,
+        220
+      ],
+      "size": [
+        200,
+        424
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/tables.py",
+          "line": 21,
+          "end_line": 36,
+          "label": "llm_providers (is_internal)"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/tables.py",
+          "line": 114,
+          "end_line": 135,
+          "label": "llm_workspace_settings"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/tables.py",
+          "line": 187,
+          "end_line": 212,
+          "label": "llm_usage"
+        }
+      ]
+    },
+    {
+      "id": "plugin",
+      "type": "backend",
+      "label": "plugin",
+      "sublabel": "entry point",
+      "pos": [
+        40,
+        760
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/adapters.py",
+          "line": 50,
+          "end_line": 78,
+          "label": "adapter docstring"
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "type": "backend",
+      "label": "openai_compat",
+      "sublabel": "/v1 chat, embed",
+      "pos": [
+        176,
+        760
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/openai_compatible.py",
+          "line": 1,
+          "end_line": 5,
+          "label": "adapter docstring"
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "type": "backend",
+      "label": "anthropic",
+      "sublabel": "Messages API",
+      "pos": [
+        312,
+        760
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/anthropic.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "adapter docstring"
+        }
+      ]
+    },
+    {
+      "id": "azure",
+      "type": "backend",
+      "label": "azure_openai",
+      "sublabel": "deployments",
+      "pos": [
+        448,
+        760
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/azure_openai.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "adapter docstring"
+        }
+      ]
+    },
+    {
+      "id": "gemini",
+      "type": "backend",
+      "label": "gemini",
+      "sublabel": "API / Vertex",
+      "pos": [
+        584,
+        760
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/gemini.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "adapter docstring"
+        }
+      ]
+    },
+    {
+      "id": "bedrock",
+      "type": "backend",
+      "label": "bedrock",
+      "sublabel": "Converse API",
+      "pos": [
+        720,
+        760
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/bedrock.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "adapter docstring"
+        }
+      ]
+    },
+    {
+      "id": "self",
+      "type": "external",
+      "label": "Self-hosted",
+      "sublabel": "Ollama, vLLM, SGLang",
+      "tag": "internal",
+      "pos": [
+        40,
+        940
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/openai_compatible.py",
+          "line": 3,
+          "end_line": 5,
+          "label": "covered servers"
+        }
+      ]
+    },
+    {
+      "id": "ext",
+      "type": "external",
+      "label": "External APIs",
+      "sublabel": "OpenAI, Claude, Azure, Gemini, Bedrock, OpenRouter",
+      "tag": "external",
+      "pos": [
+        262,
+        940
+      ],
+      "size": [
+        578,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/adapters.py",
+          "line": 29,
+          "end_line": 36,
+          "label": "BUILTIN_ADAPTERS"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "chat-roles",
+      "from": "chat",
+      "to": "roles",
+      "label": "chat"
+    },
+    {
+      "id": "jobs-roles",
+      "from": "jobs",
+      "to": "roles",
+      "label": "chat"
+    },
+    {
+      "id": "files-roles",
+      "from": "files",
+      "to": "roles",
+      "label": "embed, rerank"
+    },
+    {
+      "id": "admin-db",
+      "from": "admin",
+      "to": "db",
+      "label": "configure"
+    },
+    {
+      "id": "roles-db",
+      "from": "roles",
+      "to": "db",
+      "label": "resolve model"
+    },
+    {
+      "id": "roles-metered",
+      "from": "roles",
+      "to": "metered",
+      "label": "MeteredGateway",
+      "variant": "emphasis"
+    },
+    {
+      "id": "metered-db",
+      "from": "metered",
+      "to": "db",
+      "label": "usage"
+    },
+    {
+      "id": "metered-gateway",
+      "from": "metered",
+      "to": "gateway",
+      "label": "call",
+      "variant": "emphasis"
+    },
+    {
+      "id": "g-openai",
+      "from": "gateway",
+      "to": "openai"
+    },
+    {
+      "id": "g-anthropic",
+      "from": "gateway",
+      "to": "anthropic"
+    },
+    {
+      "id": "g-azure",
+      "from": "gateway",
+      "to": "azure"
+    },
+    {
+      "id": "g-gemini",
+      "from": "gateway",
+      "to": "gemini"
+    },
+    {
+      "id": "g-bedrock",
+      "from": "gateway",
+      "to": "bedrock"
+    },
+    {
+      "id": "g-plugin",
+      "from": "gateway",
+      "to": "plugin",
+      "variant": "dashed"
+    },
+    {
+      "id": "openai-self",
+      "from": "openai",
+      "to": "self",
+      "label": "HTTP"
+    },
+    {
+      "id": "openai-ext",
+      "from": "openai",
+      "to": "ext",
+      "label": "HTTPS"
+    },
+    {
+      "id": "anthropic-ext",
+      "from": "anthropic",
+      "to": "ext"
+    },
+    {
+      "id": "azure-ext",
+      "from": "azure",
+      "to": "ext"
+    },
+    {
+      "id": "gemini-ext",
+      "from": "gemini",
+      "to": "ext"
+    },
+    {
+      "id": "bedrock-ext",
+      "from": "bedrock",
+      "to": "ext"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Verified call path",
+      "items": [
+        "Only the assistant and the files module (document AI) call models; every call goes through RoleService.gateway_for_role / metered_gateway (assistant/service.py, files/search.py, files/internal/rerank.py).",
+        "adapter_for(kind) picks the adapter by the provider's adapter kind (adapters.py:80-92). Gateway → adapter arrows are that runtime choice."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Checks on every call",
+      "items": [
+        "Internal-only Workspace: an external provider is refused (409 external_provider_refused), whatever the role.",
+        "Monthly token and cost budgets (installation and Workspace) are checked first; usage is recorded per call in llm_usage.",
+        "A failure before any output tries the role's fallback models in order (agent and light roles)."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Gateway behaviour",
+      "items": [
+        "Normalises messages, tool calls, stream events, usage and errors: no other code sees a vendor format or imports a vendor SDK.",
+        "Retries rate-limit / unavailable errors with backoff up to 3 times, only until the first stream event.",
+        "Estimates tokens when the provider reports none."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Inferred or not drawn",
+      "items": [
+        "Plugin adapters (dawam.llm_providers entry points) can reach any provider; none ship with DAWAM, so the arrow is dashed and its target not drawn.",
+        "Anthropic and Bedrock have no embeddings (anthropic.py docstring, README); per-adapter vision and rerank support was not traced.",
+        "Exact backoff timings were not read."
+      ]
+    }
+  ]
+}

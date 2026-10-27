@@ -1,0 +1,260 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Background Job Lifecycle",
+    "locale": "en",
+    "output": "docs/architecture/lifecycle-background-jobs-20261027-213256/background-jobs.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "mainPath": [
+    "queued",
+    "running",
+    "succeeded"
+  ],
+  "states": [
+    {
+      "id": "queued",
+      "type": "start",
+      "label": "queued",
+      "sublabel": "row in jobs table",
+      "tag": "JobService.submit",
+      "step": "01",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 307,
+          "end_line": 352,
+          "label": "submit: insert, optional caller txn"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/tables.py",
+          "line": 22,
+          "end_line": 30,
+          "label": "JobRecord (jobs)"
+        }
+      ]
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "running",
+      "sublabel": "handler in a worker thread",
+      "tag": "heartbeat",
+      "step": "02",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 551,
+          "end_line": 571,
+          "label": "_claim: SKIP LOCKED, attempts += 1"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 475,
+          "end_line": 496,
+          "label": "execute: run handler, record end"
+        },
+        {
+          "path": "backend/src/dawam/worker.py",
+          "line": 40,
+          "end_line": 63,
+          "label": "worker thread + heartbeat loop"
+        }
+      ]
+    },
+    {
+      "id": "succeeded",
+      "type": "success",
+      "label": "succeeded",
+      "sublabel": "progress 100, creator notified",
+      "tag": "terminal",
+      "step": "03",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 634,
+          "end_line": 658,
+          "label": "_end: status, notification"
+        }
+      ]
+    },
+    {
+      "id": "paused",
+      "type": "waiting",
+      "label": "paused",
+      "sublabel": "waits for creator's answer",
+      "tag": "checkpointed",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 606,
+          "end_line": 628,
+          "label": "_pause on JobPausedError"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 430,
+          "end_line": 468,
+          "label": "answer: paused → queued"
+        }
+      ]
+    },
+    {
+      "id": "failed",
+      "type": "failure",
+      "label": "failed",
+      "sublabel": "error saved, creator notified",
+      "tag": "terminal",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 486,
+          "end_line": 493,
+          "label": "unknown type / handler error"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 502,
+          "end_line": 528,
+          "label": "fail_lost: worker stopped"
+        }
+      ]
+    },
+    {
+      "id": "cancelled",
+      "type": "neutral",
+      "label": "cancelled",
+      "sublabel": "by user or archived Workspace",
+      "tag": "terminal",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 409,
+          "end_line": 428,
+          "label": "cancel: any ACTIVE status"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 353,
+          "end_line": 371,
+          "label": "cancel_for_workspace"
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "claim",
+      "from": "queued",
+      "to": "running",
+      "label": "worker claims",
+      "variant": "emphasis"
+    },
+    {
+      "id": "done",
+      "from": "running",
+      "to": "succeeded",
+      "label": "handler returns",
+      "variant": "emphasis"
+    },
+    {
+      "id": "error",
+      "from": "running",
+      "to": "failed",
+      "label": "error or worker lost",
+      "variant": "security"
+    },
+    {
+      "id": "resume",
+      "from": "running",
+      "to": "queued",
+      "label": "worker lost, checkpoint",
+      "variant": "dashed"
+    },
+    {
+      "id": "ask",
+      "from": "running",
+      "to": "paused",
+      "label": "asks creator"
+    },
+    {
+      "id": "answered",
+      "from": "paused",
+      "to": "queued",
+      "label": "creator answers"
+    },
+    {
+      "id": "cancel-queued",
+      "from": "queued",
+      "to": "cancelled",
+      "label": "cancel"
+    },
+    {
+      "id": "cancel-running",
+      "from": "running",
+      "to": "cancelled",
+      "label": "cancel"
+    },
+    {
+      "id": "cancel-paused",
+      "from": "paused",
+      "to": "cancelled",
+      "label": "cancel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Who enqueues (runtime)",
+      "items": [
+        "sources: extract (snapshot_service.py:287), profile (profiling_service.py:182), pii_scan (pii_scan_service.py:120), infer_relationships (relationship_service.py:152).",
+        "files: index_document and reindex_documents (search.py:696, 950, 1036).",
+        "assistant: assistant_task through the start_job tool (assistant/internal/tools.py:2120).",
+        "All go through JobService.submit; the job row is the only queue (no broker)."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Transition details",
+      "items": [
+        "worker claims: highest priority, oldest first; FOR UPDATE SKIP LOCKED so two workers never take one job.",
+        "error or worker lost: handler exception, no handler for the type, or stale heartbeat without a usable checkpoint (or after 3 runs).",
+        "worker lost, checkpoint: fail_lost requeues a stale job that saved a checkpoint, until it has run MAX_ATTEMPTS = 3 times.",
+        "cancel while running: the handler sees ctx.cancelled and raises JobCancelledError; execute keeps the cancelled status."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Who runs (wiring)",
+      "items": [
+        "API uses QueuedJobRunner: submit only leaves the row queued (app.py:106-108).",
+        "worker registers the same handlers (job_handlers.register_job_handlers) and loops: fail_lost, then claim_next until empty, then sleep worker_poll_seconds (worker.py:55-104).",
+        "Tests use InlineJobRunner, which runs the job after the caller's transaction commits."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failure handling",
+      "items": [
+        "Retries are not automatic for handler errors: only a lost worker with a checkpoint is requeued.",
+        "A lost job that is failed also calls the type's on_abandoned hook (document index / reindex register one).",
+        "Stale after 60 s without heartbeat by default; the worker passes settings.job_stale_seconds."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Uncertain",
+      "items": [
+        "What each handler does on cancel mid-run depends on how often it checks ctx.cancelled; not traced per handler.",
+        "Which handlers raise JobPausedError was not traced; the assistant task is the likely one (it asks the creator), unverified."
+      ]
+    }
+  ]
+}

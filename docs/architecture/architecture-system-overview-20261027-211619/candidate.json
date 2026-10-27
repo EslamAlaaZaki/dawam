@@ -1,0 +1,777 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DAWAM System Overview",
+    "locale": "en",
+    "output": "docs/architecture/architecture-system-overview-20261027-211619/system-overview.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    },
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Browser request path",
+        "focus": [
+          "browser",
+          "edge",
+          "web",
+          "auth",
+          "api"
+        ],
+        "note": "Only edge is published; /api/* goes to FastAPI, every other path to the Next.js web service."
+      },
+      {
+        "id": "background-jobs",
+        "label": "Background jobs",
+        "focus": [
+          "api",
+          "postgres",
+          "worker",
+          "sources",
+          "storage",
+          "ai"
+        ],
+        "note": "The API queues jobs in Postgres; the worker claims them with SKIP LOCKED and runs the shared handlers."
+      },
+      {
+        "id": "ai-path",
+        "label": "AI assistant",
+        "focus": [
+          "api",
+          "ai",
+          "llm",
+          "worker"
+        ],
+        "note": "Chat streams over SSE from the API; long tasks and document embeddings run in the worker. Every model call goes through the LLM gateway."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Browser",
+      "sublabel": "React UI + openapi-fetch",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/api/client.ts",
+          "line": 1,
+          "end_line": 40,
+          "label": "typed API client + CSRF header"
+        }
+      ]
+    },
+    {
+      "id": "edge",
+      "type": "backend",
+      "label": "edge",
+      "sublabel": "nginx :8080, self-hosted",
+      "tag": "only published port",
+      "pos": [
+        270,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/nginx/templates/dawam.conf.template",
+          "line": 11,
+          "end_line": 56,
+          "label": "routes /api/* and /"
+        },
+        {
+          "path": "compose.yaml",
+          "line": 29,
+          "end_line": 45,
+          "label": "edge service, port mapping"
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "web",
+      "sublabel": "Next.js 16 pages :3000",
+      "pos": [
+        510,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/proxy.ts",
+          "line": 1,
+          "end_line": 46,
+          "label": "CSP nonce + HSTS per page"
+        },
+        {
+          "path": "frontend/next.config.ts",
+          "line": 1,
+          "end_line": 36,
+          "label": "standalone build, dev rewrites"
+        },
+        {
+          "path": "compose.yaml",
+          "line": 79,
+          "end_line": 95,
+          "label": "web service, no secrets"
+        }
+      ]
+    },
+    {
+      "id": "smtp",
+      "type": "external",
+      "label": "SMTP server",
+      "sublabel": "invites, password reset",
+      "pos": [
+        890,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/platform/email.py",
+          "line": 65,
+          "end_line": 80,
+          "label": "SmtpEmailSender"
+        },
+        {
+          "path": "backend/src/dawam/app.py",
+          "line": 106,
+          "end_line": 108,
+          "label": "API wires SMTP sender"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Session + CSRF guard",
+      "sublabel": "cookie session, double-submit",
+      "pos": [
+        270,
+        220
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/auth/api.py",
+          "line": 29,
+          "end_line": 72,
+          "label": "dawam_session → CurrentUser"
+        },
+        {
+          "path": "backend/src/dawam/platform/csrf.py",
+          "line": 43,
+          "end_line": 62,
+          "label": "require_csrf"
+        },
+        {
+          "path": "backend/src/dawam/app.py",
+          "line": 280,
+          "end_line": 283,
+          "label": "CSRF on every /api/v1 route"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "app · FastAPI /api/v1",
+      "sublabel": "modular monolith: 22 domain modules (sources, warehouse, changesets, propagation, kpis, files, …)",
+      "pos": [
+        510,
+        220
+      ],
+      "size": [
+        550,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/app.py",
+          "line": 111,
+          "end_line": 269,
+          "label": "composition root"
+        },
+        {
+          "path": "backend/src/dawam/modules/__init__.py",
+          "line": 35,
+          "end_line": 58,
+          "label": "ALL_MODULES routers"
+        },
+        {
+          "path": "backend/src/dawam/__main__.py",
+          "line": 44,
+          "end_line": 58,
+          "label": "python -m dawam serve"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "File storage",
+      "sublabel": "local volume or S3",
+      "pos": [
+        510,
+        420
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/platform/storage.py",
+          "line": 51,
+          "end_line": 130,
+          "label": "Local / S3 FileStorage"
+        },
+        {
+          "path": "compose.yaml",
+          "line": 21,
+          "end_line": 22,
+          "label": "file-data volume"
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 16",
+      "sublabel": "pgvector · app data + job queue",
+      "pos": [
+        700,
+        420
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "compose.yaml",
+          "line": 47,
+          "end_line": 60,
+          "label": "pgvector/pgvector:pg16"
+        },
+        {
+          "path": "backend/src/dawam/modules/jobs/service.py",
+          "line": 469,
+          "end_line": 473,
+          "label": "jobs table, SKIP LOCKED claim"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1,
+          "end_line": 9,
+          "label": "full-text + pgvector search"
+        }
+      ]
+    },
+    {
+      "id": "sources",
+      "type": "external",
+      "label": "Source databases",
+      "sublabel": "PG, SQL Server, MySQL, Oracle",
+      "tag": "read-only",
+      "pos": [
+        900,
+        420
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 1,
+          "end_line": 14,
+          "label": "Connector rules: read-only, timeout"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 216,
+          "end_line": 234,
+          "label": "connector_for(engine)"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 251,
+          "end_line": 275,
+          "label": "connection test from API"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "worker · python -m dawam worker",
+      "sublabel": "same image as app · extract, profile, PII scan, relationship inference, document index, assistant tasks",
+      "pos": [
+        510,
+        600
+      ],
+      "size": [
+        1110,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/worker.py",
+          "line": 66,
+          "end_line": 107,
+          "label": "poll, claim, heartbeat loop"
+        },
+        {
+          "path": "backend/src/dawam/job_handlers.py",
+          "line": 183,
+          "end_line": 191,
+          "label": "job type → handler"
+        },
+        {
+          "path": "compose.yaml",
+          "line": 75,
+          "end_line": 77,
+          "label": "worker service"
+        }
+      ]
+    },
+    {
+      "id": "selfllm",
+      "type": "external",
+      "label": "Self-hosted LLM",
+      "sublabel": "Ollama, vLLM, SGLang, LM Studio",
+      "tag": "internal",
+      "pos": [
+        1320,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/openai_compatible.py",
+          "line": 1,
+          "end_line": 5,
+          "label": "vLLM, SGLang, Ollama, llama.cpp…"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/tables.py",
+          "line": 21,
+          "end_line": 35,
+          "label": "provider is_internal flag"
+        },
+        {
+          "path": "compose.yaml",
+          "line": 96,
+          "end_line": 100,
+          "label": "optional ollama service"
+        }
+      ]
+    },
+    {
+      "id": "extllm",
+      "type": "external",
+      "label": "External LLM APIs",
+      "sublabel": "OpenAI, Claude, Gemini, Bedrock",
+      "tag": "external",
+      "pos": [
+        1540,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/adapters.py",
+          "line": 29,
+          "end_line": 36,
+          "label": "anthropic, azure_openai, gemini, bedrock"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/internal/openai_compatible.py",
+          "line": 3,
+          "end_line": 5,
+          "label": "OpenAI, OpenRouter, Groq, Mistral…"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 395,
+          "end_line": 406,
+          "label": "internal-only Workspaces refuse"
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "Agent loop",
+      "sublabel": "model turn → tools → repeat",
+      "tag": "run_agent",
+      "pos": [
+        1150,
+        220
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 511,
+          "end_line": 540,
+          "label": "run_agent: cap, compaction, resume"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 918,
+          "end_line": 990,
+          "label": "_stream: routing, tools, auto-retrieve"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/context.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "fit the context window"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "LLM gateway",
+      "sublabel": "roles, budgets, fallbacks",
+      "pos": [
+        1430,
+        220
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 427,
+          "end_line": 470,
+          "label": "agent / light / embedding roles"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/gateway.py",
+          "line": 1,
+          "end_line": 8,
+          "label": "one format, retries, usage"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/internal/adapters.py",
+          "line": 80,
+          "end_line": 92,
+          "label": "adapter_for(kind)"
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "security",
+      "label": "Tool calling",
+      "sublabel": "39 tools, per-call checks",
+      "tag": "ToolRegistry",
+      "pos": [
+        1150,
+        420
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2569,
+          "end_line": 2967,
+          "label": "TOOLS (read / write)"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 3111,
+          "end_line": 3124,
+          "label": "sharing level + authorize"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/injection.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "prompt-injection check"
+        }
+      ]
+    },
+    {
+      "id": "rag",
+      "type": "backend",
+      "label": "RAG search",
+      "sublabel": "full-text + pgvector, RRF",
+      "tag": "files module",
+      "pos": [
+        1430,
+        420
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1,
+          "end_line": 9,
+          "label": "passages, embeddings, fusion"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1135,
+          "end_line": 1145,
+          "label": "search"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 1261,
+          "end_line": 1270,
+          "label": "auto-retrieve on first message"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "app container · authenticated /api/v1",
+      "wraps": [
+        "auth",
+        "api"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Agentic layer · app (chat) and worker (jobs)",
+      "wraps": [
+        "loop",
+        "gateway",
+        "tools",
+        "rag"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-edge",
+      "from": "browser",
+      "to": "edge",
+      "label": "HTTP(S)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "edge-web",
+      "from": "edge",
+      "to": "web",
+      "label": "pages /"
+    },
+    {
+      "id": "edge-auth",
+      "from": "edge",
+      "to": "auth",
+      "label": "/api/* · SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "auth-api",
+      "from": "auth",
+      "to": "api",
+      "label": "signed in",
+      "variant": "security"
+    },
+    {
+      "id": "api-smtp",
+      "from": "api",
+      "to": "smtp",
+      "label": "SMTP"
+    },
+    {
+      "id": "api-storage",
+      "from": "api",
+      "to": "storage",
+      "label": "file bytes"
+    },
+    {
+      "id": "api-postgres",
+      "from": "api",
+      "to": "postgres",
+      "label": "SQL · enqueue"
+    },
+    {
+      "id": "api-sources",
+      "from": "api",
+      "to": "sources",
+      "label": "test, chat SQL"
+    },
+    {
+      "id": "worker-storage",
+      "from": "worker",
+      "to": "storage",
+      "label": "file bytes"
+    },
+    {
+      "id": "worker-postgres",
+      "from": "worker",
+      "to": "postgres",
+      "label": "claim jobs",
+      "variant": "dashed"
+    },
+    {
+      "id": "worker-sources",
+      "from": "worker",
+      "to": "sources",
+      "label": "jobs, task SQL"
+    },
+    {
+      "id": "api-loop",
+      "from": "api",
+      "to": "loop",
+      "label": "chat SSE"
+    },
+    {
+      "id": "worker-loop",
+      "from": "worker",
+      "to": "loop",
+      "label": "assistant tasks",
+      "variant": "dashed"
+    },
+    {
+      "id": "loop-gateway",
+      "from": "loop",
+      "to": "gateway",
+      "label": "LLM calls",
+      "variant": "emphasis"
+    },
+    {
+      "id": "loop-tools",
+      "from": "loop",
+      "to": "tools",
+      "label": "tool calls"
+    },
+    {
+      "id": "tools-rag",
+      "from": "tools",
+      "to": "rag",
+      "label": "RAG search"
+    },
+    {
+      "id": "rag-gateway",
+      "from": "rag",
+      "to": "gateway",
+      "label": "embed"
+    },
+    {
+      "id": "worker-rag",
+      "from": "worker",
+      "to": "rag",
+      "label": "index, embed",
+      "variant": "dashed"
+    },
+    {
+      "id": "gateway-selfllm",
+      "from": "gateway",
+      "to": "selfllm",
+      "label": "/v1 API"
+    },
+    {
+      "id": "gateway-extllm",
+      "from": "gateway",
+      "to": "extllm",
+      "label": "HTTPS"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Runtime vs static dependencies",
+      "items": [
+        "Arrows are runtime calls observed at call sites (HTTP, SQL, SMTP, driver connections).",
+        "Static only: the web UI's typed client (frontend/src/api/schema.d.ts) is generated at build time from the backend OpenAPI spec (python -m dawam openapi); no runtime web → app call.",
+        "Static only: modules import each other only through their package; composition roots (app.py, worker.py, wiring.py, job_handlers.py) wire cross-module hooks."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Auth & trust boundaries",
+      "items": [
+        "Only edge publishes a port; app trusts X-Forwarded-* from edge's fixed IP alone (compose.yaml, app.py ProxyHeadersMiddleware).",
+        "Every /api/v1 route requires the CSRF token; routes taking CurrentUser need the dawam_session cookie. Per-Workspace roles are enforced in the workspaces policy (can / authorize).",
+        "Credentials (source passwords, LLM keys) are sealed with AES-256-GCM (platform/crypto.py SecretBox)."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Agentic layer",
+      "items": [
+        "Loop: each model turn may call tools; results go back to the model until it answers or hits the tool-call cap. Long chats are fitted to the window and older turns summarised (compaction).",
+        "Routing: short plain questions go to the light model, others to the agent model (routing.py). Models without native tool calling get prompted tool calls (prompted.py).",
+        "Tools: 39 (catalog, profiles, lineage, run_source_query, files, KPIs, Change Set proposals, remember/recall memory, web_search/web_fetch, plans, ask_member, start_job). Each call is checked against the Workspace data-sharing level and the user's permission; results are checked for prompt injection.",
+        "RAG: documents are cut into passages, indexed with Postgres full-text and pgvector embeddings (worker index jobs); search fuses both rankings. The first chat message gets top passages automatically when enabled.",
+        "Jobs: start_job runs a task in the worker; behind a flag a supervisor plans and delegates to specialists (supervisor.py)."
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "LLM providers: self-hosted vs external",
+      "items": [
+        "Each provider is marked internal (self-hosted) or external by the admin (llm_providers.is_internal).",
+        "Self-hosted examples: Ollama, vLLM, SGLang, LM Studio, llama.cpp server, all through the openai_compatible adapter.",
+        "External examples: OpenAI, OpenRouter, Groq, Mistral (openai_compatible), Anthropic Claude, Azure OpenAI, Google Gemini / Vertex AI, AWS Bedrock.",
+        "An internal-only Workspace refuses external models for every role, so its data never leaves the network."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Inferred or unknown",
+      "items": [
+        "Resolved: the API calls source DBs directly only for the connection test; model-written SQL comes from the assistant tool run_source_query via SourceQueryService, in the app for chat and in the worker for assistant tasks (see the source-db-flows diagram).",
+        "Worker → SMTP: not observed (no mail service wired in worker or job handlers).",
+        "Ollama, Mailpit, the demo source DB and the GPU override depend on the Compose file and profile used (compose.yaml, deploy/docker-compose.yaml, deploy/docker-compose.gpu.yaml).",
+        "Storage backend (volume vs S3) and which LLM providers exist are deployment configuration, not fixed in code."
+      ]
+    }
+  ]
+}

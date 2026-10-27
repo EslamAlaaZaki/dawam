@@ -1,0 +1,370 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "AI Assistant Chat Turn (tool-assisted)",
+    "locale": "en",
+    "output": "docs/architecture/sequence-assistant-chat-20261027-213256/assistant-chat.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "participants": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "AssistantPanel",
+      "sublabel": "browser",
+      "sources": [
+        {
+          "path": "frontend/src/api/assistant.ts",
+          "line": 262,
+          "end_line": 305,
+          "label": "POST + stream reader"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "assistant API",
+      "sublabel": "FastAPI route",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/api.py",
+          "line": 431,
+          "end_line": 471,
+          "label": "send_message → SSE"
+        }
+      ]
+    },
+    {
+      "id": "svc",
+      "type": "backend",
+      "label": "Assistant",
+      "sublabel": "service + loop",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 518,
+          "end_line": 604,
+          "label": "checks, saves message + run"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 918,
+          "end_line": 1040,
+          "label": "_stream: gateway, tools, run_agent"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 511,
+          "end_line": 530,
+          "label": "run_agent"
+        }
+      ]
+    },
+    {
+      "id": "gw",
+      "type": "security",
+      "label": "LLM gateway",
+      "sublabel": "RoleService",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 427,
+          "end_line": 470,
+          "label": "gateway_for_role → MeteredGateway"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/gateway.py",
+          "line": 242,
+          "end_line": 345,
+          "label": "Gateway: retries, usage"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 730,
+          "end_line": 750,
+          "label": "record_usage → llm_usage"
+        }
+      ]
+    },
+    {
+      "id": "provider",
+      "type": "external",
+      "label": "LLM provider",
+      "sublabel": "via adapter",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/internal/adapters.py",
+          "line": 29,
+          "end_line": 92,
+          "label": "built-in + entry-point adapters"
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "security",
+      "label": "ToolRegistry",
+      "sublabel": "39 tools",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2569,
+          "end_line": 2967,
+          "label": "TOOLS"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 3111,
+          "end_line": 3124,
+          "label": "allowed: sharing level + authorize"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 3326,
+          "end_line": 3350,
+          "label": "execute"
+        }
+      ]
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "Domain svcs",
+      "sublabel": "sources, DW, …",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/assembly.py",
+          "line": 52,
+          "end_line": 175,
+          "label": "build_assistant_service wiring"
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "assistant_*",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/tables.py",
+          "line": 21,
+          "end_line": 118,
+          "label": "conversations, messages, runs"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 308,
+      "label": "Accept the message"
+    },
+    {
+      "from": 316,
+      "to": 405,
+      "label": "Set up the run"
+    },
+    {
+      "from": 412,
+      "to": 660,
+      "label": "Agent loop, until answer or cap"
+    },
+    {
+      "from": 668,
+      "to": 760,
+      "label": "Finish"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post",
+      "from": "ui",
+      "to": "api",
+      "y": 165,
+      "label": "POST …/messages",
+      "variant": "emphasis",
+      "note": "CSRF header + session cookie"
+    },
+    {
+      "id": "send",
+      "from": "api",
+      "to": "svc",
+      "y": 220,
+      "label": "send_message",
+      "note": "authorize, rate limit"
+    },
+    {
+      "id": "save-msg",
+      "from": "svc",
+      "to": "pg",
+      "y": 268,
+      "label": "insert message + run"
+    },
+    {
+      "id": "events",
+      "from": "svc",
+      "to": "api",
+      "y": 296,
+      "label": "event iterator",
+      "variant": "return"
+    },
+    {
+      "id": "role",
+      "from": "svc",
+      "to": "gw",
+      "y": 330,
+      "label": "gateway_for_role(agent)",
+      "note": "budget, internal-only checks"
+    },
+    {
+      "id": "bind",
+      "from": "svc",
+      "to": "tools",
+      "y": 385,
+      "label": "bind(user, policy)"
+    },
+    {
+      "id": "chat",
+      "from": "svc",
+      "to": "gw",
+      "y": 425,
+      "label": "chat(history, tools)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "https",
+      "from": "gw",
+      "to": "provider",
+      "y": 455,
+      "label": "HTTPS request",
+      "note": "retry until first event"
+    },
+    {
+      "id": "stream",
+      "from": "provider",
+      "to": "gw",
+      "y": 512,
+      "label": "stream events",
+      "variant": "return"
+    },
+    {
+      "id": "deltas",
+      "from": "gw",
+      "to": "svc",
+      "y": 540,
+      "label": "text / tool calls",
+      "variant": "return"
+    },
+    {
+      "id": "execute",
+      "from": "svc",
+      "to": "tools",
+      "y": 568,
+      "label": "execute(name, args)",
+      "variant": "security"
+    },
+    {
+      "id": "call",
+      "from": "tools",
+      "to": "domain",
+      "y": 596,
+      "label": "service call as user"
+    },
+    {
+      "id": "result",
+      "from": "domain",
+      "to": "tools",
+      "y": 624,
+      "label": "result",
+      "variant": "return"
+    },
+    {
+      "id": "outcome",
+      "from": "tools",
+      "to": "svc",
+      "y": 650,
+      "label": "ToolOutcome (quoted)",
+      "variant": "return"
+    },
+    {
+      "id": "sse",
+      "from": "api",
+      "to": "ui",
+      "y": 682,
+      "label": "SSE text, tool",
+      "variant": "dashed"
+    },
+    {
+      "id": "finish",
+      "from": "svc",
+      "to": "pg",
+      "y": 710,
+      "label": "save answer + run"
+    },
+    {
+      "id": "done",
+      "from": "api",
+      "to": "ui",
+      "y": 742,
+      "label": "SSE done",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Where it runs",
+      "items": [
+        "Chat: in the app process, inside the HTTP request; edge passes /api/* unbuffered.",
+        "Long tasks: start_job queues assistant_task; the worker runs AssistantService.run_job with the same tools (job=True, no start_job).",
+        "build_assistant_service assembles the same service in both processes (job_handlers.py:173-182)."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Before and after the loop",
+      "items": [
+        "Routing: a short, plain question goes to the Workspace light model when one is assigned; anything that asks to make or change something, or is long, goes to the agent model (assistant/internal/routing.py).",
+        "History: the latest 30 messages, or the turns after a saved compaction summary (service.py _history, HISTORY_MESSAGES = 30).",
+        "A turn where the model calls no tool ends after one model call with status completed; after the first answer the light model writes the conversation title (service.py _retitle)."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Guards on each tool call",
+      "items": [
+        "Workspace data-sharing level must allow the tool's level.",
+        "workspaces.authorize(user, tool.action): a Viewer's chat gets read tools only.",
+        "Source SQL goes through SourceQueryService (query guard, PII masking, audit); see the source-flows diagram."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Persistence",
+      "items": [
+        "assistant_conversations, assistant_messages, assistant_runs, assistant_run_feedback.",
+        "Token usage per call: llm_usage (record_usage); budgets: llm_workspace_budgets, llm_workspace_cost_budgets.",
+        "Optional light model: routing, history compaction and retitling when one is assigned."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Simplified or uncertain",
+      "items": [
+        "Order inside the loop is per model turn; tool calls in one turn may run in parallel (agent.py thread pool).",
+        "Auto-retrieval of document passages on the first message (settings.auto_retrieve) is not drawn.",
+        "The SSE frames are produced by iterating service events in api.py _frames; the timing of the save vs the done frame was not traced exactly."
+      ]
+    }
+  ]
+}

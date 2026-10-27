@@ -1,0 +1,457 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Use Case: Understand a Source System",
+    "locale": "en",
+    "output": "docs/architecture/workflow-uc-source-analysis-20261027-220352/uc-source-analysis.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "Analyst (web UI)"
+    },
+    {
+      "id": "api",
+      "label": "API + services"
+    },
+    {
+      "id": "err1",
+      "label": "Connection errors",
+      "variant": "exception"
+    },
+    {
+      "id": "worker",
+      "label": "Worker jobs"
+    },
+    {
+      "id": "data",
+      "label": "Data"
+    },
+    {
+      "id": "imp",
+      "label": "Schema Import path"
+    },
+    {
+      "id": "err2",
+      "label": "Import errors",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "connect",
+      "label": "Connect",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "extract",
+      "label": "Capture metadata",
+      "fromCol": 2,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "analyse",
+      "label": "Analyse + review",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "goal",
+    "save",
+    "start",
+    "extract",
+    "snapshot",
+    "hook",
+    "review"
+  ],
+  "nodes": [
+    {
+      "id": "goal",
+      "lane": "ui",
+      "col": 0,
+      "type": "frontend",
+      "label": "Connect source",
+      "sublabel": "goal: understand it",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/ConnectionPanel.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "Connection form"
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "lane": "ui",
+      "col": 5,
+      "type": "frontend",
+      "label": "Review results",
+      "sublabel": "accept / reject",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/relationship_service.py",
+          "line": 196,
+          "end_line": 209,
+          "label": "accept, reject"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/pii_service.py",
+          "line": 1,
+          "end_line": 3,
+          "label": "PII review queue"
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "lane": "api",
+      "col": 1,
+      "type": "backend",
+      "label": "Save + test",
+      "sublabel": "password sealed",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/connection_api.py",
+          "line": 146,
+          "end_line": 175,
+          "label": "PUT, POST /test"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 292,
+          "end_line": 335,
+          "label": "save: SecretBox"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 364,
+          "end_line": 378,
+          "label": "test → ok or safe error"
+        }
+      ]
+    },
+    {
+      "id": "start",
+      "lane": "api",
+      "col": 2,
+      "type": "backend",
+      "label": "Start extraction",
+      "sublabel": "queue extract job",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/snapshot_service.py",
+          "line": 272,
+          "end_line": 295,
+          "label": "start_extraction, 409"
+        }
+      ]
+    },
+    {
+      "id": "hook",
+      "lane": "api",
+      "col": 4,
+      "type": "backend",
+      "label": "After Snapshot",
+      "sublabel": "staging sync, offer",
+      "sources": [
+        {
+          "path": "backend/src/dawam/wiring.py",
+          "line": 122,
+          "end_line": 157,
+          "label": "staging_sync_after_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "validate",
+      "lane": "imp",
+      "col": 1,
+      "type": "backend",
+      "label": "Validate file",
+      "sublabel": "report only",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/import_service.py",
+          "line": 125,
+          "end_line": 137,
+          "label": "validate"
+        }
+      ]
+    },
+    {
+      "id": "upload",
+      "lane": "imp",
+      "col": 2,
+      "type": "backend",
+      "label": "Upload file",
+      "sublabel": "origin = import",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/import_service.py",
+          "line": 138,
+          "end_line": 214,
+          "label": "upload"
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "lane": "worker",
+      "col": 3,
+      "type": "backend",
+      "label": "extract job",
+      "sublabel": "read, diff vs latest",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/snapshot_service.py",
+          "line": 440,
+          "end_line": 467,
+          "label": "run_extraction"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/snapshot_service.py",
+          "line": 485,
+          "end_line": 496,
+          "label": "no differences → stop"
+        }
+      ],
+      "tag": "no change: no Snapshot"
+    },
+    {
+      "id": "analysis",
+      "lane": "worker",
+      "col": 5,
+      "type": "backend",
+      "label": "Analysis jobs",
+      "sublabel": "profile, PII, infer",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/profiling_service.py",
+          "line": 130,
+          "end_line": 196,
+          "label": "start_profiling"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/pii_scan_service.py",
+          "line": 73,
+          "end_line": 134,
+          "label": "start_scan"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/relationship_service.py",
+          "line": 125,
+          "end_line": 164,
+          "label": "start_inference"
+        }
+      ]
+    },
+    {
+      "id": "srcdb",
+      "lane": "data",
+      "col": 3,
+      "type": "external",
+      "label": "Source DB",
+      "sublabel": "read-only",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 1,
+          "end_line": 14,
+          "label": "Connector rules"
+        }
+      ]
+    },
+    {
+      "id": "snapshot",
+      "lane": "data",
+      "col": 4,
+      "type": "database",
+      "label": "Snapshot",
+      "sublabel": "source schema",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/snapshot_service.py",
+          "line": 497,
+          "end_line": 512,
+          "label": "write, notify"
+        }
+      ]
+    },
+    {
+      "id": "testfail",
+      "lane": "err1",
+      "col": 1,
+      "type": "security",
+      "label": "Test failed",
+      "sublabel": "safe message",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 376,
+          "end_line": 378,
+          "label": "ConnectorError → result"
+        }
+      ]
+    },
+    {
+      "id": "fileerr",
+      "lane": "err2",
+      "col": 2,
+      "type": "security",
+      "label": "File rejected",
+      "sublabel": "nothing written",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/import_service.py",
+          "line": 155,
+          "end_line": 165,
+          "label": "errors or warnings"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "a1",
+      "from": "goal",
+      "to": "save",
+      "label": "connection",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a2",
+      "from": "save",
+      "to": "start",
+      "label": "ok",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a3",
+      "from": "save",
+      "to": "testfail",
+      "label": "fails",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "a4",
+      "from": "start",
+      "to": "extract",
+      "label": "job",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "a5",
+      "from": "extract",
+      "to": "srcdb",
+      "label": "read"
+    },
+    {
+      "id": "a9",
+      "from": "snapshot",
+      "to": "hook",
+      "label": "hook",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a10",
+      "from": "hook",
+      "to": "review",
+      "label": "notified",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a11",
+      "from": "review",
+      "to": "analysis",
+      "label": "start",
+      "role": "branch"
+    },
+    {
+      "id": "a12",
+      "from": "goal",
+      "to": "validate",
+      "label": "or import",
+      "role": "branch"
+    },
+    {
+      "id": "a13",
+      "from": "validate",
+      "to": "upload"
+    },
+    {
+      "id": "a14",
+      "from": "upload",
+      "to": "fileerr",
+      "label": "errors",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "a15",
+      "from": "upload",
+      "to": "snapshot",
+      "label": "same writer",
+      "variant": "dashed"
+    },
+    {
+      "id": "a7",
+      "from": "extract",
+      "to": "snapshot",
+      "label": "if changed",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User story",
+      "items": [
+        "As an analyst I want to understand an undocumented source system, so that I can design the warehouse on facts.",
+        "Actions: add a Connection (or import the schema from files), extract, then run profiling, a PII scan and relationship inference, and review what they suggest.",
+        "Outcome: a versioned Source Schema (Snapshots) with profiles, PII findings and accepted relationships; the warehouse staging follows automatically."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "System behaviour (verified)",
+      "items": [
+        "Owners/editors only; the password is sealed with AES-256-GCM and never returned.",
+        "Extraction runs in the worker, outside any app-database transaction; a Snapshot is written only if something changed.",
+        "A new Snapshot triggers a staging-sync Change Set and a regeneration offer (wiring.py).",
+        "Analysis jobs need a live Connection; imported systems cannot be profiled or scanned."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Errors and branches",
+      "items": [
+        "Connection test failure returns ok=false with a safe message (no host, user or driver text).",
+        "Start extraction without a Connection: 409.",
+        "Import file with errors, or with warnings not accepted: nothing is written.",
+        "PII findings and relationships stay suggested until a member accepts or rejects them; a later run never undoes a decision."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Simplified",
+      "items": [
+        "Analysis jobs read sample rows from the source DB too (not drawn to keep one source arrow).",
+        "AI help (descriptions, gaps report) through the assistant is in the AI diagrams."
+      ]
+    }
+  ]
+}

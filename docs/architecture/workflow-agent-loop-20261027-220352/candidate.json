@@ -1,0 +1,408 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Agent Loop: Iterations and Termination",
+    "locale": "en",
+    "output": "docs/architecture/workflow-agent-loop-20261027-220352/agent-loop.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "lanes": [
+    {
+      "id": "svc",
+      "label": "AssistantService"
+    },
+    {
+      "id": "tools",
+      "label": "Tools"
+    },
+    {
+      "id": "exits",
+      "label": "Early exits",
+      "variant": "exception"
+    },
+    {
+      "id": "loop",
+      "label": "run_agent loop"
+    },
+    {
+      "id": "llm",
+      "label": "LLM gateway"
+    }
+  ],
+  "phases": [
+    {
+      "id": "setup",
+      "label": "Set up",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "iterate",
+      "label": "One iteration per model turn",
+      "fromCol": 1,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "finish",
+      "label": "Finish",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "start",
+    "fit",
+    "turn",
+    "decide",
+    "answer",
+    "save"
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "lane": "svc",
+      "col": 0,
+      "type": "backend",
+      "label": "Start run",
+      "sublabel": "route model, bind tools",
+      "tag": "prompt + history",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 936,
+          "end_line": 985,
+          "label": "_stream: gateway, tools, auto-retrieve"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 1373,
+          "end_line": 1380,
+          "label": "_system_prompt"
+        }
+      ]
+    },
+    {
+      "id": "fit",
+      "lane": "loop",
+      "col": 1,
+      "type": "backend",
+      "label": "Fit context",
+      "sublabel": "trim, compact",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 715,
+          "end_line": 741,
+          "label": "offer tools, compaction, fit_messages"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/context.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "context window rules"
+        }
+      ]
+    },
+    {
+      "id": "turn",
+      "lane": "llm",
+      "col": 2,
+      "type": "backend",
+      "label": "Model turn",
+      "sublabel": "stream text + calls",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 745,
+          "end_line": 790,
+          "label": "gateway.chat, stop polling"
+        }
+      ]
+    },
+    {
+      "id": "decide",
+      "lane": "loop",
+      "col": 3,
+      "type": "security",
+      "label": "Tool calls?",
+      "sublabel": "pending calls",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 791,
+          "end_line": 792,
+          "label": "if not pending"
+        }
+      ]
+    },
+    {
+      "id": "exec",
+      "lane": "tools",
+      "col": 4,
+      "type": "backend",
+      "label": "Execute calls",
+      "sublabel": "reads parallel ≤8",
+      "tag": "checked, quoted",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 640,
+          "end_line": 700,
+          "label": "batches, ask_member, cap"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 426,
+          "end_line": 426,
+          "label": "MAX_PARALLEL_READS = 8"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 3326,
+          "end_line": 3350,
+          "label": "execute: checks"
+        }
+      ]
+    },
+    {
+      "id": "answer",
+      "lane": "loop",
+      "col": 5,
+      "type": "backend",
+      "label": "Final answer",
+      "sublabel": "cards, verify (jobs)",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 791,
+          "end_line": 863,
+          "label": "structured answer, verify rounds, finish"
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "lane": "svc",
+      "col": 5,
+      "type": "database",
+      "label": "Save run",
+      "sublabel": "completed / tool_limit",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 1056,
+          "end_line": 1080,
+          "label": "_finish: message, run, usage"
+        }
+      ]
+    },
+    {
+      "id": "small",
+      "lane": "exits",
+      "col": 1,
+      "type": "security",
+      "label": "failed",
+      "sublabel": "window too small",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 722,
+          "end_line": 726,
+          "label": "context_window_too_small"
+        }
+      ]
+    },
+    {
+      "id": "err",
+      "lane": "exits",
+      "col": 2,
+      "type": "security",
+      "label": "failed / cancelled",
+      "sublabel": "provider error, stop",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 870,
+          "end_line": 873,
+          "label": "LlmError, ApiError → failed"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 748,
+          "end_line": 752,
+          "label": "stop flag → cancelled"
+        }
+      ]
+    },
+    {
+      "id": "cap",
+      "lane": "exits",
+      "col": 4,
+      "type": "messagebus",
+      "label": "Tool cap hit",
+      "sublabel": "25 calls: no tools",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 74,
+          "end_line": 74,
+          "label": "DEFAULT_MAX_TOOL_CALLS = 25"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 664,
+          "end_line": 670,
+          "label": "limit_hit"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 718,
+          "end_line": 718,
+          "label": "offered only under cap"
+        }
+      ]
+    },
+    {
+      "id": "asked",
+      "lane": "exits",
+      "col": 5,
+      "type": "messagebus",
+      "label": "Asked",
+      "sublabel": "ask_member (jobs)",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/agent.py",
+          "line": 671,
+          "end_line": 694,
+          "label": "checkpoint, yield Asked"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "start",
+      "to": "fit",
+      "label": "messages",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e2",
+      "from": "fit",
+      "to": "turn",
+      "label": "send",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "turn",
+      "to": "decide",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e4",
+      "from": "decide",
+      "to": "exec",
+      "label": "yes"
+    },
+    {
+      "id": "e5",
+      "from": "decide",
+      "to": "answer",
+      "label": "no",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e6",
+      "from": "answer",
+      "to": "save",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e7",
+      "from": "exec",
+      "to": "fit",
+      "label": "results, repeat",
+      "role": "return",
+      "variant": "dashed"
+    },
+    {
+      "id": "e8",
+      "from": "fit",
+      "to": "small",
+      "label": "too small",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "e9",
+      "from": "turn",
+      "to": "err",
+      "label": "error / stop",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "e10",
+      "from": "exec",
+      "to": "cap",
+      "label": "limit",
+      "role": "branch"
+    },
+    {
+      "id": "e11",
+      "from": "exec",
+      "to": "asked",
+      "label": "needs member",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One iteration",
+      "items": [
+        "Fit: large tool results are cut; if the conversation is still too big, old turns are summarised (compaction, with a light model) or dropped. The member's latest message and the current run's calls are never dropped.",
+        "Model turn: the gateway streams text (and reasoning for models set to show it) and tool calls. The stop flag is polled while text streams.",
+        "Tool calls: reads of one turn run in parallel (up to 8); writes and ask_member run one at a time. Results go back as quoted <data> blocks and the loop repeats."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Termination (run statuses)",
+      "items": [
+        "completed: a turn with no tool calls.",
+        "tool_limit: after 25 counted calls tools are withdrawn, so the next turn must answer.",
+        "cancelled: the member pressed stop (checked between calls and while streaming).",
+        "failed: provider/LLM error, an API refusal (no model, budget, internal-only) or a context window too small.",
+        "Asked (jobs only): ask_member saves a checkpoint and pauses the job until the member answers."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Extras on the way out",
+      "items": [
+        "Structured answer: after suggest_kpis, one more model call restates the answer as validated JSON cards (structured.py).",
+        "Verify (jobs): after a write tool, run_validation checks the proposals; with errors the loop is asked to fix them, up to verify.max_rounds.",
+        "Tool search: with more than 30 tools only core tools plus find_tools are offered."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Simplified",
+      "items": [
+        "Prompted mode (models without native tool calling) parses one JSON tool request per reply instead (prompted.py); same loop.",
+        "The supervisor/specialist mode for jobs runs this same loop for each specialist (supervisor.py); not drawn separately."
+      ]
+    }
+  ]
+}

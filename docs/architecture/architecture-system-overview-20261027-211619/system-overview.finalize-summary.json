@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\candidate.json",
+    "sha256": "53b6d641d036e26b4ebec77e21cd7ff2b8636cbc72b0efbc314d05ffe997a217",
+    "bytes": 20126
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.html",
+    "sha256": "9bc08f66eb7ec610552530a711830d5181b2456f4f790718f8ff1c7b172a95ca",
+    "bytes": 883689
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3945,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

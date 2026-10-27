@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "721fb6b2-edb4-42ee-b36a-f467af114193",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\D\\dawam\\docs\\architecture\\architecture-llm-layer-20261027-220352\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\architecture-llm-layer-20261027-220352\\llm-layer.html",
+  "specification": {
+    "sha256": "84218fbae46c6838e0719a85478c0cd62465362304b4fa8a88653e85d2dd02d9",
+    "bytes": 13827
+  },
+  "artifact": {
+    "sha256": "0d9334c4386bfe4c993399408ba9436d1ae578982eb735616c6db04593c64c9d",
+    "bytes": 869536
+  }
+}

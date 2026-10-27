@@ -1,0 +1,736 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Backend Domain Module Dependencies",
+    "locale": "en",
+    "output": "docs/architecture/architecture-domain-modules-20261027-213256/domain-modules.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    },
+    "views": [
+      {
+        "id": "core-chain",
+        "label": "Domain core chain",
+        "focus": [
+          "files",
+          "lineage",
+          "kpis",
+          "warehouse",
+          "sources",
+          "changesets",
+          "jobs"
+        ],
+        "note": "files → lineage → kpis → warehouse → sources → changesets/jobs: the import spine of the design data."
+      },
+      {
+        "id": "foundation",
+        "label": "Foundation",
+        "focus": [
+          "workspaces",
+          "activity",
+          "audit",
+          "notifications",
+          "auth"
+        ],
+        "note": "Every module reaches auth and workspaces; workspaces holds the can() policy."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "docpack",
+      "type": "backend",
+      "label": "docpack",
+      "sublabel": "Documentation pack export",
+      "pos": [
+        215,
+        40
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/docpack/__init__.py",
+          "line": 1,
+          "end_line": 16,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "deletions",
+      "type": "backend",
+      "label": "deletions",
+      "sublabel": "Deleted list, purge",
+      "pos": [
+        390,
+        40
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/deletions/__init__.py",
+          "line": 1,
+          "end_line": 23,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "assistant",
+      "type": "backend",
+      "label": "assistant",
+      "sublabel": "Chat panel backend + agent loop, 39 tools",
+      "pos": [
+        565,
+        40
+      ],
+      "size": [
+        490,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/__init__.py",
+          "line": 1,
+          "end_line": 32,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "type": "backend",
+      "label": "files",
+      "sublabel": "File areas, documents, search",
+      "pos": [
+        215,
+        180
+      ],
+      "size": [
+        315,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/__init__.py",
+          "line": 1,
+          "end_line": 59,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "lineage",
+      "type": "backend",
+      "label": "lineage",
+      "sublabel": "Column lineage, impact",
+      "pos": [
+        390,
+        320
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/lineage/__init__.py",
+          "line": 1,
+          "end_line": 23,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "propagation",
+      "type": "backend",
+      "label": "propagation",
+      "sublabel": "Change propagation",
+      "pos": [
+        565,
+        320
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/propagation/__init__.py",
+          "line": 1,
+          "end_line": 26,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "memory",
+      "sublabel": "Workspace memory facts",
+      "pos": [
+        740,
+        320
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/memory/__init__.py",
+          "line": 1,
+          "end_line": 16,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "kpis",
+      "type": "backend",
+      "label": "kpis",
+      "sublabel": "KPI catalog",
+      "pos": [
+        390,
+        460
+      ],
+      "size": [
+        315,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/kpis/__init__.py",
+          "line": 1,
+          "end_line": 51,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "warehouse",
+      "type": "backend",
+      "label": "warehouse",
+      "sublabel": "DW setup, staging, model, mappings, score, DDL",
+      "pos": [
+        390,
+        600
+      ],
+      "size": [
+        315,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/__init__.py",
+          "line": 1,
+          "end_line": 155,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "sources",
+      "type": "backend",
+      "label": "sources",
+      "sublabel": "Source Systems, Snapshots, profiling, PII, relationships, source queries",
+      "pos": [
+        390,
+        740
+      ],
+      "size": [
+        490,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/__init__.py",
+          "line": 1,
+          "end_line": 109,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "type": "backend",
+      "label": "admin",
+      "sublabel": "Installation settings",
+      "pos": [
+        40,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/admin/__init__.py",
+          "line": 1,
+          "end_line": 12,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "backend",
+      "label": "llm",
+      "sublabel": "LLM gateway, providers",
+      "pos": [
+        215,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/llm/__init__.py",
+          "line": 1,
+          "end_line": 56,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "changesets",
+      "type": "backend",
+      "label": "changesets",
+      "sublabel": "Change Set engine",
+      "pos": [
+        390,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/changesets/__init__.py",
+          "line": 1,
+          "end_line": 27,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "jobs",
+      "type": "backend",
+      "label": "jobs",
+      "sublabel": "Background job queue",
+      "pos": [
+        565,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/jobs/__init__.py",
+          "line": 1,
+          "end_line": 26,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "mail",
+      "type": "backend",
+      "label": "mail",
+      "sublabel": "Email delivery, SMTP",
+      "pos": [
+        740,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/mail/__init__.py",
+          "line": 1,
+          "end_line": 17,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "type": "backend",
+      "label": "web",
+      "sublabel": "Web search + fetch",
+      "pos": [
+        915,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/web/__init__.py",
+          "line": 1,
+          "end_line": 23,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "collaboration",
+      "type": "backend",
+      "label": "collaboration",
+      "sublabel": "Comments, @mentions",
+      "pos": [
+        1090,
+        880
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/collaboration/__init__.py",
+          "line": 1,
+          "end_line": 16,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "workspaces",
+      "type": "security",
+      "label": "workspaces",
+      "sublabel": "Workspaces, members, can() authorization policy",
+      "pos": [
+        40,
+        1020
+      ],
+      "size": [
+        1190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/workspaces/__init__.py",
+          "line": 1,
+          "end_line": 38,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "activity",
+      "type": "backend",
+      "label": "activity",
+      "sublabel": "Activity feed",
+      "pos": [
+        215,
+        1160
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/activity/__init__.py",
+          "line": 1,
+          "end_line": 16,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "notifications",
+      "type": "backend",
+      "label": "notifications",
+      "sublabel": "Per-user notifications",
+      "pos": [
+        565,
+        1160
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/notifications/__init__.py",
+          "line": 1,
+          "end_line": 13,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "audit",
+      "type": "backend",
+      "label": "audit",
+      "sublabel": "Audit trail",
+      "pos": [
+        915,
+        1160
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/audit/__init__.py",
+          "line": 1,
+          "end_line": 25,
+          "label": "module docstring, public interface"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "auth",
+      "sublabel": "Users, argon2id passwords, sessions, CurrentUser",
+      "pos": [
+        215,
+        1300
+      ],
+      "size": [
+        490,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/auth/__init__.py",
+          "line": 1,
+          "end_line": 35,
+          "label": "module docstring, public interface"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "docpack-files",
+      "from": "docpack",
+      "to": "files"
+    },
+    {
+      "id": "deletions-files",
+      "from": "deletions",
+      "to": "files"
+    },
+    {
+      "id": "assistant-files",
+      "from": "assistant",
+      "to": "files",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "assistant-memory",
+      "from": "assistant",
+      "to": "memory"
+    },
+    {
+      "id": "assistant-web",
+      "from": "assistant",
+      "to": "web"
+    },
+    {
+      "id": "files-lineage",
+      "from": "files",
+      "to": "lineage"
+    },
+    {
+      "id": "files-llm",
+      "from": "files",
+      "to": "llm"
+    },
+    {
+      "id": "lineage-kpis",
+      "from": "lineage",
+      "to": "kpis"
+    },
+    {
+      "id": "propagation-kpis",
+      "from": "propagation",
+      "to": "kpis"
+    },
+    {
+      "id": "memory-sources",
+      "from": "memory",
+      "to": "sources"
+    },
+    {
+      "id": "kpis-warehouse",
+      "from": "kpis",
+      "to": "warehouse"
+    },
+    {
+      "id": "warehouse-sources",
+      "from": "warehouse",
+      "to": "sources"
+    },
+    {
+      "id": "sources-changesets",
+      "from": "sources",
+      "to": "changesets"
+    },
+    {
+      "id": "sources-jobs",
+      "from": "sources",
+      "to": "jobs"
+    },
+    {
+      "id": "admin-workspaces",
+      "from": "admin",
+      "to": "workspaces"
+    },
+    {
+      "id": "llm-workspaces",
+      "from": "llm",
+      "to": "workspaces"
+    },
+    {
+      "id": "changesets-workspaces",
+      "from": "changesets",
+      "to": "workspaces"
+    },
+    {
+      "id": "jobs-workspaces",
+      "from": "jobs",
+      "to": "workspaces"
+    },
+    {
+      "id": "mail-workspaces",
+      "from": "mail",
+      "to": "workspaces"
+    },
+    {
+      "id": "web-workspaces",
+      "from": "web",
+      "to": "workspaces"
+    },
+    {
+      "id": "collaboration-workspaces",
+      "from": "collaboration",
+      "to": "workspaces"
+    },
+    {
+      "id": "workspaces-activity",
+      "from": "workspaces",
+      "to": "activity"
+    },
+    {
+      "id": "workspaces-audit",
+      "from": "workspaces",
+      "to": "audit"
+    },
+    {
+      "id": "workspaces-notifications",
+      "from": "workspaces",
+      "to": "notifications"
+    },
+    {
+      "id": "activity-auth",
+      "from": "activity",
+      "to": "auth"
+    },
+    {
+      "id": "notifications-auth",
+      "from": "notifications",
+      "to": "auth"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "How to read the arrows",
+      "items": [
+        "Arrow = static Python import of another module's package (A → B: A imports B), collected from `from dawam.modules.X` in each module's code.",
+        "Only the transitive reduction is drawn: an import implied by a longer drawn path is omitted. The complete list is in the next two cards.",
+        "Not drawn: platform kernel imports (every module may use dawam.platform) and composition roots (app.py, worker.py, wiring.py, job_handlers.py)."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "All imports (a–k)",
+      "items": [
+        "activity: auth",
+        "admin: auth, notifications, workspaces",
+        "assistant: auth, changesets, files, jobs, kpis, lineage, llm, memory, notifications, sources, warehouse, web, workspaces",
+        "audit: (no module imports)",
+        "auth: (no module imports)",
+        "changesets: activity, audit, auth, notifications, workspaces",
+        "collaboration: auth, notifications, workspaces",
+        "deletions: activity, auth, files, kpis, sources, warehouse, workspaces",
+        "docpack: auth, files, kpis, sources, warehouse, workspaces",
+        "files: activity, auth, changesets, jobs, lineage, llm, sources, warehouse, workspaces",
+        "jobs: auth, notifications, workspaces",
+        "kpis: activity, audit, auth, changesets, sources, warehouse, workspaces"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "All imports (l–w)",
+      "items": [
+        "lineage: auth, kpis, sources, warehouse, workspaces",
+        "llm: activity, audit, auth, workspaces",
+        "mail: auth, workspaces",
+        "memory: auth, changesets, sources, workspaces",
+        "notifications: auth",
+        "propagation: audit, auth, changesets, kpis, notifications, warehouse, workspaces",
+        "sources: activity, audit, auth, changesets, jobs, notifications, workspaces",
+        "warehouse: activity, audit, auth, changesets, notifications, sources, workspaces",
+        "web: audit, auth, workspaces",
+        "workspaces: activity, audit, auth, notifications"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Runtime ports wired by composition roots (not imports)",
+      "items": [
+        "workspaces archive → jobs.cancel_for_workspace + changesets.reject_pending (app.state.on_workspace_archived, app.py:203-211).",
+        "sources new Snapshot → warehouse staging sync + regeneration offer (wiring.staging_sync_after_snapshot).",
+        "structural change / accepted Change Set → propagation (wiring.propagation, after_change_set).",
+        "llm embedding model changed → files.start_reembed; workspaces created → llm.on_workspace_created; auth → mail through the Mailer port.",
+        "Change Set object handlers from sources, warehouse, kpis, memory, files registered in wiring.change_set_handlers."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Enforced rules",
+      "items": [
+        "Import another module only through its package; tables are private (modules/README.md rules 1-5).",
+        "tools/check_boundaries.py (CI) checks rule 1, part of rule 2, and rule 3; raw SQL on other modules' tables is left to review."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Uncertain",
+      "items": [
+        "Imports were collected with a text search for `from dawam.modules.<name>` and `from dawam.modules import`; imports inside functions are included, dynamic imports are not.",
+        "An import does not prove a runtime call on every path; the diagram is a static dependency map."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "8bd17bff-e52f-43e9-b9c0-2918bba39e57",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\rag-pipeline.html",
+  "specification": {
+    "sha256": "f12497e49fdfaf1c604f5d37588b30d9a42d4343ec10b8fc2818244e1c8cd053",
+    "bytes": 9927
+  },
+  "artifact": {
+    "sha256": "e80b62f3ef844eeb7a57072098b793ecbc1772cceba98190ca9cfc4cd334a5e3",
+    "bytes": 848927
+  }
+}

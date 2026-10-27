@@ -1,0 +1,383 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "RAG Pipeline: Index and Retrieve",
+    "locale": "en",
+    "output": "docs/architecture/dataflow-rag-pipeline-20261027-220352/rag-pipeline.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "stages": [
+    {
+      "label": "Upload (app)"
+    },
+    {
+      "label": "Extract (worker job)"
+    },
+    {
+      "label": "Chunk"
+    },
+    {
+      "label": "Index"
+    },
+    {
+      "label": "Retrieve"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "upload",
+      "type": "frontend",
+      "label": "File upload",
+      "sublabel": "type from bytes",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/service.py",
+          "line": 151,
+          "end_line": 180,
+          "label": "upload"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/service.py",
+          "line": 226,
+          "end_line": 276,
+          "label": "store bytes, queue_index"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/internal/content.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "trust nothing from client"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "File storage",
+      "sublabel": "volume or S3",
+      "stage": 0,
+      "row": 2,
+      "sources": [
+        {
+          "path": "backend/src/dawam/platform/storage.py",
+          "line": 127,
+          "end_line": 130,
+          "label": "create_storage"
+        }
+      ]
+    },
+    {
+      "id": "parse",
+      "type": "backend",
+      "label": "Docling parser",
+      "sublabel": "layout → Markdown",
+      "tag": "self-hosted",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/internal/parsing.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "DocumentParser port"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 712,
+          "end_line": 760,
+          "label": "run_index: extract, OCR"
+        },
+        {
+          "path": "backend/src/dawam/job_handlers.py",
+          "line": 66,
+          "end_line": 70,
+          "label": "parser from settings"
+        }
+      ]
+    },
+    {
+      "id": "ocr",
+      "type": "backend",
+      "label": "OCR",
+      "sublabel": "RapidOCR, scans",
+      "tag": "self-hosted",
+      "stage": 1,
+      "row": 2,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/internal/ocr.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "DoclingOcr"
+        }
+      ]
+    },
+    {
+      "id": "chunk",
+      "type": "backend",
+      "label": "Chunker",
+      "sublabel": "sections, pages",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/internal/chunking.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "cite-able passages"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/internal/parents.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "small-to-big parents"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 463,
+          "end_line": 480,
+          "label": "_chunks"
+        }
+      ]
+    },
+    {
+      "id": "ctx",
+      "type": "backend",
+      "label": "Context lines",
+      "sublabel": "light model",
+      "tag": "optional",
+      "stage": 2,
+      "row": 2,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/internal/context.py",
+          "line": 1,
+          "end_line": 2,
+          "label": "one-sentence context"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 584,
+          "end_line": 590,
+          "label": "_headers"
+        }
+      ]
+    },
+    {
+      "id": "embed",
+      "type": "security",
+      "label": "Embedding model",
+      "sublabel": "embedding role",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 551,
+          "end_line": 580,
+          "label": "_embedder: allowed?"
+        },
+        {
+          "path": "backend/src/dawam/modules/llm/role_service.py",
+          "line": 388,
+          "end_line": 394,
+          "label": "embed, metered"
+        }
+      ]
+    },
+    {
+      "id": "chunks",
+      "type": "database",
+      "label": "document_chunks",
+      "sublabel": "FTS + pgvector",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/tables.py",
+          "line": 137,
+          "end_line": 183,
+          "label": "search_vector, embedding"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/internal/arabic.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "Arabic normalisation"
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "type": "backend",
+      "label": "Doc search",
+      "sublabel": "RRF, MMR, rerank",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1135,
+          "end_line": 1162,
+          "label": "search"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/internal/query_rewrite.py",
+          "line": 1,
+          "end_line": 3,
+          "label": "query variants, HyDE"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/internal/rerank.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "rerank model"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "Assistant",
+      "sublabel": "search_documents",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/service.py",
+          "line": 1261,
+          "end_line": 1300,
+          "label": "auto-retrieve"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2569,
+          "end_line": 2967,
+          "label": "search_documents tool"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "f1",
+      "from": "upload",
+      "to": "store",
+      "label": "file bytes"
+    },
+    {
+      "id": "f2",
+      "from": "upload",
+      "to": "parse",
+      "label": "index job",
+      "variant": "dashed"
+    },
+    {
+      "id": "f3",
+      "from": "store",
+      "to": "ocr",
+      "label": "scanned pages"
+    },
+    {
+      "id": "f4",
+      "from": "ocr",
+      "to": "parse",
+      "label": "page text"
+    },
+    {
+      "id": "f5",
+      "from": "parse",
+      "to": "chunk",
+      "label": "Markdown text",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f6",
+      "from": "chunk",
+      "to": "ctx",
+      "label": "passages"
+    },
+    {
+      "id": "f7",
+      "from": "chunk",
+      "to": "chunks",
+      "label": "passages + FTS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f8",
+      "from": "ctx",
+      "to": "embed",
+      "label": "passage + context",
+      "variant": "security"
+    },
+    {
+      "id": "f9",
+      "from": "embed",
+      "to": "chunks",
+      "label": "vectors",
+      "variant": "security"
+    },
+    {
+      "id": "f10",
+      "from": "chunks",
+      "to": "search",
+      "label": "ranked hits",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f11",
+      "from": "search",
+      "to": "agent",
+      "label": "cited passages",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Indexing (index_document job, worker)",
+      "items": [
+        "The upload stores the bytes and queues index_document; status moves queued → extracting → ocr → chunking → embedding → indexed or failed (files/tables.py).",
+        "Docling turns the document into Markdown (headings, tables); scanned PDF pages go through RapidOCR. Both run inside DAWAM.",
+        "Passages follow sections and never span two pages; small child passages are matched, their parent section is returned (small-to-big)."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "When embeddings are made (security flows)",
+      "items": [
+        "Only when the Workspace data-sharing level includes documents, an embedding model is assigned, and an internal-only Workspace has an internal model (search.py _embedder).",
+        "Otherwise the file is full-text only; a provider failure also leaves it full-text only until a re-index.",
+        "A new embedding model re-embeds every document (reindex_documents job)."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Retrieval",
+      "items": [
+        "Query variants from the light model (rewording, other language, HyDE) when available; each is ranked with full-text and, where embedded, vector similarity.",
+        "Rankings fused with weighted RRF, low scores dropped, results diversified (MMR), optionally reranked by a rerank model.",
+        "Arabic normalisation is applied to both text and query so they match."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Not drawn / uncertain",
+      "items": [
+        "The query's own embedding call (search → embedding model) is not drawn as a flow to keep the direction left-to-right; it uses the same metered embedding role.",
+        "Which file types skip Docling (plain text, spreadsheets) was not traced per type.",
+        "Document AI knobs (chunk sizes, top_k, weights) come from Admin / Workspace Document AI settings (llm/document_ai.py)."
+      ]
+    }
+  ]
+}
