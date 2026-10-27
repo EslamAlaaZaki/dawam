@@ -22,6 +22,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
+import sqlglot
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from dawam.modules.auth import User
@@ -523,6 +524,10 @@ class _RunSourceQuery(BaseModel):
         description="One SELECT over the Source System's tables, e.g. a COUNT(*) overlap check. "
         "Name tables as schema.table. Protected columns can be counted and joined on, not shown.",
     )
+
+
+class _ReindexDocuments(BaseModel):
+    pass
 
 
 class _QueryFile(BaseModel):
@@ -1918,6 +1923,25 @@ def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
     }
 
 
+SOURCE_QUERY_ROW_CAP = 100
+"""The most rows a source query returns; a query without a smaller ``LIMIT`` needs approval."""
+
+
+def _unbounded_query(sql: str) -> bool:
+    """Whether the SELECT has no literal ``LIMIT`` (or ``TOP``/``FETCH``) of at most the cap."""
+    try:
+        tree = sqlglot.parse_one(sql)
+    except sqlglot.errors.SqlglotError:
+        return False  # the tool reports a query it cannot parse
+    limit = tree.args.get("limit") if tree is not None else None
+    if limit is None:
+        return True
+    value = limit.args.get("expression")
+    if isinstance(value, sqlglot.exp.Literal) and value.is_int:
+        return int(value.this) > SOURCE_QUERY_ROW_CAP
+    return True
+
+
 def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     result = ctx.services.source_queries.run(
         ctx.user, ctx.workspace_id, args.system_id, args.sql, budget=ctx.budget
@@ -2026,6 +2050,15 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
         "status": "proposed",
         "note": "The user reviews these changes; nothing has been changed yet.",
         "items": len(detail.items),
+    }
+
+
+def _reindex_documents(ctx: ToolContext, args: _ReindexDocuments) -> Any:
+    job = ctx.services.documents.start_reindex(ctx.user, ctx.workspace_id)
+    return {
+        "job_id": str(job.id),
+        "status": job.status,
+        "note": "Every document of the Workspace is being indexed again in the background.",
     }
 
 
@@ -2811,6 +2844,16 @@ TOOLS: tuple[Tool, ...] = (
         offered=_web_fetch_offered,
     ),
     Tool(
+        "reindex_documents",
+        "Index every document of the Workspace again with the current embedding model, as a "
+        "background job. Expensive: the member is asked to approve before it starts.",
+        _ReindexDocuments,
+        "write",
+        Action.UPLOAD_FILE,
+        _reindex_documents,
+        job_only=True,
+    ),
+    Tool(
         "ask_member",
         "Pause this job and ask the member one question when you cannot go on without a "
         "decision only they can make (which of two readings of the task, a business rule you "
@@ -3167,6 +3210,39 @@ class BoundTools:
         if tool is None or tool.kind != "read":
             return False
         return not (name == "evaluate_dw" and arguments.get("findings") is not None)
+
+    def approval(self, name: str, arguments: dict[str, Any]) -> str | None:
+        """The question to put to the member before this call may run, or ``None``. Fixed in
+        code, in a job only (a chat has no way to wait): a source query without a ``LIMIT`` or
+        above the row cap, regenerating an existing DW Layer, re-indexing a whole Workspace."""
+        if self._ctx.proposals is None:
+            return None
+        if name == "run_source_query":
+            sql = arguments.get("sql")
+            if isinstance(sql, str) and _unbounded_query(sql):
+                return (
+                    f"May I run this source query? It has no LIMIT of at most "
+                    f"{SOURCE_QUERY_ROW_CAP} rows: {redact_text(sql)[:500]}"
+                )
+        elif name == "reindex_documents":
+            return (
+                "May I re-index every document of this Workspace? It runs a job that embeds "
+                "all of them again."
+            )
+        elif name == "generate_dw_schema" and arguments.get("tables") is not None:
+            table = arguments.get("table")
+            try:
+                existing = self._ctx.services.generation.inputs(
+                    self._ctx.user,
+                    self._ctx.workspace_id,
+                    table=table if isinstance(table, str) else None,
+                )["existing"]
+            except Exception:  # refused, not set up: the tool itself reports it
+                return None
+            if table or any(t.get("layer") in ("core", "mart") for t in existing):
+                what = f"the table {table}" if table else "the existing Core and Mart Layers"
+                return f"May I regenerate {what} of the Data Warehouse? Existing objects change."
+        return None
 
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         tool = self._registry.get(name)
