@@ -1604,7 +1604,7 @@ ROWS: list[Row] = [
     ),
     Row(
         "POST",
-        "/api/v1/jobs/{job_id}/answer",
+        "/api/v1/jobs/{paused_job_id}/answer",
         "Answer a paused job (only the member who started it)",
         workspace(admin=False, owner=True, editor=False, viewer=False),
         json=lambda roles: {"answer": "Use the invoices table."},

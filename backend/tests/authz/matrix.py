@@ -37,7 +37,7 @@ from starlette.routing import BaseRoute, Route
 
 from dawam.modules.auth import AuthService, Invitations
 from dawam.modules.changesets import ChangeSetService, ProposedItem
-from dawam.modules.jobs import InlineJobRunner, JobService, QueuedJobRunner
+from dawam.modules.jobs import InlineJobRunner, JobPausedError, JobService, QueuedJobRunner
 from dawam.modules.llm import FakeAdapter
 from dawam.modules.mail import MailService
 from dawam.modules.notifications import NotificationService
@@ -290,6 +290,30 @@ def job_id(roles: RoleClients) -> uuid.UUID:
         title="Permission matrix job",
         created_by=roles.user("owner").id,
     ).id
+
+
+def paused_job_id(roles: RoleClients) -> uuid.UUID:
+    """A job the Workspace's owner started that is waiting for their answer (a fresh one
+    per request, so answering it in one request does not affect the next)."""
+
+    def ask(params, ctx):
+        raise JobPausedError("Which one?")
+
+    state = roles.app.state
+    runner = QueuedJobRunner()
+    runner.register("ask", ask)
+    jobs = JobService(state.engine, runner=runner, clock=state.services.clock)
+    job = jobs.submit(
+        roles.workspace_id,
+        "ask",
+        {},
+        title="Permission matrix paused job",
+        created_by=roles.user("owner").id,
+    )
+    claimed = jobs.claim_next()
+    assert claimed is not None and claimed.id == job.id
+    jobs.execute(claimed)
+    return job.id
 
 
 def provider_id(roles: RoleClients) -> uuid.UUID:
@@ -714,6 +738,7 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "member_id": colleague_id,
     "system_id": system_id,
     "job_id": job_id,
+    "paused_job_id": paused_job_id,
     "notification_id": lambda roles: uuid.uuid4(),
     "kpi_id": kpi_id,
     "change_set_id": change_set_id,
