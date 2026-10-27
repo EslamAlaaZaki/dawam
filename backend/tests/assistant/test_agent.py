@@ -8,6 +8,9 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
+import pytest
+
+from dawam.modules.assistant.internal import agent as agent_module
 from dawam.modules.assistant.internal.agent import (
     Finished,
     Text,
@@ -485,6 +488,46 @@ def test_a_window_too_small_for_the_system_prompt_and_tools_fails_before_sending
     assert events[-1].status == "failed"
     assert events[-1].error_code == "context_window_too_small"
     assert "context window is too small" in (events[-1].error_message or "")
+
+
+@pytest.fixture(autouse=True)
+def search_on(monkeypatch):
+    monkeypatch.setattr(agent_module, "TOOL_SEARCH_THRESHOLD", 30)
+
+
+class ManyTools(Tools):
+    """More tools than the threshold; ``zeta_report`` is not in the initial list."""
+
+    def specs(self) -> Sequence[ToolSpec]:
+        filler = [ToolSpec(f"tool_{i:02d}", "Does a thing.", {"type": "object"}) for i in range(34)]
+        report = ToolSpec("zeta_report", "Build the quarterly revenue report.", {"type": "object"})
+        return [*filler, report]
+
+
+def test_with_many_tools_the_model_gets_a_short_list_and_can_find_another():
+    find = ToolCall("f1", "find_tools", {"query": "revenue report"})
+    use = ToolCall("u1", "zeta_report", {})
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(find,)), Reply(tool_calls=(use,)), Reply(text="done")
+    )
+    tools = ManyTools()
+
+    events = run(adapter, tools, core_tools={"tool_00", "tool_01"})
+
+    first = [t.name for t in adapter.calls[0].tools]
+    assert first == ["tool_00", "tool_01", "find_tools"]
+    assert "zeta_report" in [t.name for t in adapter.calls[1].tools]
+    assert tools.ran == [("zeta_report", {})]
+    assert "zeta_report" in (adapter.calls[1].messages[-1].content or "")
+    assert events[-1].status == "completed"
+
+
+def test_with_few_tools_everything_is_sent_and_there_is_no_find_tools():
+    adapter = FakeAdapter().script(Reply(text="hi"))
+
+    run(adapter)
+
+    assert [t.name for t in adapter.calls[0].tools] == ["lookup"]
 
 
 SUGGEST = ToolSpec("suggest_kpis", "Suggest KPIs.", {"type": "object"})

@@ -15,8 +15,9 @@ call the conversation is fitted to the model's context window (``context.py``).
 from __future__ import annotations
 
 import json
+import re
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import closing
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
@@ -67,6 +68,38 @@ RunStatus = Literal["completed", "tool_limit", "cancelled", "failed"]
 LIMIT_MESSAGE = (
     "The tool-call limit for this request is used up. Answer with what you have already found."
 )
+
+
+TOOL_SEARCH_THRESHOLD = 30
+"""Above this many tools, only the relevant ones are sent, plus ``find_tools``."""
+FIND_TOOLS_LIMIT = 5
+
+FIND_TOOLS = ToolSpec(
+    "find_tools",
+    "Search the tools you were not given up front by what you want to do (for example "
+    "'validate the warehouse'). The best matches become available to call right away.",
+    {
+        "type": "object",
+        "properties": {"query": {"type": "string", "description": "What you want to do."}},
+        "required": ["query"],
+    },
+)
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.split(r"[^a-z0-9]+", text.lower()) if len(w) > 2}
+
+
+def search_tools(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
+    """The ``candidates`` that best match ``query`` (name hits count double), best first."""
+    wanted = _words(query)
+    scored: list[tuple[int, ToolSpec]] = []
+    for spec in candidates:
+        score = 2 * len(wanted & _words(spec.name)) + len(wanted & _words(spec.description))
+        if score:
+            scored.append((score, spec))
+    scored.sort(key=lambda pair: (-pair[0], pair[1].name))
+    return [spec for _, spec in scored[:FIND_TOOLS_LIMIT]]
 
 
 Summarizer = Callable[[str | None, Sequence[Message]], str | None]
@@ -185,6 +218,23 @@ class _Run:
         )
 
 
+def _find(
+    arguments: dict[str, Any], all_specs: Sequence[ToolSpec], loaded: set[str]
+) -> ToolOutcome:
+    """Run ``find_tools``: load the best matches among the tools not yet sent."""
+    query = arguments.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return ToolOutcome(
+            "Invalid arguments for `find_tools`: query: a string is required", "error"
+        )
+    found = search_tools(query, [s for s in all_specs if s.name not in loaded])
+    if not found:
+        return ToolOutcome("No other tool matches. Try different words.", "ok")
+    loaded.update(s.name for s in found)
+    text = "\n".join(f"- {s.name}: {s.description}" for s in found)
+    return ToolOutcome(f"These tools are now available to call:\n{text}", "ok")
+
+
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
     """``counter`` (the gateway's real count) remembered per text, so a long conversation
     is counted once per message, not once per model call; none: the chars/4 estimate."""
@@ -238,6 +288,7 @@ def run_agent(
     summary: str | None = None,
     summarize: Summarizer | None = None,
     inspect: Inspector = rule_based_inspector,
+    core_tools: Collection[str] | None = None,
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer.
 
@@ -245,7 +296,10 @@ def run_agent(
     that no longer fit the window are summarised into it (and reported as ``Compacted``)
     instead of being lost; if summarising fails they are dropped as without it. Every ok tool
     result goes through ``inspect`` (the light-model check, or the built-in rules): a flagged
-    one still reaches the model, with a warning, and is reported on its record."""
+    one still reaches the model, with a warning, and is reported on its record.
+
+    With more than ``TOOL_SEARCH_THRESHOLD`` tools, only ``core_tools`` (none: the first
+    few) are sent, plus ``find_tools``, whose matches are added to what is sent."""
     run = _Run()
     capabilities = gateway.capabilities()
     window = capabilities.context_window
@@ -258,6 +312,13 @@ def run_agent(
     all_specs = list(tools.specs())  # one snapshot: the tool list stays identical per call
     specs = {spec.name: spec for spec in all_specs}
     known_tools = set(specs)
+    searching = len(all_specs) > TOOL_SEARCH_THRESHOLD
+    loaded = {s.name for s in all_specs if core_tools is None or s.name in core_tools}
+    if searching and core_tools is None:
+        loaded = {s.name for s in all_specs[: TOOL_SEARCH_THRESHOLD // 2]}
+    if searching:
+        specs[FIND_TOOLS.name] = FIND_TOOLS
+        known_tools.add(FIND_TOOLS.name)
     retries = 0
     compaction_tried = summarize is None
     last_poll = timer()
@@ -267,7 +328,11 @@ def run_agent(
                 yield run.finish("cancelled")
                 return
             under_cap = len(run.calls) < max_tool_calls
-            offered = all_specs if under_cap else ()
+            if searching:
+                visible = [s for s in all_specs if s.name in loaded] + [FIND_TOOLS]
+            else:
+                visible = all_specs
+            offered = visible if under_cap else ()
             pending: list[ToolCall] = []
             answer: list[str] = []
             last_poll = float("-inf")  # always look at the flag when a model call begins
@@ -362,7 +427,10 @@ def run_agent(
                 else:
                     started = timer()
                     with tracing().tool_call(call.name, call.arguments) as span:
-                        outcome = tools.execute(call.name, call.arguments)
+                        if searching and call.name == FIND_TOOLS.name:
+                            outcome = _find(call.arguments, all_specs, loaded)
+                        else:
+                            outcome = tools.execute(call.name, call.arguments)
                         span.result(outcome.status, outcome.content)
                     duration = round((timer() - started) * 1000)
                     executed += 1

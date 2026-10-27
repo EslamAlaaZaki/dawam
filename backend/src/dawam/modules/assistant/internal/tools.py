@@ -2740,6 +2740,53 @@ def _shrink(data: Any) -> bool:
     return False
 
 
+BASE_TOOLS = frozenset(
+    {
+        "search_catalog",
+        "get_object",
+        "workspace_overview",
+        "search_workspace",
+        "search_documents",
+        "propose_changes",
+        "render_diagram",
+        "start_job",
+    }
+)
+"""The tools sent on every page once tool search is on (``agent.TOOL_SEARCH_THRESHOLD``)."""
+
+_FILE_TOOLS = frozenset({"list_files", "read_file", "query_file", "describe_image"})
+_KPI_TOOLS = frozenset({"suggest_kpis", "get_kpi_link_candidates", "propose_kpi_links"})
+_SCORE_TOOLS = frozenset({"get_score", "explain_check", "propose_check_fix", "run_validation"})
+
+PAGE_TOOLS: dict[str, frozenset[str]] = {
+    "source_system": frozenset(
+        {
+            "get_profile",
+            "get_snapshot_diff",
+            "get_relationships",
+            "get_pii_findings",
+            "run_source_query",
+        }
+    ),
+    "failed_check": _SCORE_TOOLS,
+}
+"""Extra tools by the page-context ``type`` the app sends: ``source_system`` (one Source
+System open), ``failed_check`` (a failed check's panel) and ``folder`` (see ``FOLDER_TOOLS``)."""
+
+FOLDER_TOOLS: dict[str, frozenset[str]] = {
+    "kpis": _KPI_TOOLS,
+    "lineage": frozenset({"get_lineage", "explore_graph"}),
+    "score": _SCORE_TOOLS,
+    "files": _FILE_TOOLS,
+    "document-index": _FILE_TOOLS,
+    "ddl": frozenset({"evaluate_dw"}),
+    "connection": frozenset({"get_pii_findings"}),
+    "source-schema": frozenset({"get_profile", "get_relationships", "get_pii_findings"}),
+}
+"""For a ``folder`` page, extra tools by the last segment of its id (``dw/kpis``,
+``systems/<id>/source-schema``, ...); any other folder gets only the base."""
+
+
 class ToolRegistry:
     """The tools of one installation, ready to be bound to a user in a Workspace."""
 
@@ -2821,6 +2868,13 @@ class BoundTools:
             ),
             key=lambda spec: spec.name,
         )
+
+    def core_names(self, page_type: str | None, page_id: str | None = None) -> set[str]:
+        """The tools to send up front for the page the member is on when tool search is on."""
+        names = set(BASE_TOOLS | PAGE_TOOLS.get(page_type or "", frozenset()))
+        if page_type == "folder" and page_id:
+            names |= FOLDER_TOOLS.get(page_id.rsplit("/", 1)[-1], frozenset())
+        return names
 
     def _offered(self, tool: Tool) -> bool:
         if tool.chat_only and self._ctx.proposals is not None:
