@@ -316,6 +316,7 @@ def test_a_viewer_can_still_use_read_tools(roles, model, fake_llm):
         "get_snapshot_diff",
         "start_job",  # every member may hand the assistant a long task
         "run_validation",
+        "recall",  # every member may read the Workspace's memory
     }
 
 

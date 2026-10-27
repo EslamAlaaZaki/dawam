@@ -550,6 +550,7 @@ METADATA_TOOLS = {
     "explore_graph",
     "render_diagram",
     "get_relationships",
+    "recall",
 }
 DOCUMENT_TOOLS = {"get_profile", "search_documents", "read_file", "describe_image", "query_file"}
 LEVELS = [
@@ -588,6 +589,7 @@ def test_each_role_is_offered_the_tools_its_policy_and_the_level_allow(
             "propose_check_fix",
             "generate_dw_schema",
             "draft_mappings",
+            "remember",
         }
         if role != "viewer"
         else set()

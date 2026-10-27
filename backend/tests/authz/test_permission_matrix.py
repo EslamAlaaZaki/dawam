@@ -1360,6 +1360,12 @@ ROWS: list[Row] = [
     ),
     Row(
         "GET",
+        "/api/v1/workspaces/{workspace_id}/memory",
+        "Open Workspace content (the approved Workspace memory)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
         "/api/v1/workspaces/{workspace_id}/change-sets/{change_set_id}",
         "Open Workspace content (a Change Set as a diff)",
         workspace(admin=False, owner=True, editor=True, viewer=True),

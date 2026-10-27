@@ -32,6 +32,7 @@ import {
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
 const OPEN = new Set<string>(["pending", "needs_owner"]);
+const MEMORY_ITEM = "memory_item";
 
 const ITEM_VARIANTS: Record<ItemStatus, ComponentProps<typeof Badge>["variant"]> = {
   pending: "neutral",
@@ -81,6 +82,19 @@ function Diff({ item }: { item: ChangeSetItem }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A proposed Workspace memory item: plain text, shown as prose rather than a field diff. */
+function MemoryNote({ item }: { item: ChangeSetItem }) {
+  const text = item.payload.text;
+  return (
+    <div className="mt-2.5 ml-6 flex flex-col gap-1">
+      <blockquote className="rounded-md border border-border bg-success-subtle px-2 py-1 text-sm [overflow-wrap:anywhere]">
+        {typeof text === "string" ? text : show(text)}
+      </blockquote>
+      <Hint>Once accepted, the assistant can recall this in later conversations.</Hint>
+    </div>
   );
 }
 
@@ -219,7 +233,11 @@ export function ChangeSetReview({
                   }}
                 />
               )}{" "}
-              <strong>{item.label || item.object_type}</strong>
+              <strong>
+                {item.object_type === MEMORY_ITEM
+                  ? "Workspace memory"
+                  : item.label || item.object_type}
+              </strong>
             </label>{" "}
             <span className="inline-flex flex-wrap gap-1.5 align-middle">
               <Badge variant={ITEM_VARIANTS[item.status]} dot>
@@ -230,7 +248,11 @@ export function ChangeSetReview({
               )}
               {item.is_conflict && <Badge variant="danger">conflict</Badge>}
             </span>
-            <Diff item={item} />
+            {item.object_type === MEMORY_ITEM ? (
+              <MemoryNote item={item} />
+            ) : (
+              <Diff item={item} />
+            )}
             {item.status_reason && (
               <Hint className="mt-1">{item.status_reason}</Hint>
             )}
