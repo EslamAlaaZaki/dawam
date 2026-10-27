@@ -40,6 +40,7 @@ from .service import (
     ModelInput,
     ProviderInput,
     ProviderService,
+    ReasoningConfig,
 )
 from .service import Model as ModelView
 from .service import Provider as ProviderView
@@ -75,6 +76,28 @@ ProviderServiceDep = Annotated[ProviderService, Depends(provider_service)]
 ModelRole = Literal["agent", "light", "embedding", "vision", "rerank"]
 
 
+class LlmReasoning(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description="A reasoning model: it is asked to think (Anthropic extended thinking, "
+        "OpenAI-style `reasoning_effort`) or its `<think>` tags are split out of the reply "
+        "(Qwen3, DeepSeek-R1), and its reasoning tokens are counted.",
+    )
+    effort: Literal["low", "medium", "high"] | None = Field(
+        default=None, description="Null: the provider's default."
+    )
+    budget_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description="A cap on thinking tokens, for providers that take one (Anthropic).",
+    )
+    show: bool = Field(
+        default=False,
+        description="Stream the reasoning to members in the assistant. Off: hidden, but "
+        "still counted.",
+    )
+
+
 class LlmModel(BaseModel):
     id: uuid.UUID
     provider_id: uuid.UUID
@@ -103,6 +126,7 @@ class LlmModel(BaseModel):
         "too-small context window for the agent role, and (right after Test connection) "
         "an Ollama `num_ctx` below the minimum with how to raise it. Not blocking."
     )
+    reasoning: LlmReasoning
     created_at: datetime
     updated_at: datetime
 
@@ -158,6 +182,9 @@ class LlmModelUpdateRequest(BaseModel):
         default=None,
         ge=1,
         description="Tokens. Null: take the server's figure on the next test.",
+    )
+    reasoning: LlmReasoning | None = Field(
+        default=None, description="The thinking settings. Leave out to keep the stored ones."
     )
 
 
@@ -225,6 +252,12 @@ def _model_out(view: ModelView) -> LlmModel:
         test_error=view.test_error,
         last_tested_at=view.last_tested_at,
         warnings=list(view.warnings),
+        reasoning=LlmReasoning(
+            enabled=view.reasoning.enabled,
+            effort=view.reasoning.effort,  # type: ignore[arg-type]
+            budget_tokens=view.reasoning.budget_tokens,
+            show=view.reasoning.show,
+        ),
         created_at=view.created_at,
         updated_at=view.updated_at,
     )
@@ -344,9 +377,23 @@ def update_model(
     _admin: LlmAdmin,
     providers: ProviderServiceDep,
 ) -> LlmModel:
-    """Change a model's context window (admins only); nothing else about it is editable."""
+    """Change a model's context window and thinking settings (admins only); nothing else
+    about it is editable."""
+    reasoning = (
+        ReasoningConfig(
+            body.reasoning.enabled,
+            body.reasoning.effort,
+            body.reasoning.budget_tokens,
+            body.reasoning.show,
+        )
+        if body.reasoning is not None
+        else None
+    )
     return _model_out(
-        providers.update_model(model_id, ModelInput(name="", context_window=body.context_window))
+        providers.update_model(
+            model_id,
+            ModelInput(name="", context_window=body.context_window, reasoning=reasoning),
+        )
     )
 
 

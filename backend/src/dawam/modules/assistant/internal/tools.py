@@ -20,9 +20,9 @@ import re
 import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
@@ -744,8 +744,11 @@ PLAN_MAX_STEPS = 20
 PlanStatus = Literal["pending", "in_progress", "done", "failed", "skipped"]
 
 
+PlanText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+
+
 class _WritePlan(BaseModel):
-    steps: list[str] = Field(
+    steps: list[PlanText] = Field(
         min_length=1,
         max_length=PLAN_MAX_STEPS,
         description="The steps of the plan, in order, each a short sentence.",
@@ -755,12 +758,12 @@ class _WritePlan(BaseModel):
 class _PlanUpdate(BaseModel):
     id: int = Field(ge=1, description="The step's number in the plan.")
     status: PlanStatus | None = None
-    text: str | None = Field(default=None, max_length=300, description="New wording.")
+    text: PlanText | None = Field(default=None, description="New wording.")
 
 
 class _UpdatePlan(BaseModel):
     updates: list[_PlanUpdate] = Field(default_factory=list, max_length=PLAN_MAX_STEPS)
-    add: list[str] = Field(
+    add: list[PlanText] = Field(
         default_factory=list,
         max_length=PLAN_MAX_STEPS,
         description="New steps to append, e.g. to re-plan after a failure.",
@@ -3014,6 +3017,42 @@ class BoundTools:
         if page_type == "folder" and page_id:
             names |= FOLDER_TOOLS.get(page_id.rsplit("/", 1)[-1], frozenset())
         return names
+
+    def written_names(self) -> frozenset[str]:
+        """The offered tools that generate output (kind ``write``): what a job verifies."""
+        return frozenset(
+            t.name for t in self._registry.all() if t.kind == "write" and self._offered(t)
+        )
+
+    def check_proposals(self) -> list[str] | None:
+        """Validate a job's proposals so far as the whole they will be: the error messages
+        (none: they all validate), or ``None`` outside a job or before any proposal."""
+        proposals = self._ctx.proposals
+        if proposals is None:
+            return None
+        groups: list[tuple[dict[str, Any], Sequence[ProposedItem]]] = []
+        if proposals.items and proposals.source_system_id is not None:
+            scope = {
+                "kind": "source_enhancements",
+                "source_system_id": str(proposals.source_system_id),
+            }
+            groups.append((scope, proposals.items))
+        if proposals.generation is not None:
+            groups.append((proposals.generation.scope, proposals.generation.items))
+        if proposals.mapping_tables:
+            draft = proposals.mapping_draft()
+            groups.append((draft.scope, draft.items))
+        if not groups:
+            return None
+        errors: list[str] = []
+        for scope, items in groups:
+            try:
+                self._ctx.services.change_sets.validate(
+                    self._ctx.user, self._ctx.workspace_id, scope=scope, items=items
+                )
+            except ApiError as exc:
+                errors.append(exc.message)
+        return errors
 
     def _offered(self, tool: Tool) -> bool:
         if tool.chat_only and self._ctx.proposals is not None:

@@ -1,7 +1,7 @@
 """Let jobs keep a plan (todo list) shown with them (#403).
 
 Revision ID: a4c7e1b8d935
-Revises: d4f6a8c2e139
+Revises: c4d8e1a6f203
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "a4c7e1b8d935"
-down_revision: str | Sequence[str] | None = "d4f6a8c2e139"
+down_revision: str | Sequence[str] | None = "c4d8e1a6f203"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

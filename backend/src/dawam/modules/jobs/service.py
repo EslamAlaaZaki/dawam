@@ -501,6 +501,8 @@ class JobService:
             record.started_at = record.started_at or now
             record.heartbeat_at = now
             record.attempts += 1
+            if record.checkpoint is None:  # a fresh run: no plan of an earlier one
+                record.plan = None
             db.flush()
             return _view(record)
 

@@ -69,6 +69,8 @@ interface Draft {
   question: string;
   askedAt: string;
   text: string;
+  /** The model's reasoning, streamed only when its model is set to show it. */
+  reasoning: string;
   tools: ToolCall[];
 }
 
@@ -604,6 +606,7 @@ export function AssistantPanel({
       question: content,
       askedAt: new Date().toISOString(),
       text: "",
+      reasoning: "",
       tools: [],
     });
     try {
@@ -615,6 +618,8 @@ export function AssistantPanel({
         onEvent: (event: AnswerEvent) => {
           if (event.type === "text") {
             setDraft((d) => d && { ...d, text: d.text + event.text });
+          } else if (event.type === "reasoning") {
+            setDraft((d) => d && { ...d, reasoning: d.reasoning + event.text });
           } else if (event.type === "tool") {
             setDraft((d) => d && { ...d, tools: [...d.tools, event.call] });
           } else if (event.type === "done" && event.run.status === "failed") {
@@ -819,6 +824,16 @@ export function AssistantPanel({
                   {draft.question}
                 </Bubble>
                 <Bubble email={null} at={draft.askedAt} busy>
+                  {draft.reasoning && (
+                    <details open={!draft.text} className="mb-2">
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        Reasoning
+                      </summary>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {draft.reasoning}
+                      </p>
+                    </details>
+                  )}
                   {draft.text ? (
                     <Markdown>{draft.text}</Markdown>
                   ) : (
