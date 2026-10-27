@@ -15,6 +15,7 @@ from dawam.modules.jobs import JobRunner, JobService
 from dawam.modules.kpis import KpiService, kpis_for_score
 from dawam.modules.lineage import LineageService
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, WorkspaceAiService
+from dawam.modules.memory import MemoryService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
     ConnectionService,
@@ -75,18 +76,19 @@ def build_assistant_service(
         engine, workspaces=workspaces, jobs=jobs, encryption_key=encryption_key, clock=clock
     )
     ai = WorkspaceAiService(engine, workspaces=workspaces, clock=clock)
+    change_sets = ChangeSetService(
+        engine,
+        workspaces=workspaces,
+        handlers=change_set_handlers,
+        notifications=NotificationService(engine, clock=clock),
+        clock=clock,
+        conversations=readable_conversations(engine),
+    )
     tools = ToolRegistry(
         workspaces,
         ToolServices(
             kpis=KpiService(engine, workspaces=workspaces, systems=systems, clock=clock),
-            change_sets=ChangeSetService(
-                engine,
-                workspaces=workspaces,
-                handlers=change_set_handlers,
-                notifications=NotificationService(engine, clock=clock),
-                clock=clock,
-                conversations=readable_conversations(engine),
-            ),
+            change_sets=change_sets,
             files=FileService(
                 engine,
                 workspaces=workspaces,
@@ -162,6 +164,7 @@ def build_assistant_service(
                 network=web_network,
                 internal_only=lambda workspace_id: ai.settings(workspace_id).internal_only,
             ),
+            memory=MemoryService(engine, workspaces=workspaces, change_sets=change_sets),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )

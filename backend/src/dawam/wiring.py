@@ -23,6 +23,7 @@ from dawam.modules.changesets import (
 )
 from dawam.modules.files import DocumentSearchService, FileContentHandler
 from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
+from dawam.modules.memory import MemoryItemHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.propagation import PropagationService
 from dawam.modules.sources import (
@@ -76,6 +77,7 @@ def change_set_handlers(settings: Settings | None = None) -> ObjectHandlers:
         DataWarehouseHandler(),
         TranspiledMappingHandler(),
         ManualReviewHandler(),
+        MemoryItemHandler(),
         *files,
     )
 

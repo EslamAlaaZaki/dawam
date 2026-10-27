@@ -179,3 +179,76 @@ describe("the Change Set page", () => {
     });
   });
 });
+
+describe("a Workspace memory Change Set", () => {
+  function memoryDetail(): ChangeSetDetail {
+    const base = detail();
+    return {
+      change_set: { ...base.change_set, title: "Remember: cust_stat codes" },
+      items: [
+        {
+          ...ITEM_BASE,
+          id: "m1",
+          position: 0,
+          object_id: null,
+          operation: "create",
+          object_type: "memory_item",
+          label: "cust_stat codes: A=active, S=suspended",
+          base_values: null,
+          payload: { text: "cust_stat codes: A=active, S=suspended" },
+          status: "pending",
+        },
+      ],
+    };
+  }
+
+  function memoryBackend(onDecide?: (r: ApiRequest) => Response) {
+    return (r: ApiRequest) => {
+      switch (`${r.method} ${r.path}`) {
+        case "GET /api/v1/me":
+          return json(ADA);
+        case `GET ${API}`:
+          return json(workspace(["workspace.view", "change_set.review"]));
+        case `GET ${API}/change-sets/${CHANGE_SET_ID}`:
+          return json(memoryDetail());
+        case `POST ${API}/change-sets/${CHANGE_SET_ID}/accept`:
+          return onDecide?.(r);
+      }
+      return undefined;
+    };
+  }
+
+  it("shows the memory item as text to approve, not a field diff", async () => {
+    renderApp(memoryBackend(), PATH);
+
+    expect(await screen.findByText("Workspace memory")).toBeInTheDocument();
+    expect(
+      screen.getByText("cust_stat codes: A=active, S=suspended"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/the assistant can recall this in later conversations/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("When proposed")).not.toBeInTheDocument();
+  });
+
+  it("approves the memory item through the Change Set", async () => {
+    const result: ApplyResult = {
+      change_set: memoryDetail(),
+      accepted: ["m1"],
+      skipped: [],
+      needs_owner: [],
+    };
+    const requests = renderApp(memoryBackend(() => json(result)), PATH);
+
+    fireEvent.click(
+      await screen.findByLabelText(
+        "Select cust_stat codes: A=active, S=suspended",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Accept selected" }));
+
+    expect(await screen.findByText("1 item applied.")).toBeInTheDocument();
+    const post = requests.find((r) => r.method === "POST");
+    expect(post?.body).toEqual({ item_ids: ["m1"] });
+  });
+});

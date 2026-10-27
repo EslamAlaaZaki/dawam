@@ -4301,6 +4301,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Memory Items
+         * @description The Workspace's approved memory items, newest first (any member).
+         */
+        get: operations["listMemoryItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/assistant/conversations": {
         parameters: {
             query?: never;
@@ -8396,6 +8416,26 @@ export interface components {
              * @description Every member, by display name.
              */
             items: components["schemas"]["Member"][];
+        };
+        /** MemoryItem */
+        MemoryItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Text */
+            text: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** MemoryItemList */
+        MemoryItemList: {
+            /** Items */
+            items: components["schemas"]["MemoryItem"][];
         };
         /** MergeRequest */
         MergeRequest: {
@@ -21888,6 +21928,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebProviderOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMemoryItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryItemList"];
                 };
             };
             /** @description Validation error */
