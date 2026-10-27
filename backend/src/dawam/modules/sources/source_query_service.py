@@ -32,6 +32,7 @@ result value. The service never logs a value either.
 from __future__ import annotations
 
 import math
+import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -106,13 +107,16 @@ class QueryBudget:
     def __init__(self, seconds: float = DEFAULT_BUDGET_SECONDS) -> None:
         self.total = seconds
         self.spent = 0.0
+        self.lock = threading.RLock()
+        """Held for a whole query, so reads running in parallel spend one after another."""
 
     @property
     def remaining(self) -> float:
         return max(0.0, self.total - self.spent)
 
     def spend(self, seconds: float) -> None:
-        self.spent += max(0.0, seconds)
+        with self.lock:
+            self.spent += max(0.0, seconds)
 
 
 @dataclass(frozen=True)
@@ -171,19 +175,20 @@ class SourceQueryService:
         ``connection_missing`` / ``no_snapshot`` / ``budget_exhausted`` / ``credentials``,
         422 ``query_rejected`` (the guard's reason), 502 ``source_error`` (our message)."""
         self._workspaces.authorize(user, Action.RUN_SOURCE_QUERY, workspace_id)
-        started = self._timer()
-        outcome: dict[str, Any] = {"outcome": "ok"}
-        try:
-            result = self._run(workspace_id, system_id, sql, budget, started, outcome)
-        except ApiError as exc:
-            outcome.update(outcome="rejected" if exc.status_code == 422 else "error")
-            outcome["error_code"] = exc.code
-            raise
-        finally:
-            elapsed = self._timer() - started
-            outcome["duration_ms"] = round(elapsed * 1000)
-            budget.spend(elapsed)
-            self._audit(user, workspace_id, system_id, sql, outcome)
+        with budget.lock:  # one query at a time per run: each sees what the last one spent
+            started = self._timer()
+            outcome: dict[str, Any] = {"outcome": "ok"}
+            try:
+                result = self._run(workspace_id, system_id, sql, budget, started, outcome)
+            except ApiError as exc:
+                outcome.update(outcome="rejected" if exc.status_code == 422 else "error")
+                outcome["error_code"] = exc.code
+                raise
+            finally:
+                elapsed = self._timer() - started
+                outcome["duration_ms"] = round(elapsed * 1000)
+                budget.spend(elapsed)
+                self._audit(user, workspace_id, system_id, sql, outcome)
         return result
 
     # -- the steps ----------------------------------------------------------------------

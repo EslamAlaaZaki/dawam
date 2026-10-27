@@ -3130,6 +3130,15 @@ class BoundTools:
         )
         return len(detail.items)
 
+    def is_read(self, name: str, arguments: dict[str, Any]) -> bool:
+        """Whether this call saves nothing, so it may run beside other reads of its turn. By
+        what the call does, not the tool's label: ``evaluate_dw`` with ``findings`` (even
+        ``[]``) stores an evaluation. An unknown tool is not a read."""
+        tool = self._registry.get(name)
+        if tool is None or tool.kind != "read":
+            return False
+        return not (name == "evaluate_dw" and arguments.get("findings") is not None)
+
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         tool = self._registry.get(name)
         if tool is None or not self._offered(tool):
