@@ -4,7 +4,7 @@ DAWAM is a self-hosted application for data warehouse metadata management. This 
 
 ## Prerequisites
 
-- **Docker** and **Docker Compose** (20.10+)
+- **Docker** with **Docker Compose v2.24+**
 - **PostgreSQL 16** (managed by Compose, or an external server)
 - For local LLM support: a machine with sufficient resources (see [Local LLM Models](#local-llm-models))
 
@@ -59,7 +59,7 @@ DAWAM is a self-hosted application for data warehouse metadata management. This 
 
 ## Configuration
 
-All settings are controlled via environment variables in `.env`. The `.env.example` file documents every variable; here are the most common:
+All settings are controlled via environment variables in `.env`. The `.env.example` file documents every variable, and [`configuration.md`](configuration.md) lists them all with their defaults; here are the most common:
 
 ### Essential Settings
 
@@ -174,11 +174,19 @@ DAWAM includes an optional Docker Compose profile for [Ollama](https://ollama.co
 
 3. **Configure DAWAM to use Ollama:**
 
-   In the admin console's LLM settings, create an LLM provider:
+   In **Admin > Language models**, add a provider:
    - **Type**: `openai_compatible`
    - **Base URL**: `http://ollama:11434/v1`
    - **API Key**: Leave empty (Ollama doesn't require one)
-   - **Model Name**: `qwen2.5:1.5b` (or your chosen model)
+
+   Then add a model on it (`qwen2.5:1.5b` or your chosen model), click **Test connection**,
+   and give it a role in **Admin > Roles, budgets & usage**.
+
+   The `agent` role needs a context window of at least 32,768 tokens. Ollama's own default
+   context is much smaller and it truncates longer prompts silently; **Test connection**
+   warns when it is too small. The `ollama` service in `compose.yaml` does not raise it;
+   the all-in-one file does, with `OLLAMA_CONTEXT_LENGTH`
+   ([`deploy/README.md`](../deploy/README.md#2-all-in-one-compose-file)).
 
 ### vLLM
 
@@ -190,7 +198,9 @@ DAWAM includes an optional Docker Compose profile for [Ollama](https://ollama.co
    docker run --gpus all -p 8001:8000 \
      -v huggingface_cache:/root/.cache/huggingface \
      vllm/vllm-openai:latest \
-     --model Qwen/Qwen2.5-7B-Instruct      --enable-auto-tool-choice      --tool-call-parser hermes
+     --model Qwen/Qwen2.5-7B-Instruct \
+     --enable-auto-tool-choice \
+     --tool-call-parser hermes
    ```
 
    DAWAM needs tool calling, so both flags are required. The parser must match the model family:
@@ -202,17 +212,21 @@ DAWAM includes an optional Docker Compose profile for [Ollama](https://ollama.co
    - **API Key**: Leave empty or set if configured
    - **Model Name**: `Qwen/Qwen2.5-7B-Instruct`
 
+   As with Ollama, add the model under the provider, test it, and give it a role.
+
 ### SGLang
 
-[SGLang](https://github.com/hpcaitech/sglang) is another fast inference engine with structured generation support.
+[SGLang](https://github.com/sgl-project/sglang) is another fast inference engine with structured generation support.
 
 1. **Start SGLang:**
 
    ```bash
    docker run --gpus all -p 8002:8000 \
-     sglang/sglang:latest \
-     python -m sglang.launch_server \
-     --model-path Qwen/Qwen2.5-7B-Instruct      --tool-call-parser qwen25
+     lmsysorg/sglang:latest \
+     python3 -m sglang.launch_server \
+     --model-path Qwen/Qwen2.5-7B-Instruct \
+     --host 0.0.0.0 --port 8000 \
+     --tool-call-parser qwen25
    ```
 
    The parser must match the model family: `qwen25` for Qwen2.5, `llama3` for Llama 3.1. See the SGLang
@@ -293,7 +307,7 @@ networks:
           ip_range: 172.30.126.128/25
 ```
 
-Also update `DAWAM_FORWARDED_ALLOW_IPS` to match the `edge` service's new IP address.
+Change three things together: the subnet (and `ip_range`), the `edge` service's `ipv4_address`, and `DAWAM_FORWARDED_ALLOW_IPS` (both set to `172.30.126.10` today).
 
 ## Troubleshooting
 
@@ -313,7 +327,7 @@ Ensure `DAWAM_DATABASE_URL` is correct (or let Compose build it from `POSTGRES_*
 
 ### No admin account
 
-If no admin exists and startup fails, set both `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` in `.env`, then restart.
+Without `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD`, DAWAM starts but creates no admin, so on a new installation nobody can sign in (self-registration is off by default). Set both in `.env` and restart. While no admin exists, startup fails with a message naming the variable if only one is set, the email is invalid, the password is too short, too long or common, or a non-admin user already has that email.
 
 ### Services not healthy
 
@@ -338,5 +352,6 @@ Smaller models load faster. Start with `qwen2.5:1.5b` (1.5B parameters) instead 
 ## Next Steps
 
 - **[Operations Guide](./operations.md)** for backups, key rotation, and maintenance.
-- **Spec § 6** for detailed feature documentation.
+- **[Configuration Reference](./configuration.md)** for every setting.
+- **[Spec § 6](./spec.md)** for detailed feature documentation.
 - **Admin Console**: Access at `http://localhost:8000` to configure email, LLM providers, and workspaces.

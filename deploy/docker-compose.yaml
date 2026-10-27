@@ -108,8 +108,9 @@ services:
     restart: unless-stopped
 
   # --- Local LLM -----------------------------------------------------------------
-  # Add it in Admin > LLM as an OpenAI-compatible provider at http://ollama:11434/v1
-  # (no API key), then assign the models to the agent, light and embedding roles.
+  # Add it in Admin > Language models as an OpenAI-compatible provider at
+  # http://ollama:11434/v1 (no API key), add its models, then assign them to the agent,
+  # light and embedding roles in Admin > Roles, budgets & usage.
 
   ollama:
     image: ollama/ollama

@@ -8,14 +8,16 @@ A complete DAWAM backup consists of two parts: the PostgreSQL database and the f
 
 ### Database Backups
 
-Back up the PostgreSQL database using `pg_dump`:
+Back up the PostgreSQL database using `pg_dump`. Use `exec -T` so Docker does not attach a
+terminal, which would corrupt the dump. The examples use the default `dawam` user and
+database; use your `POSTGRES_USER` and `POSTGRES_DB` if you changed them.
 
 ```bash
 # Using Docker Compose
-docker compose exec db pg_dump -U dawam -d dawam > backup.sql
+docker compose exec -T db pg_dump -U dawam -d dawam > backup.sql
 
 # Or with a specific date
-docker compose exec db pg_dump -U dawam -d dawam > dawam_$(date +%Y-%m-%d).sql
+docker compose exec -T db pg_dump -U dawam -d dawam > dawam_$(date +%Y-%m-%d).sql
 ```
 
 For external PostgreSQL:
@@ -26,9 +28,9 @@ pg_dump -h postgres.example.com -U dawam -d dawam > backup.sql
 
 **Options:**
 
-- `--custom` format (faster restore, compressed):
+- Custom format (`-Fc`, compressed, restored with `pg_restore`):
   ```bash
-  docker compose exec db pg_dump -Fc -U dawam -d dawam > backup.dump
+  docker compose exec -T db pg_dump -Fc -U dawam -d dawam > backup.dump
   ```
 - `--verbose` to see what's being backed up.
 - `--exclude-table=...` to skip specific tables.
@@ -54,15 +56,19 @@ For S3 storage, configure S3 bucket versioning and use your cloud provider's bac
 
 ### Restore from Backup
 
-**Database restore:**
+**Database restore:** restore into an empty database (for example a new `db-data` volume),
+with `app` and `worker` stopped (`docker compose stop app worker`), so their migrations do
+not create tables first.
 
 ```bash
 # From SQL dump
 docker compose exec -T db psql -U dawam -d dawam < backup.sql
 
-# From custom format dump
-docker compose exec -T db pg_restore -U dawam -d dawam backup.dump
+# From custom format dump (pg_restore reads it from standard input)
+docker compose exec -T db pg_restore -U dawam -d dawam < backup.dump
 ```
+
+Then start them again with `docker compose up -d`.
 
 **File storage restore:**
 
@@ -86,13 +92,13 @@ curl http://localhost:8000/readyz
 
 There is no rotation tool today. Stored values are sealed with a single `v1` format and the one key in `DAWAM_ENCRYPTION_KEY`; they cannot be re-encrypted automatically.
 
-**What is encrypted:** Connection passwords, LLM provider API keys, and the mail module's stored passwords and link URLs.
+**What is encrypted:** Connection passwords, LLM provider API keys, web search provider API keys (Admin > Web access), and the mail module's SMTP password and undelivered link URLs.
 
 **Changing the key makes all of these unreadable.** Procedure that works today:
 
 1. Plan downtime and take a database backup first.
 2. Generate a new key and set `DAWAM_ENCRYPTION_KEY` in `.env`, then restart (`docker compose up -d`).
-3. Re-enter the credential of every Connection and the key of every LLM provider in the admin console (and any mail credentials, if used).
+3. Re-enter the credential of every Connection, the key of every LLM provider and web search provider, and the SMTP password (if used). Undelivered links waiting in Admin > Email > Links to share cannot be read any more; send new invitations or reset links instead.
 4. Verify: test each Connection and LLM provider, and check `GET /readyz`.
 
 If you only lose or mislay the key, restoring the old key restores access. Keep it backed up separately.
@@ -111,11 +117,11 @@ curl http://localhost:8000/healthz
 curl http://localhost:8000/readyz
 ```
 
-Both return `200 OK` on success, `5xx` on failure.
+`/healthz` returns `200 OK` while the process is up. `/readyz` returns `200 OK` when ready and `503` (`not_ready`) when the database is unreachable or migrations are pending.
 
 ### Logs
 
-Logs are JSON lines on stdout and stderr. View them with:
+Logs are JSON lines on stdout. View them with:
 
 ```bash
 docker compose logs -f app
@@ -154,12 +160,12 @@ Recommended backup frequency:
 Example cron job (on the host):
 
 ```bash
-0 2 * * * docker compose -f /path/to/compose.yaml exec db pg_dump -U dawam -d dawam > /backups/dawam_$(date +\%Y-\%m-\%d).sql
+0 2 * * * docker compose -f /path/to/compose.yaml exec -T db pg_dump -U dawam -d dawam > /backups/dawam_$(date +\%Y-\%m-\%d).sql
 ```
 
 ## Updates
 
-To update DAWAM:
+To update DAWAM (take a backup first: migrations run when `app` starts):
 
 1. **Fetch the latest code:**
 
@@ -182,7 +188,7 @@ To update DAWAM:
 4. **Start the updated version:**
 
    ```bash
-   docker compose up
+   docker compose up -d
    ```
 
    Migrations will run automatically.
@@ -222,7 +228,7 @@ View worker logs:
 docker compose logs -f worker
 ```
 
-A "job stale" message means the worker didn't report back within `DAWAM_JOB_STALE_SECONDS` (default: 60s). Adjust if the network is slow or the machine is under load.
+A running job whose worker sends no heartbeat (every `DAWAM_WORKER_HEARTBEAT_SECONDS`, default 10s) for `DAWAM_JOB_STALE_SECONDS` (default 60s) is failed as lost. Raise the stale time if the machine is under heavy load; it must stay above the heartbeat interval.
 
 ### Out of Memory
 
@@ -243,10 +249,10 @@ Check the LLM provider configuration in the Admin console. Verify:
 - The model name is correct (e.g., `qwen2.5:1.5b` for Ollama).
 - API key (if needed) is set.
 
-Test connectivity from the app container:
+Or use **Test connection** on the model in Admin > Language models. Test connectivity from the app container (the image has Python but no `curl`):
 
 ```bash
-docker compose exec app curl -v http://ollama:11434/v1/models
+docker compose exec app python -c "import urllib.request; print(urllib.request.urlopen('http://ollama:11434/v1/models', timeout=5).read()[:500])"
 ```
 
 ### File Upload Fails
@@ -282,12 +288,11 @@ Note: The nginx reverse proxy also limits request size to 100 MB by default.
 
 ### PostgreSQL Configuration
 
-For larger deployments, tune PostgreSQL settings in `compose.yaml`:
+For larger deployments, tune PostgreSQL settings in `compose.yaml` by passing them to the server:
 
 ```yaml
 db:
-  environment:
-    POSTGRES_INITDB_ARGS: "-c max_connections=200 -c shared_buffers=256MB"
+  command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=256MB"]
 ```
 
 ### Worker Concurrency
@@ -295,8 +300,11 @@ db:
 Scale the worker by running multiple instances:
 
 ```bash
-docker compose up --scale worker=3
+docker compose up -d --scale worker=3
 ```
+
+Workers share the job queue safely. The all-in-one `deploy/docker-compose.yaml` runs
+`DAWAM_WORKERS` replicas (default 2).
 
 ## Support & Resources
 

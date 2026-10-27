@@ -36,7 +36,7 @@ flowchart LR
     subgraph external["External systems (configured in the admin console)"]
         direction TB
         llm["<b>LLM providers</b><br/>OpenAI-compatible (Ollama, vLLM, SGLang, OpenAI…)<br/>Anthropic · Azure OpenAI · Gemini · AWS Bedrock"]
-        sources[("<b>Source databases</b><br/>PostgreSQL · SQL Server<br/>MySQL · Oracle")]
+        sources[("<b>Source databases</b><br/>PostgreSQL · SQL Server<br/>MySQL/MariaDB · Oracle")]
         smtp["<b>SMTP server</b><br/>outgoing email"]
     end
 
@@ -70,14 +70,16 @@ flowchart LR
 | **file storage** | Uploaded files and documents. A directory (`file-data` volume) or an S3-compatible bucket (`DAWAM_STORAGE_BACKEND=s3`, image built with the `s3` extra). | Volume or bucket | Yes |
 | **ollama** | Optional local LLM server, started with `--profile ollama`. | `ollama/ollama` | No |
 | **LLM providers** | The models behind AI features. Types: OpenAI-compatible (Ollama, vLLM, SGLang, OpenAI and others), Anthropic, Azure OpenAI, Gemini, AWS Bedrock. Added by an admin. | External | For AI features |
-| **Source databases** | The systems you analyse, reached through Connections with credentials encrypted by `DAWAM_ENCRYPTION_KEY`. Live connections: PostgreSQL, SQL Server, MySQL, Oracle. Schema Import from files also covers Snowflake and BigQuery, with no connection needed. | External | For live connections |
+| **Source databases** | The systems you analyse, reached through Connections with credentials encrypted by `DAWAM_ENCRYPTION_KEY`. Live connections: PostgreSQL, SQL Server, MySQL/MariaDB, Oracle. Schema Import from files needs no connection, with helper queries for those engines plus IBM Db2 and Teradata. | External | For live connections |
 | **SMTP server** | Sends invitations, password resets and notifications. Set in Admin > Email. Until then, links are shown to admins to share. | External | No |
 
 Network access the installation needs:
 
 - **Inbound:** only `edge` (`DAWAM_PORT`, default 8000).
 - **Outbound from `app` and `worker`:** the LLM providers and source databases you
-  configure, the SMTP server (`app` only), plus the S3 endpoint if you use one. With local models and no
+  configure, the SMTP server (`app` only), plus the S3 endpoint if you use one, and the
+  web search provider and fetched pages if an admin turns on the assistant's web access
+  (off by default, [ADR 0008](../docs/adr/0008-assistant-outbound-web-access.md)). With local models and no
   external services, DAWAM runs fully offline ([`docs/install.md`](../docs/install.md),
   "Air-Gapped Installation").
 - **Browser:** the API docs page (`/api/v1/docs`) loads Swagger UI from
@@ -180,7 +182,7 @@ proxy):
 
 | Service | Port on the host | Notes |
 |---------|------------------|-------|
-| `edge`, `web`, `app`, `worker`, `db` | `DAWAM_PORT` (8000) | DAWAM itself, as in method 1 |
+| `edge`, `web`, `app`, `worker`, `db` | `DAWAM_PORT` (8000) | DAWAM itself, as in method 1, with `DAWAM_WORKERS` (default 2) worker replicas |
 | `ollama` | none | Local LLM server, always on |
 | `ollama-pull` | none | Runs once at start, pulls `OLLAMA_MODELS`, then exits |
 | `mailpit` | `127.0.0.1:8025` (`MAILPIT_PORT`) | SMTP server that catches every email; read them in its web UI |
@@ -211,12 +213,14 @@ proxy):
    components. They can't be wired up automatically, because they are stored
    (encrypted) by the app:
 
-   - **Admin > LLM:** add a provider of type *OpenAI-compatible*, base URL
-     `http://ollama:11434/v1`, no API key. Assign `qwen2.5:7b` to the `agent` (and
-     `light`) role and `nomic-embed-text` to the `embedding` role. For `qwen2.5:7b`,
-     enter the same value as `OLLAMA_CONTEXT_LENGTH` (32768 by default) as its context
-     window: Ollama doesn't report it, and without it the agent never trims long
-     conversations. Then click **Test connection** on each model.
+   - **Admin > Language models:** add a provider of type *OpenAI-compatible*, base URL
+     `http://ollama:11434/v1`, no API key, then add the models `qwen2.5:7b` and
+     `nomic-embed-text` on it. For `qwen2.5:7b`, enter the same value as
+     `OLLAMA_CONTEXT_LENGTH` (32768 by default) as its context window: Ollama doesn't
+     report it, and without it the agent never trims long conversations. Then click
+     **Test connection** on each model.
+   - **Admin > Roles, budgets & usage:** give `qwen2.5:7b` the `agent` (and `light`)
+     role and `nomic-embed-text` the `embedding` role.
    - **Admin > Email:** host `mailpit`, port `1025`, no TLS, no login. Emails appear
      at `http://localhost:8025`. For real delivery, enter your own SMTP server instead.
    - **Demo source** (with `--profile demo`): in a Workspace, add a PostgreSQL

@@ -11,7 +11,10 @@ This directory contains documentation for DAWAM, a self-hosted data warehouse me
 - **[Feature Reference](./reference.md)** — Accounts, security controls, email, Workspaces and files, with their settings and API endpoints.
 - **[Contributing](../CONTRIBUTING.md)** — Development setup, conventions, tests and pull requests.
 - **[Specification](./spec.md)** — Full product specification (§ 6 covers features and modules).
+- **[AI Architecture](./ai-architecture.md)** — How the AI side works today: gateway, agent loop, tools, RAG and safety.
+- **[AI Enhancements](./ai-enhancements.md)** — The AI roadmap, with the status of each item.
 - **[Architecture Decision Records](./adr/)** — Design decisions and their rationale.
+- **[Agent working agreements](./agents/)** — Issue tracker, triage labels, domain docs and the ticket workflow for coding agents.
 
 ## For Self-Hosters
 
@@ -54,7 +57,7 @@ Key settings:
 - `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD` — Create an admin at startup.
 - `DAWAM_PUBLIC_URL` — Public address (used in email links).
 
-See [Configuration](./install.md#configuration) in the Installation Guide for all options.
+See the [Configuration Reference](./configuration.md) for every option.
 
 ## Known Limitations
 
@@ -74,11 +77,15 @@ See [Configuration](./install.md#configuration) in the Installation Guide for al
 ```
 docs/
 ├── README.md                 # This file
-├── install.md               # Installation & setup guide
-├── operations.md            # Backups, monitoring, maintenance
-├── reference.md             # Accounts, security, email, Workspaces, files
-├── spec.md                  # Full product specification
-└── adr/                     # Architecture Decision Records
+├── install.md                # Installation & setup guide
+├── configuration.md          # Every .env setting and its default
+├── operations.md             # Backups, monitoring, maintenance
+├── reference.md              # Accounts, security, email, Workspaces, files
+├── spec.md                   # Full product specification
+├── ai-architecture.md        # How the AI side works today
+├── ai-enhancements.md        # AI roadmap
+├── agents/                   # Working agreements for coding agents
+└── adr/                      # Architecture Decision Records
     ├── 0001-*.md
     ├── 0002-*.md
     └── ...

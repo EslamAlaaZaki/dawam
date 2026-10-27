@@ -437,9 +437,9 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 21 | `query_file` with DuckDB over uploaded CSV/XLSX | §6.2 | Medium | M | **Done** (#398); safer than a Python sandbox |
 | 22 | `render_diagram` (Mermaid ERD / lineage) | §6.2 | Medium | S | **Done** (#399); chat renders Mermaid |
 | 23 | Web search + web fetch, off by default, SearXNG for internal-only | §6.2 | Low–Medium | M | **Done** (#400); ADR 0008 |
-| 24 | Count tool schemas in the context budget (`fit_messages`) | §7.1 | High | S | Fixes overflows on small windows; do first |
-| 25 | Minimum context window for the agent role + Ollama `num_ctx` warning | §7.1 | High | S | |
-| 26 | Shorten the three largest tool schemas | §7.1 | Medium | S | Saves tokens on every model call |
+| 24 | Count tool schemas in the context budget (`fit_messages`) | §7.1 | High | S | Fixes overflows on small windows. **Done** (#349) |
+| 25 | Minimum context window for the agent role + Ollama `num_ctx` warning | §7.1 | High | S | **Done** (#350) |
+| 26 | Shorten the three largest tool schemas | §7.1 | Medium | S | Saves tokens on every model call. **Done** (#351) |
 
 Items 19–26 were added after the table was ranked. #24, #19, #20 and #25 belong at the top despite their numbers.
 

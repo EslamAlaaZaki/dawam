@@ -122,8 +122,9 @@ development, Next.js forwards `/api`, `/healthz` and `/readyz` to the API at
 ### 5. Optional: a model for AI features
 
 The quickest option is Ollama: `docker run -d -p 11434:11434 --name ollama ollama/ollama`,
-then `docker exec ollama ollama pull qwen2.5:1.5b`. Add it in **Admin > LLM** as an
-OpenAI-compatible provider at `http://localhost:11434/v1`. See
+then `docker exec ollama ollama pull qwen2.5:1.5b`. Add it in **Admin > Language models**
+as an OpenAI-compatible provider at `http://localhost:11434/v1`, add the model, and give it
+the `agent` role in **Admin > Roles, budgets & usage**. See
 [`docs/install.md`](docs/install.md#local-llm-models) for other servers.
 
 To run the full stack in containers instead, see
@@ -140,17 +141,21 @@ backend/
     app.py          FastAPI application factory
     worker.py       background worker
   tests/            pytest suite (HTTP API tests against real PostgreSQL)
-  tools/            check_boundaries.py and other developer tools
+  tools/            check_boundaries.py, check_workflow_keys.py and other developer tools
 frontend/
   src/
     app/            Next.js routes (App Router)
     api/            openapi.json, generated schema.d.ts, client and TanStack Query hooks
     auth/ admin/ profile/ shell/ workspaces/   screens
+    components/     shared components (shadcn/ui in components/ui)
+    diagrams/       star schema, lineage and bus matrix diagrams
+    lib/            shared helpers (utils.ts)
     security/       security headers (with proxy.ts)
     test/           test harness for component tests
-e2e/                Playwright end-to-end smoke test
+e2e/                Playwright end-to-end tests (smoke journey and keyboard walkthrough)
+samples/            ready-to-run demo source databases and documents (bank, retail)
 deploy/             nginx entry proxy, all-in-one Compose file, files for running without Docker
-docs/               spec, ADRs, install, operations and reference guides
+docs/               spec, ADRs, install, configuration, operations, reference and AI guides
 scripts/            API client generation and staleness check
 compose.yaml        the default Docker Compose stack
 Dockerfile          the image for the `app` and `worker` services
@@ -184,9 +189,9 @@ Dockerfile          the image for the `app` and `worker` services
 | Change a table | Add an Alembic migration: in `backend/`, run `alembic revision --autogenerate -m "describe the change"`, then review the generated file. Migrations run when the app starts. |
 | Add or change an API route or schema | Regenerate the frontend client with `scripts/generate-api-client.sh` and commit `frontend/src/api/openapi.json` and `schema.d.ts`. CI fails if they are stale. |
 | Add an endpoint | Add its row to the permission matrix in `backend/tests/authz/matrix.py`. The permission suite fails for any route without one. |
-| Add a setting | Add it to `platform/config.py` with a safe default, and document it in `.env.example`. |
+| Add a setting | Add it to `platform/config.py` with a safe default, and document it in `.env.example` and `docs/configuration.md`. |
 | Add a dependency | Add it to `backend/pyproject.toml` or `frontend/package.json` and explain why in the pull request. Prefer the standard library and existing dependencies. |
-| Change behaviour users or operators see | Update the matching doc: `README.md`, `deploy/README.md`, `docs/reference.md`, `docs/install.md` or `docs/operations.md`. |
+| Change behaviour users or operators see | Update the matching doc: `README.md`, `deploy/README.md`, `docs/reference.md`, `docs/install.md`, `docs/configuration.md` or `docs/operations.md` (and `docs/ai-architecture.md` for the AI side). |
 
 ## Code style
 
@@ -230,6 +235,8 @@ pytest                         # the default suite
 pytest tests/test_foo.py -k x  # one file or test
 pytest -m oracle               # Oracle connector tests (slow, large image)
 pytest -m ollama               # needs a running Ollama (DAWAM_OLLAMA_URL)
+pytest -m docling              # the real Docling engine (layout parsing, OCR) on a tiny fixture
+pytest -m ner                  # the real NER engines (needs the `ner` extra and its models)
 pytest -m real_model           # DW generation evaluation against a real model (before a release)
 ```
 
@@ -274,18 +281,19 @@ client (see `src/test/fakeApi.tsx`).
 
 ### End-to-end
 
-One Playwright journey runs against the full Compose stack, using a fake LLM provider and
-a seeded source database. See [`e2e/README.md`](e2e/README.md) to run it locally. CI runs
-it on every pull request.
+Two Playwright projects run against the full Compose stack, using a fake LLM provider and
+a seeded source database: the smoke journey and a keyboard-only walkthrough that builds on
+it. See [`e2e/README.md`](e2e/README.md) to run them locally. CI runs them on every pull
+request.
 
 ## Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs these jobs on every push and pull request.
-All of them must pass before a merge.
+GitHub Actions (`.github/workflows/ci.yml`) runs these jobs on every pull request and on
+pushes to `main` and `feature/**`. All of them must pass before a merge.
 
 | Job | What it checks |
 |-----|----------------|
-| Backend lint + tests | Ruff, then pytest in 4 shards (PostgreSQL and SQL Server via Testcontainers) |
+| Backend lint + tests | Ruff, no provider API key in any workflow (`tools/check_workflow_keys.py`), then pytest in 4 shards (PostgreSQL and SQL Server via Testcontainers); shard 1 also runs the real Docling and NER engine tests |
 | Backend Oracle connector tests | `pytest -m oracle` |
 | Module-boundary check | `tools/check_boundaries.py` |
 | Frontend lint + tests + build | ESLint, Vitest, `next build` |
@@ -293,8 +301,9 @@ All of them must pass before a merge.
 | API client is up to date | `scripts/check-api-client.sh` |
 | End-to-end smoke test | Playwright against the Compose stack |
 
-A separate weekly workflow (`assistant-ollama.yml`) tests the assistant against a real
-Ollama model.
+A separate workflow (`assistant-ollama.yml`) tests the assistant against a real Ollama
+model: weekly, on demand, and on pull requests that touch the assistant or the LLM
+gateway. It never blocks a merge.
 
 The full backend suite can take close to an hour. If a job fails with Docker Hub
 `toomanyrequests`, it hit the image pull rate limit: re-run the job.

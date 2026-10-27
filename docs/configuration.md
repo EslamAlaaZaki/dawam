@@ -32,13 +32,16 @@ required. `.env.example` has a longer comment on each setting.
 | `DAWAM_LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING or ERROR (JSON logs) |
 | `DAWAM_RUN_MIGRATIONS_ON_STARTUP` | `true` | Apply database migrations when the app starts |
 | `DAWAM_WORKER_POLL_SECONDS` | `5` | How often the worker checks for jobs |
+| `DAWAM_WORKER_HEARTBEAT_SECONDS` | `10` | How often a worker tells the queue it is still running its job; must be below `DAWAM_JOB_STALE_SECONDS` |
+| `DAWAM_JOB_STALE_SECONDS` | `60` | A running job whose worker has been silent this long is failed as lost |
+| `DAWAM_REQUEST_THREADS` | `200` | Threads for the API's blocking work; each streaming assistant answer holds one |
 
 ## File storage
 
 | Variable | Default | What it does |
 |---|---|---|
 | `DAWAM_STORAGE_BACKEND` | `local` | `local` or `s3` |
-| `DAWAM_STORAGE_PATH` | `/var/lib/dawam/files` | Local storage folder (the Compose volume) |
+| `DAWAM_STORAGE_PATH` | `/var/lib/dawam/files` in Compose (`data/files` outside it) | Local storage folder (the Compose volume) |
 | `DAWAM_S3_BUCKET` | none | S3 bucket |
 | `DAWAM_S3_ENDPOINT_URL` | none | S3-compatible endpoint |
 | `DAWAM_S3_REGION` | none | S3 region |
@@ -55,6 +58,25 @@ required. `.env.example` has a longer comment on each setting.
 | `DAWAM_ASSISTANT_JOB_SUPERVISOR` | `false` | Run background jobs as a supervisor routing to specialist agents (ADR 0009) |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | `120` | Seconds of source queries allowed per message |
 | `DAWAM_SCORE_DEBOUNCE_SECONDS` | `2` | Wait after a design change before the Data Warehouse score is recalculated |
+
+## Documents (document AI)
+
+| Variable | Default | What it does |
+|---|---|---|
+| `DAWAM_DOCUMENT_PARSER` | `docling` | How PDF, DOCX and XLSX uploads are read: `docling` (keeps headings, reading order and tables) or `basic` (plain text with pypdf, python-docx, openpyxl) |
+| `DAWAM_DOCUMENT_OCR` | `rapidocr` | OCR for scanned PDF pages: `rapidocr` (English and Arabic) or `off` |
+| `DAWAM_DOCUMENT_ACCELERATOR` | `auto` | Device for Docling and RapidOCR: `auto`, `cpu` or `cuda` (see [Document AI: CPU vs GPU](../deploy/README.md#document-ai-cpu-vs-gpu)) |
+
+## Privacy and tracing
+
+| Variable | Default | What it does |
+|---|---|---|
+| `DAWAM_PII_NER_ENABLED` | `false` | Also mask person names and addresses (Arabic and English) with NER; needs the backend's `ner` extra and both models, or the app and worker refuse to start |
+| `DAWAM_PII_NER_ENGLISH_MODEL` | `en_core_web_sm` | spaCy model package or folder for English |
+| `DAWAM_PII_NER_ARABIC_MODEL` | `CAMeL-Lab/bert-base-arabic-camelbert-msa-ner` | CAMeL Tools NER model for Arabic (Hugging Face id from the local cache, or a folder) |
+| `DAWAM_OTEL_ENDPOINT` | not set | OTLP/HTTP traces endpoint (e.g. a self-hosted Langfuse); tracing is off while unset |
+| `DAWAM_OTEL_CAPTURE_CONTENT` | `false` | Add redacted prompts and tool content to spans (metadata only otherwise) |
+| `DAWAM_OTEL_SERVICE_NAME` | `dawam` | `service.name` on the spans |
 
 ## First admin
 
@@ -91,6 +113,17 @@ admin's login.
 | `DAWAM_PORT` | `8000` | Compose (edge) | Host port DAWAM is published on |
 | `DAWAM_TRUSTED_PROXY_CIDRS` | not set | edge | Addresses of a TLS proxy in front of DAWAM that edge should trust |
 | `DAWAM_HSTS_MAX_AGE_SECONDS` | `31536000` | app, web | HSTS max-age, sent only on HTTPS requests; `0` turns it off |
+
+## All-in-one Compose file only
+
+Read by `deploy/docker-compose.yaml`, not by DAWAM itself.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `DAWAM_WORKERS` | `2` | Number of `worker` replicas |
+| `OLLAMA_MODELS` | `qwen2.5:7b nomic-embed-text` | Models `ollama-pull` downloads at start |
+| `OLLAMA_CONTEXT_LENGTH` | `32768` | Context length Ollama runs models with; enter the same value as the model's context window in Admin > Language models |
+| `MAILPIT_PORT` | `8025` | Host port (on `127.0.0.1`) of Mailpit's web UI |
 
 ## Tests only
 

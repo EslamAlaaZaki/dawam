@@ -55,7 +55,7 @@ on every log line for that request.
   HTTPS). A session ends after `DAWAM_SESSION_IDLE_TIMEOUT_HOURS` (default 8) without
   a request, or `DAWAM_SESSION_ABSOLUTE_TIMEOUT_DAYS` (default 14) after sign-in.
   Behind a TLS-terminating proxy, cookies are `Secure` only once
-  `DAWAM_FORWARDED_ALLOW_IPS` trusts it (see [HTTP basics](#http-basics)).
+  `DAWAM_TRUSTED_PROXY_CIDRS` lists it (see [HTTP basics](#http-basics)).
 - **CSRF.** Every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/v1` must send the value
   of the `dawam_csrf` cookie in the `X-CSRF-Token` header (double submit); any
   response sets that cookie for a client without one.
@@ -168,11 +168,15 @@ paged with `limit` and an opaque `cursor` (the previous page's `next_cursor`).
 
 ## Files and documents
 
-Owners and editors upload documents (PDF, DOCX, XLSX, Markdown, text, and PNG, JPEG, GIF
-or WebP images) to a Source System's file area, shown as its Documents folder; any member
-lists and downloads them. A *document* is simply an uploaded file with extracted text
-(pypdf, python-docx, openpyxl, or the raw text); a PDF with no text layer, such as a scan,
-is marked "no text found". Uploads are limited to `DAWAM_UPLOAD_MAX_MB` (default 25; the
+Owners and editors upload documents (PDF, DOCX, XLSX; Markdown, plain text, SQL, YAML, CSV
+and JSON; and PNG, JPEG, GIF or WebP images) to a Source System's file area, shown as its
+Documents folder; any member lists and downloads them. A *document* is an uploaded file
+with extracted text, indexed for search by a background job. PDF, DOCX and XLSX are read
+with Docling (headings, reading order and tables kept; `DAWAM_DOCUMENT_PARSER=basic` uses
+pypdf, python-docx and openpyxl instead), and scanned PDF pages are read by OCR (the
+Workspace's vision model when allowed, else RapidOCR on the server). A PDF in which no text
+is found, such as a scan with OCR off, is marked "no text found"; images have no text, and
+the vision model, when the Workspace has one, describes them. Uploads are limited to `DAWAM_UPLOAD_MAX_MB` (default 25; the
 `edge` proxy allows up to 100). The type is sniffed from the content and must match the
 extension (`415 unsupported_file_type` otherwise; SVG and HTML are never accepted), files
 are stored under random keys (the uploaded name is only a label), and downloads are always
