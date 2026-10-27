@@ -436,3 +436,59 @@ def test_a_job_checkpoint_is_stored_redacted(app, services, roles, model):
         saved = json.dumps(db.execute(query, {"id": job.id}).scalar())
     assert "get_object" in saved
     assert "jane.doe@example.com" not in saved and "redacted" in saved
+
+
+# -- self-verification ---------------------------------------------------------------------
+
+
+def test_a_job_that_proposed_changes_checks_its_work_and_reports_the_result(
+    app, services, roles, model, fake_llm
+):
+    table, system = schema_ids(roles)
+    fake_llm.script(
+        Reply(tool_calls=(propose(table, system, "a"),)),
+        Reply(text="Described the table."),
+    )
+
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+    job = submit(app, services, roles, cid=cid)
+
+    assert job.status == "succeeded"
+    assert job.log.count("run_validation") == 1 and job.log.count("get_score") == 1
+    assert job.log.index("propose_changes") < job.log.index("validate_proposals")
+    messages = owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"]
+    [report] = [m["content"] for m in messages if m["content"].startswith("Job finished")]
+    assert "Verification: Proposed changes: 0 errors. Current warehouse: validation" in report
+
+
+def test_a_job_that_wrote_nothing_runs_no_checks(app, services, roles, model, fake_llm):
+    fake_llm.script(Reply(text="Nothing to do."))
+
+    job = submit(app, services, roles)
+
+    assert "run_validation" not in job.log and "get_score" not in job.log
+
+
+def test_a_proposal_the_real_validator_rejects_is_corrected_and_the_summary_reports_zero_errors(
+    app, services, roles, model, fake_llm
+):
+    import uuid
+
+    table, system = schema_ids(roles)
+    fake_llm.script(
+        Reply(tool_calls=(propose(str(uuid.uuid4()), system, "a"),)),  # names no table
+        Reply(tool_calls=(propose(table, system, "a"),)),
+        Reply(text="Described the table."),
+    )
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    job = submit(app, services, roles, cid=cid)
+
+    assert job.status == "succeeded"
+    assert job.log.index("propose_changes error") < job.log.index("propose_changes ok")
+    messages = owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"]
+    [report] = [m["content"] for m in messages if m["content"].startswith("Job finished")]
+    assert "Proposed changes: 0 errors." in report
+    assert change_sets(roles)[0]["item_counts"] == {"pending": 1}

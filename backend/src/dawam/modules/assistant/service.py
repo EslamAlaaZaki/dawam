@@ -38,6 +38,7 @@ from .internal.agent import (
     Text,
     ToolCallRecord,
     ToolFinished,
+    Verify,
     run_agent,
 )
 from .internal.context import CHARS_PER_TOKEN, PROMPT_SHARE
@@ -652,6 +653,7 @@ class AssistantService:
                 delta_poll_seconds=STOP_POLL_SECONDS,
                 checkpoint=save,
                 resume=resume,
+                verify=Verify(tools.written_names(), check=tools.check_proposals),
             ):
                 if isinstance(event, Finished):
                     finished = event
