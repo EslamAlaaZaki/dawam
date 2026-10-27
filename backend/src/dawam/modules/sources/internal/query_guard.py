@@ -236,6 +236,27 @@ def check_query(sql: str, *, engine: str, catalog: GuardCatalog) -> SafeQuery | 
         return Rejected("The query could not be analysed safely.")
 
 
+def is_row_bounded(sql: str, *, engine: str | None, cap: int) -> bool:
+    """Whether the outer query has a literal ``LIMIT``, ``TOP`` or ``FETCH`` of at most ``cap``
+    rows. Fails closed: a query that does not parse in the engine's dialect is not bounded."""
+    try:
+        tree = sqlglot.parse_one(sql, read=_DIALECTS.get(engine or ""))
+    except sqlglot.errors.SqlglotError:
+        return False
+    if not isinstance(tree, exp.Query):
+        return False
+    for node in (tree.args.get("limit"), tree.args.get("fetch")):
+        if isinstance(node, exp.Limit):
+            count = node.args.get("expression")
+        elif isinstance(node, exp.Fetch):
+            count = node.args.get("count")
+        else:
+            continue
+        if isinstance(count, exp.Literal) and count.is_int and int(count.this) <= cap:
+            return True
+    return False
+
+
 def cap_rows(sql: str, *, engine: str, catalog: GuardCatalog, limit: int) -> str | None:
     """``sql`` (a ``SafeQuery.sql``) with a row limit the database itself applies (``LIMIT``,
     ``TOP`` or ``FETCH FIRST`` per engine), checked by the guard again; ``None`` if that

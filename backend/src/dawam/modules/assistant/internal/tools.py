@@ -22,7 +22,6 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
-import sqlglot
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from dawam.modules.auth import User
@@ -1927,21 +1926,6 @@ SOURCE_QUERY_ROW_CAP = 100
 """The most rows a source query returns; a query without a smaller ``LIMIT`` needs approval."""
 
 
-def _unbounded_query(sql: str) -> bool:
-    """Whether the SELECT has no literal ``LIMIT`` (or ``TOP``/``FETCH``) of at most the cap."""
-    try:
-        tree = sqlglot.parse_one(sql)
-    except sqlglot.errors.SqlglotError:
-        return False  # the tool reports a query it cannot parse
-    limit = tree.args.get("limit") if tree is not None else None
-    if limit is None:
-        return True
-    value = limit.args.get("expression")
-    if isinstance(value, sqlglot.exp.Literal) and value.is_int:
-        return int(value.this) > SOURCE_QUERY_ROW_CAP
-    return True
-
-
 def _run_source_query(ctx: ToolContext, args: _RunSourceQuery) -> Any:
     result = ctx.services.source_queries.run(
         ctx.user, ctx.workspace_id, args.system_id, args.sql, budget=ctx.budget
@@ -3211,15 +3195,24 @@ class BoundTools:
             return False
         return not (name == "evaluate_dw" and arguments.get("findings") is not None)
 
+    def _row_bounded(self, system: object, sql: str) -> bool:
+        try:
+            return self._ctx.services.source_queries.row_bounded(
+                uuid.UUID(str(system)), sql, SOURCE_QUERY_ROW_CAP
+            )
+        except Exception:  # fail closed: the member is asked
+            return False
+
     def approval(self, name: str, arguments: dict[str, Any]) -> str | None:
         """The question to put to the member before this call may run, or ``None``. Fixed in
-        code, in a job only (a chat has no way to wait): a source query without a ``LIMIT`` or
-        above the row cap, regenerating an existing DW Layer, re-indexing a whole Workspace."""
+        code, in a job only: a chat run is not gated (it cannot wait; the jobs it starts are). A
+        source query without a ``LIMIT``/``TOP``/``FETCH`` of at most the row cap (or one that
+        does not parse), regenerating an existing DW Layer, re-indexing a whole Workspace."""
         if self._ctx.proposals is None:
             return None
         if name == "run_source_query":
             sql = arguments.get("sql")
-            if isinstance(sql, str) and _unbounded_query(sql):
+            if isinstance(sql, str) and not self._row_bounded(arguments.get("system_id"), sql):
                 return (
                     f"May I run this source query? It has no LIMIT of at most "
                     f"{SOURCE_QUERY_ROW_CAP} rows: {redact_text(sql)[:500]}"

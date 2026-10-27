@@ -62,7 +62,13 @@ from .internal.connector import (
     connector_for,
 )
 from .internal.pii import load_rule_set, scan_columns
-from .internal.query_guard import Rejected, cap_rows, check_query, count_ordinals
+from .internal.query_guard import (
+    Rejected,
+    cap_rows,
+    check_query,
+    count_ordinals,
+    is_row_bounded,
+)
 from .internal.query_guard_catalog import load_guard_catalog
 from .tables import (
     ConnectionRecord,
@@ -190,6 +196,18 @@ class SourceQueryService:
                 budget.spend(elapsed)
                 self._audit(user, workspace_id, system_id, sql, outcome)
         return result
+
+    def row_bounded(self, system_id: uuid.UUID, sql: str, cap: int) -> bool:
+        """Whether ``sql`` carries its own literal row bound of at most ``cap``, parsed in the
+        Source System's engine dialect (false when it does not parse). No authorisation: it
+        only reads the engine; the run itself is authorised."""
+        with Session(self._engine) as db:
+            engine_name = db.scalar(
+                sa.select(ConnectionRecord.engine).where(
+                    ConnectionRecord.source_system_id == system_id
+                )
+            )
+        return is_row_bounded(sql, engine=engine_name, cap=cap)
 
     # -- the steps ----------------------------------------------------------------------
 

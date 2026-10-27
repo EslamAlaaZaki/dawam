@@ -85,8 +85,7 @@ NOT_APPROVED = "The member did not approve this action, so it was not run. Do no
 def is_approval(answer: str) -> bool:
     """Whether the member's answer to an approval question is a yes (a fixed word list: a
     doubtful answer is a no)."""
-    words = answer.strip().lower().replace(",", " ").rstrip(".! ").split()
-    return bool(words) and (" ".join(words) in APPROVALS or words[0] in ("yes", "y"))
+    return answer.strip().lower().rstrip(".! ") in APPROVALS
 
 
 ASK_MEMBER = "ask_member"

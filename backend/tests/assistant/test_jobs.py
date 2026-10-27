@@ -745,7 +745,7 @@ def test_reindexing_the_workspace_pauses_for_approval_and_runs_on_a_yes(
     assert paused["status"] == "paused" and "re-index every document" in paused["question"]
     assert "reindex_documents" not in paused["log"]  # nothing ran yet
 
-    assert answer_job(roles, job.id, "Yes, go ahead").status_code == 200
+    assert answer_job(roles, job.id, "Yes").status_code == 200
     [resumed] = jobs_of(roles)
     assert resumed["status"] == "succeeded" and "reindex_documents ok" in resumed["log"]
 
@@ -799,17 +799,40 @@ def test_a_source_query_within_the_cap_and_other_actions_do_not_pause(
 
 
 @pytest.mark.parametrize(
-    ("sql", "gated"),
+    ("sql", "engine", "gated"),
     [
-        ("SELECT * FROM a.b", True),
-        ("SELECT * FROM a.b LIMIT 101", True),
-        ("SELECT * FROM a.b LIMIT 100", False),
-        ("SELECT * FROM a.b LIMIT 5", False),
-        ("SELECT * FROM a.b LIMIT n", True),
-        ("not sql at all (", False),
+        ("SELECT * FROM a.b", "postgresql", True),
+        ("SELECT * FROM a.b LIMIT 101", "postgresql", True),
+        ("SELECT * FROM a.b LIMIT 100", "postgresql", False),
+        ("SELECT * FROM a.b LIMIT 5", None, False),
+        ("SELECT * FROM a.b LIMIT n", "postgresql", True),
+        ("SELECT TOP 500 [a] FROM [t]", "sqlserver", True),
+        ("SELECT TOP 5 [a] FROM [t]", "sqlserver", False),
+        ("SELECT `a` FROM t", "mysql", True),
+        ("SELECT `a` FROM t LIMIT 10", "mysql", False),
+        ("SELECT a FROM t FETCH FIRST 5 ROWS ONLY", "oracle", False),
+        ("SELECT a FROM t FETCH FIRST 500 ROWS ONLY", "oracle", True),
+        ("not sql at all (", "postgresql", True),
+        ("SELECT TOP 5 [a] FROM [t]", "postgresql", True),  # the wrong dialect: fails closed
     ],
 )
-def test_the_source_query_rule(sql, gated):
-    from dawam.modules.assistant.internal.tools import _unbounded_query
+def test_the_source_query_rule_uses_the_engine_dialect_and_fails_closed(sql, engine, gated):
+    from dawam.modules.sources.internal.query_guard import is_row_bounded
 
-    assert _unbounded_query(sql) is gated
+    assert is_row_bounded(sql, engine=engine, cap=100) is (not gated)
+
+
+@pytest.mark.parametrize("answer", ["yes", " Yes. ", "OK", "go ahead", "Approve!"])
+def test_only_an_exact_yes_approves(answer):
+    from dawam.modules.assistant.internal.agent import is_approval
+
+    assert is_approval(answer)
+
+
+@pytest.mark.parametrize(
+    "answer", ["yes but don't touch X", "y, no", "no", "yes please skip the big one", "", "maybe"]
+)
+def test_a_yes_with_a_condition_is_not_approval(answer):
+    from dawam.modules.assistant.internal.agent import is_approval
+
+    assert not is_approval(answer)
