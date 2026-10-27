@@ -32,6 +32,7 @@ from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.lineage import LineageService
 from dawam.modules.llm import DataSharingLevel, DataSharingPolicy, ToolSpec
 from dawam.modules.memory import MAX_PROPOSED as MAX_MEMORY_ITEMS
+from dawam.modules.memory import TEXT_MAX_LENGTH as MEMORY_TEXT_MAX_LENGTH
 from dawam.modules.memory import MemoryService
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
@@ -759,7 +760,7 @@ class _AskMember(BaseModel):
 
 
 class _Remember(BaseModel):
-    items: list[Annotated[str, StringConstraints(max_length=2000)]] = Field(
+    items: list[Annotated[str, StringConstraints(max_length=MEMORY_TEXT_MAX_LENGTH)]] = Field(
         min_length=1,
         max_length=MAX_MEMORY_ITEMS,
         description="Each a short, self-contained fact in plain text (at most 500 characters), "

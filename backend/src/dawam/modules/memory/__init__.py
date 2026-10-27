@@ -11,7 +11,8 @@ Public interface. Other modules import only what is re-exported here:
   characters, no personal data), ``MAX_PROPOSED``, ``RECALL_LIMIT``.
 - ``router``: ``GET /workspaces/{workspace_id}/memory``.
 
-Owns the ``memory_items`` table. Imports ``auth``, ``changesets`` and ``workspaces``.
+Owns the ``memory_items`` table. Imports ``auth``, ``changesets``, ``sources`` (its custom
+PII rules) and ``workspaces``.
 """
 
 from .api import router

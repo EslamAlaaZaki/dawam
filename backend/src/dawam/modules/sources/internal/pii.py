@@ -93,6 +93,25 @@ def load_rule_set(db: Session, workspace_id: uuid.UUID) -> RuleSet:
     return RuleSet(disabled=disabled, custom=tuple(custom))
 
 
+TEXT_PATTERN_TIMEOUT_SECONDS = 0.05
+
+
+def custom_rules_in_text(db: Session, workspace_id: uuid.UUID, text: str) -> list[str]:
+    """The ids of the Workspace's custom PII rules whose regex matches anywhere in ``text``.
+    Keywords match column names, not prose, so they are not tried. A regex that runs past the
+    time limit counts as a match: the text is refused rather than let through."""
+    hits: list[str] = []
+    for custom in load_rule_set(db, workspace_id).custom:
+        if custom.pattern is None:
+            continue
+        try:
+            if custom.pattern.search(text, timeout=TEXT_PATTERN_TIMEOUT_SECONDS):
+                hits.append(custom.id)
+        except TimeoutError:
+            hits.append(custom.id)
+    return hits
+
+
 def scan_columns(
     db: Session,
     *,

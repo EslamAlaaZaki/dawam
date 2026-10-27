@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
 from dawam.modules.changesets import AppliedChange, ChangeSetDetail, ChangeSetService, ProposedItem
+from dawam.modules.sources import custom_rules_in_text
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
@@ -40,9 +41,13 @@ def _invalid(message: str) -> ApiError:
     return ApiError(422, "invalid_change_set", message)
 
 
-def checked_text(value: Any) -> str:
+def checked_text(
+    value: Any, db: Session | None = None, workspace_id: uuid.UUID | None = None
+) -> str:
     """``value`` as a memory item's text, trimmed; 422 ``invalid_change_set`` when it is empty,
-    too long or holds personal data (which is named by rule, never echoed)."""
+    too long or holds personal data (which is named by rule, never echoed). Given ``db`` and
+    ``workspace_id``, the Workspace's custom PII regexes are tried too; its disabled built-in
+    rules still apply here (ADR 0010)."""
     if not isinstance(value, str) or not value.strip():
         raise _invalid("A memory item is non-empty plain text.")
     text = value.strip()
@@ -52,6 +57,8 @@ def checked_text(value: Any) -> str:
         )
     found: list[str] = []
     redact_text(text, found=found)
+    if db is not None and workspace_id is not None:
+        found += custom_rules_in_text(db, workspace_id, text)
     if found:
         raise _invalid(
             "A memory item may not hold personal data; found "
@@ -84,7 +91,7 @@ class MemoryItemHandler:
     ) -> None:
         if set(payload) != {"text"}:
             raise _invalid("A memory_item item has exactly one field, `text`.")
-        checked_text(payload["text"])
+        checked_text(payload["text"], db, workspace_id)
 
     def current_values(
         self,
@@ -108,7 +115,8 @@ class MemoryItemHandler:
         *,
         at: datetime,
     ) -> AppliedChange:
-        text = checked_text(payload.get("text"))  # again: the PII rules may have grown
+        # Again: the Workspace's PII rules (or the NER switch) may have changed since.
+        text = checked_text(payload.get("text"), db, workspace_id)
         record = MemoryItemRecord(workspace_id=workspace_id, text=text, created_at=at)
         db.add(record)
         db.flush()

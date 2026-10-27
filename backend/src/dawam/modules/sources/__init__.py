@@ -54,6 +54,8 @@ Public interface. Other modules import only what is re-exported here:
   keywords and/or a regex, a category and a confidence) and switch built-in rules off or on;
   built-in rules are never edited. ``internal.pii.load_rule_set`` feeds them to the name scan
   of every new Snapshot and to value scans; changes are audited (``pii_rule`` entity).
+  ``custom_rules_in_text(db, workspace_id, text)`` names the custom rules whose regex
+  matches free text (Workspace memory refuses such text, ADR 0010).
 - ``check_query``: the AI source query guard (ADR 0002). Given SQL, the engine and a
   ``GuardCatalog`` of the latest Snapshot (``load_guard_catalog`` builds one), it returns
   ``Rejected(reason)`` or a ``SafeQuery``: fully qualified SQL regenerated from the verified
@@ -123,7 +125,7 @@ from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_changes import SourceEnhancementHandler
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
-from .internal.pii import is_protected, protected_column_ids
+from .internal.pii import custom_rules_in_text, is_protected, protected_column_ids
 from .internal.pii_rules import match_name
 from .internal.query_guard import (
     GuardCatalog,
@@ -244,6 +246,7 @@ __all__ = [
     "check_query",
     "confirmed_pii_column_ids",
     "confirmed_pii_columns",
+    "custom_rules_in_text",
     "deleted_source_system",
     "deleted_source_systems",
     "hidden_source_system_ids",

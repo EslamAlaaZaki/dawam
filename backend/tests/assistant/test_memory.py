@@ -8,6 +8,10 @@ from typing import Any
 
 import pytest
 
+from dawam.modules.changesets import ChangeSetService, ProposedItem
+from dawam.modules.notifications import NotificationService
+from dawam.modules.workspaces import WorkspaceService
+from dawam.platform.errors import ApiError
 from dawam.platform.pii_entities import FakeEntityDetector, set_entity_detector
 from tests.assistant import test_chat
 from tests.assistant.test_source_tools import payload, use
@@ -182,3 +186,67 @@ def test_memory_is_workspace_scoped(roles: RoleClients, model, fake_llm):
 
     assert response.status_code == 200
     assert response.json()["items"] == []
+
+
+def add_custom_rule(roles: RoleClients) -> None:
+    response = roles.client("owner").post(
+        f"{memory_base(roles)}/pii-rules",
+        json={"name": "employee_code", "pattern": r"EMP-\d{5}", "category": "direct_identifier"},
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_a_workspace_custom_pii_rule_blocks_an_item(roles: RoleClients, model, fake_llm):
+    add_custom_rule(roles)
+
+    status, seen = use(roles, fake_llm, "remember", "editor", items=["The CRM owner is EMP-12345"])
+
+    assert status == "error"
+    assert "employee_code" in seen
+    assert "EMP-12345" not in seen
+    assert change_sets(roles) == []
+
+
+def test_accepting_rechecks_an_item_that_became_invalid(roles: RoleClients, model, fake_llm):
+    proposed = remembered(roles, fake_llm, "Escalations use the code EMP-54321")
+    add_custom_rule(roles)
+
+    response = roles.client("editor").post(
+        f"{memory_base(roles)}/change-sets/{proposed['change_set']['id']}/accept", json={}
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "invalid_change_set"
+    assert memory(roles) == []
+
+
+def engine_service(roles: RoleClients) -> ChangeSetService:
+    state = roles.app.state
+    clock = state.services.clock
+    return ChangeSetService(
+        state.engine,
+        workspaces=WorkspaceService(state.engine, clock=clock),
+        handlers=state.change_set_handlers,
+        notifications=NotificationService(state.engine, clock=clock),
+        clock=clock,
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [("z" * 501, "500 characters"), ("Mail ops@example.com", "personal data")],
+)
+def test_proposing_a_bad_memory_item_directly_is_rejected(roles: RoleClients, model, text, message):
+    roles.client("editor")  # makes the user a member
+    with pytest.raises(ApiError) as refused:
+        engine_service(roles).propose(
+            roles.user("editor"),
+            roles.workspace_id,
+            origin="ai",
+            scope={"kind": "workspace_memory", "proposal": "direct"},
+            title="Remember",
+            items=[ProposedItem("m", "memory_item", "create", {"text": text})],
+        )
+
+    assert refused.value.status_code == 422 and message in refused.value.message
+    assert change_sets(roles) == []
