@@ -52,6 +52,7 @@ required. `.env.example` has a longer comment on each setting.
 |---|---|---|
 | `DAWAM_ASSISTANT_MAX_TOOL_CALLS` | `25` | Tool calls allowed per chat message |
 | `DAWAM_ASSISTANT_JOB_MAX_TOOL_CALLS` | `150` | Tool calls allowed per background job |
+| `DAWAM_ASSISTANT_JOB_SUPERVISOR` | `false` | Run background jobs as a supervisor routing to specialist agents (ADR 0009) |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | `120` | Seconds of source queries allowed per message |
 | `DAWAM_SCORE_DEBOUNCE_SECONDS` | `2` | Wait after a design change before the Data Warehouse score is recalculated |
 
