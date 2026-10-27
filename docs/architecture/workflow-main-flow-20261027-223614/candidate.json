@@ -1,0 +1,653 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DAWAM Main Flow: From Source Systems to an Approved Warehouse",
+    "locale": "en",
+    "output": "docs/architecture/workflow-main-flow-20261027-223614/main-flow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    },
+    "views": [
+      {
+        "id": "user",
+        "label": "What the user does",
+        "focus": [
+          "u0",
+          "u1",
+          "u2",
+          "u3",
+          "u4",
+          "u5"
+        ],
+        "note": "Six steps of a warehouse project, left to right."
+      },
+      {
+        "id": "ai",
+        "label": "Where the AI helps",
+        "focus": [
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+          "a5"
+        ],
+        "note": "The assistant is asked at any step; what it changes always arrives as a Change Set to review."
+      }
+    ],
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "User screens"
+        },
+        "backend": {
+          "label": "DAWAM services and AI tools"
+        },
+        "security": {
+          "label": "Quality gate"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "user",
+      "label": "User"
+    },
+    {
+      "id": "dawam",
+      "label": "DAWAM"
+    },
+    {
+      "id": "ai",
+      "label": "AI assistant"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p0",
+      "label": "1 Connect",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "p1",
+      "label": "2 Documents",
+      "fromCol": 1,
+      "toCol": 1
+    },
+    {
+      "id": "p2",
+      "label": "3 Understand",
+      "fromCol": 2,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p3",
+      "label": "4 KPIs",
+      "fromCol": 3,
+      "toCol": 3
+    },
+    {
+      "id": "p4",
+      "label": "5 Design",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p5",
+      "label": "6 Evaluate",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "d0",
+    "d1",
+    "d2",
+    "d3",
+    "d4",
+    "d5"
+  ],
+  "nodes": [
+    {
+      "id": "u0",
+      "lane": "user",
+      "col": 0,
+      "type": "frontend",
+      "label": "Connect sources",
+      "sublabel": "or import schema file",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/ConnectionPanel.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "Connection form"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/import_service.py",
+          "line": 1,
+          "end_line": 8,
+          "label": "Schema Import"
+        }
+      ]
+    },
+    {
+      "id": "u1",
+      "lane": "user",
+      "col": 1,
+      "type": "frontend",
+      "label": "Upload documents",
+      "sublabel": "SDA, specs, ERD images",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/DocumentsPanel.tsx",
+          "line": 1,
+          "end_line": 40,
+          "label": "Documents panel"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/service.py",
+          "line": 151,
+          "end_line": 180,
+          "label": "upload"
+        }
+      ]
+    },
+    {
+      "id": "u2",
+      "lane": "user",
+      "col": 2,
+      "type": "frontend",
+      "label": "Explore sources",
+      "sublabel": "ER diagram, profiles, PII",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/SourceErDiagram.tsx",
+          "line": 1,
+          "end_line": 25,
+          "label": "source ER diagram"
+        },
+        {
+          "path": "frontend/src/workspaces/ProfilePanel.tsx",
+          "line": 1,
+          "end_line": 20,
+          "label": "profiles"
+        },
+        {
+          "path": "frontend/src/workspaces/SourceSchemaPanel.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "source schema"
+        }
+      ]
+    },
+    {
+      "id": "u3",
+      "lane": "user",
+      "col": 3,
+      "type": "frontend",
+      "label": "Define KPIs",
+      "sublabel": "catalog, links",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/KpiPanels.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "KPI panels"
+        }
+      ]
+    },
+    {
+      "id": "u4",
+      "lane": "user",
+      "col": 4,
+      "type": "frontend",
+      "label": "Review design",
+      "sublabel": "accept Change Sets",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/ChangeSetReview.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "Change Set review"
+        },
+        {
+          "path": "frontend/src/workspaces/ModelPanel.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "model editor"
+        }
+      ]
+    },
+    {
+      "id": "u5",
+      "lane": "user",
+      "col": 5,
+      "type": "frontend",
+      "label": "Approve + export",
+      "sublabel": "DDL, docs pack",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/FailedChecksPanel.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "failed checks"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/approvals.py",
+          "line": 459,
+          "end_line": 470,
+          "label": "approve Layer"
+        }
+      ]
+    },
+    {
+      "id": "d0",
+      "lane": "dawam",
+      "col": 0,
+      "type": "backend",
+      "label": "Source Schema",
+      "sublabel": "Snapshots",
+      "tag": "extract job",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/snapshot_service.py",
+          "line": 1,
+          "end_line": 12,
+          "label": "extraction into Snapshots"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/import_service.py",
+          "line": 138,
+          "end_line": 214,
+          "label": "import as Snapshot"
+        }
+      ]
+    },
+    {
+      "id": "d1",
+      "lane": "dawam",
+      "col": 1,
+      "type": "backend",
+      "label": "Document index",
+      "sublabel": "parse, OCR, chunk",
+      "tag": "index job",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 1,
+          "end_line": 9,
+          "label": "full-text + vectors"
+        },
+        {
+          "path": "backend/src/dawam/modules/files/search.py",
+          "line": 712,
+          "end_line": 760,
+          "label": "run_index"
+        }
+      ]
+    },
+    {
+      "id": "d2",
+      "lane": "dawam",
+      "col": 2,
+      "type": "backend",
+      "label": "Source analysis",
+      "sublabel": "profiles, PII, relationships",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/profiling_service.py",
+          "line": 1,
+          "end_line": 11,
+          "label": "profiling"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/pii_scan_service.py",
+          "line": 1,
+          "end_line": 10,
+          "label": "PII scan"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/relationship_service.py",
+          "line": 1,
+          "end_line": 12,
+          "label": "relationship inference"
+        }
+      ]
+    },
+    {
+      "id": "d3",
+      "lane": "dawam",
+      "col": 3,
+      "type": "backend",
+      "label": "KPI catalog",
+      "sublabel": "linked to columns",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/kpis/__init__.py",
+          "line": 1,
+          "end_line": 3,
+          "label": "KPI catalog"
+        },
+        {
+          "path": "backend/src/dawam/modules/kpis/service.py",
+          "line": 702,
+          "end_line": 710,
+          "label": "set_links"
+        }
+      ]
+    },
+    {
+      "id": "d4",
+      "lane": "dawam",
+      "col": 4,
+      "type": "backend",
+      "label": "DW Schema",
+      "sublabel": "staging, Core, Mart, mappings",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/staging_service.py",
+          "line": 1,
+          "end_line": 7,
+          "label": "staging by software"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/model_service.py",
+          "line": 1,
+          "end_line": 10,
+          "label": "Core + Mart model"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/mapping_service.py",
+          "line": 1,
+          "end_line": 9,
+          "label": "mappings → lineage"
+        }
+      ]
+    },
+    {
+      "id": "d5",
+      "lane": "dawam",
+      "col": 5,
+      "type": "security",
+      "label": "Score + approval",
+      "sublabel": "checks, gate, DDL",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/score_service.py",
+          "line": 1,
+          "end_line": 7,
+          "label": "score checks"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/score_gate.py",
+          "line": 1,
+          "end_line": 8,
+          "label": "gate"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/ddl_service.py",
+          "line": 1,
+          "end_line": 2,
+          "label": "DDL package"
+        }
+      ]
+    },
+    {
+      "id": "a1",
+      "lane": "ai",
+      "col": 1,
+      "type": "backend",
+      "label": "Read documents",
+      "sublabel": "RAG search, images",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2684,
+          "end_line": 2694,
+          "label": "search_documents"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2704,
+          "end_line": 2712,
+          "label": "describe_image"
+        }
+      ]
+    },
+    {
+      "id": "a2",
+      "lane": "ai",
+      "col": 2,
+      "type": "backend",
+      "label": "Explain sources",
+      "sublabel": "descriptions, safe SQL",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2807,
+          "end_line": 2816,
+          "label": "propose_changes"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2762,
+          "end_line": 2770,
+          "label": "run_source_query"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2588,
+          "end_line": 2596,
+          "label": "get_profile"
+        }
+      ]
+    },
+    {
+      "id": "a3",
+      "lane": "ai",
+      "col": 3,
+      "type": "backend",
+      "label": "Suggest KPIs",
+      "sublabel": "from sources, docs",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2796,
+          "end_line": 2806,
+          "label": "suggest_kpis"
+        }
+      ]
+    },
+    {
+      "id": "a4",
+      "lane": "ai",
+      "col": 4,
+      "type": "backend",
+      "label": "Propose the model",
+      "sublabel": "Core, Mart, mappings",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2837,
+          "end_line": 2858,
+          "label": "generate_dw_schema, draft_mappings"
+        }
+      ]
+    },
+    {
+      "id": "a5",
+      "lane": "ai",
+      "col": 5,
+      "type": "backend",
+      "label": "Evaluate + draw",
+      "sublabel": "advisory review, diagrams",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2674,
+          "end_line": 2683,
+          "label": "evaluate_dw"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2859,
+          "end_line": 2870,
+          "label": "render_diagram"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "m0",
+      "from": "d0",
+      "to": "d1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m1",
+      "from": "d1",
+      "to": "d2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m2",
+      "from": "d2",
+      "to": "d3",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m3",
+      "from": "d3",
+      "to": "d4",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m4",
+      "from": "d4",
+      "to": "d5",
+      "variant": "emphasis"
+    },
+    {
+      "id": "x0",
+      "from": "u0",
+      "to": "d0",
+      "label": "connect"
+    },
+    {
+      "id": "x1",
+      "from": "u1",
+      "to": "d1",
+      "label": "upload"
+    },
+    {
+      "id": "x2",
+      "from": "u2",
+      "to": "d2",
+      "label": "run, review"
+    },
+    {
+      "id": "x3",
+      "from": "u3",
+      "to": "d3",
+      "label": "create"
+    },
+    {
+      "id": "x4",
+      "from": "u4",
+      "to": "d4",
+      "label": "accept"
+    },
+    {
+      "id": "x5",
+      "from": "u5",
+      "to": "d5",
+      "label": "approve"
+    },
+    {
+      "id": "y1",
+      "from": "a1",
+      "to": "d1",
+      "label": "search",
+      "variant": "dashed"
+    },
+    {
+      "id": "y2",
+      "from": "a2",
+      "to": "d2",
+      "label": "Change Set",
+      "variant": "dashed"
+    },
+    {
+      "id": "y3",
+      "from": "a3",
+      "to": "d3",
+      "label": "drafts",
+      "variant": "dashed"
+    },
+    {
+      "id": "y4",
+      "from": "a4",
+      "to": "d4",
+      "label": "Change Set",
+      "variant": "dashed"
+    },
+    {
+      "id": "y5",
+      "from": "a5",
+      "to": "d5",
+      "label": "findings",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The flow in one line each",
+      "items": [
+        "1 Connect: a live Connection to PostgreSQL, SQL Server, MySQL/MariaDB or Oracle, or a schema file; DAWAM stores the schema as a Snapshot.",
+        "2 Documents: upload SDAs, specs and images; DAWAM parses, OCRs and indexes them for search.",
+        "3 Understand: browse the Source Schema and its ER diagram, profile columns, scan for PII, accept or reject inferred relationships.",
+        "4 KPIs: build the KPI catalog and link KPIs to source columns.",
+        "5 Design: staging is generated automatically; Core and Mart are designed by hand or proposed by the AI, with validated mappings and lineage.",
+        "6 Evaluate: a rule-based score per Layer with an approval gate, an advisory AI evaluation, then DDL and a documentation pack."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "The AI assistant",
+      "items": [
+        "A chat panel available at every step, acting with the user's permissions; the dashed arrows show what it reads or proposes at each step.",
+        "It answers from DAWAM's real data through tools: search_documents (RAG), describe_image, get_profile, run_source_query (guarded, PII-masked), suggest_kpis, generate_dw_schema, draft_mappings, evaluate_dw, render_diagram.",
+        "Nothing it produces is applied directly: changes arrive as Change Sets the user reviews; evaluation findings never feed the score.",
+        "See the AI architecture diagrams for the loop, the LLM gateway and RAG."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Diagrams the product draws",
+      "items": [
+        "Source ER diagram: tables of the latest Snapshot with accepted relationships and PII markers (SourceErDiagram.tsx).",
+        "Warehouse: star diagram and bus matrix per Layer (diagrams/StarDiagram.tsx, BusMatrix.tsx), lineage graph (LineageGraph.tsx).",
+        "In chat: render_diagram draws the star schema or lineage as Mermaid from DAWAM's model, not from the model's memory."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Simplified",
+      "items": [
+        "Steps are not strictly ordered: the flow shows the usual order. A source change re-runs steps 1, 3 and 5 through Change Sets and propagation.",
+        "Background jobs (extraction, profiling, PII scan, inference, indexing) run in the worker; see the job lifecycle diagram.",
+        "Stage 4 of the README, DW Implementation (dbt, SQL transforms), is a next phase with no code and is not shown."
+      ]
+    }
+  ]
+}

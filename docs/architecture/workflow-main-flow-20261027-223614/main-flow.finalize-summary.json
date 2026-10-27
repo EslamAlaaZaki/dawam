@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\candidate.json",
+    "sha256": "d4f7c620e9cdc57a146d704b9ff142f761382e86739610082293b35376a98ae3",
+    "bytes": 16225
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
+    "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
+    "bytes": 869190
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5065,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

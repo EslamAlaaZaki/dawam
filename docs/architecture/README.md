@@ -18,7 +18,7 @@ the source lines it is based on, pinned to commit `6d8a783`. Each diagram has an
 
 | Diagram | What it answers | Type |
 |---------|-----------------|------|
-| [Functional capabilities](tree-functional-capabilities-20261027-220352/functional-capabilities.html) | What DAWAM does, grouped by project stage, with each feature's module and main file | tree |
+| [Main flow](workflow-main-flow-20261027-223614/main-flow.html) | The whole product in six steps (connect, documents, understand, KPIs, design, evaluate) and what the AI assistant does at each | workflow |
 | [Use case: understand a source system](workflow-uc-source-analysis-20261027-220352/uc-source-analysis.html) | Connect or import → extract → Snapshot → analysis jobs → review, with error paths | workflow |
 | [Use case: design the data warehouse](workflow-uc-dw-design-20261027-220352/uc-dw-design.html) | Staging → AI Core/Mart as a Change Set → mappings → score gate and approval → DDL | workflow |
 
@@ -46,7 +46,6 @@ agentic layer sits among the other services.
   configuration-dependent or build-time links; each diagram's cards say which.
 - In the domain module diagram, arrows are static imports (only the transitive reduction is
   drawn; the cards list every import).
-- In the capability tree, links are containment (capability → feature), not calls.
 
 ## Updating a diagram
 

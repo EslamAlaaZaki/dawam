@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "82e3cb42-13ca-45c7-9505-940a5c214ba7",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\workflow-main-flow-20261027-223614\\main-flow.html",
+  "specification": {
+    "sha256": "d4f7c620e9cdc57a146d704b9ff142f761382e86739610082293b35376a98ae3",
+    "bytes": 16225
+  },
+  "artifact": {
+    "sha256": "05e1a0c18690d0473acb5cdec18c11b06e1b5eded51f2af32e93da5e9877c1c6",
+    "bytes": 869190
+  }
+}
