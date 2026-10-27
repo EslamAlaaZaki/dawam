@@ -143,6 +143,9 @@ class ToolContext:
     web_urls: set[str] = field(default_factory=set)
     """What ``web_fetch`` may read: URLs the member wrote and the run's web search results,
     never one the model made up (it could carry data out in its path or query)."""
+    plan: list[dict[str, Any]] = field(default_factory=list)
+    """A job's plan (a todo list): ``{"id", "text", "status"}`` per step, shown in the job's
+    UI and kept in its checkpoint."""
 
 
 @dataclass(frozen=True)
@@ -735,6 +738,68 @@ class _StartJob(BaseModel):
         max_length=4000,
         description="The whole task, self-contained: the job does not see this conversation.",
     )
+
+
+PLAN_MAX_STEPS = 20
+PlanStatus = Literal["pending", "in_progress", "done", "failed", "skipped"]
+
+
+class _WritePlan(BaseModel):
+    steps: list[str] = Field(
+        min_length=1,
+        max_length=PLAN_MAX_STEPS,
+        description="The steps of the plan, in order, each a short sentence.",
+    )
+
+
+class _PlanUpdate(BaseModel):
+    id: int = Field(ge=1, description="The step's number in the plan.")
+    status: PlanStatus | None = None
+    text: str | None = Field(default=None, max_length=300, description="New wording.")
+
+
+class _UpdatePlan(BaseModel):
+    updates: list[_PlanUpdate] = Field(default_factory=list, max_length=PLAN_MAX_STEPS)
+    add: list[str] = Field(
+        default_factory=list,
+        max_length=PLAN_MAX_STEPS,
+        description="New steps to append, e.g. to re-plan after a failure.",
+    )
+
+
+def _step_text(text: str) -> str:
+    return text.strip()[:300]
+
+
+def _write_plan(ctx: ToolContext, args: _WritePlan) -> Any:
+    ctx.plan[:] = [
+        {"id": n, "text": _step_text(t), "status": "pending"} for n, t in enumerate(args.steps, 1)
+    ]
+    return {"plan": ctx.plan}
+
+
+def _update_plan(ctx: ToolContext, args: _UpdatePlan) -> Any:
+    if not ctx.plan:
+        raise ApiError(422, "no_plan", "There is no plan yet: call write_plan first.")
+    if len(ctx.plan) + len(args.add) > PLAN_MAX_STEPS:
+        raise ApiError(422, "plan_too_long", f"A plan has at most {PLAN_MAX_STEPS} steps.")
+    steps = {step["id"]: step for step in ctx.plan}
+    for update in args.updates:
+        if update.id not in steps:
+            raise ApiError(422, "unknown_step", f"The plan has no step {update.id}.")
+    for update in args.updates:
+        step = steps[update.id]
+        if update.status is not None:
+            step["status"] = update.status
+        if update.text is not None:
+            step["text"] = _step_text(update.text)
+    for text in args.add:
+        ctx.plan.append({"id": len(ctx.plan) + 1, "text": _step_text(text), "status": "pending"})
+    return {"plan": ctx.plan}
+
+
+def _in_job(ctx: ToolContext) -> bool:
+    return ctx.proposals is not None
 
 
 class Proposals:
@@ -2728,6 +2793,26 @@ TOOLS: tuple[Tool, ...] = (
         offered=_web_fetch_offered,
     ),
     Tool(
+        "write_plan",
+        "Write your plan for the task as a short numbered todo list, before you start. It is "
+        "shown to the member as the job runs. Calling it again replaces the plan.",
+        _WritePlan,
+        "read",
+        Action.ASK_ASSISTANT,
+        _write_plan,
+        offered=_in_job,
+    ),
+    Tool(
+        "update_plan",
+        "Mark plan steps in_progress, done, failed or skipped as you work, reword them, or add "
+        "steps. When a step fails, mark it failed and add the steps of a new approach.",
+        _UpdatePlan,
+        "read",
+        Action.ASK_ASSISTANT,
+        _update_plan,
+        offered=_in_job,
+    ),
+    Tool(
         "start_job",
         "Hand a large task (exploring many tables, generating a whole layer) to a background "
         "job that can make many more tool calls than this chat. It reports progress here and "
@@ -2944,6 +3029,14 @@ class BoundTools:
         """A job's proposals so far, for its checkpoint; ``None`` outside a job."""
         proposals = self._ctx.proposals
         return proposals.to_json() if proposals is not None else None
+
+    def saved_plan(self) -> list[dict[str, Any]]:
+        """The job's plan so far, for its checkpoint and the job's UI."""
+        return [dict(step) for step in self._ctx.plan]
+
+    def restore_plan(self, plan: Sequence[dict[str, Any]]) -> None:
+        """Take back the plan a resumed job had written."""
+        self._ctx.plan[:] = [dict(step) for step in plan]
 
     def restore_proposals(self, data: dict[str, Any]) -> None:
         """Take back the proposals a resumed job had collected before its worker died."""

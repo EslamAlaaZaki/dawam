@@ -32,6 +32,12 @@ def job_service(request: Request) -> JobService:
 JobServiceDep = Annotated[JobService, Depends(job_service)]
 
 
+class PlanStep(BaseModel):
+    id: int
+    text: str
+    status: Literal["pending", "in_progress", "done", "failed", "skipped"]
+
+
 class Job(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +49,9 @@ class Job(BaseModel):
     progress: int = Field(description="Percent done, 0 to 100.")
     log: str = Field(description="The job's log, one timestamped line per entry.")
     error: str | None = Field(description="Why the job failed; null otherwise.")
+    plan: list[PlanStep] | None = Field(
+        description="The job's todo list, updated as it runs; null if it keeps none."
+    )
     created_by: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None

@@ -7060,6 +7060,11 @@ export interface components {
              * @description Why the job failed; null otherwise.
              */
             error: string | null;
+            /**
+             * Plan
+             * @description The job's todo list, updated as it runs; null if it keeps none.
+             */
+            plan: components["schemas"]["PlanStep"][] | null;
             /** Created By */
             created_by: string | null;
             /**
@@ -8738,6 +8743,18 @@ export interface components {
             source_columns: components["schemas"]["LineageNode"][];
             /** Kpis */
             kpis: components["schemas"]["PiiKpi"][];
+        };
+        /** PlanStep */
+        PlanStep: {
+            /** Id */
+            id: number;
+            /** Text */
+            text: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "in_progress" | "done" | "failed" | "skipped";
         };
         /** Platform */
         Platform: {

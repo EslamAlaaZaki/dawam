@@ -91,7 +91,8 @@ class JobContext(Protocol):
 
     def save_checkpoint(self, state: Mapping[str, Any]) -> None:
         """Save JSON ``state`` to resume from: a job with a checkpoint whose worker dies is
-        queued again (up to ``MAX_ATTEMPTS`` runs) instead of failed."""
+        queued again (up to ``MAX_ATTEMPTS`` runs) instead of failed. A ``plan`` list in the
+        state is also shown with the job."""
         ...
 
 
@@ -184,6 +185,8 @@ class Job:
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    plan: list[dict[str, Any]] | None = None
+    """The handler's todo list (a ``plan`` list in its checkpoint), if it keeps one."""
     attempts: int = 0
     """How many times a worker has claimed it; a worker's writes count only while the job's
     attempt is still the one it claimed (a resumed job is another worker's now)."""
@@ -211,6 +214,7 @@ def _view(record: JobRecord) -> Job:
         started_at=record.started_at,
         finished_at=record.finished_at,
         attempts=record.attempts,
+        plan=record.plan,
     )
 
 
@@ -253,7 +257,10 @@ class _Context:
             return db.scalar(sa.select(JobRecord.checkpoint).where(JobRecord.id == self._job_id))
 
     def save_checkpoint(self, state: Mapping[str, Any]) -> None:
-        self._service._update(self._job_id, self._attempt, checkpoint=dict(state))
+        values: dict[str, Any] = {"checkpoint": dict(state)}
+        if isinstance(state.get("plan"), list):
+            values["plan"] = state["plan"]
+        self._service._update(self._job_id, self._attempt, **values)
 
 
 class JobService:

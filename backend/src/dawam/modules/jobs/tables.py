@@ -60,5 +60,8 @@ class JobRecord(Base):
     checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     """The handler's last saved state; a job with one resumes from it when its worker dies.
     Cleared when the job ends."""
+    plan: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    """A todo list the handler keeps (``{"id", "text", "status"}`` steps), shown with the job.
+    Kept after the job ends."""
     attempts: Mapped[int] = mapped_column(server_default="0")
     """How many times a worker has claimed the job (more than once: it was resumed)."""
