@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "60c796c6-4ac3-4d43-8846-0af612ec14ad",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "C:\\D\\dawam\\docs\\architecture\\workflow-agent-loop-20261027-220352\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\workflow-agent-loop-20261027-220352\\agent-loop.html",
+  "specification": {
+    "sha256": "7cc842b1afebe44506faff95bafcab330d9b979e0837557d2204d67ebe742239",
+    "bytes": 10388
+  },
+  "artifact": {
+    "sha256": "69eaf094c45ff92b7fcffe6eb6ec53947be971d2db381d55bc6428f1922eb02a",
+    "bytes": 855706
+  }
+}

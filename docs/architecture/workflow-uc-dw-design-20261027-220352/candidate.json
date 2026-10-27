@@ -1,0 +1,470 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Use Case: Design the Data Warehouse",
+    "locale": "en",
+    "output": "docs/architecture/workflow-uc-dw-design-20261027-220352/uc-dw-design.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    }
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "Modeler (web UI)"
+    },
+    {
+      "id": "api",
+      "label": "Warehouse services"
+    },
+    {
+      "id": "cs",
+      "label": "Change Sets"
+    },
+    {
+      "id": "ai",
+      "label": "AI assistant"
+    },
+    {
+      "id": "errors",
+      "label": "Refusals",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "base",
+      "label": "Staging",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "model",
+      "label": "Core + Mart",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ship",
+      "label": "Approve + ship",
+      "fromCol": 4,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "setup",
+    "staging",
+    "gen",
+    "csprop",
+    "review",
+    "accept",
+    "mapping",
+    "approve",
+    "gate",
+    "export",
+    "ddl"
+  ],
+  "nodes": [
+    {
+      "id": "setup",
+      "lane": "ui",
+      "col": 0,
+      "type": "frontend",
+      "label": "Set up DW",
+      "sublabel": "target platform",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/DataWarehouseSetup.tsx",
+          "line": 1,
+          "end_line": 40,
+          "label": "setup form"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/service.py",
+          "line": 240,
+          "end_line": 271,
+          "label": "set_up"
+        }
+      ]
+    },
+    {
+      "id": "staging",
+      "lane": "api",
+      "col": 1,
+      "type": "backend",
+      "label": "Generate staging",
+      "sublabel": "by software, no AI",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/staging_service.py",
+          "line": 1,
+          "end_line": 7,
+          "label": "stg_ tables + direct mappings"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/staging_service.py",
+          "line": 75,
+          "end_line": 138,
+          "label": "generate"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/staging_service.py",
+          "line": 139,
+          "end_line": 197,
+          "label": "sync after Snapshot"
+        }
+      ]
+    },
+    {
+      "id": "gen",
+      "lane": "ai",
+      "col": 2,
+      "type": "backend",
+      "label": "Propose Core + Mart",
+      "sublabel": "generate_dw_schema",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2263,
+          "end_line": 2300,
+          "label": "_generate_dw_schema tool"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/generation.py",
+          "line": 1,
+          "end_line": 10,
+          "label": "inputs, handles"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/generation.py",
+          "line": 428,
+          "end_line": 440,
+          "label": "plan → Change Set items"
+        }
+      ]
+    },
+    {
+      "id": "csprop",
+      "lane": "cs",
+      "col": 2,
+      "type": "security",
+      "label": "Change Set",
+      "sublabel": "pending",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/changesets/service.py",
+          "line": 321,
+          "end_line": 335,
+          "label": "propose"
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "lane": "ui",
+      "col": 2,
+      "type": "frontend",
+      "label": "Review diff",
+      "sublabel": "accept all or some",
+      "sources": [
+        {
+          "path": "frontend/src/workspaces/ChangeSetReview.tsx",
+          "line": 1,
+          "end_line": 30,
+          "label": "review screen"
+        },
+        {
+          "path": "backend/src/dawam/modules/changesets/service.py",
+          "line": 501,
+          "end_line": 525,
+          "label": "get: the diff"
+        }
+      ]
+    },
+    {
+      "id": "accept",
+      "lane": "cs",
+      "col": 3,
+      "type": "security",
+      "label": "Apply",
+      "sublabel": "one transaction",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/changesets/service.py",
+          "line": 637,
+          "end_line": 660,
+          "label": "accept: deps, stale, owner"
+        }
+      ]
+    },
+    {
+      "id": "mapping",
+      "lane": "api",
+      "col": 3,
+      "type": "backend",
+      "label": "Map columns",
+      "sublabel": "SQL → lineage",
+      "tag": "AI drafts too",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/mapping_service.py",
+          "line": 1,
+          "end_line": 9,
+          "label": "SQL is the master"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/mapping_service.py",
+          "line": 314,
+          "end_line": 448,
+          "label": "save_column_mapping"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 2407,
+          "end_line": 2440,
+          "label": "draft_mappings tool"
+        }
+      ]
+    },
+    {
+      "id": "approve",
+      "lane": "ui",
+      "col": 4,
+      "type": "frontend",
+      "label": "Approve Layer",
+      "sublabel": "Core, then Mart",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/approvals.py",
+          "line": 459,
+          "end_line": 470,
+          "label": "move: 409 rules"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "lane": "api",
+      "col": 4,
+      "type": "security",
+      "label": "Score gate",
+      "sublabel": "rescore, check",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/score_gate.py",
+          "line": 199,
+          "end_line": 230,
+          "label": "verify_approval"
+        },
+        {
+          "path": "backend/src/dawam/modules/warehouse/score_service.py",
+          "line": 1,
+          "end_line": 7,
+          "label": "checks, debounced rescoring"
+        }
+      ]
+    },
+    {
+      "id": "export",
+      "lane": "ui",
+      "col": 5,
+      "type": "frontend",
+      "label": "Export",
+      "sublabel": "DDL, docs pack",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/ddl_service.py",
+          "line": 86,
+          "end_line": 92,
+          "label": "export"
+        }
+      ]
+    },
+    {
+      "id": "ddl",
+      "lane": "api",
+      "col": 5,
+      "type": "backend",
+      "label": "DDL package",
+      "sublabel": "per Layer or all",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/ddl_service.py",
+          "line": 1,
+          "end_line": 2,
+          "label": "DDL + seed files"
+        },
+        {
+          "path": "backend/src/dawam/modules/docpack/service.py",
+          "line": 1,
+          "end_line": 3,
+          "label": "documentation pack"
+        }
+      ]
+    },
+    {
+      "id": "stale",
+      "lane": "errors",
+      "col": 3,
+      "type": "security",
+      "label": "Skipped items",
+      "sublabel": "stale, needs owner",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/changesets/service.py",
+          "line": 644,
+          "end_line": 650,
+          "label": "stale skipped, needs_owner"
+        }
+      ]
+    },
+    {
+      "id": "gatefail",
+      "lane": "errors",
+      "col": 4,
+      "type": "security",
+      "label": "409 refused",
+      "sublabel": "gate, Core, approver",
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/warehouse/approvals.py",
+          "line": 460,
+          "end_line": 465,
+          "label": "score_gate_failed, core_not_approved"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "d1",
+      "from": "setup",
+      "to": "staging",
+      "label": "set up",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d2",
+      "from": "staging",
+      "to": "gen",
+      "label": "ask assistant",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d3",
+      "from": "gen",
+      "to": "csprop",
+      "label": "proposal",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d4",
+      "from": "csprop",
+      "to": "review",
+      "label": "pending",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d5",
+      "from": "review",
+      "to": "accept",
+      "label": "accept",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d6",
+      "from": "accept",
+      "to": "stale",
+      "label": "stale",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "d7",
+      "from": "accept",
+      "to": "mapping",
+      "label": "applied",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d8",
+      "from": "mapping",
+      "to": "approve",
+      "label": "validated",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d9",
+      "from": "approve",
+      "to": "gate",
+      "label": "verify",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d10",
+      "from": "gate",
+      "to": "gatefail",
+      "label": "fails",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "d11",
+      "from": "gate",
+      "to": "export",
+      "label": "approved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d12",
+      "from": "export",
+      "to": "ddl",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User story",
+      "items": [
+        "As a modeler I want a Kimball warehouse designed from the real sources and KPIs, so that engineering gets validated DDL and mappings instead of drawings and spreadsheets.",
+        "Actions: set up the warehouse, let staging generate, ask the assistant for Core and Mart, review and accept the Change Set, map columns, approve each Layer, export.",
+        "Outcome: an approved DW Schema with column-level lineage, a quality score and a DDL package."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "System behaviour (verified)",
+      "items": [
+        "Staging is made by software (stg_<system>_<schema>_<table>, direct mappings), re-synced after every new Snapshot as a Change Set.",
+        "AI output is never applied directly: generate_dw_schema and draft_mappings end in a Change Set; the model never sees ids (handles).",
+        "Mapping SQL is parsed with sqlglot on save and lineage edges are derived from it.",
+        "Every committed design change rescores the warehouse (debounced) and revokes an approval of the changed Layer."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Errors and branches",
+      "items": [
+        "Accept: stale items (the field moved since proposal) and their dependents are skipped; owner-only items wait as needs_owner; a closed Change Set is 409.",
+        "Approve: 409 score_gate_failed (errors, or below the minimum), core_not_approved (Mart before Core), approver_is_last_editor (when required).",
+        "Edits carry a version: a stale one is 409 version_conflict. SQL that does not parse is saved with an error and no lineage."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Simplified",
+      "items": [
+        "Direct edits in the model editor (model_service.py) are an alternative to the AI path; they also trigger propagation.",
+        "AI evaluation (evaluate_dw) and the mapping sheet export/import are not drawn.",
+        "A regeneration offer after source or KPI changes restarts the AI path (regeneration.py)."
+      ]
+    }
+  ]
+}

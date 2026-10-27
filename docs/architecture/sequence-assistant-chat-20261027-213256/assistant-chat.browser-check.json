@@ -6,11 +6,11 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "f8ac5ee9-8514-4cb0-b383-93141a9ecd08",
+  "deliveryReceiptId": "8d976005-aed9-47cd-b1d5-7d77420f859f",
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.html",
-    "sha256": "63414e9795641051af43e49e3f1b6c30f89aa9df59f69cebc13421878ddca1ea",
-    "bytes": 852035
+    "sha256": "139a856a90db74b2126c4ff4e3de87fb9da3f3245b9a7a0f4c80130e56fb2e21",
+    "bytes": 852856
   },
   "state": {
     "detail": "read",
@@ -32,7 +32,7 @@
         "innerWidth": 1440,
         "innerHeight": 900,
         "scrollWidth": 1440,
-        "scrollHeight": 1256,
+        "scrollHeight": 1255,
         "overflowX": false,
         "overflowY": true,
         "verticalScrollAccepted": true,
@@ -293,7 +293,7 @@
         "innerWidth": 1440,
         "innerHeight": 900,
         "scrollWidth": 1440,
-        "scrollHeight": 1256,
+        "scrollHeight": 1255,
         "overflowX": false,
         "overflowY": true,
         "verticalScrollAccepted": true,
@@ -506,7 +506,7 @@
         "innerWidth": 1440,
         "innerHeight": 900,
         "scrollWidth": 1440,
-        "scrollHeight": 1256,
+        "scrollHeight": 1255,
         "overflowX": false,
         "overflowY": true,
         "verticalScrollAccepted": true,

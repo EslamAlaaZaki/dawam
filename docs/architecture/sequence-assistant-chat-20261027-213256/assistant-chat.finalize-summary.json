@@ -7,13 +7,13 @@
   "quality": "showcase",
   "specification": {
     "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\candidate.json",
-    "sha256": "f374bd301e707c10b3fa20916f4f2328a5effdc53db515e38932e4dd637aa951",
-    "bytes": 8923
+    "sha256": "ebbbe8a642dcf1f69f55427889ce74e6a1141eccc13c14a941553cb3a49da27d",
+    "bytes": 9586
   },
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.html",
-    "sha256": "63414e9795641051af43e49e3f1b6c30f89aa9df59f69cebc13421878ddca1ea",
-    "bytes": 852035
+    "sha256": "139a856a90db74b2126c4ff4e3de87fb9da3f3245b9a7a0f4c80130e56fb2e21",
+    "bytes": 852856
   },
   "gates": {
     "validate": "pass",
@@ -43,7 +43,7 @@
     "noticeText": null
   },
   "visualReview": "not-requested",
-  "durationMs": 3560,
+  "durationMs": 3707,
   "browserCheck": {
     "requested": true,
     "ran": true

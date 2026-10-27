@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "79ec1ff5-718a-40f6-9191-96b49dd86392",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\uc-source-analysis.html",
+  "specification": {
+    "sha256": "e6420e8e1aab6c2d33b37f0273504844e0426a8e821f96c16e8a8662a0df0fb1",
+    "bytes": 11034
+  },
+  "artifact": {
+    "sha256": "f15ef780bd2329067b1ac376feeb4d604f33384c246497155cc35fd5b984147b",
+    "bytes": 860406
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "dataflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\candidate.json",
+    "sha256": "f12497e49fdfaf1c604f5d37588b30d9a42d4343ec10b8fc2818244e1c8cd053",
+    "bytes": 9927
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\rag-pipeline.html",
+    "sha256": "e80b62f3ef844eeb7a57072098b793ecbc1772cceba98190ca9cfc4cd334a5e3",
+    "bytes": 848927
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\rag-pipeline.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\rag-pipeline.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\dataflow-rag-pipeline-20261027-220352\\rag-pipeline.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2868,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

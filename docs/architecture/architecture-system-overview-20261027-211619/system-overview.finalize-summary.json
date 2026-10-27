@@ -7,13 +7,13 @@
   "quality": "showcase",
   "specification": {
     "path": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\candidate.json",
-    "sha256": "6070d9a99cb1f5b0987965e6925c70cebda58c6c7e6032a926a660485a07eadc",
-    "bytes": 20088
+    "sha256": "53b6d641d036e26b4ebec77e21cd7ff2b8636cbc72b0efbc314d05ffe997a217",
+    "bytes": 20126
   },
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.html",
-    "sha256": "ee326b4772c5e75a9ed302bfc068e6789d6f555cc67375a0e68a002e918848f5",
-    "bytes": 883651
+    "sha256": "9bc08f66eb7ec610552530a711830d5181b2456f4f790718f8ff1c7b172a95ca",
+    "bytes": 883689
   },
   "gates": {
     "validate": "pass",
@@ -43,7 +43,7 @@
     "noticeText": null
   },
   "visualReview": "not-requested",
-  "durationMs": 4400,
+  "durationMs": 3945,
   "browserCheck": {
     "requested": true,
     "ran": true

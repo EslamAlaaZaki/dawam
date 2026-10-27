@@ -769,7 +769,7 @@
       "items": [
         "Resolved: the API calls source DBs directly only for the connection test; model-written SQL comes from the assistant tool run_source_query via SourceQueryService, in the app for chat and in the worker for assistant tasks (see the source-db-flows diagram).",
         "Worker → SMTP: not observed (no mail service wired in worker or job handlers).",
-        "Ollama, Mailpit, the demo source DB and the GPU override depend on the Compose file and profile used; see the deployment-variants diagram.",
+        "Ollama, Mailpit, the demo source DB and the GPU override depend on the Compose file and profile used (compose.yaml, deploy/docker-compose.yaml, deploy/docker-compose.gpu.yaml).",
         "Storage backend (volume vs S3) and which LLM providers exist are deployment configuration, not fixed in code."
       ]
     }

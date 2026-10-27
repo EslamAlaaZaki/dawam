@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\candidate.json",
+    "sha256": "e6420e8e1aab6c2d33b37f0273504844e0426a8e821f96c16e8a8662a0df0fb1",
+    "bytes": 11034
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\uc-source-analysis.html",
+    "sha256": "f15ef780bd2329067b1ac376feeb4d604f33384c246497155cc35fd5b984147b",
+    "bytes": 860406
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\uc-source-analysis.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\uc-source-analysis.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\workflow-uc-source-analysis-20261027-220352\\uc-source-analysis.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4560,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

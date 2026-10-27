@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "164f88fa-bd5a-4d55-9ea2-013e3d6d9cb0",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "C:\\D\\dawam\\docs\\architecture\\sequence-chat-rag-20261027-220352\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\sequence-chat-rag-20261027-220352\\chat-rag.html",
+  "specification": {
+    "sha256": "8ed471a5820d11e609bd40c054bb2bfb8059c2bb78de0b5f2af4a465338500d0",
+    "bytes": 6840
+  },
+  "artifact": {
+    "sha256": "1a71af0712d388e18fb0205b04acd7d95ac1123859c9e45b89f3db616d6dc13c",
+    "bytes": 842731
+  }
+}

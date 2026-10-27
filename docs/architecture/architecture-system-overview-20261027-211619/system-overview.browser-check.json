@@ -6,11 +6,11 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "9973a393-791a-4b79-919a-8cca363489c7",
+  "deliveryReceiptId": "23191875-709e-45d4-92c0-97b863bbd0e8",
   "artifact": {
     "path": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.html",
-    "sha256": "ee326b4772c5e75a9ed302bfc068e6789d6f555cc67375a0e68a002e918848f5",
-    "bytes": 883651
+    "sha256": "9bc08f66eb7ec610552530a711830d5181b2456f4f790718f8ff1c7b172a95ca",
+    "bytes": 883689
   },
   "state": {
     "detail": "read",

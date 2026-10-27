@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "AI Assistant Chat Turn",
+    "title": "AI Assistant Chat Turn (tool-assisted)",
     "locale": "en",
     "output": "docs/architecture/sequence-assistant-chat-20261027-213256/assistant-chat.html",
     "quality_profile": "showcase",
@@ -328,6 +328,15 @@
         "Chat: in the app process, inside the HTTP request; edge passes /api/* unbuffered.",
         "Long tasks: start_job queues assistant_task; the worker runs AssistantService.run_job with the same tools (job=True, no start_job).",
         "build_assistant_service assembles the same service in both processes (job_handlers.py:173-182)."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Before and after the loop",
+      "items": [
+        "Routing: a short, plain question goes to the Workspace light model when one is assigned; anything that asks to make or change something, or is long, goes to the agent model (assistant/internal/routing.py).",
+        "History: the latest 30 messages, or the turns after a saved compaction summary (service.py _history, HISTORY_MESSAGES = 30).",
+        "A turn where the model calls no tool ends after one model call with status completed; after the first answer the light model writes the conversation title (service.py _retitle)."
       ]
     },
     {

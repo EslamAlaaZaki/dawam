@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 3.2.0">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>Deployment Variants Diagram</title>
+  <title>LLM Layer: Roles, Gateway, Adapters Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5194,17 +5194,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="BLUEPRINT / REV 01"
            data-preset-badge-editorial="EDITORIAL / FIELD NOTE">
         <div class="pulse-dot"></div>
-        <h1>Deployment Variants</h1>
+        <h1>LLM Layer: Roles, Gateway, Adapters</h1>
       </div>
     </div>
 
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/EslamAlaaZaki/dawam","revision":"6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1","shortRevision":"6d8a783","label":"EslamAlaaZaki/dawam","href":"https://github.com/EslamAlaaZaki/dawam/tree/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"},"referenceCount":24,"nodes":{"browser":[{"path":"compose.yaml","line":34,"endLine":35,"label":"DAWAM_PORT:-8000 → 8080","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L34-L35"},{"path":"deploy/host/nginx.conf","line":8,"endLine":12,"label":"host: 127.0.0.1:8080","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/nginx.conf#L8-L12"}],"proxy":[{"path":"deploy/nginx/templates/dawam.conf.template","line":11,"endLine":56,"label":"edge container routing","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/nginx/templates/dawam.conf.template#L11-L56"},{"path":"deploy/host/nginx.conf","line":8,"endLine":40,"label":"same routing on the host","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/nginx.conf#L8-L40"},{"path":"deploy/docker-compose.yaml","line":41,"endLine":56,"label":"all-in-one edge, no TLS proxy","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.yaml#L41-L56"}],"web":[{"path":"compose.yaml","line":79,"endLine":95,"label":"Compose web","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L79-L95"},{"path":"deploy/docker-compose.yaml","line":58,"endLine":72,"label":"all-in-one: HSTS 0","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.yaml#L58-L72"},{"path":"deploy/host/systemd/dawam-web.service","line":1,"endLine":28,"label":"systemd unit, no secrets","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/systemd/dawam-web.service#L1-L28"}],"mailpit":[{"path":"deploy/docker-compose.yaml","line":153,"endLine":162,"label":"mailpit service","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.yaml#L153-L162"}],"app":[{"path":"compose.yaml","line":62,"endLine":74,"label":"Compose app + readyz check","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L62-L74"},{"path":"deploy/host/systemd/dawam-app.service","line":1,"endLine":26,"label":"systemd app, 127.0.0.1:8000","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/systemd/dawam-app.service#L1-L26"},{"path":"Dockerfile","line":1,"endLine":30,"label":"one image, ACCELERATOR arg","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/Dockerfile#L1-L30"}],"db":[{"path":"compose.yaml","line":47,"endLine":60,"label":"pgvector/pgvector:pg16","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L47-L60"},{"path":"deploy/host/dawam.env.example","line":11,"endLine":12,"label":"host: your own Postgres","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/dawam.env.example#L11-L12"}],"files":[{"path":"compose.yaml","line":21,"endLine":22,"label":"file-data volume","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L21-L22"},{"path":"deploy/host/dawam.env.example","line":14,"endLine":17,"label":"host: /var/lib/dawam/files","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/dawam.env.example#L14-L17"},{"path":"backend/src/dawam/platform/storage.py","line":127,"endLine":130,"label":"s3 when configured","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/platform/storage.py#L127-L130"}],"ollama":[{"path":"compose.yaml","line":96,"endLine":100,"label":"root: --profile ollama","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L96-L100"},{"path":"deploy/docker-compose.yaml","line":110,"endLine":151,"label":"all-in-one: always on, pulls models","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.yaml#L110-L151"}],"sourcedb":[{"path":"deploy/docker-compose.yaml","line":164,"endLine":183,"label":"source-db, seeded from e2e","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.yaml#L164-L183"}],"worker":[{"path":"compose.yaml","line":75,"endLine":77,"label":"root worker","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/compose.yaml#L75-L77"},{"path":"deploy/docker-compose.yaml","line":87,"endLine":93,"label":"replicas DAWAM_WORKERS","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.yaml#L87-L93"},{"path":"deploy/host/systemd/dawam-worker.service","line":1,"endLine":29,"label":"systemd worker","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/host/systemd/dawam-worker.service#L1-L29"}],"gpu":[{"path":"deploy/docker-compose.gpu.yaml","line":1,"endLine":26,"label":"cuda build + NVIDIA devices","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/deploy/docker-compose.gpu.yaml#L1-L26"}]}}</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/EslamAlaaZaki/dawam","revision":"6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1","shortRevision":"6d8a783","label":"EslamAlaaZaki/dawam","href":"https://github.com/EslamAlaaZaki/dawam/tree/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"},"referenceCount":25,"nodes":{"chat":[{"path":"backend/src/dawam/modules/assistant/service.py","line":936,"endLine":952,"label":"light or agent gateway per turn","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/assistant/service.py#L936-L952"}],"jobs":[{"path":"backend/src/dawam/modules/assistant/service.py","line":738,"endLine":746,"label":"run_job gateway_for_role","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/assistant/service.py#L738-L746"}],"files":[{"path":"backend/src/dawam/modules/files/search.py","line":551,"endLine":560,"label":"_embedder","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/files/search.py#L551-L560"},{"path":"backend/src/dawam/modules/files/search.py","line":1488,"endLine":1500,"label":"_embed_queries","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/files/search.py#L1488-L1500"},{"path":"backend/src/dawam/modules/files/internal/rerank.py","line":1,"endLine":1,"label":"rerank model","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/files/internal/rerank.py#L1"}],"admin":[{"path":"backend/src/dawam/modules/llm/api.py","line":1,"endLine":3,"label":"/api/v1/admin/llm, admins only","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/api.py#L1-L3"}],"roles":[{"path":"backend/src/dawam/modules/llm/role_service.py","line":419,"endLine":490,"label":"gateway_for_role, light, metered","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/role_service.py#L419-L490"},{"path":"backend/src/dawam/modules/llm/role_service.py","line":60,"endLine":60,"label":"FALLBACK_ROLES agent, light","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/role_service.py#L60"}],"metered":[{"path":"backend/src/dawam/modules/llm/role_service.py","line":256,"endLine":330,"label":"fallbacks before first output","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/role_service.py#L256-L330"},{"path":"backend/src/dawam/modules/llm/role_service.py","line":395,"endLine":406,"label":"_ensure_allowed","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/role_service.py#L395-L406"},{"path":"backend/src/dawam/modules/llm/role_service.py","line":730,"endLine":750,"label":"record_usage","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/role_service.py#L730-L750"}],"gateway":[{"path":"backend/src/dawam/modules/llm/gateway.py","line":1,"endLine":8,"label":"purpose","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/gateway.py#L1-L8"},{"path":"backend/src/dawam/modules/llm/gateway.py","line":242,"endLine":405,"label":"Gateway, _retrying","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/gateway.py#L242-L405"},{"path":"backend/src/dawam/modules/llm/gateway.py","line":31,"endLine":31,"label":"MAX_RETRIES = 3","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/gateway.py#L31"}],"db":[{"path":"backend/src/dawam/modules/llm/tables.py","line":21,"endLine":36,"label":"llm_providers (is_internal)","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/tables.py#L21-L36"},{"path":"backend/src/dawam/modules/llm/tables.py","line":114,"endLine":135,"label":"llm_workspace_settings","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/tables.py#L114-L135"},{"path":"backend/src/dawam/modules/llm/tables.py","line":187,"endLine":212,"label":"llm_usage","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/tables.py#L187-L212"}],"plugin":[{"path":"backend/src/dawam/modules/llm/internal/adapters.py","line":50,"endLine":78,"label":"adapter docstring","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/adapters.py#L50-L78"}],"openai":[{"path":"backend/src/dawam/modules/llm/internal/openai_compatible.py","line":1,"endLine":5,"label":"adapter docstring","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/openai_compatible.py#L1-L5"}],"anthropic":[{"path":"backend/src/dawam/modules/llm/internal/anthropic.py","line":1,"endLine":4,"label":"adapter docstring","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/anthropic.py#L1-L4"}],"azure":[{"path":"backend/src/dawam/modules/llm/internal/azure_openai.py","line":1,"endLine":4,"label":"adapter docstring","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/azure_openai.py#L1-L4"}],"gemini":[{"path":"backend/src/dawam/modules/llm/internal/gemini.py","line":1,"endLine":4,"label":"adapter docstring","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/gemini.py#L1-L4"}],"bedrock":[{"path":"backend/src/dawam/modules/llm/internal/bedrock.py","line":1,"endLine":4,"label":"adapter docstring","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/bedrock.py#L1-L4"}],"self":[{"path":"backend/src/dawam/modules/llm/internal/openai_compatible.py","line":3,"endLine":5,"label":"covered servers","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/openai_compatible.py#L3-L5"}],"ext":[{"path":"backend/src/dawam/modules/llm/internal/adapters.py","line":29,"endLine":36,"label":"BUILTIN_ADAPTERS","href":"https://github.com/EslamAlaaZaki/dawam/blob/6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1/backend/src/dawam/modules/llm/internal/adapters.py#L29-L36"}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"to cycle","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.svg.auto":"SVG · Auto","viewer.export.svg.auto.hint":"Matches host theme","viewer.export.svg.light":"SVG · Light","viewer.export.svg.light.hint":"Always light","viewer.export.svg.dark":"SVG · Dark","viewer.export.svg.dark.hint":"Always dark","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Path: {source} → {target} · {count} step","viewer.export.card.routeSummary.other":"Path: {source} → {target} · {count} steps","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guide.title":"Explore this system","viewer.focus.selectedNodes":"{count} selected nodes","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.credit":"Find Archify useful? A star on GitHub helps","viewer.guide.star":"Star","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.open":"Open diagram guide","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.move":"Move semantic passport. Drag, use arrow keys, or press Home to reset.","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Path","viewer.route.start":"Click where the path starts","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Path","viewer.route.pickTwo":"Click two nodes on the diagram","viewer.route.pickOne":"Click a node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Click a start, then an end. Paths follow the arrows.","viewer.route.destination":"Where does the path from {label} end?","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"Pick two different nodes.","viewer.route.unreachable":"Cannot reach {label} from here","viewer.route.unreachable.detail":"{target} cannot be reached from {source} along the arrows. Pick a highlighted node.","viewer.route.start.instructions":"Next, pick the end. Only nodes you can reach will light up.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest path","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} step","viewer.route.overview.hop.other":"{count} steps","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} reachable node is highlighted. Click it.","viewer.route.destination.count.other":"{count} reachable nodes are highlighted. Click one.","viewer.route.noOutgoing":"No arrows lead out of this node. Clear it and pick another start.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"ROUTE","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.outline.title":"Node index","viewer.rail.show":"Notes \u0026 index","viewer.rail.controls":"Side panel","viewer.rail.collapse":"Collapse side panel","viewer.rail.bottom":"Move panel below the diagram","viewer.rail.right":"Move panel beside the diagram","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
-      <svg viewBox="0 0 1600 892" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
-        <title id="archify-diagram-title">Deployment Variants</title>
+      <svg viewBox="0 0 1180 1072" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
+        <title id="archify-diagram-title">LLM Layer: Roles, Gateway, Adapters</title>
         <desc id="archify-diagram-description">An architecture diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
@@ -5250,284 +5250,347 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" x="240" y="10" width="1320" height="654" rx="12" class="c-region" stroke-width="1"/>
+
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
-          <path data-graph-role="automatic-crossover-underlay" d="M 190 72 L 270 72" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="browser" data-edge-to="proxy" data-edge-label="HTTP" data-edge-key="0" data-edge-id="browser-proxy" data-composition-points="190,72;270,72" data-composition-crossover="halo" data-composition-independent="true" d="M 190 72 L 270 72" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 140 104 L 140 220" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="chat" data-edge-to="roles" data-edge-label="chat" data-edge-key="0" data-edge-id="chat-roles" data-composition-points="140,104;140,220" data-composition-crossover="halo" data-composition-independent="true" d="M 140 104 L 140 220" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:1">
-          <path data-graph-role="automatic-crossover-underlay" d="M 490 63.95 L 580 63.95" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="proxy" data-edge-to="web" data-edge-label="/ pages" data-edge-key="1" data-edge-id="proxy-web" data-composition-points="490,63.95;580,63.95" data-composition-crossover="halo" data-composition-independent="true" d="M 490 63.95 L 580 63.95" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 400 104 L 400 220" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="jobs" data-edge-to="roles" data-edge-label="chat" data-edge-key="1" data-edge-id="jobs-roles" data-composition-points="400,104;400,220" data-composition-crossover="halo" data-composition-independent="true" d="M 400 104 L 400 220" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
-          <path data-graph-role="automatic-crossover-underlay" d="M 380 104 L 380 220" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="proxy" data-edge-to="app" data-edge-label="/api/*, /healthz" data-edge-key="2" data-edge-id="proxy-app" data-composition-points="380,104;380,220" data-composition-crossover="halo" data-composition-independent="true" d="M 380 104 L 380 220" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 700 104 L 700 220" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="files" data-edge-to="roles" data-edge-label="embed, rerank" data-edge-key="2" data-edge-id="files-roles" data-composition-points="700,104;700,220" data-composition-crossover="halo" data-composition-independent="true" d="M 700 104 L 700 220" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1240 245 L 1340 245" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="app" data-edge-to="mailpit" data-edge-label="SMTP :1025" data-edge-key="3" data-edge-id="app-mailpit" data-composition-points="1240,245;1340,245" data-composition-crossover="halo" data-composition-independent="true" d="M 1240 245 L 1340 245" class="a-dashed" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1040 104 L 1040 220" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="admin" data-edge-to="db" data-edge-label="configure" data-edge-key="3" data-edge-id="admin-db" data-composition-points="1040,104;1040,220" data-composition-crossover="halo" data-composition-independent="true" d="M 1040 104 L 1040 220" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
-          <path data-graph-role="automatic-crossover-underlay" d="M 474 284 L 474 400" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="app" data-edge-to="db" data-edge-label="SQL" data-edge-key="4" data-edge-id="app-db" data-composition-points="474,284;474,400" data-composition-crossover="halo" data-composition-independent="true" d="M 474 284 L 474 400" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 840 259 L 940 259" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="roles" data-edge-to="db" data-edge-label="resolve model" data-edge-key="4" data-edge-id="roles-db" data-composition-points="840,259;940,259" data-composition-crossover="halo" data-composition-independent="true" d="M 840 259 L 940 259" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 714 284 L 714 400" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="app" data-edge-to="files" data-edge-label="files" data-edge-key="5" data-edge-id="app-files" data-composition-points="714,284;714,400" data-composition-crossover="halo" data-composition-independent="true" d="M 714 284 L 714 400" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 440 284 L 440 400" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="roles" data-edge-to="metered" data-edge-label="MeteredGateway" data-edge-key="5" data-edge-id="roles-metered" data-composition-points="440,284;440,400" data-composition-crossover="halo" data-composition-independent="true" d="M 440 284 L 440 400" class="a-emphasis" data-animate="edge" style="--step:5" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 776 284 L 776 400" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="app" data-edge-to="ollama" data-edge-label="/v1 API" data-edge-key="6" data-edge-id="app-ollama" data-composition-points="776,284;776,400" data-composition-crossover="halo" data-composition-independent="true" d="M 776 284 L 776 400" class="a-dashed" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 840 439 L 940 439" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="metered" data-edge-to="db" data-edge-label="usage" data-edge-key="6" data-edge-id="metered-db" data-composition-points="840,439;940,439" data-composition-crossover="halo" data-composition-independent="true" d="M 840 439 L 940 439" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1036 284 L 1036 400" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="app" data-edge-to="sourcedb" data-edge-label="connection" data-edge-key="7" data-edge-id="app-sourcedb" data-composition-points="1036,284;1036,400" data-composition-crossover="halo" data-composition-independent="true" d="M 1036 284 L 1036 400" class="a-dashed" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 440 464 L 440 580" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="metered" data-edge-to="gateway" data-edge-label="call" data-edge-key="7" data-edge-id="metered-gateway" data-composition-points="440,464;440,580" data-composition-crossover="halo" data-composition-independent="true" d="M 440 464 L 440 580" class="a-emphasis" data-animate="edge" style="--step:7" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:8">
-          <path data-graph-role="automatic-crossover-underlay" d="M 474 580 L 474 464" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="worker" data-edge-to="db" data-edge-label="SQL, jobs" data-edge-key="8" data-edge-id="worker-db" data-composition-points="474,580;474,464" data-composition-crossover="halo" data-composition-independent="true" d="M 474 580 L 474 464" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 280 644 L 280 760" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="openai" data-edge-key="8" data-edge-id="g-openai" data-composition-points="280,644;280,760" data-composition-crossover="halo" data-composition-independent="true" d="M 280 644 L 280 760" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:9">
-          <path data-graph-role="automatic-crossover-underlay" d="M 714 580 L 714 464" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="worker" data-edge-to="files" data-edge-label="files" data-edge-key="9" data-edge-id="worker-files" data-composition-points="714,580;714,464" data-composition-crossover="halo" data-composition-independent="true" d="M 714 580 L 714 464" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 433 644 L 433 694 Q 433 702 425 702 L 380 702 Q 372 702 372 710 L 372 760" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="anthropic" data-edge-key="9" data-edge-id="g-anthropic" data-composition-points="433,644;433,702;372,702;372,760" data-composition-crossover="halo" data-composition-independent="true" d="M 433 644 L 433 694 Q 433 702 425 702 L 380 702 Q 372 702 372 710 L 372 760" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:10">
-          <path data-graph-role="automatic-crossover-underlay" d="M 776 580 L 776 464" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="worker" data-edge-to="ollama" data-edge-label="/v1 API" data-edge-key="10" data-edge-id="worker-ollama" data-composition-points="776,580;776,464" data-composition-crossover="halo" data-composition-independent="true" d="M 776 580 L 776 464" class="a-dashed" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 447 644 L 447 694 Q 447 702 455 702 L 500 702 Q 508 702 508 710 L 508 760" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="azure" data-edge-key="10" data-edge-id="g-azure" data-composition-points="447,644;447,702;508,702;508,760" data-composition-crossover="halo" data-composition-independent="true" d="M 447 644 L 447 694 Q 447 702 455 702 L 500 702 Q 508 702 508 710 L 508 760" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:11">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1036 580 L 1036 464" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="worker" data-edge-to="sourcedb" data-edge-label="connection" data-edge-key="11" data-edge-id="worker-sourcedb" data-composition-points="1036,580;1036,464" data-composition-crossover="halo" data-composition-independent="true" d="M 1036 580 L 1036 464" class="a-dashed" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 600 644 L 600 760" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="gemini" data-edge-key="11" data-edge-id="g-gemini" data-composition-points="600,644;600,760" data-composition-crossover="halo" data-composition-independent="true" d="M 600 644 L 600 760" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:12">
-          <path data-graph-role="automatic-crossover-underlay" d="M 755 760 L 755 644" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="gpu" data-edge-to="worker" data-edge-label="cuda + GPU" data-edge-key="12" data-edge-id="gpu-worker" data-composition-points="755,760;755,644" data-composition-crossover="halo" data-composition-independent="true" d="M 755 760 L 755 644" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 736 644 L 736 760" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="bedrock" data-edge-key="12" data-edge-id="g-bedrock" data-composition-points="736,644;736,760" data-composition-crossover="halo" data-composition-independent="true" d="M 736 644 L 736 760" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:13">
+          <path data-graph-role="automatic-crossover-underlay" d="M 144 644 L 144 760" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gateway" data-edge-to="plugin" data-edge-key="13" data-edge-id="g-plugin" data-composition-points="144,644;144,760" data-composition-crossover="halo" data-composition-independent="true" d="M 144 644 L 144 760" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:14">
+          <path data-graph-role="automatic-crossover-underlay" d="M 224 824 L 224 940" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="openai" data-edge-to="self" data-edge-label="HTTP" data-edge-key="14" data-edge-id="openai-self" data-composition-points="224,824;224,940" data-composition-crossover="halo" data-composition-independent="true" d="M 224 824 L 224 940" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:15">
+          <path data-graph-role="automatic-crossover-underlay" d="M 278 824 L 278 940" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="openai" data-edge-to="ext" data-edge-label="HTTPS" data-edge-key="15" data-edge-id="openai-ext" data-composition-points="278,824;278,940" data-composition-crossover="halo" data-composition-independent="true" d="M 278 824 L 278 940" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:16">
+          <path data-graph-role="automatic-crossover-underlay" d="M 372 824 L 372 890 Q 372 898 380 898 L 529 898 Q 537 898 537 906 L 537 940" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="anthropic" data-edge-to="ext" data-edge-key="16" data-edge-id="anthropic-ext" data-composition-points="372,824;372,898;537,898;537,940" data-composition-crossover="halo" data-composition-independent="true" d="M 372 824 L 372 890 Q 372 898 380 898 L 529 898 Q 537 898 537 906 L 537 940" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:17">
+          <path data-graph-role="automatic-crossover-underlay" d="M 551 824 L 551 940" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="azure" data-edge-to="ext" data-edge-key="17" data-edge-id="azure-ext" data-composition-points="551,824;551,940" data-composition-crossover="halo" data-composition-independent="true" d="M 551 824 L 551 940" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:18">
+          <path data-graph-role="automatic-crossover-underlay" d="M 644 824 L 644 940" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gemini" data-edge-to="ext" data-edge-key="18" data-edge-id="gemini-ext" data-composition-points="644,824;644,940" data-composition-crossover="halo" data-composition-independent="true" d="M 644 824 L 644 940" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:19">
+          <path data-graph-role="automatic-crossover-underlay" d="M 780 824 L 780 940" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="bedrock" data-edge-to="ext" data-edge-key="19" data-edge-id="bedrock-ext" data-composition-points="780,824;780,940" data-composition-crossover="halo" data-composition-independent="true" d="M 780 824 L 780 940" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
 
         <!-- Components -->
-        <g id="node-browser" data-node-id="browser" data-node-label="Browser" tabindex="0" role="button" aria-label="Focus Browser, host port 8000 / 8080, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="host port 8000 / 8080" data-node-context="Architecture component">
-          <title>Browser · host port 8000 / 8080 · Architecture component</title>
-          <rect x="40" y="40" width="150" height="64" rx="8" class="c-mask"/>
-          <rect x="40" y="40" width="150" height="64" rx="8" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 46) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+        <g id="node-chat" data-node-id="chat" data-node-label="Assistant chat" tabindex="0" role="button" aria-label="Focus Assistant chat, agent or light role, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="agent or light role" data-node-context="Architecture component">
+          <title>Assistant chat · agent or light role · Architecture component</title>
+          <rect x="40" y="40" width="200" height="64" rx="8" class="c-mask"/>
+          <rect x="40" y="40" width="200" height="64" rx="8" class="c-backend" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 46) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="115" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Browser</text>
-        <text data-detail="context" x="115" y="86" class="t-muted" font-size="9" text-anchor="middle">host port 8000 / 8080</text>
+          <text data-node-label="" data-detail-anchor="" x="140" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Assistant chat</text>
+        <text data-detail="context" x="140" y="86" class="t-muted" font-size="9" text-anchor="middle">agent or light role</text>
         </g>
 
-        <g id="node-proxy" data-node-id="proxy" data-node-label="Reverse proxy (nginx)" tabindex="0" role="button" aria-label="Focus Reverse proxy (nginx), edge image, or host nginx.conf, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="security" data-node-sublabel="edge image, or host nginx.conf" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>Reverse proxy (nginx) · edge image, or host nginx.conf · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</title>
-          <rect x="270" y="40" width="220" height="64" rx="8" class="c-mask"/>
-          <rect x="270" y="40" width="220" height="64" rx="8" class="c-security" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(276 46) scale(0.6875)">
+        <g id="node-jobs" data-node-id="jobs" data-node-label="Assistant jobs" tabindex="0" role="button" aria-label="Focus Assistant jobs, agent role, in worker, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="agent role, in worker" data-node-context="Architecture component">
+          <title>Assistant jobs · agent role, in worker · Architecture component</title>
+          <rect x="300" y="40" width="200" height="64" rx="8" class="c-mask"/>
+          <rect x="300" y="40" width="200" height="64" rx="8" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(306 46) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="400" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Assistant jobs</text>
+        <text data-detail="context" x="400" y="86" class="t-muted" font-size="9" text-anchor="middle">agent role, in worker</text>
+        </g>
+
+        <g id="node-files" data-node-id="files" data-node-label="Document AI" tabindex="0" role="button" aria-label="Focus Document AI, embedding, vision, rerank, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="embedding, vision, rerank" data-node-context="Architecture component">
+          <title>Document AI · embedding, vision, rerank · Architecture component</title>
+          <rect x="560" y="40" width="280" height="64" rx="8" class="c-mask"/>
+          <rect x="560" y="40" width="280" height="64" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(566 46) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="700" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Document AI</text>
+        <text data-detail="context" x="700" y="86" class="t-muted" font-size="9" text-anchor="middle">embedding, vision, rerank</text>
+        </g>
+
+        <g id="node-admin" data-node-id="admin" data-node-label="Admin LLM API" tabindex="0" role="button" aria-label="Focus Admin LLM API, providers, models, roles, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="providers, models, roles" data-node-context="Architecture component">
+          <title>Admin LLM API · providers, models, roles · Architecture component</title>
+          <rect x="940" y="40" width="200" height="64" rx="8" class="c-mask"/>
+          <rect x="940" y="40" width="200" height="64" rx="8" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(946 46) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="380" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Reverse proxy (nginx)</text>
-        <text data-detail="context" x="380" y="86" class="t-muted" font-size="9" text-anchor="middle">edge image, or host nginx.conf</text>
+          <text data-node-label="" data-detail-anchor="" x="1040" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Admin LLM API</text>
+        <text data-detail="context" x="1040" y="86" class="t-muted" font-size="9" text-anchor="middle">providers, models, roles</text>
         </g>
 
-        <g id="node-web" data-node-id="web" data-node-label="web (Next.js)" tabindex="0" role="button" aria-label="Focus web (Next.js), standalone server :3000, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="standalone server :3000" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>web (Next.js) · standalone server :3000 · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</title>
-          <rect x="580" y="40" width="200" height="64" rx="8" class="c-mask"/>
-          <rect x="580" y="40" width="200" height="64" rx="8" class="c-frontend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(586 46) scale(0.6875)">
-            <rect x="2" y="3" width="12" height="10" rx="2"/>
-            <path d="M2 6.5h12"/>
-            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
-            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="680" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">web (Next.js)</text>
-        <text data-detail="context" x="680" y="86" class="t-muted" font-size="9" text-anchor="middle">standalone server :3000</text>
-        </g>
-
-        <g id="node-mailpit" data-node-id="mailpit" data-node-label="Mailpit" tabindex="0" role="button" aria-label="Focus Mailpit, catches email, UI :8025, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="external" data-node-sublabel="catches email, UI :8025" data-node-tag="all-in-one only" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>Mailpit · catches email, UI :8025 · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install · all-in-one only</title>
-          <rect x="1340" y="220" width="190" height="64" rx="8" class="c-mask"/>
-          <rect x="1340" y="220" width="190" height="64" rx="8" class="c-external" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1346 226) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1435" y="250" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Mailpit</text>
-        <text data-detail="context" x="1435" y="266" class="t-muted" font-size="9" text-anchor="middle">catches email, UI :8025</text>
-        <text data-detail="fine" x="1435" y="276" class="t-external" font-size="7" text-anchor="middle">all-in-one only</text>
-        </g>
-
-        <g id="node-app" data-node-id="app" data-node-label="app · python -m dawam serve" tabindex="0" role="button" aria-label="Focus app · python -m dawam serve, FastAPI :8000, migrates DB on start; same image as worker (ACCELERATOR cpu by default), Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FastAPI :8000, migrates DB on start; same image as worker (ACCELERATOR cpu by default)" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>app · python -m dawam serve · FastAPI :8000, migrates DB on start; same image as worker (ACCELERATOR cpu by default) · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</title>
-          <rect x="270" y="220" width="970" height="64" rx="8" class="c-mask"/>
-          <rect x="270" y="220" width="970" height="64" rx="8" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(276 226) scale(0.6875)">
+        <g id="node-roles" data-node-id="roles" data-node-label="RoleService" tabindex="0" role="button" aria-label="Focus RoleService, model per role and Workspace (agent, light, embedding, vision, rerank); internal-only; rate limit, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="model per role and Workspace (agent, light, embedding, vision, rerank); internal-only; rate limit" data-node-context="Architecture component">
+          <title>RoleService · model per role and Workspace (agent, light, embedding, vision, rerank); internal-only; rate limit · Architecture component</title>
+          <rect x="40" y="220" width="800" height="64" rx="8" class="c-mask"/>
+          <rect x="40" y="220" width="800" height="64" rx="8" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 226) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="250" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">app · python -m dawam serve</text>
-        <text data-detail="context" x="755" y="266" class="t-muted" font-size="9" text-anchor="middle">FastAPI :8000, migrates DB on start; same image as worker (ACCELERATOR cpu by default)</text>
+          <text data-node-label="" data-detail-anchor="" x="440" y="250" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">RoleService</text>
+        <text data-detail="context" x="440" y="266" class="t-muted" font-size="9" text-anchor="middle">model per role and Workspace (agent, light, embedding, vision, rerank); internal-only; rate limit</text>
         </g>
 
-        <g id="node-db" data-node-id="db" data-node-label="PostgreSQL 16" tabindex="0" role="button" aria-label="Focus PostgreSQL 16, pgvector, app data + jobs, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="database" data-node-sublabel="pgvector, app data + jobs" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>PostgreSQL 16 · pgvector, app data + jobs · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</title>
-          <rect x="270" y="400" width="220" height="64" rx="8" class="c-mask"/>
-          <rect x="270" y="400" width="220" height="64" rx="8" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(276 406) scale(0.6875)">
+        <g id="node-metered" data-node-id="metered" data-node-label="MeteredGateway" tabindex="0" role="button" aria-label="Focus MeteredGateway, refuse external for internal-only, check budgets, try fallback models, record usage, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="refuse external for internal-only, check budgets, try fallback models, record usage" data-node-context="Architecture component">
+          <title>MeteredGateway · refuse external for internal-only, check budgets, try fallback models, record usage · Architecture component</title>
+          <rect x="40" y="400" width="800" height="64" rx="8" class="c-mask"/>
+          <rect x="40" y="400" width="800" height="64" rx="8" class="c-security" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(46 406) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="440" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MeteredGateway</text>
+        <text data-detail="context" x="440" y="446" class="t-muted" font-size="9" text-anchor="middle">refuse external for internal-only, check budgets, try fallback models, record usage</text>
+        </g>
+
+        <g id="node-gateway" data-node-id="gateway" data-node-label="Gateway" tabindex="0" role="button" aria-label="Focus Gateway, one internal message / tool / stream format; retries with backoff (3) until the first event; token estimates, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="one internal message / tool / stream format; retries with backoff (3) until the first event; token estimates" data-node-context="Architecture component">
+          <title>Gateway · one internal message / tool / stream format; retries with backoff (3) until the first event; token estimates · Architecture component</title>
+          <rect x="40" y="580" width="800" height="64" rx="8" class="c-mask"/>
+          <rect x="40" y="580" width="800" height="64" rx="8" class="c-backend" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 586) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="440" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gateway</text>
+        <text data-detail="context" x="440" y="626" class="t-muted" font-size="9" text-anchor="middle">one internal message / tool / stream format; retries with backoff (3) until the first event; token estimates</text>
+        </g>
+
+        <g id="node-db" data-node-id="db" data-node-label="llm_* tables" tabindex="0" role="button" aria-label="Focus llm_* tables, providers, models, budgets, usage, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="providers, models, budgets, usage" data-node-context="Architecture component">
+          <title>llm_* tables · providers, models, budgets, usage · Architecture component</title>
+          <rect x="940" y="220" width="200" height="424" rx="8" class="c-mask"/>
+          <rect x="940" y="220" width="200" height="424" rx="8" class="c-database" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(946 226) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="380" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PostgreSQL 16</text>
-        <text data-detail="context" x="380" y="446" class="t-muted" font-size="9" text-anchor="middle">pgvector, app data + jobs</text>
+          <text data-node-label="" data-detail-anchor="" x="1040" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">llm_* tables</text>
+        <text data-detail="context" x="1040" y="446" class="t-muted" font-size="9" text-anchor="middle">providers, models, budgets, usage</text>
         </g>
 
-        <g id="node-files" data-node-id="files" data-node-label="File storage" tabindex="0" role="button" aria-label="Focus File storage, volume, host dir, or S3, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="database" data-node-sublabel="volume, host dir, or S3" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>File storage · volume, host dir, or S3 · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</title>
-          <rect x="520" y="400" width="210" height="64" rx="8" class="c-mask"/>
-          <rect x="520" y="400" width="210" height="64" rx="8" class="c-database" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(526 406) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="625" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">File storage</text>
-        <text data-detail="context" x="625" y="446" class="t-muted" font-size="9" text-anchor="middle">volume, host dir, or S3</text>
-        </g>
-
-        <g id="node-ollama" data-node-id="ollama" data-node-label="Ollama + model pull" tabindex="0" role="button" aria-label="Focus Ollama + model pull, local LLM, OpenAI-compatible, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="external" data-node-sublabel="local LLM, OpenAI-compatible" data-node-tag="optional" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>Ollama + model pull · local LLM, OpenAI-compatible · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install · optional</title>
-          <rect x="760" y="400" width="230" height="64" rx="8" class="c-mask"/>
-          <rect x="760" y="400" width="230" height="64" rx="8" class="c-external" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(766 406) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="875" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Ollama + model pull</text>
-        <text data-detail="context" x="875" y="446" class="t-muted" font-size="9" text-anchor="middle">local LLM, OpenAI-compatible</text>
-        <text data-detail="fine" x="875" y="456" class="t-external" font-size="7" text-anchor="middle">optional</text>
-        </g>
-
-        <g id="node-sourcedb" data-node-id="sourcedb" data-node-label="Demo source DB" tabindex="0" role="button" aria-label="Focus Demo source DB, postgres:16, shop.sales, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="external" data-node-sublabel="postgres:16, shop.sales" data-node-tag="profile demo" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>Demo source DB · postgres:16, shop.sales · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install · profile demo</title>
-          <rect x="1020" y="400" width="220" height="64" rx="8" class="c-mask"/>
-          <rect x="1020" y="400" width="220" height="64" rx="8" class="c-external" data-animate="node" style="--step:8" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1026 406) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1130" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Demo source DB</text>
-        <text data-detail="context" x="1130" y="446" class="t-muted" font-size="9" text-anchor="middle">postgres:16, shop.sales</text>
-        <text data-detail="fine" x="1130" y="456" class="t-external" font-size="7" text-anchor="middle">profile demo</text>
-        </g>
-
-        <g id="node-worker" data-node-id="worker" data-node-label="worker · python -m dawam worker" tabindex="0" role="button" aria-label="Focus worker · python -m dawam worker, 1 in compose.yaml, DAWAM_WORKERS (default 2) in all-in-one, one systemd unit on a host, Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install" aria-pressed="false" data-node-kind="backend" data-node-sublabel="1 in compose.yaml, DAWAM_WORKERS (default 2) in all-in-one, one systemd unit on a host" data-node-context="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <title>worker · python -m dawam worker · 1 in compose.yaml, DAWAM_WORKERS (default 2) in all-in-one, one systemd unit on a host · Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</title>
-          <rect x="270" y="580" width="970" height="64" rx="8" class="c-mask"/>
-          <rect x="270" y="580" width="970" height="64" rx="8" class="c-backend" data-animate="node" style="--step:8" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(276 586) scale(0.6875)">
+        <g id="node-plugin" data-node-id="plugin" data-node-label="plugin" tabindex="0" role="button" aria-label="Focus plugin, entry point, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="entry point" data-node-context="Architecture component">
+          <title>plugin · entry point · Architecture component</title>
+          <rect x="40" y="760" width="120" height="64" rx="8" class="c-mask"/>
+          <rect x="40" y="760" width="120" height="64" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 766) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">worker · python -m dawam worker</text>
-        <text data-detail="context" x="755" y="626" class="t-muted" font-size="9" text-anchor="middle">1 in compose.yaml, DAWAM_WORKERS (default 2) in all-in-one, one systemd unit on a host</text>
+          <text data-node-label="" data-detail-anchor="" x="100" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">plugin</text>
+        <text data-detail="context" x="100" y="806" class="t-muted" font-size="9" text-anchor="middle">entry point</text>
         </g>
 
-        <g id="node-gpu" data-node-id="gpu" data-node-label="GPU override" tabindex="0" role="button" aria-label="Focus GPU override, docker-compose.gpu.yaml, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="docker-compose.gpu.yaml" data-node-tag="optional file" data-node-context="Architecture component">
-          <title>GPU override · docker-compose.gpu.yaml · Architecture component · optional file</title>
-          <rect x="645" y="760" width="220" height="64" rx="8" class="c-mask"/>
-          <rect x="645" y="760" width="220" height="64" rx="8" class="c-cloud" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(651 766) scale(0.6875)">
-            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+        <g id="node-openai" data-node-id="openai" data-node-label="openai_compat" tabindex="0" role="button" aria-label="Focus openai_compat, /v1 chat, embed, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/v1 chat, embed" data-node-context="Architecture component">
+          <title>openai_compat · /v1 chat, embed · Architecture component</title>
+          <rect x="176" y="760" width="120" height="64" rx="8" class="c-mask"/>
+          <rect x="176" y="760" width="120" height="64" rx="8" class="c-backend" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(182 766) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">GPU override</text>
-        <text data-detail="context" x="755" y="806" class="t-muted" font-size="9" text-anchor="middle">docker-compose.gpu.yaml</text>
-        <text data-detail="fine" x="755" y="816" class="t-cloud" font-size="7" text-anchor="middle">optional file</text>
+          <text data-node-label="" data-detail-anchor="" x="236" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">openai_compat</text>
+        <text data-detail="context" x="236" y="806" class="t-muted" font-size="9" text-anchor="middle">/v1 chat, embed</text>
+        </g>
+
+        <g id="node-anthropic" data-node-id="anthropic" data-node-label="anthropic" tabindex="0" role="button" aria-label="Focus anthropic, Messages API, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Messages API" data-node-context="Architecture component">
+          <title>anthropic · Messages API · Architecture component</title>
+          <rect x="312" y="760" width="120" height="64" rx="8" class="c-mask"/>
+          <rect x="312" y="760" width="120" height="64" rx="8" class="c-backend" data-animate="node" style="--step:10" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(318 766) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="372" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">anthropic</text>
+        <text data-detail="context" x="372" y="806" class="t-muted" font-size="9" text-anchor="middle">Messages API</text>
+        </g>
+
+        <g id="node-azure" data-node-id="azure" data-node-label="azure_openai" tabindex="0" role="button" aria-label="Focus azure_openai, deployments, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="deployments" data-node-context="Architecture component">
+          <title>azure_openai · deployments · Architecture component</title>
+          <rect x="448" y="760" width="120" height="64" rx="8" class="c-mask"/>
+          <rect x="448" y="760" width="120" height="64" rx="8" class="c-backend" data-animate="node" style="--step:11" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(454 766) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="508" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">azure_openai</text>
+        <text data-detail="context" x="508" y="806" class="t-muted" font-size="9" text-anchor="middle">deployments</text>
+        </g>
+
+        <g id="node-gemini" data-node-id="gemini" data-node-label="gemini" tabindex="0" role="button" aria-label="Focus gemini, API / Vertex, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="API / Vertex" data-node-context="Architecture component">
+          <title>gemini · API / Vertex · Architecture component</title>
+          <rect x="584" y="760" width="120" height="64" rx="8" class="c-mask"/>
+          <rect x="584" y="760" width="120" height="64" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(590 766) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="644" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">gemini</text>
+        <text data-detail="context" x="644" y="806" class="t-muted" font-size="9" text-anchor="middle">API / Vertex</text>
+        </g>
+
+        <g id="node-bedrock" data-node-id="bedrock" data-node-label="bedrock" tabindex="0" role="button" aria-label="Focus bedrock, Converse API, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Converse API" data-node-context="Architecture component">
+          <title>bedrock · Converse API · Architecture component</title>
+          <rect x="720" y="760" width="120" height="64" rx="8" class="c-mask"/>
+          <rect x="720" y="760" width="120" height="64" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(726 766) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="780" y="790" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">bedrock</text>
+        <text data-detail="context" x="780" y="806" class="t-muted" font-size="9" text-anchor="middle">Converse API</text>
+        </g>
+
+        <g id="node-self" data-node-id="self" data-node-label="Self-hosted" tabindex="0" role="button" aria-label="Focus Self-hosted, Ollama, vLLM, SGLang, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Ollama, vLLM, SGLang" data-node-tag="internal" data-node-context="Architecture component">
+          <title>Self-hosted · Ollama, vLLM, SGLang · Architecture component · internal</title>
+          <rect x="40" y="940" width="200" height="64" rx="8" class="c-mask"/>
+          <rect x="40" y="940" width="200" height="64" rx="8" class="c-external" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 946) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="140" y="970" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Self-hosted</text>
+        <text data-detail="context" x="140" y="986" class="t-muted" font-size="9" text-anchor="middle">Ollama, vLLM, SGLang</text>
+        <text data-detail="fine" x="140" y="996" class="t-external" font-size="7" text-anchor="middle">internal</text>
+        </g>
+
+        <g id="node-ext" data-node-id="ext" data-node-label="External APIs" tabindex="0" role="button" aria-label="Focus External APIs, OpenAI, Claude, Azure, Gemini, Bedrock, OpenRouter, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="OpenAI, Claude, Azure, Gemini, Bedrock, OpenRouter" data-node-tag="external" data-node-context="Architecture component">
+          <title>External APIs · OpenAI, Claude, Azure, Gemini, Bedrock, OpenRouter · Architecture component · external</title>
+          <rect x="262" y="940" width="578" height="64" rx="8" class="c-mask"/>
+          <rect x="262" y="940" width="578" height="64" rx="8" class="c-external" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(268 946) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="551" y="970" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">External APIs</text>
+        <text data-detail="context" x="551" y="986" class="t-muted" font-size="9" text-anchor="middle">OpenAI, Claude, Azure, Gemini, Bedrock, OpenRouter</text>
+        <text data-detail="fine" x="551" y="996" class="t-external" font-size="7" text-anchor="middle">external</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="browser" data-edge-to="proxy" data-edge-label="HTTP" data-edge-key="0" data-edge-id="browser-proxy">
-          <rect x="215" y="52" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="230" y="62" class="t-edge-emphasis" font-size="8" text-anchor="middle">HTTP</text>
+        <g data-detail="context" data-edge-from="chat" data-edge-to="roles" data-edge-label="chat" data-edge-key="0" data-edge-id="chat-roles">
+          <rect x="104" y="155" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="119" y="165" class="t-edge-default" font-size="8" text-anchor="middle">chat</text>
         </g>
-        <g data-detail="context" data-edge-from="proxy" data-edge-to="web" data-edge-label="/ pages" data-edge-key="1" data-edge-id="proxy-web">
-          <rect x="513.2" y="43.95" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="535" y="53.95" class="t-edge-default" font-size="8" text-anchor="middle">/ pages</text>
+        <g data-detail="context" data-edge-from="jobs" data-edge-to="roles" data-edge-label="chat" data-edge-key="1" data-edge-id="jobs-roles">
+          <rect x="364" y="155" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="379" y="165" class="t-edge-default" font-size="8" text-anchor="middle">chat</text>
         </g>
-        <g data-detail="context" data-edge-from="proxy" data-edge-to="app" data-edge-label="/api/*, /healthz" data-edge-key="2" data-edge-id="proxy-app">
-          <rect x="287.20000000000005" y="155" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="330.6" y="165" class="t-edge-emphasis" font-size="8" text-anchor="middle">/api/*, /healthz</text>
+        <g data-detail="context" data-edge-from="files" data-edge-to="roles" data-edge-label="embed, rerank" data-edge-key="2" data-edge-id="files-roles">
+          <rect x="621.5999999999999" y="155" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="657.8" y="165" class="t-edge-default" font-size="8" text-anchor="middle">embed, rerank</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="mailpit" data-edge-label="SMTP :1025" data-edge-key="3" data-edge-id="app-mailpit">
-          <rect x="1261" y="225" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="1290" y="235" class="t-edge-dashed" font-size="8" text-anchor="middle">SMTP :1025</text>
+        <g data-detail="context" data-edge-from="admin" data-edge-to="db" data-edge-label="configure" data-edge-key="3" data-edge-id="admin-db">
+          <rect x="980.8" y="155" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="1007.4" y="165" class="t-edge-default" font-size="8" text-anchor="middle">configure</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="db" data-edge-label="SQL" data-edge-key="4" data-edge-id="app-db">
-          <rect x="438" y="335" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="453" y="345" class="t-edge-default" font-size="8" text-anchor="middle">SQL</text>
+        <g data-detail="context" data-edge-from="roles" data-edge-to="db" data-edge-label="resolve model" data-edge-key="4" data-edge-id="roles-db">
+          <rect x="853.8" y="239" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="890" y="249" class="t-edge-default" font-size="8" text-anchor="middle">resolve model</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="files" data-edge-label="files" data-edge-key="5" data-edge-id="app-files">
-          <rect x="674" y="335" width="34" height="14" rx="3" class="c-mask"/>
-          <text x="691" y="345" class="t-edge-default" font-size="8" text-anchor="middle">files</text>
+        <g data-detail="context" data-edge-from="roles" data-edge-to="metered" data-edge-label="MeteredGateway" data-edge-key="5" data-edge-id="roles-metered">
+          <rect x="356.79999999999995" y="335" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="395.4" y="345" class="t-edge-emphasis" font-size="8" text-anchor="middle">MeteredGateway</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="ollama" data-edge-label="/v1 API" data-edge-key="6" data-edge-id="app-ollama">
-          <rect x="726.4000000000001" y="335" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="748.2" y="345" class="t-edge-dashed" font-size="8" text-anchor="middle">/v1 API</text>
+        <g data-detail="context" data-edge-from="metered" data-edge-to="db" data-edge-label="usage" data-edge-key="6" data-edge-id="metered-db">
+          <rect x="873" y="419" width="34" height="14" rx="3" class="c-mask"/>
+          <text x="890" y="429" class="t-edge-default" font-size="8" text-anchor="middle">usage</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="sourcedb" data-edge-label="connection" data-edge-key="7" data-edge-id="app-sourcedb">
-          <rect x="972" y="335" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="1001" y="345" class="t-edge-dashed" font-size="8" text-anchor="middle">connection</text>
-        </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="db" data-edge-label="SQL, jobs" data-edge-key="8" data-edge-id="worker-db">
-          <rect x="447.4" y="560" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="474" y="570" class="t-edge-default" font-size="8" text-anchor="middle">SQL, jobs</text>
-        </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="files" data-edge-label="files" data-edge-key="9" data-edge-id="worker-files">
-          <rect x="697" y="560" width="34" height="14" rx="3" class="c-mask"/>
-          <text x="714" y="570" class="t-edge-default" font-size="8" text-anchor="middle">files</text>
-        </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="ollama" data-edge-label="/v1 API" data-edge-key="10" data-edge-id="worker-ollama">
-          <rect x="754.2" y="560" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="776" y="570" class="t-edge-dashed" font-size="8" text-anchor="middle">/v1 API</text>
-        </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="sourcedb" data-edge-label="connection" data-edge-key="11" data-edge-id="worker-sourcedb">
-          <rect x="1007" y="560" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="1036" y="570" class="t-edge-dashed" font-size="8" text-anchor="middle">connection</text>
-        </g>
-        <g data-detail="context" data-edge-from="gpu" data-edge-to="worker" data-edge-label="cuda + GPU" data-edge-key="12" data-edge-id="gpu-worker">
-          <rect x="726" y="740" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="755" y="750" class="t-edge-dashed" font-size="8" text-anchor="middle">cuda + GPU</text>
+        <g data-detail="context" data-edge-from="metered" data-edge-to="gateway" data-edge-label="call" data-edge-key="7" data-edge-id="metered-gateway">
+          <rect x="404" y="515" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="419" y="525" class="t-edge-emphasis" font-size="8" text-anchor="middle">call</text>
         </g>
 
-        <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install">
-          <rect data-graph-role="structural-frame-label-mask" x="244" y="18" width="555.032310864516" height="18" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="248" y="32.32258164516129" class="t-cloud" font-size="10.32258164516129" font-weight="600">Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install</text>
+
+
+
+
+
+        <g data-detail="context" data-edge-from="openai" data-edge-to="self" data-edge-label="HTTP" data-edge-key="14" data-edge-id="openai-self">
+          <rect x="188" y="875" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="203" y="885" class="t-edge-default" font-size="8" text-anchor="middle">HTTP</text>
         </g>
+        <g data-detail="context" data-edge-from="openai" data-edge-to="ext" data-edge-label="HTTPS" data-edge-key="15" data-edge-id="openai-ext">
+          <rect x="238" y="875" width="34" height="14" rx="3" class="c-mask"/>
+          <text x="255" y="885" class="t-edge-default" font-size="8" text-anchor="middle">HTTPS</text>
+        </g>
+
+
+
+
+
+        <!-- Boundary labels (foreground masks keep routes out of titles) -->
+
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="856" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="876" data-legend-width="93">
-            <rect x="40" y="867" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="876" class="t-muted" font-size="10" font-weight="500">Frontend</text>
+          <text x="40" y="1036" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="40" data-legend-baseline="1056" data-legend-width="87">
+            <rect x="40" y="1047" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="62" y="1056" class="t-muted" font-size="10" font-weight="500">Backend</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="155" data-legend-baseline="876" data-legend-width="87">
-            <rect x="155" y="867" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="177" y="876" class="t-muted" font-size="10" font-weight="500">Backend</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="149" data-legend-baseline="1056" data-legend-width="93">
+            <rect x="149" y="1047" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="171" y="1056" class="t-muted" font-size="10" font-weight="500">Database</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="264" data-legend-baseline="876" data-legend-width="93">
-            <rect x="264" y="867" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="286" y="876" class="t-muted" font-size="10" font-weight="500">Database</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="264" data-legend-baseline="1056" data-legend-width="93">
+            <rect x="264" y="1047" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="286" y="1056" class="t-muted" font-size="10" font-weight="500">Security</text>
           </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="379" data-legend-baseline="876" data-legend-width="74">
-            <rect x="379" y="867" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
-            <text x="401" y="876" class="t-muted" font-size="10" font-weight="500">Cloud</text>
-          </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="475" data-legend-baseline="876" data-legend-width="93">
-            <rect x="475" y="867" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="497" y="876" class="t-muted" font-size="10" font-weight="500">Security</text>
-          </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="590" data-legend-baseline="876" data-legend-width="93">
-            <rect x="590" y="867" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="612" y="876" class="t-muted" font-size="10" font-weight="500">External</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="379" data-legend-baseline="1056" data-legend-width="93">
+            <rect x="379" y="1047" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="401" y="1056" class="t-muted" font-size="10" font-weight="500">External</text>
           </g>
         </g>
       </svg>
@@ -5710,61 +5773,47 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       <div class="card">
         <div class="card-header">
           <div class="card-dot cyan"></div>
-          <h3>1 · compose.yaml (repo root)</h3>
+          <h3>Verified call path</h3>
         </div>
         <ul>
-          <li>edge, web, app, worker (1), db; .env optional, DAWAM_ENCRYPTION_KEY required.</li>
-          <li>Ollama only with --profile ollama; no mail server, no demo source.</li>
-          <li>HSTS default 31536000; DAWAM_TRUSTED_PROXY_CIDRS lets a TLS proxy in front set the scheme.</li>
+          <li>Only the assistant and the files module (document AI) call models; every call goes through RoleService.gateway_for_role / metered_gateway (assistant/service.py, files/search.py, files/internal/rerank.py).</li>
+          <li>adapter_for(kind) picks the adapter by the provider&#39;s adapter kind (adapters.py:80-92). Gateway → adapter arrows are that runtime choice.</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <div class="card-dot emerald"></div>
-          <h3>2 · deploy/docker-compose.yaml (all-in-one)</h3>
+          <div class="card-dot rose"></div>
+          <h3>Checks on every call</h3>
         </div>
         <ul>
-          <li>.env required; DAWAM_STORAGE_BACKEND=local fixed; HTTPS disabled (HSTS 0, no trusted TLS proxy).</li>
-          <li>worker replicas DAWAM_WORKERS (default 2), safe because claims use SKIP LOCKED.</li>
-          <li>ollama + ollama-pull always on (OLLAMA_CONTEXT_LENGTH 32768; qwen2.5:7b, nomic-embed-text).</li>
-          <li>mailpit on 127.0.0.1:8025; source-db only with --profile demo.</li>
+          <li>Internal-only Workspace: an external provider is refused (409 external_provider_refused), whatever the role.</li>
+          <li>Monthly token and cost budgets (installation and Workspace) are checked first; usage is recorded per call in llm_usage.</li>
+          <li>A failure before any output tries the role&#39;s fallback models in order (agent and light roles).</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot violet"></div>
-          <h3>3 · deploy/host (no Docker, systemd)</h3>
+          <h3>Gateway behaviour</h3>
         </div>
         <ul>
-          <li>dawam-app, dawam-web, dawam-worker units as user dawam on 127.0.0.1; hardened (ProtectSystem=strict, NoNewPrivileges).</li>
-          <li>Host nginx.conf on 127.0.0.1:8080 with edge&#39;s routing; DAWAM_FORWARDED_ALLOW_IPS=127.0.0.1.</li>
-          <li>Secrets in /etc/dawam/dawam.env (app and worker only); Postgres 16 + pgvector from packages.</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot orange"></div>
-          <h3>GPU override (with variant 1 or 2)</h3>
-        </div>
-        <ul>
-          <li>Builds app and worker with ACCELERATOR=cuda (CUDA torch, onnxruntime-gpu) and gives the worker all NVIDIA GPUs.</li>
-          <li>Only document AI (Docling layout/tables, RapidOCR) uses it; the host variant picks ocr-gpu at pip install instead.</li>
+          <li>Normalises messages, tool calls, stream events, usage and errors: no other code sees a vendor format or imports a vendor SDK.</li>
+          <li>Retries rate-limit / unavailable errors with backoff up to 3 times, only until the first stream event.</li>
+          <li>Estimates tokens when the provider reports none.</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot amber"></div>
-          <h3>Dashed = configuration-dependent</h3>
+          <h3>Inferred or not drawn</h3>
         </div>
         <ul>
-          <li>Ollama is used only after an admin adds it as an OpenAI-compatible provider (http://ollama:11434/v1).</li>
-          <li>Mailpit receives mail only once Admin &gt; Email points at host mailpit:1025; the app sends, the worker was not seen sending.</li>
-          <li>Demo source DB is reached only after a Connection is added; tests run in app, extraction in worker.</li>
-          <li>S3 storage is set by DAWAM_STORAGE_BACKEND=s3; no shipped Compose file uses it. deploy/README methods 3-4 (local dev, local run) were not diagrammed.</li>
+          <li>Plugin adapters (dawam.llm_providers entry points) can reach any provider; none ship with DAWAM, so the arrow is dashed and its target not drawn.</li>
+          <li>Anthropic and Bedrock have no embeddings (anthropic.py docstring, README); per-adapter vision and rerank support was not traced.</li>
+          <li>Exact backoff timings were not read.</li>
         </ul>
       </div>
     </div>

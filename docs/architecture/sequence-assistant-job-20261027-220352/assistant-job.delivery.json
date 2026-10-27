@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f490db45-bf5d-47f6-a165-1eb79836daa6",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\assistant-job.html",
+  "specification": {
+    "sha256": "9516fa6a36c047126a91395066ff0704a8afc7a85364171d5bfcb8ca18539f8b",
+    "bytes": 7019
+  },
+  "artifact": {
+    "sha256": "70000ada910cd62b393023928c341544c378ece286dac76d91a8035431a807c7",
+    "bytes": 843365
+  }
+}

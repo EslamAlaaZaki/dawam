@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\candidate.json",
+    "sha256": "9516fa6a36c047126a91395066ff0704a8afc7a85364171d5bfcb8ca18539f8b",
+    "bytes": 7019
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\assistant-job.html",
+    "sha256": "70000ada910cd62b393023928c341544c378ece286dac76d91a8035431a807c7",
+    "bytes": 843365
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\assistant-job.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\assistant-job.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-job-20261027-220352\\assistant-job.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3410,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}
