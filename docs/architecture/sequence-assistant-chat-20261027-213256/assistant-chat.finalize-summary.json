@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\candidate.json",
+    "sha256": "f374bd301e707c10b3fa20916f4f2328a5effdc53db515e38932e4dd637aa951",
+    "bytes": 8923
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.html",
+    "sha256": "63414e9795641051af43e49e3f1b6c30f89aa9df59f69cebc13421878ddca1ea",
+    "bytes": 852035
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3560,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

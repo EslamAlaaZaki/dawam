@@ -1,0 +1,444 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Source Database Access Paths",
+    "locale": "en",
+    "output": "docs/architecture/architecture-source-db-flows-20261027-213256/source-db-flows.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    },
+    "views": [
+      {
+        "id": "ai-query",
+        "label": "Model-written SQL",
+        "focus": [
+          "tool",
+          "sq",
+          "registry",
+          "drivers",
+          "sourcedb"
+        ],
+        "note": "The only path a model's query takes: guard, regenerate SQL, run read-only, mask."
+      },
+      {
+        "id": "jobs",
+        "label": "Worker jobs",
+        "focus": [
+          "worker",
+          "jobsvc",
+          "registry",
+          "drivers",
+          "sourcedb"
+        ],
+        "note": "Extraction, profiling, PII scans and relationship inference connect from the worker."
+      },
+      {
+        "id": "config",
+        "label": "Connection config",
+        "focus": [
+          "routes",
+          "conn",
+          "appdb"
+        ],
+        "note": "Settings are stored per Source System with the password sealed under DAWAM_ENCRYPTION_KEY."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "tool",
+      "type": "backend",
+      "label": "run_source_query",
+      "sublabel": "assistant tool, app or worker",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/assistant/internal/tools.py",
+          "line": 1987,
+          "end_line": 1999,
+          "label": "_run_source_query"
+        },
+        {
+          "path": "backend/src/dawam/modules/assistant/assembly.py",
+          "line": 123,
+          "end_line": 128,
+          "label": "SourceQueryService wired in"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "worker job handlers",
+      "sublabel": "extract, profile, pii_scan, infer",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/job_handlers.py",
+          "line": 133,
+          "end_line": 191,
+          "label": "services → job types"
+        }
+      ]
+    },
+    {
+      "id": "routes",
+      "type": "backend",
+      "label": "Connection API",
+      "sublabel": "PUT …/connection, POST /test",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/connection_api.py",
+          "line": 134,
+          "end_line": 175,
+          "label": "get, save, test routes"
+        }
+      ]
+    },
+    {
+      "id": "sq",
+      "type": "security",
+      "label": "SourceQueryService",
+      "sublabel": "guard, PII mask, audit",
+      "pos": [
+        330,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/source_query_service.py",
+          "line": 1,
+          "end_line": 30,
+          "label": "6 fail-closed steps"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/source_query_service.py",
+          "line": 169,
+          "end_line": 180,
+          "label": "run"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/source_query_service.py",
+          "line": 341,
+          "end_line": 365,
+          "label": "params from stored connection"
+        }
+      ]
+    },
+    {
+      "id": "jobsvc",
+      "type": "backend",
+      "label": "Source job services",
+      "sublabel": "Snapshot, Profiling, PiiScan, Relationship",
+      "pos": [
+        330,
+        220
+      ],
+      "size": [
+        220,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/snapshot_service.py",
+          "line": 440,
+          "end_line": 467,
+          "label": "run_extraction → extract()"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/profiling_service.py",
+          "line": 269,
+          "end_line": 292,
+          "label": "run_profiling"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/pii_scan_service.py",
+          "line": 135,
+          "end_line": 180,
+          "label": "run_scan → sample()"
+        }
+      ]
+    },
+    {
+      "id": "conn",
+      "type": "backend",
+      "label": "ConnectionService",
+      "sublabel": "seal password, test",
+      "pos": [
+        330,
+        400
+      ],
+      "size": [
+        220,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 251,
+          "end_line": 275,
+          "label": "test: authorize, unseal"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 292,
+          "end_line": 335,
+          "label": "save: SecretBox.encrypt"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/connection_service.py",
+          "line": 364,
+          "end_line": 378,
+          "label": "_run_test → test()"
+        }
+      ]
+    },
+    {
+      "id": "appdb",
+      "type": "database",
+      "label": "PostgreSQL (app)",
+      "sublabel": "connections: sealed secret",
+      "pos": [
+        330,
+        580
+      ],
+      "size": [
+        220,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/tables.py",
+          "line": 60,
+          "end_line": 96,
+          "label": "ConnectionRecord"
+        },
+        {
+          "path": "backend/src/dawam/platform/crypto.py",
+          "line": 1,
+          "end_line": 40,
+          "label": "SecretBox AES-256-GCM"
+        }
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "backend",
+      "label": "connector_for",
+      "sublabel": "engine → Connector",
+      "pos": [
+        680,
+        40
+      ],
+      "size": [
+        160,
+        424
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 216,
+          "end_line": 234,
+          "label": "registry"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 167,
+          "end_line": 210,
+          "label": "Connector protocol"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 1,
+          "end_line": 14,
+          "label": "read-only, timeout, safe errors"
+        }
+      ]
+    },
+    {
+      "id": "drivers",
+      "type": "backend",
+      "label": "Engine connectors",
+      "sublabel": "psycopg, pymssql, pymysql, oracledb",
+      "pos": [
+        930,
+        40
+      ],
+      "size": [
+        200,
+        424
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/internal/postgres.py",
+          "line": 85,
+          "end_line": 110,
+          "label": "PostgresConnector"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/internal/sqlserver.py",
+          "line": 18,
+          "end_line": 18,
+          "label": "pymssql"
+        },
+        {
+          "path": "backend/src/dawam/modules/sources/internal/oracle.py",
+          "line": 21,
+          "end_line": 21,
+          "label": "oracledb"
+        }
+      ]
+    },
+    {
+      "id": "sourcedb",
+      "type": "external",
+      "label": "Source databases",
+      "sublabel": "allowed schemas only",
+      "tag": "read-only",
+      "pos": [
+        1240,
+        200
+      ],
+      "size": [
+        170,
+        104
+      ],
+      "sources": [
+        {
+          "path": "backend/src/dawam/modules/sources/internal/connector.py",
+          "line": 25,
+          "end_line": 37,
+          "label": "ConnectionParams.allowed_schemas"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "tool-sq",
+      "from": "tool",
+      "to": "sq",
+      "label": "run(sql)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "worker-jobsvc",
+      "from": "worker",
+      "to": "jobsvc",
+      "label": "run job"
+    },
+    {
+      "id": "routes-conn",
+      "from": "routes",
+      "to": "conn",
+      "label": "save, test"
+    },
+    {
+      "id": "sq-registry",
+      "from": "sq",
+      "to": "registry",
+      "label": "query(SafeQuery)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "jobsvc-registry",
+      "from": "jobsvc",
+      "to": "registry",
+      "label": "extract, sample"
+    },
+    {
+      "id": "conn-registry",
+      "from": "conn",
+      "to": "registry",
+      "label": "test()"
+    },
+    {
+      "id": "conn-appdb",
+      "from": "conn",
+      "to": "appdb",
+      "label": "sealed password"
+    },
+    {
+      "id": "registry-drivers",
+      "from": "registry",
+      "to": "drivers",
+      "label": "by engine"
+    },
+    {
+      "id": "drivers-sourcedb",
+      "from": "drivers",
+      "to": "sourcedb",
+      "label": "read-only txn",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Resolved from the overview",
+      "items": [
+        "API process: the only direct source call from an HTTP route is the connection test (POST …/connection/test → ConnectionService.test → Connector.test).",
+        "Model-written SQL comes only from the assistant's run_source_query tool → SourceQueryService.run. It runs where the assistant runs: the app for chat, the worker for assistant_task jobs.",
+        "Connector.query has one caller, SourceQueryService (connector.py:203-209)."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Guards on model SQL",
+      "items": [
+        "Owners and editors only; the system needs a live Connection and a Snapshot.",
+        "Name-based PII rules must have run on the latest Snapshot.",
+        "sqlglot query guard (internal/query_guard.py) parses the SQL; only regenerated SafeQuery.sql is sent.",
+        "Statement timeout from the run's remaining budget, row cap 100, PII masking, audit row per query."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Stored state (not drawn as edges)",
+      "items": [
+        "SourceQueryService and the job services each read the connections row and unseal the password with SecretBox before building ConnectionParams.",
+        "Job results go to the sources module's own tables: snapshots, src_tables, src_columns, column_profiles, pii_findings, relationships.",
+        "Schema Import (import_service.py) builds Snapshots from uploaded files and never opens a source connection."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Uncertain",
+      "items": [
+        "Relationship inference connects only when params_for_source is set (value-overlap step); its other steps use the Snapshot (relationship_service.py:236-246).",
+        "Per-driver read-only enforcement differs by engine (\"where the engine supports it\"); each driver file was not audited."
+      ]
+    }
+  ]
+}

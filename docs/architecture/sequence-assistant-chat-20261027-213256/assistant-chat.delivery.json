@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f8ac5ee9-8514-4cb0-b383-93141a9ecd08",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\sequence-assistant-chat-20261027-213256\\assistant-chat.html",
+  "specification": {
+    "sha256": "f374bd301e707c10b3fa20916f4f2328a5effdc53db515e38932e4dd637aa951",
+    "bytes": 8923
+  },
+  "artifact": {
+    "sha256": "63414e9795641051af43e49e3f1b6c30f89aa9df59f69cebc13421878ddca1ea",
+    "bytes": 852035
+  }
+}

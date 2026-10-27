@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Deployment Variants",
+    "locale": "en",
+    "output": "docs/architecture/architecture-deployment-variants-20261027-213256/deployment-variants.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/EslamAlaaZaki/dawam.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d8a783e45ab9e5837fb8ac26bb94aa26936ebb1"
+    },
+    "views": [
+      { "id": "core", "label": "Core in every variant", "focus": ["browser", "proxy", "web", "app", "worker", "db", "files"], "note": "proxy, web, app, worker, PostgreSQL and file storage exist in all three variants." },
+      { "id": "optional", "label": "Optional services", "focus": ["ollama", "mailpit", "sourcedb", "gpu"], "note": "Ollama, Mailpit, the demo source DB and the GPU override depend on the file, profile or flags used." }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser", "type": "external", "label": "Browser", "sublabel": "host port 8000 / 8080",
+      "pos": [40, 40], "size": [150, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 34, "end_line": 35, "label": "DAWAM_PORT:-8000 → 8080" },
+        { "path": "deploy/host/nginx.conf", "line": 8, "end_line": 12, "label": "host: 127.0.0.1:8080" }
+      ]
+    },
+    {
+      "id": "proxy", "type": "security", "label": "Reverse proxy (nginx)", "sublabel": "edge image, or host nginx.conf",
+      "pos": [270, 40], "size": [220, 64],
+      "sources": [
+        { "path": "deploy/nginx/templates/dawam.conf.template", "line": 11, "end_line": 56, "label": "edge container routing" },
+        { "path": "deploy/host/nginx.conf", "line": 8, "end_line": 40, "label": "same routing on the host" },
+        { "path": "deploy/docker-compose.yaml", "line": 41, "end_line": 56, "label": "all-in-one edge, no TLS proxy" }
+      ]
+    },
+    {
+      "id": "web", "type": "frontend", "label": "web (Next.js)", "sublabel": "standalone server :3000",
+      "pos": [580, 40], "size": [200, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 79, "end_line": 95, "label": "Compose web" },
+        { "path": "deploy/docker-compose.yaml", "line": 58, "end_line": 72, "label": "all-in-one: HSTS 0" },
+        { "path": "deploy/host/systemd/dawam-web.service", "line": 1, "end_line": 28, "label": "systemd unit, no secrets" }
+      ]
+    },
+    {
+      "id": "mailpit", "type": "external", "label": "Mailpit", "sublabel": "catches email, UI :8025", "tag": "all-in-one only",
+      "pos": [1340, 220], "size": [190, 64],
+      "sources": [
+        { "path": "deploy/docker-compose.yaml", "line": 153, "end_line": 162, "label": "mailpit service" }
+      ]
+    },
+    {
+      "id": "app", "type": "backend", "label": "app · python -m dawam serve", "sublabel": "FastAPI :8000, migrates DB on start; same image as worker (ACCELERATOR cpu by default)",
+      "pos": [270, 220], "size": [970, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 62, "end_line": 74, "label": "Compose app + readyz check" },
+        { "path": "deploy/host/systemd/dawam-app.service", "line": 1, "end_line": 26, "label": "systemd app, 127.0.0.1:8000" },
+        { "path": "Dockerfile", "line": 1, "end_line": 30, "label": "one image, ACCELERATOR arg" }
+      ]
+    },
+    {
+      "id": "db", "type": "database", "label": "PostgreSQL 16", "sublabel": "pgvector, app data + jobs",
+      "pos": [270, 400], "size": [220, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 47, "end_line": 60, "label": "pgvector/pgvector:pg16" },
+        { "path": "deploy/host/dawam.env.example", "line": 11, "end_line": 12, "label": "host: your own Postgres" }
+      ]
+    },
+    {
+      "id": "files", "type": "database", "label": "File storage", "sublabel": "volume, host dir, or S3",
+      "pos": [520, 400], "size": [210, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 21, "end_line": 22, "label": "file-data volume" },
+        { "path": "deploy/host/dawam.env.example", "line": 14, "end_line": 17, "label": "host: /var/lib/dawam/files" },
+        { "path": "backend/src/dawam/platform/storage.py", "line": 127, "end_line": 130, "label": "s3 when configured" }
+      ]
+    },
+    {
+      "id": "ollama", "type": "external", "label": "Ollama + model pull", "sublabel": "local LLM, OpenAI-compatible", "tag": "optional",
+      "pos": [760, 400], "size": [230, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 96, "end_line": 100, "label": "root: --profile ollama" },
+        { "path": "deploy/docker-compose.yaml", "line": 110, "end_line": 151, "label": "all-in-one: always on, pulls models" }
+      ]
+    },
+    {
+      "id": "sourcedb", "type": "external", "label": "Demo source DB", "sublabel": "postgres:16, shop.sales", "tag": "profile demo",
+      "pos": [1020, 400], "size": [220, 64],
+      "sources": [
+        { "path": "deploy/docker-compose.yaml", "line": 164, "end_line": 183, "label": "source-db, seeded from e2e" }
+      ]
+    },
+    {
+      "id": "worker", "type": "backend", "label": "worker · python -m dawam worker", "sublabel": "1 in compose.yaml, DAWAM_WORKERS (default 2) in all-in-one, one systemd unit on a host",
+      "pos": [270, 580], "size": [970, 64],
+      "sources": [
+        { "path": "compose.yaml", "line": 75, "end_line": 77, "label": "root worker" },
+        { "path": "deploy/docker-compose.yaml", "line": 87, "end_line": 93, "label": "replicas DAWAM_WORKERS" },
+        { "path": "deploy/host/systemd/dawam-worker.service", "line": 1, "end_line": 29, "label": "systemd worker" }
+      ]
+    },
+    {
+      "id": "gpu", "type": "cloud", "label": "GPU override", "sublabel": "docker-compose.gpu.yaml", "tag": "optional file",
+      "pos": [645, 760], "size": [220, 64],
+      "sources": [
+        { "path": "deploy/docker-compose.gpu.yaml", "line": 1, "end_line": 26, "label": "cuda build + NVIDIA devices" }
+      ]
+    }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Compose network 172.30.126.0/24 (Compose variants); 127.0.0.1 services on a host install", "wraps": ["proxy", "web", "app", "db", "files", "ollama", "sourcedb", "worker", "mailpit"] }
+  ],
+  "connections": [
+    { "id": "browser-proxy", "from": "browser", "to": "proxy", "label": "HTTP", "variant": "emphasis" },
+    { "id": "proxy-web", "from": "proxy", "to": "web", "label": "/ pages" },
+    { "id": "proxy-app", "from": "proxy", "to": "app", "label": "/api/*, /healthz", "variant": "emphasis" },
+    { "id": "app-mailpit", "from": "app", "to": "mailpit", "label": "SMTP :1025", "variant": "dashed" },
+    { "id": "app-db", "from": "app", "to": "db", "label": "SQL" },
+    { "id": "app-files", "from": "app", "to": "files", "label": "files" },
+    { "id": "app-ollama", "from": "app", "to": "ollama", "label": "/v1 API", "variant": "dashed" },
+    { "id": "app-sourcedb", "from": "app", "to": "sourcedb", "label": "connection", "variant": "dashed" },
+    { "id": "worker-db", "from": "worker", "to": "db", "label": "SQL, jobs" },
+    { "id": "worker-files", "from": "worker", "to": "files", "label": "files" },
+    { "id": "worker-ollama", "from": "worker", "to": "ollama", "label": "/v1 API", "variant": "dashed" },
+    { "id": "worker-sourcedb", "from": "worker", "to": "sourcedb", "label": "connection", "variant": "dashed" },
+    { "id": "gpu-worker", "from": "gpu", "to": "worker", "label": "cuda + GPU", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "1 · compose.yaml (repo root)",
+      "items": [
+        "edge, web, app, worker (1), db; .env optional, DAWAM_ENCRYPTION_KEY required.",
+        "Ollama only with --profile ollama; no mail server, no demo source.",
+        "HSTS default 31536000; DAWAM_TRUSTED_PROXY_CIDRS lets a TLS proxy in front set the scheme."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "2 · deploy/docker-compose.yaml (all-in-one)",
+      "items": [
+        ".env required; DAWAM_STORAGE_BACKEND=local fixed; HTTPS disabled (HSTS 0, no trusted TLS proxy).",
+        "worker replicas DAWAM_WORKERS (default 2), safe because claims use SKIP LOCKED.",
+        "ollama + ollama-pull always on (OLLAMA_CONTEXT_LENGTH 32768; qwen2.5:7b, nomic-embed-text).",
+        "mailpit on 127.0.0.1:8025; source-db only with --profile demo."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "3 · deploy/host (no Docker, systemd)",
+      "items": [
+        "dawam-app, dawam-web, dawam-worker units as user dawam on 127.0.0.1; hardened (ProtectSystem=strict, NoNewPrivileges).",
+        "Host nginx.conf on 127.0.0.1:8080 with edge's routing; DAWAM_FORWARDED_ALLOW_IPS=127.0.0.1.",
+        "Secrets in /etc/dawam/dawam.env (app and worker only); Postgres 16 + pgvector from packages."
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "GPU override (with variant 1 or 2)",
+      "items": [
+        "Builds app and worker with ACCELERATOR=cuda (CUDA torch, onnxruntime-gpu) and gives the worker all NVIDIA GPUs.",
+        "Only document AI (Docling layout/tables, RapidOCR) uses it; the host variant picks ocr-gpu at pip install instead."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Dashed = configuration-dependent",
+      "items": [
+        "Ollama is used only after an admin adds it as an OpenAI-compatible provider (http://ollama:11434/v1).",
+        "Mailpit receives mail only once Admin > Email points at host mailpit:1025; the app sends, the worker was not seen sending.",
+        "Demo source DB is reached only after a Connection is added; tests run in app, extraction in worker.",
+        "S3 storage is set by DAWAM_STORAGE_BACKEND=s3; no shipped Compose file uses it. deploy/README methods 3-4 (local dev, local run) were not diagrammed."
+      ]
+    }
+  ]
+}

@@ -13,6 +13,7 @@ This directory contains documentation for DAWAM, a self-hosted data warehouse me
 - **[Specification](./spec.md)** — Full product specification (§ 6 covers features and modules).
 - **[AI Architecture](./ai-architecture.md)** — How the AI side works today: gateway, agent loop, tools, RAG and safety.
 - **[AI Enhancements](./ai-enhancements.md)** — The AI roadmap, with the status of each item.
+- **[Architecture diagrams](./architecture/)** — Interactive, source-linked diagrams: system overview, backend modules, frontend, background jobs, source database access, the AI assistant and deployment variants.
 - **[Architecture Decision Records](./adr/)** — Design decisions and their rationale.
 - **[Agent working agreements](./agents/)** — Issue tracker, triage labels, domain docs and the ticket workflow for coding agents.
 

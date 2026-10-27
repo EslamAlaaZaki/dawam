@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e730fa11-407b-450c-9172-8a5862bdad01",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\D\\dawam\\docs\\architecture\\architecture-frontend-20261027-213256\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\architecture-frontend-20261027-213256\\frontend.html",
+  "specification": {
+    "sha256": "17af9e1b9512ca24012369b598d6ed35400637c376c693a1e736a4b4343a6f95",
+    "bytes": 10949
+  },
+  "artifact": {
+    "sha256": "279d560991c9492b4ce22a32af580bb80e88ba00da151983a7de80662e821736",
+    "bytes": 858116
+  }
+}

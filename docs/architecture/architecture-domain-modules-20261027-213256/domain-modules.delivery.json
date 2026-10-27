@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b6442d22-2d5d-4de4-beca-e1d547f8fb96",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\D\\dawam\\docs\\architecture\\architecture-domain-modules-20261027-213256\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\architecture-domain-modules-20261027-213256\\domain-modules.html",
+  "specification": {
+    "sha256": "c97f61493174b983fbb95053bb592be8e5ae6f27e43319ad7d4a4eaf6cfee7e9",
+    "bytes": 17269
+  },
+  "artifact": {
+    "sha256": "5b5393776287589368e23ee95aa1ca6ce62875d59f25cbed9691aa86f310a5df",
+    "bytes": 876606
+  }
+}

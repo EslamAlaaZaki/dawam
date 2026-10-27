@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "9973a393-791a-4b79-919a-8cca363489c7",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\architecture-system-overview-20261027-211619\\system-overview.html",
+  "specification": {
+    "sha256": "6070d9a99cb1f5b0987965e6925c70cebda58c6c7e6032a926a660485a07eadc",
+    "bytes": 20088
+  },
+  "artifact": {
+    "sha256": "ee326b4772c5e75a9ed302bfc068e6789d6f555cc67375a0e68a002e918848f5",
+    "bytes": 883651
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "357c29a7-ef6c-4ecd-b31f-15cf802581ed",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\candidate.json",
+  "output": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\source-db-flows.html",
+  "specification": {
+    "sha256": "b1449b6c62a647aad16eef654e65159463388d7aa7ec3a8e115ece42edabf1a1",
+    "bytes": 11321
+  },
+  "artifact": {
+    "sha256": "fc673f8f99f2051d69c0b7e7da5ea51338fc6826a5e4fe55c9cbba6ac9cc0835",
+    "bytes": 854057
+  }
+}

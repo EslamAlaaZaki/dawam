@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\candidate.json",
+    "sha256": "b1449b6c62a647aad16eef654e65159463388d7aa7ec3a8e115ece42edabf1a1",
+    "bytes": 11321
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\source-db-flows.html",
+    "sha256": "fc673f8f99f2051d69c0b7e7da5ea51338fc6826a5e4fe55c9cbba6ac9cc0835",
+    "bytes": 854057
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\source-db-flows.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\source-db-flows.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\architecture-source-db-flows-20261027-213256\\source-db-flows.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3920,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

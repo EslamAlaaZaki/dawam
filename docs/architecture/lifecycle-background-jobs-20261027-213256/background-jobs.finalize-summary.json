@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "lifecycle",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\candidate.json",
+    "sha256": "72af4154a9d35d488a92ff11414dee5663df38f0d8494d552f0c155470106caa",
+    "bytes": 7512
+  },
+  "artifact": {
+    "path": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\background-jobs.html",
+    "sha256": "4e6389eda509f666df07eb9e269aa195ace0eb43ddd6aa8ce92c69b2ae3a519d",
+    "bytes": 846331
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\background-jobs.finalize.json",
+    "summaryReceipt": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\background-jobs.finalize-summary.json",
+    "browserCheckReceipt": "C:\\D\\dawam\\docs\\architecture\\lifecycle-background-jobs-20261027-213256\\background-jobs.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-27T18:16:58.851Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2749,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "ask",
+            "from": "running",
+            "to": "paused",
+            "label": "asks creator",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "id": "cancel-queued",
+            "from": "queued",
+            "to": "cancelled",
+            "label": "cancel",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "point": [
+            356.3,
+            168.00000000000006
+          ]
+        },
+        {
+          "left": {
+            "id": "ask",
+            "from": "running",
+            "to": "paused",
+            "label": "asks creator",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "id": "cancel-running",
+            "from": "running",
+            "to": "cancelled",
+            "label": "cancel",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "point": [
+            356.3,
+            168.00000000000006
+          ],
+          "sharedNode": "running"
+        }
+      ],
+      "detours": [],
+      "truncated": false
+    },
+    "repair": "Advisory only: this mode places or routes these relationships itself. Report them; do not remove relationships or meaning to reduce crossings."
+  }
+}
