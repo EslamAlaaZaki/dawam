@@ -214,6 +214,9 @@ class Settings(DatabaseSettings):
     (the browser end-to-end suite). Never on in a real installation."""
     assistant_job_max_tool_calls: int = Field(default=150, ge=1)
     """Tool calls an assistant job may make (spec §6.16); a job explores far more than a chat."""
+    assistant_job_supervisor: bool = False
+    """Run assistant jobs as a supervisor that routes to specialists (ADR 0009) instead of one
+    agent with every tool. Off until it beats the single agent on the evaluations."""
     assistant_source_query_seconds: float = Field(default=120, gt=0)
     """Total seconds of source queries the assistant may run while answering one message
     (spec §6.8)."""

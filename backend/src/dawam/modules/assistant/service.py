@@ -60,6 +60,7 @@ from .internal.prompt import (
 )
 from .internal.routing import is_simple_question
 from .internal.structured import strip_cards
+from .internal.supervisor import DELEGATE, SUPERVISOR_PROMPT, Supervisor
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -278,9 +279,11 @@ class AssistantService:
         clock: Clock,
         max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
         max_job_tool_calls: int = DEFAULT_MAX_JOB_TOOL_CALLS,
+        job_supervisor: bool = False,
         users: Callable[[uuid.UUID], User | None] = lambda _: None,
         timer: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._job_supervisor = job_supervisor
         self._engine = engine
         self._workspaces = workspaces
         self._roles = roles
@@ -639,26 +642,64 @@ class AssistantService:
             if resume and saved:
                 tools.restore_proposals(saved["proposals"])
                 tools.restore_plan(saved.get("plan") or [])
+            latest = {"run": saved.get("run") if resume and saved else None}
 
-            def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
+            def write() -> None:
                 # Stored like the run's other records: redacted (ADR 0002). The proposals stay
                 # as they are; they become the Change Set's items.
-                run = redact_json(state.to_json())
-                ctx.save_checkpoint(
-                    {
-                        "run": run,
-                        "proposals": tools.saved_proposals(),
-                        "plan": redact_json(tools.saved_plan()),
-                    }
+                data = {
+                    "mode": "supervisor" if supervisor is not None else "single",
+                    "run": latest["run"],
+                    "proposals": tools.saved_proposals(),
+                    "plan": redact_json(tools.saved_plan()),
+                }
+                if supervisor is not None:  # with the specialist in progress
+                    data["supervisor"] = redact_json(supervisor.saved())
+                ctx.save_checkpoint(data)
+
+            def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
+                latest["run"] = redact_json(state.to_json())
+                if supervisor is not None:
+                    supervisor.settle()
+                write()
+
+            def logged(event: ToolFinished) -> None:
+                nonlocal calls
+                calls += 1
+                ctx.log(f"{event.call.name} {event.call.status}")
+                ctx.progress(min(95, calls * 100 // cap))
+
+            supervisor: Supervisor | None = None
+            system = SYSTEM_PROMPT + JOB_PROMPT + today_line()
+            toolset: Any = tools
+            verify = Verify(tools.written_names(), check=tools.check_proposals)
+            # ADR 0009: behind a flag, off by default. A resumed job keeps the mode it began
+            # in (a checkpoint from before modes were stored is a single agent's).
+            mode = (saved.get("mode") or "single") if resume and saved else None
+            if mode == "supervisor" or (mode is None and self._job_supervisor):
+                supervisor = Supervisor(
+                    tools,
+                    gateway,
+                    system=SYSTEM_PROMPT + today_line(),
+                    max_tool_calls=cap,
+                    saved=saved.get("supervisor") if resume and saved else None,
+                    on_save=write,
+                    on_event=logged,
+                    is_cancelled=lambda: ctx.cancelled,
+                    timer=self._timer,
+                    delta_poll_seconds=STOP_POLL_SECONDS,
                 )
+                system = SYSTEM_PROMPT + SUPERVISOR_PROMPT + today_line()
+                toolset = supervisor
+                verify = Verify(frozenset({DELEGATE}), check=tools.check_proposals)
 
             finished = Finished("completed", "", [], 0, 0)
             for event in run_agent(
                 gateway,
-                tools,
-                system=SYSTEM_PROMPT + JOB_PROMPT + today_line(),
+                toolset,
+                system=system,
                 history=[Message("user", task)],
-                core_tools=tools.core_names(None),
+                core_tools=None if supervisor else tools.core_names(None),
                 max_tool_calls=cap,
                 is_cancelled=lambda: ctx.cancelled,
                 timer=self._timer,
@@ -666,7 +707,7 @@ class AssistantService:
                 checkpoint=save,
                 resume=resume,
                 member_answer=answer if isinstance(answer, str) else None,
-                verify=Verify(tools.written_names(), check=tools.check_proposals),
+                verify=verify,
             ):
                 if isinstance(event, Asked):
                     asked = event
@@ -675,9 +716,13 @@ class AssistantService:
                     finished = event
                     break
                 if isinstance(event, ToolFinished):
-                    calls += 1
-                    ctx.log(f"{event.call.name} {event.call.status}")
-                    ctx.progress(min(95, calls * 100 // cap))
+                    logged(event)
+            if supervisor is not None:  # what the specialists used, in the job's totals
+                finished = replace(
+                    finished,
+                    prompt_tokens=finished.prompt_tokens + supervisor.prompt_tokens,
+                    completion_tokens=finished.completion_tokens + supervisor.completion_tokens,
+                )
         except ApiError as exc:  # no model assigned, internal-only refusal
             finished = Finished("failed", "", [], 0, 0, exc.code, exc.message)
         except Exception:
