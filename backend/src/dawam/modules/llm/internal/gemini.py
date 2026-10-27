@@ -37,6 +37,7 @@ from ..gateway import (
     ListingUnsupported,
     LlmError,
     Message,
+    ReasoningSettings,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -213,6 +214,7 @@ class GeminiAdapter:
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
         system, contents = _wire_contents(messages)
         body: dict[str, Any] = {"contents": contents}

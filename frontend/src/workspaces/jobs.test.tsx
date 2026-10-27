@@ -58,6 +58,8 @@ function job(overrides: Partial<Job>): Job {
     progress: 40,
     log: "",
     error: null,
+    question: null,
+    plan: null,
     created_by: ADA.id,
     created_at: "2026-01-05T10:00:00Z",
     started_at: "2026-01-05T10:00:01Z",

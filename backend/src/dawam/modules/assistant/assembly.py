@@ -15,8 +15,10 @@ from dawam.modules.jobs import JobRunner, JobService
 from dawam.modules.kpis import KpiService, kpis_for_score
 from dawam.modules.lineage import LineageService
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, WorkspaceAiService
+from dawam.modules.memory import MemoryService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
+    ConnectionService,
     DataDictionaryService,
     PiiService,
     ProfilingService,
@@ -37,6 +39,7 @@ from dawam.modules.warehouse import (
     ScoreService,
     ValidationService,
 )
+from dawam.modules.web import Network, WebService
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
@@ -56,6 +59,7 @@ def build_assistant_service(
     document_search: DocumentSearchService,
     change_set_handlers: ObjectHandlers,
     llm_adapters: AdapterFactory | None = None,
+    web_network: Network | None = None,
 ) -> AssistantService:
     workspaces = WorkspaceService(engine, clock=clock)
     systems = SourceSystemService(engine, workspaces=workspaces, clock=clock)
@@ -71,18 +75,20 @@ def build_assistant_service(
     snapshots = SnapshotService(
         engine, workspaces=workspaces, jobs=jobs, encryption_key=encryption_key, clock=clock
     )
+    ai = WorkspaceAiService(engine, workspaces=workspaces, clock=clock)
+    change_sets = ChangeSetService(
+        engine,
+        workspaces=workspaces,
+        handlers=change_set_handlers,
+        notifications=NotificationService(engine, clock=clock),
+        clock=clock,
+        conversations=readable_conversations(engine),
+    )
     tools = ToolRegistry(
         workspaces,
         ToolServices(
             kpis=KpiService(engine, workspaces=workspaces, systems=systems, clock=clock),
-            change_sets=ChangeSetService(
-                engine,
-                workspaces=workspaces,
-                handlers=change_set_handlers,
-                notifications=NotificationService(engine, clock=clock),
-                clock=clock,
-                conversations=readable_conversations(engine),
-            ),
+            change_sets=change_sets,
             files=FileService(
                 engine,
                 workspaces=workspaces,
@@ -146,6 +152,19 @@ def build_assistant_service(
                 MappingService(engine, workspaces=workspaces, clock=clock),
             ),
             dictionaries=DataDictionaryService(snapshots, systems),
+            systems=systems,
+            connections=ConnectionService(
+                engine, workspaces=workspaces, encryption_key=encryption_key, clock=clock
+            ),
+            model=model,
+            web=WebService(
+                engine,
+                encryption_key=encryption_key,
+                clock=clock,
+                network=web_network,
+                internal_only=lambda workspace_id: ai.settings(workspace_id).internal_only,
+            ),
+            memory=MemoryService(engine, workspaces=workspaces, change_sets=change_sets),
         ),
         source_query_seconds=settings.assistant_source_query_seconds,
     )
@@ -153,10 +172,11 @@ def build_assistant_service(
         engine,
         workspaces=workspaces,
         roles=RoleService(engine, providers=providers, clock=clock),
-        ai=WorkspaceAiService(engine, workspaces=workspaces, clock=clock),
+        ai=ai,
         tools=tools,
         clock=clock,
         max_tool_calls=settings.assistant_max_tool_calls,
         max_job_tool_calls=settings.assistant_job_max_tool_calls,
+        job_supervisor=settings.assistant_job_supervisor,
         users=AuthService(engine, settings, clock=clock).get_user,
     )

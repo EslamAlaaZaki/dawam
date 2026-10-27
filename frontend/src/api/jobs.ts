@@ -8,10 +8,10 @@ import type { components } from "./schema";
 export type Job = components["schemas"]["Job"];
 export type JobStatus = Job["status"];
 
-const ACTIVE: ReadonlySet<JobStatus> = new Set(["queued", "running"]);
+const ACTIVE: ReadonlySet<JobStatus> = new Set(["queued", "running", "paused"]);
 const REFRESH_MS = 3_000;
 
-/** Whether the job is still waiting or running (so it can be cancelled). */
+/** Whether the job is still waiting, running or paused for an answer (so it can be cancelled). */
 export function isActive(job: Job): boolean {
   return ACTIVE.has(job.status);
 }
@@ -59,6 +59,37 @@ export function useJob(jobId: string) {
         throw new ApiError(response.status, error.error);
       }
       return data;
+    },
+  });
+}
+
+/** Answer the question a paused job asked; the job then resumes. */
+export function useAnswerJob(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      jobId,
+      answer,
+    }: {
+      jobId: string;
+      answer: string;
+    }) => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/jobs/{job_id}/answer",
+        {
+          params: { path: { job_id: jobId } },
+          body: { answer },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSettled: (_data, _error, { jobId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+      return queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) });
     },
   });
 }

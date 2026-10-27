@@ -28,7 +28,7 @@ Public interface. Other modules import only what is re-exported here:
 Owns the ``assistant_conversations``, ``assistant_messages``, ``assistant_runs`` and
 ``assistant_run_feedback`` tables.
 Imports ``auth``, ``workspaces``, ``jobs``, ``llm``, ``files``, ``kpis``, ``changesets``,
-``notifications``, ``sources`` and ``warehouse``.
+``notifications``, ``sources``, ``warehouse`` and ``web``.
 """
 
 from fastapi import APIRouter

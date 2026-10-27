@@ -23,7 +23,8 @@ class JobRecord(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         sa.CheckConstraint(
-            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="status"
+            "status IN ('queued', 'running', 'paused', 'succeeded', 'failed', 'cancelled')",
+            name="status",
         ),
         sa.CheckConstraint("progress BETWEEN 0 AND 100", name="progress"),
         sa.Index(
@@ -57,3 +58,11 @@ class JobRecord(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     """Set by the worker running the job; a running job whose heartbeat is stale lost
     its worker."""
+    checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    """The handler's last saved state; a job with one resumes from it when its worker dies.
+    Cleared when the job ends."""
+    plan: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    """A todo list the handler keeps (``{"id", "text", "status"}`` steps), shown with the job.
+    Kept after the job ends."""
+    attempts: Mapped[int] = mapped_column(server_default="0")
+    """How many times a worker has claimed the job (more than once: it was resumed)."""

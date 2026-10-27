@@ -1920,6 +1920,70 @@
         }
       }
     },
+    "/api/v1/jobs/{job_id}/answer": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Answer Job",
+        "description": "Answer the question a paused job asked; the job is queued again and resumes with the\nanswer. Only the member who started the job may. 409 `job_not_paused` if it is not\nwaiting for an answer, 422 `invalid_answer`.",
+        "operationId": "answerJob",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobAnswer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs": {
       "get": {
         "tags": [
@@ -13972,7 +14036,7 @@
           "llm"
         ],
         "summary": "Update Model",
-        "description": "Change a model's context window (admins only); nothing else about it is editable.",
+        "description": "Change a model's context window and thinking settings (admins only); nothing else\nabout it is editable.",
         "operationId": "updateLlmModel",
         "parameters": [
           {
@@ -14319,6 +14383,115 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LlmSetupStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/fallbacks": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Fallbacks",
+        "description": "The ordered fallback models of the agent and light roles (admins only).",
+        "operationId": "getLlmFallbacks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmFallbackList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/llm/fallbacks/{role}": {
+      "put": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Role Fallbacks",
+        "description": "Replace a role's ordered fallback list (admins only). 422 `invalid_fallback_model`\nwhen a model is not enabled and tested for the role.",
+        "operationId": "setLlmRoleFallbacks",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "light"
+              ],
+              "type": "string",
+              "title": "Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmRoleFallbacksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmFallbackList"
                 }
               }
             }
@@ -15310,6 +15483,324 @@
         }
       }
     },
+    "/api/v1/admin/web": {
+      "get": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Get Settings",
+        "description": "Whether the assistant may use the web, its search providers, and which provider each\nkind of Workspace uses (admins only).",
+        "operationId": "getWebSettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Update Settings",
+        "description": "Turn web access on or off and pick the providers (admins only). 422\n`invalid_web_config` for a provider that is not registered, or an external one for\ninternal-only Workspaces.",
+        "operationId": "updateWebSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/web/providers/{kind}": {
+      "put": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Save Provider",
+        "description": "Register or change a search provider (admins only). The key is sealed before it is\nstored. 422 `invalid_web_config` or `api_key_required`.",
+        "operationId": "saveWebProvider",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "searxng",
+                "langsearch"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebProviderIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Delete Provider",
+        "description": "Remove a search provider (admins only); Workspaces that used it have none until\nanother is picked. 404 `web_provider_not_found`.",
+        "operationId": "deleteWebProvider",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "searxng",
+                "langsearch"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/web/providers/{kind}/test": {
+      "post": {
+        "tags": [
+          "web"
+        ],
+        "summary": "Test Provider",
+        "description": "Run one search through the provider and keep the result (admins only).",
+        "operationId": "testWebProvider",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "searxng",
+                "langsearch"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebProviderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/memory": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "List Memory Items",
+        "description": "The Workspace's approved memory items, newest first (any member).",
+        "operationId": "listMemoryItems",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/assistant/conversations": {
       "get": {
         "tags": [
@@ -15399,6 +15890,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/search": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Search Conversations",
+        "description": "Search the titles and messages of your conversations and those members shared,\nincluding the outcomes of assistant jobs, newest first. Somebody else's private\nconversation never matches (any member; 404 for non-members).",
+        "operationId": "searchAssistantConversations",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Text to look for (case-insensitive).",
+              "title": "Q"
+            },
+            "description": "Text to look for (case-insensitive)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSearchResults"
                 }
               }
             }
@@ -15604,7 +16161,7 @@
         },
         "responses": {
           "200": {
-            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`).",
+            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`).",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -18887,6 +19444,89 @@
         ],
         "title": "ConversationOut"
       },
+      "ConversationSearchHit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "message",
+              "job_summary"
+            ],
+            "title": "Kind",
+            "description": "A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one."
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "conversation_title": {
+            "type": "string",
+            "title": "Conversation Title"
+          },
+          "shared_with_workspace": {
+            "type": "boolean",
+            "title": "Shared With Workspace"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine",
+            "description": "You started the conversation."
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "The matching message; none for a title."
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "description": "A short stretch of text around the match."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "conversation_id",
+          "conversation_title",
+          "shared_with_workspace",
+          "mine",
+          "message_id",
+          "snippet",
+          "at"
+        ],
+        "title": "ConversationSearchHit"
+      },
+      "ConversationSearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSearchHit"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ConversationSearchResults"
+      },
       "CoverageOut": {
         "properties": {
           "total": {
@@ -22031,6 +22671,7 @@
             "enum": [
               "queued",
               "running",
+              "paused",
               "succeeded",
               "failed",
               "cancelled"
@@ -22058,6 +22699,33 @@
             ],
             "title": "Error",
             "description": "Why the job failed; null otherwise."
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question",
+            "description": "What a paused job asks its creator; null unless the status is `paused`."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PlanStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan",
+            "description": "The job's todo list, updated as it runs; null if it keeps none."
           },
           "created_by": {
             "anyOf": [
@@ -22111,12 +22779,28 @@
           "progress",
           "log",
           "error",
+          "question",
+          "plan",
           "created_by",
           "created_at",
           "started_at",
           "finished_at"
         ],
         "title": "Job"
+      },
+      "JobAnswer": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "The member's answer to the job's question."
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "JobAnswer"
       },
       "JobPage": {
         "properties": {
@@ -23274,6 +23958,22 @@
         ],
         "title": "LlmCostBudgetRequest"
       },
+      "LlmFallbackList": {
+        "properties": {
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/LlmRoleFallbacks"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "roles"
+        ],
+        "title": "LlmFallbackList"
+      },
       "LlmListedModel": {
         "properties": {
           "name": {
@@ -23442,6 +24142,9 @@
             "title": "Warnings",
             "description": "Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking."
           },
+          "reasoning": {
+            "$ref": "#/components/schemas/LlmReasoning"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -23470,6 +24173,7 @@
           "test_error",
           "last_tested_at",
           "warnings",
+          "reasoning",
           "created_at",
           "updated_at"
         ],
@@ -23680,6 +24384,17 @@
             ],
             "title": "Context Window",
             "description": "Tokens. Null: take the server's figure on the next test."
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmReasoning"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The thinking settings. Leave out to keep the stored ones."
           }
         },
         "type": "object",
@@ -23952,6 +24667,98 @@
           "internal"
         ],
         "title": "LlmProviderRequest"
+      },
+      "LlmReasoning": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "A reasoning model: it is asked to think (Anthropic extended thinking, OpenAI-style `reasoning_effort`) or its `<think>` tags are split out of the reply (Qwen3, DeepSeek-R1), and its reasoning tokens are counted.",
+            "default": false
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort",
+            "description": "Null: the provider's default."
+          },
+          "budget_tokens": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Tokens",
+            "description": "A cap on thinking tokens, for providers that take one (Anthropic)."
+          },
+          "show": {
+            "type": "boolean",
+            "title": "Show",
+            "description": "Stream the reasoning to members in the assistant. Off: hidden, but still counted.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "LlmReasoning"
+      },
+      "LlmRoleFallbacks": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "light"
+            ],
+            "title": "Role"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids",
+            "description": "The models tried, in this order, when the role's model is unavailable or times out. Never after a budget or policy refusal; a model that fails a Workspace's internal-only check is skipped for that Workspace."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "model_ids"
+        ],
+        "title": "LlmRoleFallbacks"
+      },
+      "LlmRoleFallbacksRequest": {
+        "properties": {
+          "model_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Model Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_ids"
+        ],
+        "title": "LlmRoleFallbacksRequest"
       },
       "LlmSetupStatus": {
         "properties": {
@@ -24758,6 +25565,47 @@
           "items"
         ],
         "title": "MemberList"
+      },
+      "MemoryItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "created_at"
+        ],
+        "title": "MemoryItem"
+      },
+      "MemoryItemList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MemoryItemList"
       },
       "MergeRequest": {
         "properties": {
@@ -25829,6 +26677,36 @@
           "kpis"
         ],
         "title": "PiiViewReport"
+      },
+      "PlanStep": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "status"
+        ],
+        "title": "PlanStep"
       },
       "Platform": {
         "properties": {
@@ -31706,6 +32584,233 @@
           "version"
         ],
         "title": "VersionInfo"
+      },
+      "WebProviderIn": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url",
+            "description": "SearXNG: the server's URL (JSON output must be on in its settings.yml)."
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key",
+            "description": "LangSearch: the API key. Left out: the stored one is kept."
+          }
+        },
+        "type": "object",
+        "title": "WebProviderIn"
+      },
+      "WebProviderOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "searxng",
+              "langsearch"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "internal": {
+            "type": "boolean",
+            "title": "Internal",
+            "description": "Runs inside the installation's network: the only kind internal-only Workspaces may use."
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key"
+          },
+          "test_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Ok",
+            "description": "Null: not tested since it was saved."
+          },
+          "test_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Error"
+          },
+          "last_tested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tested At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "label",
+          "internal",
+          "base_url",
+          "has_api_key",
+          "test_ok",
+          "test_error",
+          "last_tested_at",
+          "updated_at"
+        ],
+        "title": "WebProviderOut"
+      },
+      "WebSettingsIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "normal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normal Provider"
+          },
+          "internal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Provider",
+            "description": "An internal provider only (`searxng`), else 422 `invalid_web_config`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "WebSettingsIn"
+      },
+      "WebSettingsOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Web search and web fetch for the assistant; off by default."
+          },
+          "normal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normal Provider",
+            "description": "The search provider of Workspaces that are not internal-only."
+          },
+          "internal_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "searxng",
+                  "langsearch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Provider",
+            "description": "The search provider of internal-only Workspaces (internal providers only)."
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/WebProviderOut"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "normal_provider",
+          "internal_provider",
+          "providers",
+          "updated_at"
+        ],
+        "title": "WebSettingsOut"
       },
       "Workspace": {
         "properties": {

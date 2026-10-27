@@ -11,6 +11,9 @@ import hashlib
 import json
 import re
 from collections.abc import Iterable
+from datetime import date
+
+from hijridate import Gregorian
 
 from dawam.modules.llm import ToolSpec
 
@@ -41,11 +44,28 @@ JOB_PROMPT = """\
 
 
 You are running as a background job: the member handed you one long task and is not \
-watching each step. Work through it with your tools and finish with a short summary of \
+watching each step. Start by calling write_plan with your steps and keep the plan \
+current with update_plan as you go; if a step fails, mark it failed and re-plan with new \
+steps. Work through it with your tools and finish with a short summary of \
 what you found and did. Changes you propose are collected into a single Change Set that \
-the member reviews when you finish; nothing is changed until then. You cannot ask the \
-member questions, so state any assumption in your summary.\
+the member reviews when you finish; nothing is changed until then. If you cannot go on \
+without a decision only the member can make, call `ask_member` with one clear question: the \
+job pauses until they answer. Otherwise state any assumption in your summary.\
 """
+
+
+def today_line(today: date | None = None) -> str:
+    """Today's date in Gregorian and Hijri, for the end of the system prompt. Date only, no
+    time: the prompt prefix stays identical all day, so a provider's prompt cache keeps
+    hitting. It follows the static instructions so those stay a stable prefix."""
+    day = today or date.today()
+    h = Gregorian(day.year, day.month, day.day).to_hijri()
+    return (
+        f"\n\nToday's date is {day.isoformat()} (Gregorian), "
+        f"{h.day} {h.month_name()} {h.year} AH (Hijri). Use it to resolve relative dates "
+        'such as "last month" and to judge how old a Snapshot is.'
+    )
+
 
 _BLANK = r"[\s​-‏⁠﻿]*"
 _TAG = re.compile(rf"<{_BLANK}(/?){_BLANK}data", re.IGNORECASE)

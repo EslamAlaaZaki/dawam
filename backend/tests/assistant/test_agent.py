@@ -8,11 +8,16 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
+import pytest
+
+from dawam.modules.assistant.internal import agent as agent_module
 from dawam.modules.assistant.internal.agent import (
+    Checkpoint,
     Finished,
     Text,
     ToolFinished,
     ToolOutcome,
+    Verify,
     run_agent,
 )
 from dawam.modules.llm import (
@@ -485,3 +490,358 @@ def test_a_window_too_small_for_the_system_prompt_and_tools_fails_before_sending
     assert events[-1].status == "failed"
     assert events[-1].error_code == "context_window_too_small"
     assert "context window is too small" in (events[-1].error_message or "")
+
+
+# -- checkpoints (jobs resume from the last one) ------------------------------------------
+
+
+def checkpoints_of(adapter: FakeAdapter, tools: Tools | None = None, **options: Any):
+    saved: list[Checkpoint] = []
+    events = run(adapter, tools, checkpoint=saved.append, **options)
+    # What a job stores is JSON: every checkpoint survives the round trip.
+    assert all(Checkpoint.from_json(json.loads(json.dumps(c.to_json()))) == c for c in saved)
+    return saved, events
+
+
+def test_the_loop_checkpoints_after_the_model_step_and_after_each_tool_call():
+    adapter = FakeAdapter().script(
+        Reply(text="Looking", tool_calls=(call(1, id=1), call(2, id=2)), usage=Usage(7, 3)),
+        Reply(text="Found both"),
+    )
+
+    saved, _ = checkpoints_of(adapter)
+
+    assert [len(c.pending) for c in saved] == [2, 1, 0]
+    assert [len(c.calls) for c in saved] == [0, 1, 2]
+    first = saved[0]
+    assert [m.role for m in first.messages] == ["system", "user", "assistant"]
+    assert first.messages[2].tool_calls == (call(1, id=1), call(2, id=2))
+    assert (first.prompt_tokens, first.completion_tokens, first.text) == (7, 3, "Looking")
+    assert [m.role for m in saved[-1].messages][-2:] == ["tool", "tool"]
+
+
+def test_a_resumed_run_does_not_repeat_finished_tool_calls():
+    first = FakeAdapter().script(
+        Reply(tool_calls=(call(1, id=1), call(2, id=2)), usage=Usage(7, 3)), Reply(text="x")
+    )
+    saved, _ = checkpoints_of(first)
+    after_one = saved[1]  # the worker died while the second call ran
+    adapter = FakeAdapter().script(Reply(text="Found both", usage=Usage(5, 2)))
+    tools = Tools()
+
+    events = run(adapter, tools, resume=after_one)
+
+    assert tools.ran == [("lookup", {"id": 2})]
+    sent = adapter.calls[0].messages
+    assert [m.role for m in sent] == ["system", "user", "assistant", "tool", "tool"]
+    assert [m.tool_call_id for m in sent[3:]] == ["c1", "c2"]
+    done = events[-1]
+    assert done.status == "completed" and done.text == "Found both"
+    assert [c.id for c in done.tool_calls] == ["c1", "c2"]
+    assert (done.prompt_tokens, done.completion_tokens) == (12, 5)
+
+
+def test_a_run_resumed_after_its_tool_calls_asks_the_model_next():
+    first = FakeAdapter().script(Reply(tool_calls=(call(1, id=1),)), Reply(text="x"))
+    saved, _ = checkpoints_of(first)
+    adapter = FakeAdapter().script(Reply(text="Found it"))
+    tools = Tools()
+
+    events = run(adapter, tools, resume=saved[-1])
+
+    assert tools.ran == []
+    assert [m.role for m in adapter.calls[0].messages] == ["system", "user", "assistant", "tool"]
+    assert events[-1].text == "Found it" and len(events[-1].tool_calls) == 1
+
+
+def test_a_resumed_run_keeps_the_tool_call_cap_of_the_whole_run():
+    first = FakeAdapter().script(Reply(tool_calls=(call(1), call(2))), Reply(text="x"))
+    saved, _ = checkpoints_of(first, max_tool_calls=2)
+    adapter = FakeAdapter().script(Reply(tool_calls=(call(3),)), Reply(text="Done"))
+    tools = Tools()
+
+    events = run(adapter, tools, resume=saved[-1], max_tool_calls=2)
+
+    assert tools.ran == [] and adapter.calls[0].tools == ()
+    assert events[-1].status == "completed"
+
+
+def test_a_checkpoint_of_another_version_is_not_resumed():
+    first = FakeAdapter().script(Reply(tool_calls=(call(1),)), Reply(text="x"))
+    saved, _ = checkpoints_of(first)
+    data = saved[-1].to_json()
+
+    assert Checkpoint.from_json({**data, "version": 999}) is None
+    assert Checkpoint.from_json({k: v for k, v in data.items() if k != "version"}) is None
+
+
+def test_a_limited_mode_run_resumes_too():
+    first = FakeAdapter().script(Reply(text=json_call(id=7)), Reply(text="x"))
+    saved, _ = checkpoints_of(first, gateway=gateway(first, capabilities=LIMITED))
+    adapter = FakeAdapter().script(Reply(text="Found at row 7"))
+    tools = Tools()
+
+    events = limited(adapter, tools, resume=saved[-1])
+
+    assert tools.ran == []
+    assert [m.role for m in adapter.calls[0].messages] == ["system", "user", "assistant", "user"]
+    assert events[-1].text == "Found at row 7" and events[-1].tool_calls[0].id == "call_1"
+
+
+@pytest.fixture(autouse=True)
+def search_on(monkeypatch):
+    monkeypatch.setattr(agent_module, "TOOL_SEARCH_THRESHOLD", 30)
+
+
+class ManyTools(Tools):
+    """More tools than the threshold; ``zeta_report`` is not in the initial list."""
+
+    def specs(self) -> Sequence[ToolSpec]:
+        filler = [ToolSpec(f"tool_{i:02d}", "Does a thing.", {"type": "object"}) for i in range(34)]
+        report = ToolSpec("zeta_report", "Build the quarterly revenue report.", {"type": "object"})
+        return [*filler, report]
+
+
+def test_with_many_tools_the_model_gets_a_short_list_and_can_find_another():
+    find = ToolCall("f1", "find_tools", {"query": "revenue report"})
+    use = ToolCall("u1", "zeta_report", {})
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(find,)), Reply(tool_calls=(use,)), Reply(text="done")
+    )
+    tools = ManyTools()
+
+    events = run(adapter, tools, core_tools={"tool_00", "tool_01"})
+
+    first = [t.name for t in adapter.calls[0].tools]
+    assert first == ["tool_00", "tool_01", "find_tools"]
+    assert "zeta_report" in [t.name for t in adapter.calls[1].tools]
+    assert tools.ran == [("zeta_report", {})]
+    assert "zeta_report" in (adapter.calls[1].messages[-1].content or "")
+    assert events[-1].status == "completed"
+
+
+def test_with_few_tools_everything_is_sent_and_there_is_no_find_tools():
+    adapter = FakeAdapter().script(Reply(text="hi"))
+
+    run(adapter)
+
+    assert [t.name for t in adapter.calls[0].tools] == ["lookup"]
+
+
+def test_tools_found_before_a_resume_stay_loaded_after_it():
+    find = ToolCall("f1", "find_tools", {"query": "revenue report"})
+    first = FakeAdapter().script(Reply(tool_calls=(find,)), Reply(text="x"))
+    saved, _ = checkpoints_of(first, ManyTools(), core_tools={"tool_00"})
+    adapter = FakeAdapter().script(Reply(text="done"))
+
+    run(adapter, ManyTools(), core_tools={"tool_00"}, resume=saved[-1])
+
+    assert "zeta_report" in [t.name for t in adapter.calls[0].tools]
+
+
+SUGGEST = ToolSpec("suggest_kpis", "Suggest KPIs.", {"type": "object"})
+
+
+class SuggestTools(Tools):
+    def specs(self) -> Sequence[ToolSpec]:
+        return [SUGGEST]
+
+
+def _suggest_run(*replies: Reply | LlmError) -> tuple[list[Any], FakeAdapter]:
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(ToolCall("c1", "suggest_kpis", {}),)), *replies
+    )
+    return run(adapter, SuggestTools()), adapter
+
+
+def test_a_kpi_suggestion_answer_gets_a_cards_block_from_a_json_schema_call():
+    cards = {
+        "intro": "I suggest one KPI.",
+        "suggestions": [{"name": "Churn", "rationale": "Tables point to it", "unit": "%"}],
+    }
+    events, adapter = _suggest_run(
+        Reply(text="1. Churn - long list"), Reply(text=json.dumps(cards))
+    )
+
+    done = events[-1]
+    assert isinstance(done, Finished) and done.status == "completed"
+    assert done.text.startswith("I suggest one KPI.\n\n```dawam-kpis\n")
+    assert "long list" not in done.text  # the Markdown list is replaced, not repeated
+    assert json.loads(done.text.split("```dawam-kpis\n")[1].split("\n```")[0]) == [
+        {"name": "Churn", "rationale": "Tables point to it", "unit": "%"}
+    ]
+    assert adapter.calls[-1].json_schema is not None and adapter.calls[-1].tools == ()
+
+
+def test_invalid_card_json_leaves_the_markdown_answer_alone():
+    events, _ = _suggest_run(
+        Reply(text="Here are KPIs."), Reply(text='{"intro": "", "suggestions": []}')
+    )
+
+    assert events[-1].text == "Here are KPIs."
+
+
+def test_a_failing_structuring_call_does_not_fail_the_run():
+    events, _ = _suggest_run(Reply(text="Here are KPIs."), LlmError("bad_request", "no"))
+
+    assert events[-1].status == "completed" and events[-1].text == "Here are KPIs."
+
+
+def test_a_resumed_kpi_suggestion_run_still_gets_its_cards_block():
+    first = FakeAdapter().script(
+        Reply(tool_calls=(ToolCall("c1", "suggest_kpis", {}),)), Reply(text="x")
+    )
+    saved: list[Checkpoint] = []
+    run(first, SuggestTools(), checkpoint=saved.append)
+    cards = {"intro": "One KPI.", "suggestions": [{"name": "Churn", "rationale": "r"}]}
+    adapter = FakeAdapter().script(Reply(text="1. Churn"), Reply(text=json.dumps(cards)))
+
+    events = run(adapter, SuggestTools(), resume=saved[-1])
+
+    assert events[-1].text.startswith("One KPI.\n\n```dawam-kpis\n")
+
+
+def test_other_answers_make_no_structuring_call():
+    adapter = FakeAdapter().script(Reply(tool_calls=(call(id=1),)), Reply(text="Done"))
+    run(adapter)
+
+    assert all(c.json_schema is None for c in adapter.calls)
+
+
+# -- self-verification (jobs check their own work) ----------------------------------------
+
+WRITE = ToolSpec("write_it", "Write it.", {"type": "object"})
+VALIDATE = ToolSpec("run_validation", "Validate.", {"type": "object"})
+SCORE = ToolSpec("get_score", "Score.", {"type": "object"})
+
+
+class Verifying:
+    """A tool set whose warehouse validation and score are fixed; it records what ran."""
+
+    def __init__(self) -> None:
+        self.ran: list[str] = []
+
+    def specs(self) -> Sequence[ToolSpec]:
+        return [WRITE, VALIDATE, SCORE]
+
+    def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+        self.ran.append(name)
+        if name == "run_validation":
+            return ToolOutcome(json.dumps({"error_count": 2, "warning_count": 1}), "ok")
+        if name == "get_score":
+            return ToolOutcome(json.dumps({"score": 80, "grade": "B"}), "ok")
+        return ToolOutcome("written", "ok")
+
+
+def written(n: int = 1) -> Reply:
+    return Reply(tool_calls=(ToolCall(f"w{n}", "write_it", {}),))
+
+
+def verified(adapter: FakeAdapter, tools: Verifying, *errors: list[str] | None, **options: Any):
+    """Run with a proposal check that reports ``errors`` one run at a time (the last repeats)."""
+    queue = list(errors)
+    checks: list[int] = []
+
+    def check() -> list[str] | None:
+        checks.append(1)
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    verify = Verify(frozenset({"write_it"}), check=check)
+    return run(adapter, tools, verify=verify, **options), len(checks)  # type: ignore[arg-type]
+
+
+def test_valid_proposals_add_both_results_to_the_final_summary():
+    tools = Verifying()
+    events, _ = verified(FakeAdapter().script(written(), Reply(text="Done.")), tools, [])
+
+    final = events[-1]
+    assert final.status == "completed"
+    assert final.text == (
+        "Done.\n\nVerification: Proposed changes: 0 errors. "
+        "Current warehouse: validation 2 errors / 1 warnings; score 80 (grade B)."
+    )
+    assert tools.ran == ["write_it", "run_validation", "get_score"]
+
+
+def test_invalid_proposals_send_the_model_back_to_fix_them_and_are_checked_again():
+    tools = Verifying()
+    adapter = FakeAdapter().script(
+        written(1), Reply(text="First try."), written(2), Reply(text="Fixed.")
+    )
+
+    events, checks = verified(adapter, tools, ["`x` names no table"], [])
+
+    final = events[-1]
+    assert final.text.startswith("Fixed.") and "Proposed changes: 0 errors" in final.text
+    assert "First try." not in final.text and checks == 2
+    assert tools.ran.count("run_validation") == 1  # the baseline runs once, at the end
+    retry = adapter.calls[2].messages[-1]
+    assert retry.role == "user" and "`x` names no table" in (retry.content or "")
+
+
+def test_the_retry_is_bounded_and_the_summary_reports_the_remaining_errors():
+    adapter = FakeAdapter().script(
+        written(1), Reply(text="a"), written(2), Reply(text="b"), written(3), Reply(text="c")
+    )
+
+    events, checks = verified(adapter, Verifying(), ["bad"])
+
+    assert events[-1].status == "completed" and checks == 3
+    assert "Proposed changes: 1 errors" in events[-1].text
+
+
+def test_the_checks_do_not_count_against_the_tool_call_cap():
+    tools = Verifying()
+    adapter = FakeAdapter().script(written(1), Reply(text="a"), written(2), Reply(text="Fixed."))
+
+    events, _ = verified(adapter, tools, ["bad"], [], max_tool_calls=2)
+
+    final = events[-1]
+    assert final.status == "completed" and "Verification:" in final.text
+    assert [(c.name, c.status) for c in final.tool_calls if c.name == "write_it"] == [
+        ("write_it", "ok"),
+        ("write_it", "ok"),
+    ]
+    assert [c.name for c in final.tool_calls].count("validate_proposals") == 2
+
+
+def test_a_retry_round_without_new_writes_still_reports_the_errors_and_the_baseline():
+    tools = Verifying()
+    adapter = FakeAdapter().script(
+        written(), Reply(text="a"), Reply(text="b"), Reply(text="Could not fix.")
+    )
+
+    events, _ = verified(adapter, tools, ["bad"])
+
+    final = events[-1]
+    assert final.text.startswith("Could not fix.")
+    assert "Proposed changes: 1 errors. Current warehouse: validation 2 errors" in final.text
+    assert tools.ran.count("run_validation") == 1
+
+
+def test_nothing_is_verified_when_the_run_wrote_nothing():
+    tools = Verifying()
+    events, checks = verified(FakeAdapter().script(Reply(text="Just reading.")), tools, [])
+
+    assert events[-1].text == "Just reading." and tools.ran == [] and checks == 0
+
+
+def test_the_fix_rounds_used_survive_a_checkpoint_resume():
+    verify = Verify(frozenset({"write_it"}), 1, check=lambda: ["bad"])
+    adapter = FakeAdapter().script(written(), Reply(text="a"), written(2), Reply(text="b"))
+    saved, _ = checkpoints_of(adapter, Verifying(), verify=verify)
+    mid = next(c for c in saved if c.verify_rounds == 1 and len(c.calls) == 3)  # 2nd write ran
+
+    resumed = list(
+        run_agent(
+            gateway(FakeAdapter().script(Reply(text="c"))),
+            Verifying(),
+            system="",
+            history=[],
+            resume=mid,
+            verify=verify,
+        )
+    )
+
+    # the round is already used: the resumed run reports instead of retrying
+    assert "Proposed changes: 1 errors" in resumed[-1].text

@@ -100,7 +100,9 @@ interface Options {
   stopped?: () => void;
   rated?: (body: unknown) => Response;
   job?: Record<string, unknown>;
+  answered?: (body: unknown) => Response;
   ai?: Record<string, unknown>;
+  hits?: unknown[];
 }
 
 function backend(options: Options = {}) {
@@ -124,6 +126,8 @@ function backend(options: Options = {}) {
         return options.ai ? json(options.ai) : undefined;
       case `GET ${ASSISTANT}`:
         return json({ items: options.conversations ?? [] });
+      case `GET ${ASSISTANT}/search`:
+        return json({ items: options.hits ?? [] });
       case `POST ${ASSISTANT}`:
         return json(NEW_CONVERSATION, 201);
       case `GET ${ASSISTANT}/${CONVERSATION_ID}`:
@@ -134,6 +138,8 @@ function backend(options: Options = {}) {
         return options.answer?.();
       case `GET /api/v1/jobs/${JOB_ID}`:
         return json(options.job);
+      case `POST /api/v1/jobs/${JOB_ID}/answer`:
+        return options.answered?.(r.body);
       case `PUT ${ASSISTANT}/${CONVERSATION_ID}/runs/${RUN_ID}/feedback`:
         return options.rated?.(r.body);
       case `POST ${ASSISTANT}/${CONVERSATION_ID}/stop`:
@@ -337,6 +343,70 @@ describe("the assistant's chat panel", () => {
     expect(await screen.findByText(/can change data/)).toBeInTheDocument();
   });
 
+  it("shows each web search query as sent and each page read", async () => {
+    const search = {
+      name: "web_search",
+      arguments: { query: "IFRS 9 stage 'Ahmed'" },
+      status: "ok",
+      duration_ms: 30,
+      result: { query: "IFRS 9 stage", provider: "searxng", results: 3 },
+    };
+    const fetched = {
+      name: "web_fetch",
+      arguments: { url: "https://ifrs.example/9" },
+      status: "ok",
+      duration_ms: 40,
+      result: { url: "https://ifrs.example/9", title: "IFRS 9" },
+    };
+    renderApp(
+      backend({
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", search),
+            frame("tool", fetched),
+            frame("text", { text: "Three stages." }),
+            frame("done", {
+              run: run({ tool_calls: [search, fetched] }),
+              message_id: "a",
+            }),
+          ]),
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "IFRS 9 stages?",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [search, fetched] }),
+              sender: ADA_SENDER,
+              model: null,
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Three stages.",
+              created_at: "2026-01-05T10:00:01Z",
+              run: null,
+              sender: null,
+              model: null,
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await ask("IFRS 9 stages?");
+
+    const web = await screen.findByRole("list", { name: "Web access" });
+    expect(web).toHaveTextContent("Searched the web (SearXNG): IFRS 9 stage");
+    expect(web).not.toHaveTextContent("Ahmed");
+    expect(web).toHaveTextContent("Read a web page: https://ifrs.example/9");
+  });
+
   it("shows the progress of a job the assistant started", async () => {
     const start = {
       name: "start_job",
@@ -353,6 +423,11 @@ describe("the assistant's chat panel", () => {
           progress: 40,
           error: null,
           log: "",
+          plan: [
+            { id: 1, text: "Read the tables", status: "done" },
+            { id: 2, text: "Draft the mappings", status: "in_progress" },
+            { id: 3, text: "Retry the profile", status: "failed" },
+          ],
         },
         detail: {
           conversation: NEW_CONVERSATION,
@@ -392,6 +467,209 @@ describe("the assistant's chat panel", () => {
     expect(within(job).getByRole("progressbar")).toHaveAttribute("value", "40");
     expect(
       within(job).getByRole("button", { name: "Cancel job" }),
+    ).toBeInTheDocument();
+    const plan = within(job).getByRole("list", { name: "Job plan" });
+    const steps = within(plan).getAllByRole("listitem");
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toHaveTextContent("Read the tables");
+    expect(steps[0]).toHaveTextContent("done");
+    expect(steps[1]).toHaveTextContent("in progress");
+    expect(steps[2]).toHaveTextContent("failed");
+  });
+
+  it("streams the model's reasoning while it answers, when its model shows it", async () => {
+    let finish: () => void = () => {};
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        controller.enqueue(
+          encoder.encode(
+            frame("reasoning", { text: "Weighing the refund rules" }),
+          ),
+        );
+        finish = () => {
+          controller.enqueue(
+            encoder.encode(
+              frame("done", {
+                run: run({ status: "cancelled" }),
+                message_id: null,
+              }),
+            ),
+          );
+          controller.close();
+        };
+      },
+    });
+    renderApp(
+      backend({
+        answer: () =>
+          new Response(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await ask("Refunds?");
+
+    expect(await screen.findByText("Weighing the refund rules")).toBeVisible();
+    expect(screen.getByText("Reasoning")).toBeInTheDocument();
+    finish();
+  });
+
+  it("lets the member answer the question a paused job asked", async () => {
+    const start = {
+      name: "start_job",
+      arguments: { title: "Explore tables", task: "x" },
+      status: "ok",
+      duration_ms: 5,
+      result: { job_id: JOB_ID, title: "Explore tables" },
+    };
+    const paused = {
+      id: JOB_ID,
+      status: "paused",
+      progress: 40,
+      error: null,
+      log: "",
+      question: "Which KPIs matter?",
+    };
+    const answered = vi.fn((body: unknown) =>
+      json({
+        ...paused,
+        status: "queued",
+        question: null,
+        ...(body as object),
+      }),
+    );
+    renderApp(
+      backend({
+        job: paused,
+        answered,
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Explore everything",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [start] }),
+              sender: ADA_SENDER,
+              model: null,
+            },
+          ],
+        },
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", start),
+            frame("done", {
+              run: run({ tool_calls: [start] }),
+              message_id: "a",
+            }),
+          ]),
+      }),
+      PATH,
+    );
+    await openAssistant();
+    await ask("Explore everything");
+
+    const job = await screen.findByRole("status", {
+      name: "Job: Explore tables",
+    });
+    expect(await within(job).findByText("Which KPIs matter?")).toBeVisible();
+    expect(
+      within(job).getByRole("button", { name: "Cancel job" }),
+    ).toBeInTheDocument();
+    const send = within(job).getByRole("button", { name: "Send answer" });
+    expect(send).toBeDisabled();
+
+    fireEvent.change(within(job).getByLabelText("Your answer"), {
+      target: { value: "The revenue ones." },
+    });
+    fireEvent.click(send);
+
+    await waitFor(() =>
+      expect(answered).toHaveBeenCalledWith({ answer: "The revenue ones." }),
+    );
+  });
+
+  it("lets the member approve an action a paused job asks about", async () => {
+    const start = {
+      name: "start_job",
+      arguments: { title: "Explore tables", task: "x" },
+      status: "ok",
+      duration_ms: 5,
+      result: { job_id: JOB_ID, title: "Explore tables" },
+    };
+    const paused = {
+      id: JOB_ID,
+      status: "paused",
+      progress: 40,
+      error: null,
+      log: "",
+      question: "May I re-index every document of this Workspace?",
+    };
+    const answered = vi.fn((body: unknown) =>
+      json({
+        ...paused,
+        status: "queued",
+        question: null,
+        ...(body as object),
+      }),
+    );
+    renderApp(
+      backend({
+        job: paused,
+        answered,
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Explore everything",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run({ tool_calls: [start] }),
+              sender: ADA_SENDER,
+              model: null,
+            },
+          ],
+        },
+        answer: () =>
+          sse([
+            frame("started", { run_id: "r", message_id: "m" }),
+            frame("tool", start),
+            frame("done", {
+              run: run({ tool_calls: [start] }),
+              message_id: "a",
+            }),
+          ]),
+      }),
+      PATH,
+    );
+    await openAssistant();
+    await ask("Explore everything");
+
+    const job = await screen.findByRole("status", {
+      name: "Job: Explore tables",
+    });
+    expect(
+      await within(job).findByText(
+        "May I re-index every document of this Workspace?",
+      ),
+    ).toBeVisible();
+    expect(
+      within(job).getByRole("button", { name: "Cancel job" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(job).getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(answered).toHaveBeenCalledWith({ answer: "Yes" }),
+    );
+    expect(
+      within(job).getByRole("button", { name: "Decline" }),
     ).toBeInTheDocument();
   });
 
@@ -1122,5 +1400,84 @@ describe("picking the model of a message", () => {
     expect(within(reply).getByLabelText("Answered by")).toHaveTextContent(
       "Small",
     );
+  });
+
+  it("searches past conversations and job summaries and opens a hit", async () => {
+    const OTHER_ID = "55555555-5555-4555-8555-555555555555";
+    const requests = renderApp(
+      backend({
+        conversations: [{ ...NEW_CONVERSATION, title: "Daily chat" }],
+        hits: [
+          {
+            kind: "job_summary",
+            conversation_id: OTHER_ID,
+            conversation_title: "Lineage review",
+            shared_with_workspace: true,
+            mine: false,
+            message_id: "m9",
+            snippet: "Job finished: mapped dim_customer.churn_flag",
+            at: "2026-01-06T10:00:00Z",
+          },
+        ],
+      }),
+      PATH,
+    );
+    await openAssistant();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show conversations" }),
+    );
+
+    fireEvent.change(await screen.findByLabelText("Search conversations"), {
+      target: { value: " churn_flag " },
+    });
+
+    const results = await screen.findByRole(
+      "list",
+      { name: "Search results" },
+      { timeout: 3000 },
+    );
+    expect(
+      requests.filter((r) => r.path === `${ASSISTANT}/search`).at(-1)?.query,
+    ).toEqual({ q: "churn_flag" });
+    expect(
+      await within(results).findByText("Lineage review", {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
+    expect(within(results).getByText("(shared)")).toBeInTheDocument();
+    expect(within(results).getByText("Job summary")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Conversations" }),
+      ).queryByText("Daily chat"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(results).getByRole("button"));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Search results" })).toBeNull(),
+    );
+    expect(requests.some((r) => r.path === `${ASSISTANT}/${OTHER_ID}`)).toBe(
+      true,
+    );
+  });
+
+  it("says when nothing matches and does not search a blank box", async () => {
+    const requests = renderApp(
+      backend({ conversations: [NEW_CONVERSATION], hits: [] }),
+      PATH,
+    );
+    await openAssistant();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show conversations" }),
+    );
+    const box = await screen.findByLabelText("Search conversations");
+
+    fireEvent.change(box, { target: { value: "   " } });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(requests.some((r) => r.path === `${ASSISTANT}/search`)).toBe(false);
+
+    fireEvent.change(box, { target: { value: "zzz" } });
+    expect(
+      await screen.findByText("Nothing matches.", {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
   });
 });

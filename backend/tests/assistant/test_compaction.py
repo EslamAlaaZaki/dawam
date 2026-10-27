@@ -55,13 +55,13 @@ def test_dropped_turns_are_summarised_by_the_light_model_and_kept(
     fake_llm.calls.clear()
     fake_llm.script(Reply(text="THE SUMMARY"), Reply(text="the answer"))
 
-    assert done(ask(owner, roles, cid, "and now?"))["run"]["status"] == "completed"
+    assert done(ask(owner, roles, cid, "and now go on"))["run"]["status"] == "completed"
 
     assert len(chats(fake_llm, "light-model")) == 1
     seen = chats(fake_llm, "assistant-model")[0].messages
     assert "THE SUMMARY" in seen[0].content
     assert '<data source="conversation-summary">' in seen[0].content
-    assert seen[-1].content == "and now?"
+    assert seen[-1].content == "and now go on"
     assert not any("question 0" in (m.content or "") for m in seen)
 
 
@@ -71,7 +71,7 @@ def test_the_summary_is_kept_and_not_rebuilt_on_the_next_message(
     owner, cid = long_conversation(roles, fake_llm)
     add_light(admin_client, roles, model)
     fake_llm.script(Reply(text="THE SUMMARY"), Reply(text="the answer"))
-    ask(owner, roles, cid, "and now?")
+    ask(owner, roles, cid, "and now go on")
     fake_llm.calls.clear()
 
     fake_llm.script(Reply(text="fine"))
@@ -87,7 +87,7 @@ def test_the_summary_counts_against_the_context_budget(roles, model, admin_clien
     fake_llm.calls.clear()
     fake_llm.script(Reply(text="word " * 20_000), Reply(text="the answer"))
 
-    ask(owner, roles, cid, "and now?")
+    ask(owner, roles, cid, "and now go on")
 
     system = chats(fake_llm, "assistant-model")[0].messages[0].content
     assert 0 < system.count("word ") * 5 <= WINDOW * 4 // 6 + 5
@@ -100,7 +100,7 @@ def test_without_a_light_model_compaction_is_off_and_old_turns_are_dropped(
     fake_llm.calls.clear()
     fake_llm.script(Reply(text="the answer"))
 
-    assert done(ask(owner, roles, cid, "and now?"))["run"]["status"] == "completed"
+    assert done(ask(owner, roles, cid, "and now go on"))["run"]["status"] == "completed"
 
     assert [c.model for c in fake_llm.calls if c.kind == "chat"] == ["assistant-model"]
     seen = fake_llm.calls[0].messages
@@ -116,7 +116,7 @@ def test_a_failing_light_model_does_not_break_the_chat(roles, model, admin_clien
     fake_llm.calls.clear()
     fake_llm.script(LlmError("bad_request", "refused"), Reply(text="the answer"))
 
-    assert done(ask(owner, roles, cid, "and now?"))["run"]["status"] == "completed"
+    assert done(ask(owner, roles, cid, "and now go on"))["run"]["status"] == "completed"
     assert "conversation-summary" not in chats(fake_llm, "assistant-model")[0].messages[0].content
 
 
@@ -129,11 +129,11 @@ def test_past_tool_calls_come_back_as_digests(roles, model, admin_client, fake_l
         Reply(text='{"injection": false}'),  # the light model screens the tool result
         Reply(text="It is Net Revenue."),
     )
-    ask(owner, roles, cid, "which KPIs exist?")
+    ask(owner, roles, cid, "which KPIs exist")
     fake_llm.calls.clear()
     fake_llm.script(Reply(text="None."))
 
-    ask(owner, roles, cid, "and the systems?")
+    ask(owner, roles, cid, "and the systems")
 
     sent = chats(fake_llm, "assistant-model")[0].messages
     note = next(m.content for m in sent if m.role == "assistant")
@@ -151,6 +151,7 @@ def test_the_settings_list_the_light_features_as_on_or_off(roles, model, admin_c
         ("conversation_compaction", False),
         ("chunk_context", False),
         ("query_rewriting", False),
+        ("conversation_titles", False),
     ]
 
     spare = register(admin_client, "light-model", roles=("light",))
@@ -160,5 +161,6 @@ def test_the_settings_list_the_light_features_as_on_or_off(roles, model, admin_c
         ("conversation_compaction", True),
         ("chunk_context", True),
         ("query_rewriting", True),
+        ("conversation_titles", True),
     ]
     assert base(roles)  # the assistant path is unchanged

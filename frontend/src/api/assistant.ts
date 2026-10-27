@@ -38,6 +38,27 @@ export function useConversations(workspaceId: string) {
   });
 }
 
+export type SearchHit = components["schemas"]["ConversationSearchHit"];
+
+/** Search the titles and messages (job summaries included) of the conversations the member
+ * may read; waits for a non-blank term. */
+export function useSearchConversations(workspaceId: string, term: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workspace", workspaceId, "assistant", "search", term] as const,
+    enabled: term !== "",
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(`${ROOT}/search`, {
+        params: { path: { workspace_id: workspaceId }, query: { q: term } },
+      });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data.items;
+    },
+  });
+}
+
 export function useConversation(
   workspaceId: string,
   conversationId: string | null,
@@ -181,6 +202,7 @@ export function useRateAnswer(workspaceId: string, conversationId: string) {
 export type AnswerEvent =
   | { type: "started"; runId: string }
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
   | { type: "tool"; call: ToolCall }
   | { type: "done"; run: Run };
 
@@ -216,6 +238,8 @@ function toAnswerEvent({ event, data }: Frame): AnswerEvent | null {
       return { type: "started", runId: body.run_id };
     case "text":
       return { type: "text", text: body.text };
+    case "reasoning":
+      return { type: "reasoning", text: body.text };
     case "tool":
       return { type: "tool", call: body };
     case "done":

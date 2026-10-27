@@ -32,9 +32,10 @@ result value. The service never logs a value either.
 from __future__ import annotations
 
 import math
+import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -61,7 +62,13 @@ from .internal.connector import (
     connector_for,
 )
 from .internal.pii import load_rule_set, scan_columns
-from .internal.query_guard import Rejected, cap_rows, check_query, count_ordinals
+from .internal.query_guard import (
+    Rejected,
+    cap_rows,
+    check_query,
+    count_ordinals,
+    is_row_bounded,
+)
 from .internal.query_guard_catalog import load_guard_catalog
 from .tables import (
     ConnectionRecord,
@@ -106,13 +113,16 @@ class QueryBudget:
     def __init__(self, seconds: float = DEFAULT_BUDGET_SECONDS) -> None:
         self.total = seconds
         self.spent = 0.0
+        self.lock = threading.RLock()
+        """Held for a whole query, so reads running in parallel spend one after another."""
 
     @property
     def remaining(self) -> float:
         return max(0.0, self.total - self.spent)
 
     def spend(self, seconds: float) -> None:
-        self.spent += max(0.0, seconds)
+        with self.lock:
+            self.spent += max(0.0, seconds)
 
 
 @dataclass(frozen=True)
@@ -171,20 +181,33 @@ class SourceQueryService:
         ``connection_missing`` / ``no_snapshot`` / ``budget_exhausted`` / ``credentials``,
         422 ``query_rejected`` (the guard's reason), 502 ``source_error`` (our message)."""
         self._workspaces.authorize(user, Action.RUN_SOURCE_QUERY, workspace_id)
-        started = self._timer()
-        outcome: dict[str, Any] = {"outcome": "ok"}
-        try:
-            result = self._run(workspace_id, system_id, sql, budget, started, outcome)
-        except ApiError as exc:
-            outcome.update(outcome="rejected" if exc.status_code == 422 else "error")
-            outcome["error_code"] = exc.code
-            raise
-        finally:
-            elapsed = self._timer() - started
-            outcome["duration_ms"] = round(elapsed * 1000)
-            budget.spend(elapsed)
-            self._audit(user, workspace_id, system_id, sql, outcome)
+        with budget.lock:  # one query at a time per run: each sees what the last one spent
+            started = self._timer()
+            outcome: dict[str, Any] = {"outcome": "ok"}
+            try:
+                result = self._run(workspace_id, system_id, sql, budget, started, outcome)
+            except ApiError as exc:
+                outcome.update(outcome="rejected" if exc.status_code == 422 else "error")
+                outcome["error_code"] = exc.code
+                raise
+            finally:
+                elapsed = self._timer() - started
+                outcome["duration_ms"] = round(elapsed * 1000)
+                budget.spend(elapsed)
+                self._audit(user, workspace_id, system_id, sql, outcome)
         return result
+
+    def row_bounded(self, system_id: uuid.UUID, sql: str, cap: int) -> bool:
+        """Whether ``sql`` carries its own literal row bound of at most ``cap``, parsed in the
+        Source System's engine dialect (false when it does not parse). No authorisation: it
+        only reads the engine; the run itself is authorised."""
+        with Session(self._engine) as db:
+            engine_name = db.scalar(
+                sa.select(ConnectionRecord.engine).where(
+                    ConnectionRecord.source_system_id == system_id
+                )
+            )
+        return is_row_bounded(sql, engine=engine_name, cap=cap)
 
     # -- the steps ----------------------------------------------------------------------
 
@@ -476,6 +499,19 @@ def _mostly_weak(values: list[Any]) -> bool:
         if found is not None and found.ratio >= WEAK_MATCH_RATIO:
             return True
     return False
+
+
+def personal_columns(columns: Sequence[Sequence[Any]]) -> set[int]:
+    """The positions of the columns whose values show PII, the test ``run`` masks by: one
+    value passes a strong rule (whole or embedded in text), or most pass a weak one."""
+    return {
+        i for i, values in enumerate(columns) if _value_rule(values) or _mostly_weak(list(values))
+    }
+
+
+def shown_cell(value: Any) -> Any:
+    """A cell as the model sees it (see ``_shown``)."""
+    return _shown(value)
 
 
 def _shown(value: Any) -> Any:

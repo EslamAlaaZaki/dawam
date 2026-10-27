@@ -54,6 +54,8 @@ Public interface. Other modules import only what is re-exported here:
   keywords and/or a regex, a category and a confidence) and switch built-in rules off or on;
   built-in rules are never edited. ``internal.pii.load_rule_set`` feeds them to the name scan
   of every new Snapshot and to value scans; changes are audited (``pii_rule`` entity).
+  ``custom_rules_in_text(db, workspace_id, text)`` names the custom rules whose regex
+  matches free text (Workspace memory refuses such text, ADR 0010).
 - ``check_query``: the AI source query guard (ADR 0002). Given SQL, the engine and a
   ``GuardCatalog`` of the latest Snapshot (``load_guard_catalog`` builds one), it returns
   ``Rejected(reason)`` or a ``SafeQuery``: fully qualified SQL regenerated from the verified
@@ -63,7 +65,9 @@ Public interface. Other modules import only what is re-exported here:
   Connection): guard, read-only run with the statement timeout and a row cap, a per-run
   ``QueryBudget`` of source-query seconds, masking of guard-masked and validator-hit columns, a
   ``value-at-query`` finding on a hit, error text of our own, and an audit entry (``ai``
-  channel) without result values.
+  channel) without result values. ``personal_columns`` and ``shown_cell`` are its value masking
+  and cell shaping, and ``match_name`` the built-in PII name rules, for other code that shows
+  table data to the model (the assistant's ``query_file``); ``MASK`` is what a masked cell shows.
 - ``RenameService``: members list the rename candidates extraction proposes (``RenameCandidate``);
   owners and editors confirm or reject one, or merge a removed object into an added one, so a
   rename keeps its identity (``RenamedObject``); confirmations and merges are audited.
@@ -107,7 +111,7 @@ reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
 from fastapi import APIRouter
 
 from .api import router as _systems_router
-from .connection_service import Connection, ConnectionService
+from .connection_service import Connection, ConnectionService, ConnectionStatus
 from .deletion import (
     SourceSystemContents,
     deleted_source_system,
@@ -121,7 +125,8 @@ from .dictionary_service import DataDictionary, DataDictionaryService
 from .enhancement_changes import SourceEnhancementHandler
 from .enhancement_service import EnhancementService
 from .import_service import ImportResult, ImportStatus, SchemaImportService
-from .internal.pii import is_protected, protected_column_ids
+from .internal.pii import custom_rules_in_text, is_protected, protected_column_ids
+from .internal.pii_rules import match_name
 from .internal.query_guard import (
     GuardCatalog,
     GuardColumn,
@@ -159,9 +164,12 @@ from .snapshot_service import (
 )
 from .source_query_service import (
     DEFAULT_BUDGET_SECONDS,
+    MASK,
     QueryBudget,
     SourceQueryResult,
     SourceQueryService,
+    personal_columns,
+    shown_cell,
 )
 from .staging_source_service import (
     StagingColumn,
@@ -181,11 +189,13 @@ __all__ = [
     "DEFAULT_BUDGET_SECONDS",
     "EXTRACT_JOB",
     "INFER_JOB",
+    "MASK",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
     "ConfirmedPiiColumn",
     "Connection",
     "ConnectionService",
+    "ConnectionStatus",
     "DataDictionary",
     "DataDictionaryService",
     "DataDictionaryServiceDep",
@@ -236,14 +246,18 @@ __all__ = [
     "check_query",
     "confirmed_pii_column_ids",
     "confirmed_pii_columns",
+    "custom_rules_in_text",
     "deleted_source_system",
     "deleted_source_systems",
     "hidden_source_system_ids",
     "is_protected",
     "load_guard_catalog",
+    "match_name",
+    "personal_columns",
     "protected_column_ids",
     "purge_source_system",
     "router",
+    "shown_cell",
     "source_column_labels",
     "source_system_contents",
     "untraceable_views",

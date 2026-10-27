@@ -23,10 +23,12 @@ from dawam.modules import (
     lineage,
     llm,
     mail,
+    memory,
     notifications,
     propagation,
     sources,
     warehouse,
+    web,
     workspaces,
 )
 
@@ -48,6 +50,8 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     collaboration,
     files,
     llm,
+    web,
+    memory,
     assistant,
     docpack,
     deletions,

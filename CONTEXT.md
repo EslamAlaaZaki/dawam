@@ -112,6 +112,10 @@ _Avoid_: Model type, capability
 The models a Workspace uses, chosen by its owner from the models enabled for each Model Role: one embedding model, and one or more agent and light models with one of each marked as the Workspace's default. Every per-message pick in a Conversation comes from the Workspace's agent models.
 _Avoid_: Allowed Models (the former admin-set list it replaces), approved list
 
+**Workspace Memory**:
+The facts, naming conventions and preferences a Workspace's team confirmed for the assistant: short plain-text memory items, each saved only once its Change Set item is accepted, and read back by the assistant on demand. Never holds personal data.
+_Avoid_: Notes, knowledge base
+
 ### Changing things
 
 **Asset**:

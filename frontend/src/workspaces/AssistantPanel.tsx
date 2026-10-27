@@ -39,12 +39,23 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
-import { isActive, useCancelJob, useJob } from "../api/jobs";
+import {
+  isActive,
+  useAnswerJob,
+  useCancelJob,
+  useJob,
+  type Job,
+} from "../api/jobs";
 import { useWorkspaceAiSettings } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
 import { ConversationChangeSets } from "./ChangeSetReview";
 import { Avatar, Markdown, MessageTime } from "./chatParts";
+import {
+  ConversationSearchBox,
+  ConversationSearchResults,
+  useSearchTerm,
+} from "./ConversationSearch";
 import type { AssistantRequest } from "./FailedChecksPanel";
 import {
   ErrorText,
@@ -69,7 +80,45 @@ interface Draft {
   question: string;
   askedAt: string;
   text: string;
+  /** The model's reasoning, streamed only when its model is set to show it. */
+  reasoning: string;
   tools: ToolCall[];
+}
+
+const PLAN_MARKS = {
+  pending: { mark: "○", label: "to do", tone: "text-muted-foreground" },
+  in_progress: { mark: "◐", label: "in progress", tone: "text-primary" },
+  done: { mark: "●", label: "done", tone: "text-success-strong" },
+  failed: { mark: "✕", label: "failed", tone: "text-danger-strong" },
+  skipped: { mark: "–", label: "skipped", tone: "text-muted-foreground" },
+} as const;
+
+/** The job's todo list, as the job writes and updates it. */
+function JobPlan({ plan }: { plan: NonNullable<Job["plan"]> }) {
+  return (
+    <ol aria-label="Job plan" className="m-0 w-full list-none space-y-1 p-0">
+      {plan.map((step) => {
+        const state = PLAN_MARKS[step.status];
+        return (
+          <li key={step.id} className="flex items-baseline gap-2">
+            <span aria-hidden className={state.tone}>
+              {state.mark}
+            </span>
+            <span
+              className={cn(
+                (step.status === "done" || step.status === "skipped") &&
+                  "text-muted-foreground",
+                step.status === "skipped" && "line-through",
+              )}
+            >
+              {step.text}
+            </span>
+            <span className="sr-only">{state.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 /** A long task the assistant handed to a background job: its status and progress, live. */
@@ -84,6 +133,8 @@ function JobProgress({
 }) {
   const job = useJob(jobId);
   const cancel = useCancelJob(workspaceId);
+  const answer = useAnswerJob(workspaceId);
+  const [reply, setReply] = useState("");
   const current = job.data;
   return (
     <div
@@ -110,8 +161,66 @@ function JobProgress({
               Cancel job
             </Button>
           )}
+          {current.plan && current.plan.length > 0 && (
+            <JobPlan plan={current.plan} />
+          )}
           {current.error && (
             <p className="w-full text-danger-strong">{current.error}</p>
+          )}
+          {current.status === "paused" && current.question && (
+            <form
+              className="flex w-full flex-col gap-2"
+              aria-label="Answer the job"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const text = reply.trim();
+                if (text) {
+                  answer.mutate(
+                    { jobId, answer: text },
+                    { onSuccess: () => setReply("") },
+                  );
+                }
+              }}
+            >
+              <p className="font-medium">{current.question}</p>
+              <Textarea
+                aria-label="Your answer"
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                rows={2}
+              />
+              {answer.error && <ErrorText>{answer.error.message}</ErrorText>}
+              <div className="flex gap-2">
+                {current.question.startsWith("May I ") && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={answer.isPending}
+                      onClick={() => answer.mutate({ jobId, answer: "Yes" })}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={answer.isPending}
+                      onClick={() => answer.mutate({ jobId, answer: "No" })}
+                    >
+                      Decline
+                    </Button>
+                  </>
+                )}
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!reply.trim() || answer.isPending}
+                >
+                  Send answer
+                </Button>
+              </div>
+            </form>
           )}
         </>
       ) : (
@@ -141,14 +250,39 @@ function canWrite(tools: readonly ToolCall[]) {
   );
 }
 
+const SEARCH_PROVIDERS: Record<string, string> = {
+  searxng: "SearXNG",
+  langsearch: "LangSearch",
+};
+
+/** What a reply sent to the web: each search query (as sent, values removed) and each page read. */
+function webOf(tools: readonly ToolCall[]) {
+  return tools.flatMap((tool) => {
+    if (tool.name === "web_search" && typeof tool.result?.query === "string") {
+      const provider = String(tool.result.provider ?? "");
+      return [
+        {
+          label: `Searched the web (${SEARCH_PROVIDERS[provider] ?? provider})`,
+          detail: tool.result.query,
+        },
+      ];
+    }
+    if (tool.name === "web_fetch" && typeof tool.result?.url === "string") {
+      return [{ label: "Read a web page", detail: tool.result.url }];
+    }
+    return [];
+  });
+}
+
 /** Documents (or tools) whose text looked like a prompt injection; the model still saw it, with a warning. */
 function flaggedOf(tools: readonly ToolCall[]) {
   return [...new Set(tools.flatMap((tool) => tool.flagged ?? []))];
 }
 
 /**
- * What a reply's tools left for the member to see: the jobs it started, a warning when
- * a Connection's user can write and the documents flagged as possible injections. The tool
+ * What a reply's tools left for the member to see: the jobs it started, what it sent to the
+ * web, a warning when a Connection's user can write and the documents flagged as possible
+ * injections. The tool
  * calls themselves are not shown.
  */
 function ToolNotes({
@@ -168,6 +302,19 @@ function ToolNotes({
           title={job.title}
         />
       ))}
+      {webOf(tools).length > 0 && (
+        <ul
+          aria-label="Web access"
+          className="flex flex-col gap-1 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+        >
+          {webOf(tools).map((item, index) => (
+            <li key={index}>
+              {item.label}:{" "}
+              <span className="break-all text-foreground">{item.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {canWrite(tools) && (
         <p
           role="alert"
@@ -238,6 +385,7 @@ function hasNotes(run: Run | null | undefined): boolean {
     !!run &&
     (["cancelled", "tool_limit", "failed"].includes(run.status) ||
       jobsOf(run.tool_calls).length > 0 ||
+      webOf(run.tool_calls).length > 0 ||
       canWrite(run.tool_calls) ||
       flaggedOf(run.tool_calls).length > 0)
   );
@@ -485,6 +633,7 @@ export function AssistantPanel({
   const me = useMe();
   const conversations = useConversations(workspace.id);
   const create = useCreateConversation(workspace.id);
+  const search = useSearchTerm();
   const [chosen, setChosen] = useState<string | null>(null);
   const selected = chosen ?? conversations.data?.[0]?.id ?? null;
   const detail = useConversation(workspace.id, selected);
@@ -526,6 +675,7 @@ export function AssistantPanel({
       question: content,
       askedAt: new Date().toISOString(),
       text: "",
+      reasoning: "",
       tools: [],
     });
     try {
@@ -537,6 +687,8 @@ export function AssistantPanel({
         onEvent: (event: AnswerEvent) => {
           if (event.type === "text") {
             setDraft((d) => d && { ...d, text: d.text + event.text });
+          } else if (event.type === "reasoning") {
+            setDraft((d) => d && { ...d, reasoning: d.reasoning + event.text });
           } else if (event.type === "tool") {
             setDraft((d) => d && { ...d, tools: [...d.tools, event.call] });
           } else if (event.type === "done" && event.run.status === "failed") {
@@ -602,6 +754,7 @@ export function AssistantPanel({
   }
 
   function choose(id: string) {
+    search.setTyped("");
     setChosen(id);
     setPicked(null);
     setFailed(null);
@@ -741,6 +894,16 @@ export function AssistantPanel({
                   {draft.question}
                 </Bubble>
                 <Bubble email={null} at={draft.askedAt} busy>
+                  {draft.reasoning && (
+                    <details open={!draft.text} className="mb-2">
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        Reasoning
+                      </summary>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {draft.reasoning}
+                      </p>
+                    </details>
+                  )}
                   {draft.text ? (
                     <Markdown>{draft.text}</Markdown>
                   ) : (
@@ -900,35 +1063,51 @@ export function AssistantPanel({
                 </Button>
               </div>
             )}
-            {conversations.isError && (
+            <ConversationSearchBox
+              value={search.typed}
+              onChange={search.setTyped}
+            />
+            {search.term !== "" && (
+              <ConversationSearchResults
+                workspaceId={workspace.id}
+                term={search.term}
+                disabled={running}
+                onOpen={choose}
+              />
+            )}
+            {search.term === "" && conversations.isError && (
               <div className="px-3">
                 <ErrorText>Could not load the conversations.</ErrorText>
               </div>
             )}
-            {conversations.isSuccess && conversations.data.length === 0 && (
-              <Hint className="px-3">No conversations yet.</Hint>
-            )}
+            {search.term === "" &&
+              conversations.isSuccess &&
+              conversations.data.length === 0 && (
+                <Hint className="px-3">No conversations yet.</Hint>
+              )}
             {/* Room around the items so their focus ring is not cut off by the scroll box. */}
-            <ul className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-1 pb-3">
-              {conversations.data?.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className={conversationClasses}
-                    aria-current={c.id === selected ? "true" : undefined}
-                    disabled={running}
-                    onClick={() => choose(c.id)}
-                  >
-                    <span className="min-w-0 truncate">{c.title}</span>
-                    {!c.mine && (
-                      <span className="shrink-0 text-xs text-subtle-foreground">
-                        (shared)
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {search.term === "" && (
+              <ul className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-1 pb-3">
+                {conversations.data?.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className={conversationClasses}
+                      aria-current={c.id === selected ? "true" : undefined}
+                      disabled={running}
+                      onClick={() => choose(c.id)}
+                    >
+                      <span className="min-w-0 truncate">{c.title}</span>
+                      {!c.mine && (
+                        <span className="shrink-0 text-xs text-subtle-foreground">
+                          (shared)
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </nav>
         </>
       )}

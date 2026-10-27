@@ -49,6 +49,7 @@ from dawam.modules.warehouse import (
     staged_system_check,
     uninstall_score_recalculation,
 )
+from dawam.modules.web import Network
 from dawam.modules.workspaces import InvitedWorkspaceMembership, WorkspaceService
 from dawam.platform import health, meta
 from dawam.platform.api_docs import install_api_docs
@@ -97,6 +98,9 @@ class Services:
     ocr_engine: OcrEngine | None = None
     """OCR for the scanned pages of indexed PDFs; ``None`` uses the one the settings name
     (tests pass a fake)."""
+    web_network: Network | None = None
+    """What web search and web fetch reach the internet through; ``None``: the real network
+    (tests pass a fake, so no test reaches a search provider or a web page)."""
 
 
 def default_services() -> Services:

@@ -603,6 +603,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Job
+         * @description Answer the question a paused job asked; the job is queued again and resumes with the
+         *     answer. Only the member who started the job may. 409 `job_not_paused` if it is not
+         *     waiting for an answer, 422 `invalid_answer`.
+         */
+        post: operations["answerJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs": {
         parameters: {
             query?: never;
@@ -3760,7 +3782,8 @@ export interface paths {
         get?: never;
         /**
          * Update Model
-         * @description Change a model's context window (admins only); nothing else about it is editable.
+         * @description Change a model's context window and thinking settings (admins only); nothing else
+         *     about it is editable.
          */
         put: operations["updateLlmModel"];
         post?: never;
@@ -3883,6 +3906,47 @@ export interface paths {
          */
         get: operations["getLlmSetup"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/fallbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fallbacks
+         * @description The ordered fallback models of the agent and light roles (admins only).
+         */
+        get: operations["getLlmFallbacks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/fallbacks/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Role Fallbacks
+         * @description Replace a role's ordered fallback list (admins only). 422 `invalid_fallback_model`
+         *     when a model is not enabled and tested for the role.
+         */
+        put: operations["setLlmRoleFallbacks"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4164,6 +4228,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/web": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description Whether the assistant may use the web, its search providers, and which provider each
+         *     kind of Workspace uses (admins only).
+         */
+        get: operations["getWebSettings"];
+        /**
+         * Update Settings
+         * @description Turn web access on or off and pick the providers (admins only). 422
+         *     `invalid_web_config` for a provider that is not registered, or an external one for
+         *     internal-only Workspaces.
+         */
+        put: operations["updateWebSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/web/providers/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Provider
+         * @description Register or change a search provider (admins only). The key is sealed before it is
+         *     stored. 422 `invalid_web_config` or `api_key_required`.
+         */
+        put: operations["saveWebProvider"];
+        post?: never;
+        /**
+         * Delete Provider
+         * @description Remove a search provider (admins only); Workspaces that used it have none until
+         *     another is picked. 404 `web_provider_not_found`.
+         */
+        delete: operations["deleteWebProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/web/providers/{kind}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description Run one search through the provider and keep the result (admins only).
+         */
+        post: operations["testWebProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Memory Items
+         * @description The Workspace's approved memory items, newest first (any member).
+         */
+        get: operations["listMemoryItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/assistant/conversations": {
         parameters: {
             query?: never;
@@ -4183,6 +4340,28 @@ export interface paths {
          * @description Start a conversation, private to you. 409 `workspace_archived`.
          */
         post: operations["createAssistantConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Conversations
+         * @description Search the titles and messages of your conversations and those members shared,
+         *     including the outcomes of assistant jobs, newest first. Somebody else's private
+         *     conversation never matches (any member; 404 for non-members).
+         */
+        get: operations["searchAssistantConversations"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5561,6 +5740,49 @@ export interface components {
              * @description The model picked for the last message, used again until another is picked; none until one is.
              */
             model_id: string | null;
+        };
+        /** ConversationSearchHit */
+        ConversationSearchHit: {
+            /**
+             * Kind
+             * @description A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one.
+             * @enum {string}
+             */
+            kind: "conversation" | "message" | "job_summary";
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Conversation Title */
+            conversation_title: string;
+            /** Shared With Workspace */
+            shared_with_workspace: boolean;
+            /**
+             * Mine
+             * @description You started the conversation.
+             */
+            mine: boolean;
+            /**
+             * Message Id
+             * @description The matching message; none for a title.
+             */
+            message_id: string | null;
+            /**
+             * Snippet
+             * @description A short stretch of text around the match.
+             */
+            snippet: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** ConversationSearchResults */
+        ConversationSearchResults: {
+            /** Items */
+            items: components["schemas"]["ConversationSearchHit"][];
         };
         /** CoverageOut */
         CoverageOut: {
@@ -6971,7 +7193,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            status: "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
             /**
              * Progress
              * @description Percent done, 0 to 100.
@@ -6987,6 +7209,16 @@ export interface components {
              * @description Why the job failed; null otherwise.
              */
             error: string | null;
+            /**
+             * Question
+             * @description What a paused job asks its creator; null unless the status is `paused`.
+             */
+            question: string | null;
+            /**
+             * Plan
+             * @description The job's todo list, updated as it runs; null if it keeps none.
+             */
+            plan: components["schemas"]["PlanStep"][] | null;
             /** Created By */
             created_by: string | null;
             /**
@@ -6998,6 +7230,14 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /** JobAnswer */
+        JobAnswer: {
+            /**
+             * Answer
+             * @description The member's answer to the job's question.
+             */
+            answer: string;
         };
         /** JobPage */
         JobPage: {
@@ -7524,6 +7764,11 @@ export interface components {
              */
             amount: number | string;
         };
+        /** LlmFallbackList */
+        LlmFallbackList: {
+            /** Roles */
+            roles: components["schemas"]["LlmRoleFallbacks"][];
+        };
         /** LlmListedModel */
         LlmListedModel: {
             /** Name */
@@ -7596,6 +7841,7 @@ export interface components {
              * @description Why the model may not suit its roles, for the admin: an unknown or too-small context window for the agent role, and (right after Test connection) an Ollama `num_ctx` below the minimum with how to raise it. Not blocking.
              */
             warnings: string[];
+            reasoning: components["schemas"]["LlmReasoning"];
             /**
              * Created At
              * Format: date-time
@@ -7691,6 +7937,8 @@ export interface components {
              * @description Tokens. Null: take the server's figure on the next test.
              */
             context_window?: number | null;
+            /** @description The thinking settings. Leave out to keep the stored ones. */
+            reasoning?: components["schemas"]["LlmReasoning"] | null;
         };
         /** LlmModelUsage */
         LlmModelUsage: {
@@ -7823,6 +8071,49 @@ export interface components {
              * @default 60
              */
             timeout_seconds: number;
+        };
+        /** LlmReasoning */
+        LlmReasoning: {
+            /**
+             * Enabled
+             * @description A reasoning model: it is asked to think (Anthropic extended thinking, OpenAI-style `reasoning_effort`) or its `<think>` tags are split out of the reply (Qwen3, DeepSeek-R1), and its reasoning tokens are counted.
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Effort
+             * @description Null: the provider's default.
+             */
+            effort?: ("low" | "medium" | "high") | null;
+            /**
+             * Budget Tokens
+             * @description A cap on thinking tokens, for providers that take one (Anthropic).
+             */
+            budget_tokens?: number | null;
+            /**
+             * Show
+             * @description Stream the reasoning to members in the assistant. Off: hidden, but still counted.
+             * @default false
+             */
+            show: boolean;
+        };
+        /** LlmRoleFallbacks */
+        LlmRoleFallbacks: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "agent" | "light";
+            /**
+             * Model Ids
+             * @description The models tried, in this order, when the role's model is unavailable or times out. Never after a budget or policy refusal; a model that fails a Workspace's internal-only check is skipped for that Workspace.
+             */
+            model_ids: string[];
+        };
+        /** LlmRoleFallbacksRequest */
+        LlmRoleFallbacksRequest: {
+            /** Model Ids */
+            model_ids: string[];
         };
         /** LlmSetupStatus */
         LlmSetupStatus: {
@@ -8190,6 +8481,26 @@ export interface components {
              * @description Every member, by display name.
              */
             items: components["schemas"]["Member"][];
+        };
+        /** MemoryItem */
+        MemoryItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Text */
+            text: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** MemoryItemList */
+        MemoryItemList: {
+            /** Items */
+            items: components["schemas"]["MemoryItem"][];
         };
         /** MergeRequest */
         MergeRequest: {
@@ -8665,6 +8976,18 @@ export interface components {
             source_columns: components["schemas"]["LineageNode"][];
             /** Kpis */
             kpis: components["schemas"]["PiiKpi"][];
+        };
+        /** PlanStep */
+        PlanStep: {
+            /** Id */
+            id: number;
+            /** Text */
+            text: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "in_progress" | "done" | "failed" | "skipped";
         };
         /** Platform */
         Platform: {
@@ -11131,6 +11454,86 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** WebProviderIn */
+        WebProviderIn: {
+            /**
+             * Base Url
+             * @description SearXNG: the server's URL (JSON output must be on in its settings.yml).
+             */
+            base_url?: string | null;
+            /**
+             * Api Key
+             * @description LangSearch: the API key. Left out: the stored one is kept.
+             */
+            api_key?: string | null;
+        };
+        /** WebProviderOut */
+        WebProviderOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "searxng" | "langsearch";
+            /** Label */
+            label: string;
+            /**
+             * Internal
+             * @description Runs inside the installation's network: the only kind internal-only Workspaces may use.
+             */
+            internal: boolean;
+            /** Base Url */
+            base_url: string;
+            /** Has Api Key */
+            has_api_key: boolean;
+            /**
+             * Test Ok
+             * @description Null: not tested since it was saved.
+             */
+            test_ok: boolean | null;
+            /** Test Error */
+            test_error: string | null;
+            /** Last Tested At */
+            last_tested_at: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WebSettingsIn */
+        WebSettingsIn: {
+            /** Enabled */
+            enabled: boolean;
+            /** Normal Provider */
+            normal_provider?: ("searxng" | "langsearch") | null;
+            /**
+             * Internal Provider
+             * @description An internal provider only (`searxng`), else 422 `invalid_web_config`.
+             */
+            internal_provider?: ("searxng" | "langsearch") | null;
+        };
+        /** WebSettingsOut */
+        WebSettingsOut: {
+            /**
+             * Enabled
+             * @description Web search and web fetch for the assistant; off by default.
+             */
+            enabled: boolean;
+            /**
+             * Normal Provider
+             * @description The search provider of Workspaces that are not internal-only.
+             */
+            normal_provider: ("searxng" | "langsearch") | null;
+            /**
+             * Internal Provider
+             * @description The search provider of internal-only Workspaces (internal providers only).
+             */
+            internal_provider: ("searxng" | "langsearch") | null;
+            /** Providers */
+            providers: components["schemas"]["WebProviderOut"][];
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** Workspace */
         Workspace: {
             /**
@@ -12780,6 +13183,50 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    answerJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobAnswer"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -20517,6 +20964,88 @@ export interface operations {
             };
         };
     };
+    getLlmFallbacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmFallbackList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setLlmRoleFallbacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: "agent" | "light";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmRoleFallbacksRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmFallbackList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getLlmBudgets: {
         parameters: {
             query?: never;
@@ -21284,6 +21813,248 @@ export interface operations {
             };
         };
     };
+    getWebSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSettingsOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateWebSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSettingsOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveWebProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "searxng" | "langsearch";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebProviderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSettingsOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteWebProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "searxng" | "langsearch";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testWebProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "searxng" | "langsearch";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebProviderOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMemoryItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryItemList"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listAssistantConversations: {
         parameters: {
             query?: never;
@@ -21346,6 +22117,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchAssistantConversations: {
+        parameters: {
+            query: {
+                /** @description Text to look for (case-insensitive). */
+                q: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSearchResults"];
                 };
             };
             /** @description Validation error */
@@ -21470,7 +22284,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`). */
+            /** @description A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`). */
             200: {
                 headers: {
                     [name: string]: unknown;
