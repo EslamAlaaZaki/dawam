@@ -22,6 +22,7 @@ import json
 import re
 import time
 from collections.abc import Callable, Collection, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
@@ -152,6 +153,9 @@ class ToolSet(Protocol):
         """Run one tool call. Never raises for an ordinary failure: it says ``refused`` or
         ``error`` in the outcome."""
         ...
+
+    # Optionally ``is_read(name, arguments) -> bool``: True for a call that saves nothing and
+    # may run beside other reads of the same turn. A set without it runs every call in order.
 
 
 @dataclass(frozen=True)
@@ -311,6 +315,10 @@ class _Run:
         )
 
 
+MAX_PARALLEL_READS = 8
+"""Most read calls of one turn that run at the same time."""
+
+
 def _find(
     arguments: dict[str, Any], all_specs: Sequence[ToolSpec], loaded: set[str]
 ) -> ToolOutcome:
@@ -326,6 +334,24 @@ def _find(
     loaded.update(s.name for s in found)
     text = "\n".join(f"- {s.name}: {s.description}" for s in found)
     return ToolOutcome(f"These tools are now available to call:\n{text}", "ok")
+
+
+def _run_reads(
+    tools: ToolSet, calls: Sequence[ToolCall], timer: Callable[[], float]
+) -> list[tuple[ToolOutcome, int]]:
+    """Run ``calls`` at the same time; their outcomes and durations, in the order of ``calls``.
+    The tool set opens its own database session per call (services hold the engine, never a
+    session), so the calls share no session."""
+
+    def one(call: ToolCall) -> tuple[ToolOutcome, int]:
+        started = timer()
+        with tracing().tool_call(call.name, call.arguments) as span:
+            outcome = tools.execute(call.name, call.arguments)
+            span.result(outcome.status, outcome.content)
+        return outcome, round((timer() - started) * 1000)
+
+    with ThreadPoolExecutor(min(len(calls), MAX_PARALLEL_READS)) as pool:
+        return list(pool.map(one, calls))
 
 
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
@@ -450,15 +476,60 @@ def run_agent(
                 )
             )
 
+    def record(call: ToolCall, outcome: ToolOutcome, duration: int) -> Iterator[AgentEvent]:
+        """Report a finished call and hand its result to the model; the caller saves."""
+        flagged = (
+            flagged_parts(call.name, outcome.content, inspect) if outcome.status == "ok" else []
+        )
+        entry = ToolCallRecord(
+            call.id,
+            call.name,
+            call.arguments,
+            outcome.status,
+            duration,
+            outcome.saved,
+            _digest(outcome),
+            tuple(flagged),
+        )
+        run.calls.append(entry)
+        yield ToolFinished(entry)
+        quoted = quote_data(
+            f"tool:{call.name if call.name in known_tools else 'unknown'}",
+            shorten_result(outcome.content, window),
+        )
+        if flagged:
+            quoted = warn(quoted)
+        if prompted:
+            messages.append(Message("user", quoted))
+        else:
+            messages.append(Message("tool", quoted, tool_call_id=call.id))
+        pending.remove(call)
+
     try:
         while True:
             if pending:  # the calls of the last model step (left over when resuming)
                 executed = sum(1 for c in run.calls if c.status != "skipped")
+                is_read = getattr(tools, "is_read", None)
                 while pending:
-                    call = pending[0]
                     if is_cancelled():
                         yield run.finish("cancelled")
                         return
+                    # Reads of the turn run first and together; writes and find_tools follow
+                    # one by one, so a write never overlaps another call.
+                    reads = (
+                        [c for c in pending if c.name in specs and is_read(c.name, c.arguments)]
+                        if is_read is not None
+                        else []
+                    )
+                    batch = reads[: max_tool_calls - executed] if len(reads) > 1 else []
+                    if len(batch) > 1:
+                        done = _run_reads(tools, batch, timer)
+                        executed += len(batch)
+                        for read, (outcome, duration) in zip(batch, done, strict=True):
+                            yield from record(read, outcome, duration)
+                        save()  # once the whole batch has finished
+                        continue
+                    call = reads[0] if reads else pending[0]
                     if executed >= max_tool_calls:
                         limit_hit = True
                         outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0
@@ -472,34 +543,7 @@ def run_agent(
                             span.result(outcome.status, outcome.content)
                         duration = round((timer() - started) * 1000)
                         executed += 1
-                    flagged = (
-                        flagged_parts(call.name, outcome.content, inspect)
-                        if outcome.status == "ok"
-                        else []
-                    )
-                    record = ToolCallRecord(
-                        call.id,
-                        call.name,
-                        call.arguments,
-                        outcome.status,
-                        duration,
-                        outcome.saved,
-                        _digest(outcome),
-                        tuple(flagged),
-                    )
-                    run.calls.append(record)
-                    yield ToolFinished(record)
-                    quoted = quote_data(
-                        f"tool:{call.name if call.name in known_tools else 'unknown'}",
-                        shorten_result(outcome.content, window),
-                    )
-                    if flagged:
-                        quoted = warn(quoted)
-                    if prompted:
-                        messages.append(Message("user", quoted))
-                    else:
-                        messages.append(Message("tool", quoted, tool_call_id=call.id))
-                    del pending[0]
+                    yield from record(call, outcome, duration)
                     save()
             if is_cancelled():
                 yield run.finish("cancelled")

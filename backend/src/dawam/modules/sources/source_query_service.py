@@ -32,6 +32,7 @@ result value. The service never logs a value either.
 from __future__ import annotations
 
 import math
+import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -106,13 +107,15 @@ class QueryBudget:
     def __init__(self, seconds: float = DEFAULT_BUDGET_SECONDS) -> None:
         self.total = seconds
         self.spent = 0.0
+        self._lock = threading.Lock()  # parallel reads of one turn draw on it together
 
     @property
     def remaining(self) -> float:
         return max(0.0, self.total - self.spent)
 
     def spend(self, seconds: float) -> None:
-        self.spent += max(0.0, seconds)
+        with self._lock:
+            self.spent += max(0.0, seconds)
 
 
 @dataclass(frozen=True)
