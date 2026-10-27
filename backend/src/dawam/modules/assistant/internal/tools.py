@@ -2930,6 +2930,12 @@ class BoundTools:
             names |= FOLDER_TOOLS.get(page_id.rsplit("/", 1)[-1], frozenset())
         return names
 
+    def written_names(self) -> frozenset[str]:
+        """The offered tools that generate output (kind ``write``): what a job verifies."""
+        return frozenset(
+            t.name for t in self._registry.all() if t.kind == "write" and self._offered(t)
+        )
+
     def _offered(self, tool: Tool) -> bool:
         if tool.chat_only and self._ctx.proposals is not None:
             return False

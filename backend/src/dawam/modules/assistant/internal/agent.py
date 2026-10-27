@@ -11,6 +11,11 @@ A model known to lack native tool calling runs in limited mode (``prompted.py``)
 are described in the system prompt and a JSON reply is parsed strictly. Before every model
 call the conversation is fitted to the model's context window (``context.py``).
 
+With ``verify`` (jobs) the loop checks its own work before it answers: after the model
+wrote something with one of the ``verify.after`` tools, it runs ``run_validation`` and
+``get_score`` itself and, if validation reports errors, hands them back to the model to fix,
+for at most ``verify.max_rounds`` rounds. The final summary ends with the validation result.
+
 With ``checkpoint`` the loop reports a ``Checkpoint`` after each model step and after each
 tool call; given one as ``resume`` it carries on from there, so a background job whose worker
 died does not repeat the tool calls it had finished.
@@ -122,6 +127,49 @@ def _digest(outcome: ToolOutcome) -> str:
     return text[:DIGEST_CHARS]
 
 
+VERIFY_TOOLS = ("run_validation", "get_score")
+DEFAULT_VERIFY_ROUNDS = 2
+
+
+@dataclass(frozen=True)
+class Verify:
+    """Self-verification: ``after`` are the tools whose output is checked, ``max_rounds`` the
+    number of fix-and-retry rounds (the checks themselves always run once more at the end)."""
+
+    after: frozenset[str]
+    max_rounds: int = DEFAULT_VERIFY_ROUNDS
+
+
+VERIFY_REQUEST = (
+    "Validation found errors after your changes. Fix what your work caused with your "
+    "tools, then give your final answer. If an error is not yours to fix, say so."
+)
+
+
+def _parsed(outcome: ToolOutcome | None) -> dict[str, Any] | None:
+    if outcome is None or outcome.status != "ok":
+        return None
+    try:
+        data = json.loads(outcome.content)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _verification_line(validation: dict[str, Any] | None, score: dict[str, Any] | None) -> str:
+    """The sentence the final summary ends with; what could not be checked says so."""
+    if validation is None:
+        found = "validation could not be run"
+    else:
+        found = (
+            f"validation found {validation.get('error_count', 0)} errors and "
+            f"{validation.get('warning_count', 0)} warnings"
+        )
+    if score is not None:
+        found += f"; score {score.get('score')} (grade {score.get('grade')})"
+    return f"Verification: {found}."
+
+
 class ChatGateway(Protocol):
     def capabilities(self) -> Capabilities: ...
 
@@ -227,6 +275,10 @@ class Checkpoint:
     limit_hit: bool = False
     loaded: tuple[str, ...] | None = None
     """With tool search: the tools sent so far (``find_tools`` adds to them)."""
+    verify_rounds: int = 0
+    """Self-verification: the fix rounds used so far."""
+    verified_at: int = 0
+    """Self-verification: how many calls the run had when it last checked its work."""
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -240,6 +292,8 @@ class Checkpoint:
             "protect_from": self.protect_from,
             "limit_hit": self.limit_hit,
             "loaded": None if self.loaded is None else list(self.loaded),
+            "verify_rounds": self.verify_rounds,
+            "verified_at": self.verified_at,
         }
 
     @classmethod
@@ -267,6 +321,8 @@ class Checkpoint:
             protect_from=data["protect_from"],
             limit_hit=data["limit_hit"],
             loaded=None if data.get("loaded") is None else tuple(data["loaded"]),
+            verify_rounds=data.get("verify_rounds", 0),
+            verified_at=data.get("verified_at", 0),
         )
 
 
@@ -384,6 +440,7 @@ def run_agent(
     core_tools: Collection[str] | None = None,
     checkpoint: Callable[[Checkpoint], None] | None = None,
     resume: Checkpoint | None = None,
+    verify: Verify | None = None,
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer.
 
@@ -410,7 +467,10 @@ def run_agent(
     protect_from = len(history)  # the member's latest message
     limit_hit = False
     pending: list[ToolCall] = []
+    verify_rounds = 0
+    verified_at = 0
     if resume is not None:
+        verify_rounds, verified_at = resume.verify_rounds, resume.verified_at
         messages = list(resume.messages)
         protect_from = resume.protect_from
         limit_hit = resume.limit_hit
@@ -447,6 +507,8 @@ def run_agent(
                     protect_from,
                     limit_hit,
                     tuple(sorted(loaded)),
+                    verify_rounds,
+                    verified_at,
                 )
             )
 
@@ -586,6 +648,48 @@ def run_agent(
                     )
                     if block:  # the intro and cards replace the Markdown list that streamed
                         run.text[:] = [block]
+                if verify is not None and not capped:
+                    wrote = any(
+                        c.name in verify.after and c.status == "ok" for c in run.calls[verified_at:]
+                    )
+                    if wrote and all(n in known_tools for n in VERIFY_TOOLS):
+                        outcomes: dict[str, ToolOutcome] = {}
+                        for name in VERIFY_TOOLS:
+                            began = timer()
+                            with tracing().tool_call(name, {}) as span:
+                                got = tools.execute(name, {})
+                                span.result(got.status, got.content)
+                            outcomes[name] = got
+                            record = ToolCallRecord(
+                                f"verify_{len(run.calls) + 1}",
+                                name,
+                                {},
+                                got.status,
+                                round((timer() - began) * 1000),
+                                got.saved,
+                                _digest(got),
+                            )
+                            run.calls.append(record)
+                            yield ToolFinished(record)
+                        verified_at = len(run.calls)
+                        validation = _parsed(outcomes["run_validation"])
+                        score = _parsed(outcomes["get_score"])
+                        broken = validation is not None and validation.get("error_count", 0) > 0
+                        if broken and verify_rounds < verify.max_rounds:
+                            verify_rounds += 1
+                            report = "\n".join(
+                                quote_data(f"tool:{n}", shorten_result(o.content, window))
+                                for n, o in outcomes.items()
+                            )
+                            messages.append(Message("assistant", "".join(answer) or None))
+                            messages.append(Message("user", f"{report}\n\n{VERIFY_REQUEST}"))
+                            run.text.clear()  # the answer before the fix is not the summary
+                            save()
+                            continue
+                        line = "\n\n" + _verification_line(validation, score)
+                        run.text.append(line)
+                        yield Text(line)
+                        save()
                 yield run.finish("tool_limit" if capped else "completed")
                 return
             if prompted:

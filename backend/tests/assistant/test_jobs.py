@@ -436,3 +436,30 @@ def test_a_job_checkpoint_is_stored_redacted(app, services, roles, model):
         saved = json.dumps(db.execute(query, {"id": job.id}).scalar())
     assert "get_object" in saved
     assert "jane.doe@example.com" not in saved and "redacted" in saved
+
+
+# -- self-verification ---------------------------------------------------------------------
+
+
+def test_a_job_that_proposed_changes_checks_its_work_and_reports_the_result(
+    app, services, roles, model, fake_llm
+):
+    table, system = schema_ids(roles)
+    fake_llm.script(
+        Reply(tool_calls=(propose(table, system, "a"),)),
+        Reply(text="Described the table."),
+    )
+
+    job = submit(app, services, roles)
+
+    assert job.status == "succeeded"
+    assert job.log.count("run_validation") == 1 and job.log.count("get_score") == 1
+    assert job.log.index("propose_changes") < job.log.index("run_validation")
+
+
+def test_a_job_that_wrote_nothing_runs_no_checks(app, services, roles, model, fake_llm):
+    fake_llm.script(Reply(text="Nothing to do."))
+
+    job = submit(app, services, roles)
+
+    assert "run_validation" not in job.log and "get_score" not in job.log
