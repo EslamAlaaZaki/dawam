@@ -25,12 +25,14 @@ from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 
 from .gateway import (
+    REASONING_EFFORTS,
     Capabilities,
     Gateway,
     ListingUnsupported,
     LlmError,
     OllamaContext,
     ProbeResult,
+    ReasoningSettings,
     probe,
 )
 from .internal.adapters import AdapterConfig, AdapterFactory, adapter_for, adapter_kinds
@@ -56,6 +58,17 @@ it the tool schemas alone crowd out the prompt."""
 
 
 @dataclass(frozen=True)
+class ReasoningConfig:
+    """How a model is asked to think (see ``ReasoningSettings``); ``enabled`` off: not a
+    reasoning model, nothing special is sent."""
+
+    enabled: bool = False
+    effort: str | None = None
+    budget_tokens: int | None = None
+    show: bool = False
+
+
+@dataclass(frozen=True)
 class Model:
     id: uuid.UUID
     provider_id: uuid.UUID
@@ -74,6 +87,7 @@ class Model:
     updated_at: datetime
     warnings: tuple[str, ...] = ()
     """Why the model may not suit its roles (not blocking); see ``context_warnings``."""
+    reasoning: ReasoningConfig = ReasoningConfig()
 
     @property
     def limited(self) -> bool:
@@ -116,6 +130,8 @@ class ModelInput:
     name: str
     context_window: int | None = None
     """The admin's own figure; the test fills it from the server's metadata if left out."""
+    reasoning: ReasoningConfig | None = None
+    """On an update: the new thinking settings; ``None`` keeps the stored ones."""
 
 
 @dataclass(frozen=True)
@@ -185,6 +201,14 @@ def _clean_window(value: int | None) -> int | None:
     return value
 
 
+def _clean_reasoning(value: ReasoningConfig) -> ReasoningConfig:
+    if value.effort is not None and value.effort not in REASONING_EFFORTS:
+        raise _invalid(f"The effort must be one of: {', '.join(REASONING_EFFORTS)}.", "reasoning")
+    if value.budget_tokens is not None and not 1 <= value.budget_tokens <= MAX_CONTEXT_WINDOW:
+        raise _invalid("The thinking budget must be a positive number of tokens.", "reasoning")
+    return value
+
+
 def _k(tokens: int) -> str:
     return f"{tokens // 1024}K" if tokens % 1024 == 0 else f"{tokens:,}"
 
@@ -228,6 +252,12 @@ def _model_view(record: ModelRecord) -> Model:
         created_at=record.created_at,
         updated_at=record.updated_at,
         warnings=context_warnings(record.roles, record.context_window),
+        reasoning=ReasoningConfig(
+            enabled=record.reasoning_enabled,
+            effort=record.reasoning_effort,
+            budget_tokens=record.reasoning_budget_tokens,
+            show=record.reasoning_show,
+        ),
     )
 
 
@@ -391,14 +421,20 @@ class ProviderService:
             return _model_view(record)
 
     def update_model(self, model_id: uuid.UUID, data: ModelInput) -> Model:
-        """Change the model's context window; nothing else about a registered model
-        changes (its roles have their own call)."""
+        """Change the model's context window and, when given, its thinking settings; nothing
+        else about a registered model changes (its roles have their own call)."""
         window = _clean_window(data.context_window)
+        reasoning = _clean_reasoning(data.reasoning) if data.reasoning is not None else None
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)
             if "agent" in record.roles and window is not None and window < AGENT_MIN_CONTEXT:
                 raise _window_too_small(window, "context_window")
             record.context_window = window
+            if reasoning is not None:
+                record.reasoning_enabled = reasoning.enabled
+                record.reasoning_effort = reasoning.effort
+                record.reasoning_budget_tokens = reasoning.budget_tokens
+                record.reasoning_show = reasoning.show
             record.updated_at = self._clock()
             return _model_view(record)
 
@@ -557,7 +593,14 @@ class ProviderService:
             timeout_seconds=provider.timeout_seconds,
         )
         capabilities = None
+        reasoning = None
         if model is not None:
+            if model.reasoning_enabled:
+                reasoning = ReasoningSettings(
+                    effort=model.reasoning_effort,
+                    budget_tokens=model.reasoning_budget_tokens,
+                    show=model.reasoning_show,
+                )
             capabilities = Capabilities(
                 tool_calling=model.supports_tools,
                 streaming=model.supports_streaming,
@@ -570,6 +613,7 @@ class ProviderService:
             model=model_name,
             capabilities=capabilities,
             sleep=self._sleep,
+            reasoning=reasoning,
         )
 
     def _seal(self, api_key: str | None) -> str | None:

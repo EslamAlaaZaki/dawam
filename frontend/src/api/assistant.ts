@@ -181,6 +181,7 @@ export function useRateAnswer(workspaceId: string, conversationId: string) {
 export type AnswerEvent =
   | { type: "started"; runId: string }
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
   | { type: "tool"; call: ToolCall }
   | { type: "done"; run: Run };
 
@@ -216,6 +217,8 @@ function toAnswerEvent({ event, data }: Frame): AnswerEvent | null {
       return { type: "started", runId: body.run_id };
     case "text":
       return { type: "text", text: body.text };
+    case "reasoning":
+      return { type: "reasoning", text: body.text };
     case "tool":
       return { type: "tool", call: body };
     case "done":

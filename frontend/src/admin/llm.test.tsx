@@ -47,6 +47,7 @@ const MODEL: LlmModel = {
   test_error: null,
   last_tested_at: null,
   warnings: [],
+  reasoning: { enabled: false, effort: null, budget_tokens: null, show: false },
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
 };
@@ -480,6 +481,50 @@ describe("language models page", () => {
     );
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
       context_window: 32768,
+      reasoning: {
+        enabled: false,
+        effort: null,
+        budget_tokens: null,
+        show: false,
+      },
+    });
+  });
+
+  it("sets a model's reasoning: effort, budget and whether members see it", async () => {
+    const requests = renderApp(
+      providersApi([PROVIDER], (r) =>
+        r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${MODEL.id}`
+          ? json(MODEL)
+          : undefined,
+      ),
+      "/admin/llm",
+    );
+
+    const row = await screen.findByRole("row", { name: "Model qwen3" });
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit model" });
+    expect(within(dialog).queryByLabelText("Effort")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText("This is a reasoning model"));
+    fireEvent.change(within(dialog).getByLabelText("Effort"), {
+      target: { value: "high" },
+    });
+    fireEvent.change(
+      within(dialog).getByLabelText(/Thinking budget in tokens/),
+      { target: { value: "4000" } },
+    );
+    fireEvent.click(within(dialog).getByLabelText(/Show the reasoning/));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "PUT")).toBe(true),
+    );
+    expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
+      reasoning: {
+        enabled: true,
+        effort: "high",
+        budget_tokens: 4000,
+        show: true,
+      },
     });
   });
 
@@ -668,15 +713,15 @@ describe("language models page", () => {
         expect(requests.some((r) => r.path === REMOVAL)).toBe(true),
       );
       expect(requests.find((r) => r.path === REMOVAL)?.body).toEqual({
-        workspace_replacements: [{ workspace_id: WS, agent_model_id: SPARE.id }],
+        workspace_replacements: [
+          { workspace_id: WS, agent_model_id: SPARE.id },
+        ],
       });
       expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     });
 
     it("offers an internal-only Workspace only internal models", async () => {
-      const { dialog } = await open(
-        inUse({ workspaces: [needing(true)] }),
-      );
+      const { dialog } = await open(inUse({ workspaces: [needing(true)] }));
 
       const pick = await within(dialog).findByLabelText("Narrow: Agent model");
       expect(

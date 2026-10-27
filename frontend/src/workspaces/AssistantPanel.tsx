@@ -39,7 +39,13 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
-import { isActive, useAnswerJob, useCancelJob, useJob } from "../api/jobs";
+import {
+  isActive,
+  useAnswerJob,
+  useCancelJob,
+  useJob,
+  type Job,
+} from "../api/jobs";
 import { useWorkspaceAiSettings } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
@@ -69,7 +75,45 @@ interface Draft {
   question: string;
   askedAt: string;
   text: string;
+  /** The model's reasoning, streamed only when its model is set to show it. */
+  reasoning: string;
   tools: ToolCall[];
+}
+
+const PLAN_MARKS = {
+  pending: { mark: "○", label: "to do", tone: "text-muted-foreground" },
+  in_progress: { mark: "◐", label: "in progress", tone: "text-primary" },
+  done: { mark: "●", label: "done", tone: "text-success-strong" },
+  failed: { mark: "✕", label: "failed", tone: "text-danger-strong" },
+  skipped: { mark: "–", label: "skipped", tone: "text-muted-foreground" },
+} as const;
+
+/** The job's todo list, as the job writes and updates it. */
+function JobPlan({ plan }: { plan: NonNullable<Job["plan"]> }) {
+  return (
+    <ol aria-label="Job plan" className="m-0 w-full list-none space-y-1 p-0">
+      {plan.map((step) => {
+        const state = PLAN_MARKS[step.status];
+        return (
+          <li key={step.id} className="flex items-baseline gap-2">
+            <span aria-hidden className={state.tone}>
+              {state.mark}
+            </span>
+            <span
+              className={cn(
+                (step.status === "done" || step.status === "skipped") &&
+                  "text-muted-foreground",
+                step.status === "skipped" && "line-through",
+              )}
+            >
+              {step.text}
+            </span>
+            <span className="sr-only">{state.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 /** A long task the assistant handed to a background job: its status and progress, live. */
@@ -111,6 +155,9 @@ function JobProgress({
             >
               Cancel job
             </Button>
+          )}
+          {current.plan && current.plan.length > 0 && (
+            <JobPlan plan={current.plan} />
           )}
           {current.error && (
             <p className="w-full text-danger-strong">{current.error}</p>
@@ -601,6 +648,7 @@ export function AssistantPanel({
       question: content,
       askedAt: new Date().toISOString(),
       text: "",
+      reasoning: "",
       tools: [],
     });
     try {
@@ -612,6 +660,8 @@ export function AssistantPanel({
         onEvent: (event: AnswerEvent) => {
           if (event.type === "text") {
             setDraft((d) => d && { ...d, text: d.text + event.text });
+          } else if (event.type === "reasoning") {
+            setDraft((d) => d && { ...d, reasoning: d.reasoning + event.text });
           } else if (event.type === "tool") {
             setDraft((d) => d && { ...d, tools: [...d.tools, event.call] });
           } else if (event.type === "done" && event.run.status === "failed") {
@@ -816,6 +866,16 @@ export function AssistantPanel({
                   {draft.question}
                 </Bubble>
                 <Bubble email={null} at={draft.askedAt} busy>
+                  {draft.reasoning && (
+                    <details open={!draft.text} className="mb-2">
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        Reasoning
+                      </summary>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {draft.reasoning}
+                      </p>
+                    </details>
+                  )}
                   {draft.text ? (
                     <Markdown>{draft.text}</Markdown>
                   ) : (

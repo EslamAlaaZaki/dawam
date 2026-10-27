@@ -19,6 +19,11 @@ class StubLlmServer:
         """Answer every request with this HTTP status."""
         self.tools = True
         self.context_window: int | None = 16384
+        self.reasoning_field: str | None = None
+        """Send a reasoning model's thinking in this message field (vLLM and Ollama:
+        ``reasoning``; DeepSeek and older vLLM: ``reasoning_content``)."""
+        self.inline_think = False
+        """Put the thinking in the content between ``<think>`` tags (Qwen3, DeepSeek-R1)."""
         self.stream_delay = 0.0
         """Seconds a streamed answer waits before each of its lines (a slow model)."""
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -64,10 +69,21 @@ class StubLlmServer:
                 elif body.get("stream"):
                     self._stream()
                 else:
-                    self._reply(200, _completion(body, stub.tools))
+                    self._reply(200, _thinking(_completion(body, stub.tools), stub))
 
             def _stream(self) -> None:
+                if stub.reasoning_field:
+                    first = {stub.reasoning_field: "Let me "}
+                    second = {stub.reasoning_field: "think."}
+                elif stub.inline_think:
+                    first, second = {"content": "<thi"}, {"content": "nk>Let me think.</th"}
+                else:
+                    first = second = {}
+                tail = "ink>" if stub.inline_think else ""
                 chunks = [
+                    {"choices": [{"index": 0, "delta": first, "finish_reason": None}]},
+                    {"choices": [{"index": 0, "delta": second, "finish_reason": None}]},
+                    {"choices": [{"index": 0, "delta": {"content": tail}, "finish_reason": None}]},
                     {"choices": [{"index": 0, "delta": {"content": "O"}, "finish_reason": None}]},
                     {"choices": [{"index": 0, "delta": {"content": "K"}, "finish_reason": None}]},
                     {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
@@ -96,6 +112,15 @@ class StubLlmServer:
             self._server.shutdown()
             self._server.server_close()
             thread.join(timeout=5)
+
+
+def _thinking(reply: dict[str, Any], stub: StubLlmServer) -> dict[str, Any]:
+    message = reply["choices"][0]["message"]
+    if stub.reasoning_field:
+        message[stub.reasoning_field] = "Let me think."
+    elif stub.inline_think:
+        message["content"] = "<think>Let me think.</think>" + message["content"]
+    return reply
 
 
 def _completion(body: dict[str, Any], tools: bool) -> dict[str, Any]:

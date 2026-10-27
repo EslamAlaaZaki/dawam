@@ -32,6 +32,12 @@ def job_service(request: Request) -> JobService:
 JobServiceDep = Annotated[JobService, Depends(job_service)]
 
 
+class PlanStep(BaseModel):
+    id: int
+    text: str
+    status: Literal["pending", "in_progress", "done", "failed", "skipped"]
+
+
 class Job(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,6 +51,9 @@ class Job(BaseModel):
     error: str | None = Field(description="Why the job failed; null otherwise.")
     question: str | None = Field(
         description="What a paused job asks its creator; null unless the status is `paused`."
+    )
+    plan: list[PlanStep] | None = Field(
+        description="The job's todo list, updated as it runs; null if it keeps none."
     )
     created_by: uuid.UUID | None
     created_at: datetime

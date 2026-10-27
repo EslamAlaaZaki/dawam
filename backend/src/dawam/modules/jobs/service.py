@@ -27,6 +27,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
+from dawam.platform.pii_validators import redact_text
 
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -103,7 +104,8 @@ class JobContext(Protocol):
 
     def save_checkpoint(self, state: Mapping[str, Any]) -> None:
         """Save JSON ``state`` to resume from: a job with a checkpoint whose worker dies is
-        queued again (up to ``MAX_ATTEMPTS`` runs) instead of failed."""
+        queued again (up to ``MAX_ATTEMPTS`` runs) instead of failed. A ``plan`` list in the
+        state is also shown with the job."""
         ...
 
 
@@ -197,6 +199,8 @@ class Job:
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    plan: list[dict[str, Any]] | None = None
+    """The handler's todo list (a ``plan`` list in its checkpoint), if it keeps one."""
     attempts: int = 0
     """How many times a worker has claimed it; a worker's writes count only while the job's
     attempt is still the one it claimed (a resumed job is another worker's now)."""
@@ -227,6 +231,7 @@ def _view(record: JobRecord) -> Job:
         finished_at=record.finished_at,
         attempts=record.attempts,
         question=_question(record),
+        plan=record.plan,
     )
 
 
@@ -276,7 +281,10 @@ class _Context:
             return db.scalar(sa.select(JobRecord.checkpoint).where(JobRecord.id == self._job_id))
 
     def save_checkpoint(self, state: Mapping[str, Any]) -> None:
-        self._service._update(self._job_id, self._attempt, checkpoint=dict(state))
+        values: dict[str, Any] = {"checkpoint": dict(state)}
+        if isinstance(state.get("plan"), list):
+            values["plan"] = state["plan"]
+        self._service._update(self._job_id, self._attempt, **values)
 
 
 class JobService:
@@ -445,7 +453,7 @@ class JobService:
                 raise ApiError(409, "job_not_paused", "This job is not waiting for an answer.", {})
             record.checkpoint = {
                 **{k: v for k, v in (record.checkpoint or {}).items() if k != "question"},
-                "answer": answer,
+                "answer": redact_text(answer),
             }
             record.status = "queued"
             record.heartbeat_at = None
@@ -556,6 +564,8 @@ class JobService:
             record.started_at = record.started_at or now
             record.heartbeat_at = now
             record.attempts += 1
+            if record.checkpoint is None:  # a fresh run: no plan of an earlier one
+                record.plan = None
             db.flush()
             return _view(record)
 

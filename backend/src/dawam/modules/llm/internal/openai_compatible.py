@@ -23,6 +23,8 @@ from ..gateway import (
     LlmError,
     Message,
     OllamaContext,
+    ReasoningDelta,
+    ReasoningSettings,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -30,6 +32,7 @@ from ..gateway import (
     Usage,
 )
 from .local_tokens import local_counter
+from .think_tags import ThinkTagSplitter
 from .transport import HttpResponse, Transport, TransportError
 from .wire import detail, error_for, json_body
 
@@ -59,6 +62,7 @@ class OpenAICompatibleAdapter:
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
         body: dict[str, Any] = {
             "model": model,
@@ -74,12 +78,16 @@ class OpenAICompatibleAdapter:
             }
         if stream:
             body["stream_options"] = {"include_usage": True}
+        if reasoning is not None and reasoning.effort:
+            body["reasoning_effort"] = reasoning.effort
+        # Qwen3 / DeepSeek-R1 style servers put the thinking inline between <think> tags.
+        tags = ThinkTagSplitter() if reasoning is not None else None
         response = self._post("/chat/completions", body)
         try:
             if stream:
-                yield from _stream_events(response)
+                yield from _stream_events(response, tags)
             else:
-                yield from _reply_events(json_body(response))
+                yield from _reply_events(json_body(response), tags)
         except OSError:
             raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
         finally:
@@ -282,8 +290,32 @@ def _usage(raw: Any) -> Usage | None:
         return None
     prompt, completion = raw.get("prompt_tokens"), raw.get("completion_tokens")
     if isinstance(prompt, int) and isinstance(completion, int):
-        return Usage(prompt, completion, cache_read_tokens=_cached(raw))
+        return Usage(
+            prompt, completion, cache_read_tokens=_cached(raw), reasoning_tokens=_reasoning(raw)
+        )
     return None
+
+
+def _reasoning(raw: dict[str, Any]) -> int:
+    """Reasoning tokens inside ``completion_tokens`` (OpenAI ``completion_tokens_details``)."""
+    details = raw.get("completion_tokens_details")
+    value = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def _thought(message: dict[str, Any]) -> str:
+    """The reasoning a server sends beside the content: ``reasoning_content`` (DeepSeek, older
+    vLLM) or ``reasoning`` (newer vLLM, Ollama, OpenRouter)."""
+    for key in ("reasoning_content", "reasoning"):
+        value = message.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _pieces(pieces: list[tuple[bool, str]]) -> Iterator[ChatEvent]:
+    for is_reasoning, text in pieces:
+        yield ReasoningDelta(text) if is_reasoning else TextDelta(text)
 
 
 def _cached(raw: dict[str, Any]) -> int:
@@ -308,21 +340,28 @@ def _tool_call(raw: Any) -> ToolCall:
         raise LlmError(INVALID_RESPONSE, "The model made a tool call that is not valid.") from None
 
 
-def _reply_events(data: Any) -> Iterator[ChatEvent]:
+def _reply_events(data: Any, tags: ThinkTagSplitter | None = None) -> Iterator[ChatEvent]:
     try:
         choice = data["choices"][0]
         message = choice["message"]
     except (KeyError, IndexError, TypeError):
         raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.") from None
+    if thought := _thought(message):
+        yield ReasoningDelta(thought)
     content = message.get("content")
     if isinstance(content, str) and content:
-        yield TextDelta(content)
+        if tags is None:
+            yield TextDelta(content)
+        else:
+            yield from _pieces([*tags.feed(content), *tags.flush()])
     for raw in message.get("tool_calls") or []:
         yield ToolCallEvent(_tool_call(raw))
     yield Done(_usage(data.get("usage")), choice.get("finish_reason"))
 
 
-def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
+def _stream_events(
+    response: HttpResponse, tags: ThinkTagSplitter | None = None
+) -> Iterator[ChatEvent]:
     pending: dict[int, dict[str, Any]] = {}
     usage: Usage | None = None
     finish: str | None = None
@@ -346,9 +385,14 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
         usage = _usage(chunk.get("usage")) or usage
         for choice in chunk.get("choices") or []:
             delta = choice.get("delta") or {}
+            if thought := _thought(delta):
+                yield ReasoningDelta(thought)
             content = delta.get("content")
             if isinstance(content, str) and content:
-                yield TextDelta(content)
+                if tags is None:
+                    yield TextDelta(content)
+                else:
+                    yield from _pieces(tags.feed(content))
             for part in delta.get("tool_calls") or []:
                 slot = pending.setdefault(
                     int(part.get("index", 0)), {"id": "", "name": "", "arguments": ""}
@@ -360,6 +404,8 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
             finish = choice.get("finish_reason") or finish
     if not finished and finish is None:
         raise LlmError(UNAVAILABLE, "The provider's stream ended unexpectedly.")
+    if tags is not None:
+        yield from _pieces(tags.flush())
     for _, slot in sorted(pending.items()):
         yield ToolCallEvent(
             _tool_call(
