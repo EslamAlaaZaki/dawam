@@ -559,6 +559,51 @@ def auth_users(request: Request) -> AuthService:
 AuthUsersDep = Annotated[AuthService, Depends(auth_users)]
 
 
+FallbackRole = Literal["agent", "light"]
+
+
+class LlmRoleFallbacks(BaseModel):
+    role: FallbackRole
+    model_ids: list[uuid.UUID] = Field(
+        description="The models tried, in this order, when the role's model is unavailable "
+        "or times out. Never after a budget or policy refusal; a model that fails a "
+        "Workspace's internal-only check is skipped for that Workspace."
+    )
+
+
+class LlmRoleFallbacksRequest(BaseModel):
+    model_ids: list[uuid.UUID]
+
+
+class LlmFallbackList(BaseModel):
+    roles: list[LlmRoleFallbacks]
+
+
+def _fallbacks_out(roles: RoleService) -> LlmFallbackList:
+    return LlmFallbackList(
+        roles=[LlmRoleFallbacks(role=r, model_ids=roles.fallbacks(r)) for r in ("agent", "light")]
+    )
+
+
+@router.get("/fallbacks", operation_id="getLlmFallbacks")
+def get_fallbacks(_admin: LlmAdmin, roles: RoleServiceDep) -> LlmFallbackList:
+    """The ordered fallback models of the agent and light roles (admins only)."""
+    return _fallbacks_out(roles)
+
+
+@router.put("/fallbacks/{role}", operation_id="setLlmRoleFallbacks")
+def set_role_fallbacks(
+    role: FallbackRole,
+    body: LlmRoleFallbacksRequest,
+    _admin: LlmAdmin,
+    roles: RoleServiceDep,
+) -> LlmFallbackList:
+    """Replace a role's ordered fallback list (admins only). 422 `invalid_fallback_model`
+    when a model is not enabled and tested for the role."""
+    roles.set_fallbacks(role, body.model_ids)
+    return _fallbacks_out(roles)
+
+
 class LlmWorkspaceBudget(BaseModel):
     workspace_id: uuid.UUID
     workspace_name: str | None = Field(description="Null if the Workspace no longer exists.")

@@ -1,7 +1,7 @@
 """Reasoning model settings, and the reasoning tokens of each call.
 
 Revision ID: c4d8e1a6f203
-Revises: b9e4d2a7c518
+Revises: d4f6a8c2e139
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c4d8e1a6f203"
-down_revision: str | Sequence[str] | None = "b9e4d2a7c518"
+down_revision: str | Sequence[str] | None = "d4f6a8c2e139"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

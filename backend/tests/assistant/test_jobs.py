@@ -10,11 +10,12 @@ then the chat's answer.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import timedelta
 from typing import Any
 
 import pytest
 
-from dawam.modules.jobs import JobService
+from dawam.modules.jobs import JobService, QueuedJobRunner
 from dawam.modules.llm import FakeAdapter, LlmError, Reply
 from dawam.platform.config import Settings
 from tests.assistant.test_chat import (
@@ -64,8 +65,10 @@ def job_service(app, services) -> JobService:
     return JobService(app.state.engine, runner=services.jobs, clock=services.clock)
 
 
-def submit(app, services, roles: RoleClients, task: str = "Explore the schema", cid=None):
-    return job_service(app, services).submit(
+def submit(
+    app, services, roles: RoleClients, task: str = "Explore the schema", cid=None, queue=None
+):
+    return (queue or job_service(app, services)).submit(
         roles.workspace_id,
         JOB_TYPE,
         {
@@ -355,3 +358,81 @@ def test_a_job_aborts_when_its_requester_is_no_longer_a_member(
 
     assert job.status == "failed" and fake_llm.calls == []
     assert change_sets(roles) == []
+
+
+# -- resuming after the worker died -------------------------------------------------------
+
+
+class WorkerKilled(BaseException):
+    """The worker process dies: nothing in the job sees it coming or records it."""
+
+
+class _DyingAdapter(FakeAdapter):
+    """The worker dies when the model is asked its n-th time."""
+
+    def __init__(self, at: int) -> None:
+        super().__init__(context_window=32_768)
+        self._at = at
+
+    def chat(self, model, messages, tools, stream, json_schema) -> Iterator[Any]:
+        if sum(1 for c in self.calls if c.kind == "chat") + 1 == self._at:
+            self._at = 0
+            raise WorkerKilled
+        yield from super().chat(model, messages, tools, stream, json_schema)
+
+
+def test_a_job_whose_worker_died_resumes_without_repeating_finished_tool_calls(
+    app, services, roles, model
+):
+    table, system = schema_ids(roles)
+    kpi = add_kpi(roles)
+    adapter = _DyingAdapter(at=3).script(
+        Reply(tool_calls=(propose(table, system, "a"),)),
+        Reply(tool_calls=(tool("get_object", "c2", kind="kpi", id=kpi),)),
+        Reply(tool_calls=(propose(table, system, "b", "y"),)),  # after the restart
+        Reply(text="Described both."),
+    )
+    services.llm_adapters = lambda kind, config: adapter
+    runner = QueuedJobRunner()  # through the worker's queue, not inline
+    runner.register(JOB_TYPE, services.jobs.handler(JOB_TYPE))
+    queue = JobService(app.state.engine, runner=runner, clock=services.clock)
+    job = submit(app, services, roles, queue=queue)
+    with pytest.raises(WorkerKilled):
+        queue.execute(queue.claim_next())
+
+    services.clock.advance(timedelta(minutes=5))  # the worker restarts
+    assert queue.fail_lost() == 1
+    queue.execute(queue.claim_next())
+
+    [resumed] = jobs_of(roles)
+    assert resumed["id"] == str(job.id) and resumed["status"] == "succeeded"
+    assert resumed["log"].count("propose_changes ok") == 2
+    assert resumed["log"].count("get_object ok") == 1  # not run again
+    sent = adapter.calls[-2].messages  # the first model call after the restart
+    assert [m.role for m in sent] == ["system", "user", "assistant", "tool", "assistant", "tool"]
+    [created] = change_sets(roles)
+    assert created["item_counts"] == {"pending": 2}  # the proposal made before it died too
+
+
+def test_a_job_checkpoint_is_stored_redacted(app, services, roles, model):
+    import json
+
+    import sqlalchemy as sa
+
+    kpi = add_kpi(roles, name="Ask jane.doe@example.com")
+    adapter = _DyingAdapter(at=2).script(
+        Reply(tool_calls=(tool("get_object", "c1", kind="kpi", id=kpi),)),
+    )
+    services.llm_adapters = lambda kind, config: adapter
+    runner = QueuedJobRunner()
+    runner.register(JOB_TYPE, services.jobs.handler(JOB_TYPE))
+    queue = JobService(app.state.engine, runner=runner, clock=services.clock)
+    job = submit(app, services, roles, queue=queue)
+    with pytest.raises(WorkerKilled):
+        queue.execute(queue.claim_next())
+
+    with app.state.engine.connect() as db:
+        query = sa.text("select checkpoint from jobs where id = :id")
+        saved = json.dumps(db.execute(query, {"id": job.id}).scalar())
+    assert "get_object" in saved
+    assert "jane.doe@example.com" not in saved and "redacted" in saved

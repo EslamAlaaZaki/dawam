@@ -54,6 +54,7 @@ from dawam.modules.warehouse import (
     FindingItem,
     GeneratedColumn,
     GeneratedTable,
+    GenerationNote,
     GenerationPlan,
     GenerationService,
     MappingDraftPlan,
@@ -781,6 +782,44 @@ class Proposals:
         ]
         return MappingDraftPlan(items, sorted(self.mapping_tables), self.mapping_notes)
 
+    def to_json(self) -> dict[str, Any]:
+        """What a job's checkpoint keeps of the proposals, so a resumed job still makes
+        one Change Set of everything it proposed."""
+        plan = self.generation
+        return _json_safe(
+            {
+                "source_system_id": self.source_system_id,
+                "items": [dataclasses.asdict(i) for i in self.items],
+                "generation": None
+                if plan is None
+                else {
+                    "origin": plan.origin,
+                    "items": [dataclasses.asdict(i) for i in plan.items],
+                    "notes": [dataclasses.asdict(n) for n in plan.notes],
+                    "table_id": plan.table_id,
+                },
+                "mapping_items": [dataclasses.asdict(i) for i in self.mapping_items],
+                "mapping_tables": sorted(str(t) for t in self.mapping_tables),
+                "mapping_notes": [dataclasses.asdict(n) for n in self.mapping_notes],
+            }
+        )
+
+    def restore(self, data: dict[str, Any]) -> None:
+        """Take back what ``to_json`` kept."""
+        system = data["source_system_id"]
+        self.source_system_id = uuid.UUID(system) if system else None
+        self.items = [_proposed_item(i) for i in data["items"]]
+        if (plan := data["generation"]) is not None:
+            self.generation = GenerationPlan(
+                plan["origin"],
+                [_proposed_item(i) for i in plan["items"]],
+                [GenerationNote(**n) for n in plan["notes"]],
+                uuid.UUID(plan["table_id"]) if plan["table_id"] else None,
+            )
+        self.mapping_items = [_proposed_item(i) for i in data["mapping_items"]]
+        self.mapping_tables = {uuid.UUID(t) for t in data["mapping_tables"]}
+        self.mapping_notes = [DraftNote(**n) for n in data["mapping_notes"]]
+
     def check(self, source_system_id: uuid.UUID, items: Sequence[ProposedItem]) -> None:
         if self.generation is not None or self.mapping_tables:
             raise _one_change_set()
@@ -797,6 +836,21 @@ class Proposals:
             taken.add(item.key)
         if len(self.items) + len(items) > MAX_JOB_ITEMS:
             raise ApiError(422, "too_many_items", "This job has proposed too many changes.")
+
+
+def _json_safe(value: Any) -> Any:
+    return json.loads(json.dumps(value, default=str))
+
+
+def _proposed_item(data: dict[str, Any]) -> ProposedItem:
+    object_id = data["object_id"]
+    return ProposedItem(
+        **{
+            **data,
+            "object_id": uuid.UUID(object_id) if object_id else None,
+            "depends_on": tuple(data["depends_on"]),
+        }
+    )
 
 
 def _one_change_set() -> ApiError:
@@ -2740,6 +2794,53 @@ def _shrink(data: Any) -> bool:
     return False
 
 
+BASE_TOOLS = frozenset(
+    {
+        "search_catalog",
+        "get_object",
+        "workspace_overview",
+        "search_workspace",
+        "search_documents",
+        "propose_changes",
+        "render_diagram",
+        "start_job",
+    }
+)
+"""The tools sent on every page once tool search is on (``agent.TOOL_SEARCH_THRESHOLD``)."""
+
+_FILE_TOOLS = frozenset({"list_files", "read_file", "query_file", "describe_image"})
+_KPI_TOOLS = frozenset({"suggest_kpis", "get_kpi_link_candidates", "propose_kpi_links"})
+_SCORE_TOOLS = frozenset({"get_score", "explain_check", "propose_check_fix", "run_validation"})
+
+PAGE_TOOLS: dict[str, frozenset[str]] = {
+    "source_system": frozenset(
+        {
+            "get_profile",
+            "get_snapshot_diff",
+            "get_relationships",
+            "get_pii_findings",
+            "run_source_query",
+        }
+    ),
+    "failed_check": _SCORE_TOOLS,
+}
+"""Extra tools by the page-context ``type`` the app sends: ``source_system`` (one Source
+System open), ``failed_check`` (a failed check's panel) and ``folder`` (see ``FOLDER_TOOLS``)."""
+
+FOLDER_TOOLS: dict[str, frozenset[str]] = {
+    "kpis": _KPI_TOOLS,
+    "lineage": frozenset({"get_lineage", "explore_graph"}),
+    "score": _SCORE_TOOLS,
+    "files": _FILE_TOOLS,
+    "document-index": _FILE_TOOLS,
+    "ddl": frozenset({"evaluate_dw"}),
+    "connection": frozenset({"get_pii_findings"}),
+    "source-schema": frozenset({"get_profile", "get_relationships", "get_pii_findings"}),
+}
+"""For a ``folder`` page, extra tools by the last segment of its id (``dw/kpis``,
+``systems/<id>/source-schema``, ...); any other folder gets only the base."""
+
+
 class ToolRegistry:
     """The tools of one installation, ready to be bound to a user in a Workspace."""
 
@@ -2822,6 +2923,13 @@ class BoundTools:
             key=lambda spec: spec.name,
         )
 
+    def core_names(self, page_type: str | None, page_id: str | None = None) -> set[str]:
+        """The tools to send up front for the page the member is on when tool search is on."""
+        names = set(BASE_TOOLS | PAGE_TOOLS.get(page_type or "", frozenset()))
+        if page_type == "folder" and page_id:
+            names |= FOLDER_TOOLS.get(page_id.rsplit("/", 1)[-1], frozenset())
+        return names
+
     def _offered(self, tool: Tool) -> bool:
         if tool.chat_only and self._ctx.proposals is not None:
             return False
@@ -2831,6 +2939,16 @@ class BoundTools:
         """Let ``web_fetch`` read the URLs written in ``texts`` (the member's messages)."""
         for text in texts:
             self._ctx.web_urls.update(urls_in(text))
+
+    def saved_proposals(self) -> dict[str, Any] | None:
+        """A job's proposals so far, for its checkpoint; ``None`` outside a job."""
+        proposals = self._ctx.proposals
+        return proposals.to_json() if proposals is not None else None
+
+    def restore_proposals(self, data: dict[str, Any]) -> None:
+        """Take back the proposals a resumed job had collected before its worker died."""
+        if self._ctx.proposals is not None:
+            self._ctx.proposals.restore(data)
 
     def submit_proposals(self, title: str) -> int:
         """Make the changes a job collected into one Change Set; how many items it has (0:

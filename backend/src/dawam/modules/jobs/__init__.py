@@ -9,12 +9,14 @@ Public interface. Other modules import only what is re-exported here:
   ``Job`` and ``JobPage`` are what it returns.
 - ``JobRunner`` (the handlers by job type): a module registers ``handler(params, ctx)``
   for its type in ``dawam.job_handlers``; ``ctx`` is a ``JobContext`` (``job_id``,
-  ``progress``, ``log``, ``raise_if_cancelled``). ``QueuedJobRunner`` leaves jobs for the worker
-  process; ``InlineJobRunner`` runs them as soon as they are committed (tests).
+  ``progress``, ``log``, ``raise_if_cancelled``, ``checkpoint``, ``save_checkpoint``).
+  ``QueuedJobRunner`` leaves jobs for the worker process; ``InlineJobRunner`` runs them
+  as soon as they are committed (tests).
 - ``JobService.cancel_for_workspace``: the ``WorkspaceArchivedHook`` the composition
   root hands the workspaces module, so archiving cancels the Workspace's jobs.
 - A finished or failed job notifies its creator (``job`` notification); a job whose
-  worker died is failed with a reason.
+  worker died is failed with a reason, unless it saved a checkpoint: then it is queued
+  again and resumes from it (up to ``MAX_ATTEMPTS`` runs).
 - ``router``: ``GET /jobs/{job_id}``, ``POST /jobs/{job_id}/cancel``,
   ``GET /workspaces/{workspace_id}/jobs``.
 

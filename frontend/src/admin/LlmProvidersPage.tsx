@@ -30,6 +30,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
+import { LlmFallbacks } from "./LlmFallbacks";
 import { ErrorText, NativeSelect, WarningNote, labelClasses } from "./parts";
 import {
   ROLE_LABELS,
@@ -219,6 +220,7 @@ export function LlmProvidersPage() {
             emptyMessage="No provider is registered yet."
             count="providers"
           />
+          <LlmFallbacks providers={list} />
         </>
       )}
       <ProviderDialog open={addingProvider} onOpenChange={setAddingProvider} />

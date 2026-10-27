@@ -32,6 +32,7 @@ from dawam.platform.pii_validators import redact_json, redact_text
 from .internal.agent import (
     DEFAULT_MAX_JOB_TOOL_CALLS,
     DEFAULT_MAX_TOOL_CALLS,
+    Checkpoint,
     Compacted,
     Finished,
     Reasoning,
@@ -55,6 +56,8 @@ from .internal.prompt import (
     quote_data,
     today_line,
 )
+from .internal.routing import is_simple_question
+from .internal.structured import strip_cards
 from .internal.tools import ToolRegistry
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -593,7 +596,9 @@ class AssistantService:
         who handed the task over, with the higher job cap. Progress and each tool call go to
         the job's log. Success makes the changes it collected one Change Set; a failure,
         spent budget or cancellation raises, so no Change Set is made. The outcome is also
-        written into the conversation the task came from."""
+        written into the conversation the task came from. The run and the changes collected
+        are checkpointed after each step, so a job whose worker died resumes there without
+        repeating the tool calls it had finished."""
         task = str(params.get("task", ""))
         workspace_id = uuid.UUID(str(params["workspace_id"]))
         conversation_id = (
@@ -611,8 +616,13 @@ class AssistantService:
                 "The member who started this job may no longer use the assistant."
             ) from exc
         cap = self._max_job_tool_calls
-        ctx.log(f"Started: {task[:200]}")
-        calls = 0
+        saved = ctx.checkpoint
+        resume = Checkpoint.from_json(saved.get("run") or {}) if saved else None
+        calls = len(resume.calls) if resume else 0
+        if resume:
+            ctx.log(f"Resumed after {calls} tool calls.")
+        else:
+            ctx.log(f"Started: {task[:200]}")
         finished: Finished
         try:
             gateway = self._roles.gateway_for_role(
@@ -621,16 +631,28 @@ class AssistantService:
             tools = self._tools.bind(
                 user, workspace_id, self._ai.policy(workspace_id), conversation_id, job=True
             )
+            if resume and saved:
+                tools.restore_proposals(saved["proposals"])
+
+            def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
+                # Stored like the run's other records: redacted (ADR 0002). The proposals stay
+                # as they are; they become the Change Set's items.
+                run = redact_json(state.to_json())
+                ctx.save_checkpoint({"run": run, "proposals": tools.saved_proposals()})
+
             finished = Finished("completed", "", [], 0, 0)
             for event in run_agent(
                 gateway,
                 tools,
                 system=SYSTEM_PROMPT + JOB_PROMPT + today_line(),
                 history=[Message("user", task)],
+                core_tools=tools.core_names(None),
                 max_tool_calls=cap,
                 is_cancelled=lambda: ctx.cancelled,
                 timer=self._timer,
                 delta_poll_seconds=STOP_POLL_SECONDS,
+                checkpoint=save,
+                resume=resume,
             ):
                 if isinstance(event, Finished):
                     finished = event
@@ -733,7 +755,10 @@ class AssistantService:
         try:
             yield started
             try:
-                if model_id is None:
+                if model_id is None and _routes_to_light(light, history):
+                    gateway = light
+                    answered_by = self._ai.light_model_id(workspace_id)
+                elif model_id is None:
                     gateway = self._roles.gateway_for_role(
                         "agent", workspace_id=workspace_id, user_id=user.id
                     )
@@ -764,6 +789,9 @@ class AssistantService:
                     tools,
                     system=_system_prompt(context),
                     history=messages,
+                    core_tools=tools.core_names(context.type, context.id)
+                    if context
+                    else tools.core_names(None),
                     max_tool_calls=self._max_tool_calls,
                     is_cancelled=lambda: self._cancel_requested(started.run_id),
                     timer=self._timer,
@@ -1033,7 +1061,8 @@ class AssistantService:
         return _History(
             [
                 Message(
-                    "user" if m.role == "user" else "assistant", m.content + notes.get(m.id, "")
+                    "user" if m.role == "user" else "assistant",
+                    strip_cards(m.content) + notes.get(m.id, ""),
                 )
                 for m in recent
             ],
@@ -1189,3 +1218,12 @@ def readable_conversations(engine: sa.Engine) -> Callable[..., set[uuid.UUID]]:
             )
 
     return readable
+
+
+def _routes_to_light(light: Any, history: _History) -> bool:
+    """A plain question, when the Workspace has a light model that can call tools, goes to
+    the light model (ticket #406). The member's own model pick always wins."""
+    if light is None or light.capabilities().tool_calling is not True:
+        return False
+    last = next((m for m in reversed(history.messages) if m.role == "user"), None)
+    return last is not None and is_simple_question(last.content or "")

@@ -4,6 +4,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "../lib/utils";
+import { KpiCards, parseKpiCards } from "./KpiCards";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { monoClasses } from "./parts";
 
@@ -104,6 +105,12 @@ const MARKDOWN: Components = {
     if (isValidElement<{ className?: string; children?: ReactNode }>(only)) {
       if ((only.props.className ?? "").split(" ").includes("language-mermaid")) {
         return <MermaidDiagram code={String(only.props.children ?? "").trim()} />;
+      }
+      if ((only.props.className ?? "").split(" ").includes("language-dawam-kpis")) {
+        const cards = parseKpiCards(String(only.props.children ?? "").trim());
+        if (cards) {
+          return <KpiCards cards={cards} />;
+        }
       }
     }
     return (
