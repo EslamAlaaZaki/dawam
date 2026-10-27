@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 168" width="400" height="168" role="img" aria-label="DAWAM">
+<style>.a{fill:#5b5bd6}.b{stroke:#16161a;fill:none}.t{fill:#16161a}@media(prefers-color-scheme:dark){.a{fill:#8b8bf5}.b{stroke:#ededf0}.t{fill:#ededf0}}</style>
+<g transform="translate(156.00 8) scale(3.6667)">
+<path class="a" d="M12 3 21 7.5 12 12 3 7.5Z"/>
+<path class="b" d="M3 12 12 16.5 21 12" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" opacity=".55"/>
+<path class="b" d="M3 16.5 12 21 21 16.5" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" opacity=".3"/>
+</g>
+<path class="t" d="M68.83 150V104.56H83.94Q94.82 104.56 100.67 110.48Q106.53 116.4 106.53 127.34Q106.53 138.22 100.77 144.11Q95.01 150 84.32 150ZM77.15 142.77H83.94Q97.95 142.77 97.95 127.34Q97.95 111.79 83.94 111.79H77.15Z M114.08 150 130.46 104.56H140.64L157.02 150H148.32L144.54 139.25H126.56L122.78 150ZM128.99 132.14H142.11L135.58 112.94Z M176.61 150 164.45 104.56H173.22L181.54 138.48L189.92 104.56H197.66L206.05 138.48L214.3 104.56H223.14L210.98 150H201.76L193.82 118.9L185.89 150Z M230.56 150 246.94 104.56H257.12L273.5 150H264.8L261.02 139.25H243.04L239.26 150ZM245.47 132.14H258.59L252.06 112.94Z M283.68 150V104.56H294.88L307.42 139.76L319.97 104.56H331.17V150H322.85V118.64L311.39 149.94H303.46L292 118.64V150Z"/>
+</svg>
