@@ -1436,12 +1436,14 @@ describe("picking the model of a message", () => {
       { name: "Search results" },
       { timeout: 3000 },
     );
-    expect(
-      requests.filter((r) => r.path === `${ASSISTANT}/search`).at(-1)?.query,
-    ).toEqual({ q: "churn_flag" });
+    // The list shows at once, but the search runs only after the debounce: wait for its hit
+    // before checking the request it sent.
     expect(
       await within(results).findByText("Lineage review", {}, { timeout: 3000 }),
     ).toBeInTheDocument();
+    expect(
+      requests.filter((r) => r.path === `${ASSISTANT}/search`).at(-1)?.query,
+    ).toEqual({ q: "churn_flag" });
     expect(within(results).getByText("(shared)")).toBeInTheDocument();
     expect(within(results).getByText("Job summary")).toBeInTheDocument();
     expect(
