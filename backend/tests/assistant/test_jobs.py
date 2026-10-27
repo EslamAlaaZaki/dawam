@@ -483,6 +483,32 @@ def test_a_job_pauses_to_ask_the_member_and_resumes_with_the_answer(
     assert "Job finished: Described them." in [m["content"] for m in messages]
 
 
+def test_ask_member_is_a_barrier_never_run_inside_a_batch_of_reads(
+    app, services, roles, model, fake_llm
+):
+    kpi = add_kpi(roles)
+    fake_llm.script(
+        Reply(
+            tool_calls=(
+                tool("get_object", "c1", kind="kpi", id=kpi),
+                tool("get_object", "c2", kind="kpi", id=kpi),
+                tool("ask_member", "c3", question="Which one?"),
+                tool("get_object", "c4", kind="kpi", id=kpi),
+            )
+        ),
+        Reply(text="Done."),
+    )
+    job = submit(app, services, roles)
+
+    [paused] = jobs_of(roles)
+    assert paused["status"] == "paused"
+    assert paused["log"].count("get_object ok") == 2  # the reads before it, not the one after
+
+    assert answer_job(roles, job.id, "That one.").status_code == 200
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded" and resumed["log"].count("get_object ok") == 3
+
+
 def test_a_chat_is_not_offered_ask_member_but_a_job_is(app, services, roles, model, fake_llm):
     fake_llm.script(Reply(text="Done."))
     submit(app, services, roles)
