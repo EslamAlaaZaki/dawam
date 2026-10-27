@@ -246,3 +246,24 @@ def test_the_supervisor_asks_the_member_and_resumes_with_the_answer(
     [resumed] = jobs_of(roles)
     assert resumed["status"] == "succeeded", resumed["log"]
     assert "get_object ok" in resumed["log"]
+
+
+def test_a_specialists_expensive_call_pauses_the_job_and_resumes_the_specialist(
+    app, services, roles, model, fake_llm
+):
+    fake_llm.script(
+        Reply(tool_calls=(delegate("source_analyst", "Index the documents again"),)),
+        Reply(tool_calls=(tool("reindex_documents", "r1"),)),  # the specialist
+        Reply(text="Re-indexed."),  # the specialist's report, after the yes
+        Reply(text="Done."),
+    )
+    job = submit(app, services, roles)
+    [paused] = jobs_of(roles)
+    assert paused["status"] == "paused" and "re-index every document" in paused["question"]
+    assert "reindex_documents" not in paused["log"]
+
+    assert answer_job(roles, job.id, "Yes").status_code == 200
+
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded", resumed["log"]
+    assert "reindex_documents ok" in resumed["log"]
