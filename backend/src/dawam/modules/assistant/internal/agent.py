@@ -573,7 +573,7 @@ def run_agent(
                 )
             )
 
-    def record(call: ToolCall, outcome: ToolOutcome, duration: int) -> Iterator[AgentEvent]:
+    def finish_call(call: ToolCall, outcome: ToolOutcome, duration: int) -> Iterator[AgentEvent]:
         """Report a finished call and hand its result to the model; the caller saves."""
         flagged = (
             flagged_parts(call.name, outcome.content, inspect) if outcome.status == "ok" else []
@@ -625,7 +625,7 @@ def run_agent(
                         done = _run_reads(tools, batch, timer)
                         executed += len(batch)
                         for read, (outcome, duration) in zip(batch, done, strict=True):
-                            yield from record(read, outcome, duration)
+                            yield from finish_call(read, outcome, duration)
                         save()  # once the whole batch has finished
                         continue
                     call = pending[0]
@@ -642,7 +642,7 @@ def run_agent(
                             span.result(outcome.status, outcome.content)
                         duration = round((timer() - started) * 1000)
                         executed += 1
-                    yield from record(call, outcome, duration)
+                    yield from finish_call(call, outcome, duration)
                     save()
             if is_cancelled():
                 yield run.finish("cancelled")
