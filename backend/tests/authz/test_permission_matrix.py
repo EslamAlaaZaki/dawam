@@ -28,6 +28,7 @@ from tests.authz.matrix import (
     ensure_data_warehouse,
     linked_file_id,
     outcome_of,
+    paused_job_id,
     pii_staging_column_id,
     public,
     registered_routes,
@@ -1610,6 +1611,14 @@ ROWS: list[Row] = [
         "/api/v1/jobs/{job_id}/cancel",
         "Cancel a job (your own; anyone's is owner-only)",
         workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/jobs/{job_id}/answer",
+        "Answer a paused job (only the member who started it)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+        json=lambda roles: {"answer": "Use the invoices table."},
+        path_params={"job_id": paused_job_id},
     ),
     # Connections (stories 40-43): owners only, including seeing them (host and user are
     # owner-only information). Nothing here connects anywhere that answers. Seeing one

@@ -48,8 +48,9 @@ watching each step. Start by calling write_plan with your steps and keep the pla
 current with update_plan as you go; if a step fails, mark it failed and re-plan with new \
 steps. Work through it with your tools and finish with a short summary of \
 what you found and did. Changes you propose are collected into a single Change Set that \
-the member reviews when you finish; nothing is changed until then. You cannot ask the \
-member questions, so state any assumption in your summary.\
+the member reviews when you finish; nothing is changed until then. If you cannot go on \
+without a decision only the member can make, call `ask_member` with one clear question: the \
+job pauses until they answer. Otherwise state any assumption in your summary.\
 """
 
 

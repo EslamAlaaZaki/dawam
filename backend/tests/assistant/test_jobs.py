@@ -438,6 +438,142 @@ def test_a_job_checkpoint_is_stored_redacted(app, services, roles, model):
     assert "jane.doe@example.com" not in saved and "redacted" in saved
 
 
+# -- asking the member ---------------------------------------------------------------------
+
+
+def answer_job(roles: RoleClients, job_id, answer="Use the KPIs.", as_role="owner"):
+    return roles.client(as_role).post(f"/api/v1/jobs/{job_id}/answer", json={"answer": answer})
+
+
+def test_a_job_pauses_to_ask_the_member_and_resumes_with_the_answer(
+    app, services, roles, model, fake_llm
+):
+    kpi = add_kpi(roles)
+    fake_llm.script(
+        Reply(tool_calls=(tool("write_plan", "p1", steps=["Read", "Ask", "Finish"]),)),
+        Reply(tool_calls=(tool("get_object", "c1", kind="kpi", id=kpi),)),
+        Reply(tool_calls=(tool("ask_member", "c2", question="Which KPIs matter?"),)),
+        Reply(tool_calls=(tool("get_object", "c3", kind="kpi", id=kpi),)),  # after the answer
+        Reply(text="Described them."),
+    )
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+    job = submit(app, services, roles, cid=cid)
+
+    [paused] = jobs_of(roles)
+    assert paused["id"] == str(job.id) and paused["status"] == "paused"
+    assert paused["question"] == "Which KPIs matter?"
+    assert [s["text"] for s in paused["plan"]] == ["Read", "Ask", "Finish"]  # kept while paused
+    assert "Asked the member" in paused["log"]
+    messages = owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"]
+    assert any("waiting for your answer: Which KPIs matter?" in m["content"] for m in messages)
+    assert change_sets(roles) == []
+
+    response = answer_job(roles, job.id, "  The revenue ones.  ")
+
+    assert response.status_code == 200, response.text
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded" and resumed["question"] is None
+    assert [s["text"] for s in resumed["plan"]] == ["Read", "Ask", "Finish"]
+    assert resumed["log"].count("get_object ok") == 2  # nothing before the question ran again
+    sent = fake_llm.calls[-1].messages  # the last model call carries the answer as quoted data
+    answered = [m for m in sent if m.role == "tool" and "The revenue ones." in (m.content or "")]
+    assert len(answered) == 1 and "<data" in (answered[0].content or "")
+    messages = owner.get(f"{base(roles)}/conversations/{cid}").json()["messages"]
+    assert "Job finished: Described them." in [m["content"] for m in messages]
+
+
+def test_ask_member_is_a_barrier_never_run_inside_a_batch_of_reads(
+    app, services, roles, model, fake_llm
+):
+    kpi = add_kpi(roles)
+    fake_llm.script(
+        Reply(
+            tool_calls=(
+                tool("get_object", "c1", kind="kpi", id=kpi),
+                tool("get_object", "c2", kind="kpi", id=kpi),
+                tool("ask_member", "c3", question="Which one?"),
+                tool("get_object", "c4", kind="kpi", id=kpi),
+            )
+        ),
+        Reply(text="Done."),
+    )
+    job = submit(app, services, roles)
+
+    [paused] = jobs_of(roles)
+    assert paused["status"] == "paused"
+    assert paused["log"].count("get_object ok") == 2  # the reads before it, not the one after
+
+    assert answer_job(roles, job.id, "That one.").status_code == 200
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded" and resumed["log"].count("get_object ok") == 3
+
+
+def test_a_chat_is_not_offered_ask_member_but_a_job_is(app, services, roles, model, fake_llm):
+    fake_llm.script(Reply(text="Done."))
+    submit(app, services, roles)
+    assert "ask_member" in {t.name for t in fake_llm.calls[0].tools}
+
+    fake_llm.calls.clear()
+    owner = roles.client("owner")
+    fake_llm.script(Reply(text="Hi."))
+    ask(owner, roles, conversation(owner, roles), "Hello")
+    assert "ask_member" not in {t.name for t in fake_llm.calls[0].tools}
+
+
+def test_only_the_member_who_started_a_paused_job_answers_it(app, services, roles, model, fake_llm):
+    fake_llm.script(Reply(tool_calls=(tool("ask_member", "c1", question="Which one?"),)))
+    job = submit(app, services, roles)
+
+    assert answer_job(roles, job.id, as_role="editor").status_code == 403
+    assert answer_job(roles, job.id, "  ").status_code == 422
+    assert jobs_of(roles)[0]["status"] == "paused"
+
+
+def test_a_job_that_is_not_waiting_cannot_be_answered(app, services, roles, model, fake_llm):
+    fake_llm.script(Reply(text="Nothing to ask."))
+    job = submit(app, services, roles)
+
+    response = answer_job(roles, job.id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "job_not_paused"
+
+
+def test_an_unanswered_job_can_be_cancelled(app, services, roles, model, fake_llm):
+    fake_llm.script(Reply(tool_calls=(tool("ask_member", "c1", question="Which one?"),)))
+    job = submit(app, services, roles)
+
+    response = roles.client("owner").post(f"/api/v1/jobs/{job.id}/cancel")
+
+    assert response.status_code == 200, response.text
+    [cancelled] = jobs_of(roles)
+    assert cancelled["status"] == "cancelled" and cancelled["question"] is None
+    assert answer_job(roles, job.id).status_code == 409
+    assert change_sets(roles) == []
+
+
+def test_a_paused_job_can_be_answered_from_the_worker_queue(app, services, roles, model, fake_llm):
+    fake_llm.script(
+        Reply(tool_calls=(tool("ask_member", "c1", question="Which one?"),)),
+        Reply(text="Used your answer."),
+    )
+    runner = QueuedJobRunner()
+    runner.register(JOB_TYPE, services.jobs.handler(JOB_TYPE))
+    queue = JobService(app.state.engine, runner=runner, clock=services.clock)
+    job = submit(app, services, roles, queue=queue)
+    queue.execute(queue.claim_next())
+    owner = roles.user("owner")
+    assert queue.get(owner, job.id).status == "paused"
+    assert queue.claim_next() is None  # a paused job is not picked up
+
+    queue.answer(owner, job.id, "The first.")
+
+    assert queue.get(owner, job.id).status == "queued"
+    queue.execute(queue.claim_next())
+    assert queue.get(owner, job.id).status == "succeeded"
+
+
 # -- planning (#403) -------------------------------------------------------------------------
 
 

@@ -45,10 +45,13 @@ class Job(BaseModel):
     workspace_id: uuid.UUID
     type: str = Field(description="What the job does, e.g. `profile` or `export`.")
     title: str
-    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    status: Literal["queued", "running", "paused", "succeeded", "failed", "cancelled"]
     progress: int = Field(description="Percent done, 0 to 100.")
     log: str = Field(description="The job's log, one timestamped line per entry.")
     error: str | None = Field(description="Why the job failed; null otherwise.")
+    question: str | None = Field(
+        description="What a paused job asks its creator; null unless the status is `paused`."
+    )
     plan: list[PlanStep] | None = Field(
         description="The job's todo list, updated as it runs; null if it keeps none."
     )
@@ -78,6 +81,18 @@ def cancel_job(job_id: uuid.UUID, user: CurrentUser, jobs: JobServiceDep) -> Job
     """Cancel a queued or running job. Its creator may; so may an owner of its
     Workspace. 409 `job_finished` if it has ended."""
     return _out(jobs.cancel(user, job_id))
+
+
+class JobAnswer(BaseModel):
+    answer: str = Field(description="The member's answer to the job's question.")
+
+
+@router.post("/jobs/{job_id}/answer", operation_id="answerJob")
+def answer_job(job_id: uuid.UUID, body: JobAnswer, user: CurrentUser, jobs: JobServiceDep) -> Job:
+    """Answer the question a paused job asked; the job is queued again and resumes with the
+    answer. Only the member who started the job may. 409 `job_not_paused` if it is not
+    waiting for an answer, 422 `invalid_answer`."""
+    return _out(jobs.answer(user, job_id, body.answer))
 
 
 @router.get("/workspaces/{workspace_id}/jobs", operation_id="listJobs")

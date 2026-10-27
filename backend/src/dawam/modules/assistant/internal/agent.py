@@ -78,6 +78,8 @@ DEFAULT_MAX_JOB_TOOL_CALLS = 150
 ToolStatus = Literal["ok", "refused", "error", "skipped"]
 RunStatus = Literal["completed", "tool_limit", "cancelled", "failed"]
 
+ASK_MEMBER = "ask_member"
+"""A job's tool that stops the run until the member answers; the loop itself handles it."""
 LIMIT_MESSAGE = (
     "The tool-call limit for this request is used up. Answer with what you have already found."
 )
@@ -276,6 +278,14 @@ class Finished:
 
 
 @dataclass(frozen=True)
+class Asked:
+    """The run called ``ask_member`` and stopped (after a final ``Checkpoint``): give it the
+    member's answer as ``run_agent(resume=..., member_answer=...)`` to go on."""
+
+    question: str
+
+
+@dataclass(frozen=True)
 class Compacted:
     """The oldest ``turns`` history messages were replaced by ``summary``."""
 
@@ -283,7 +293,7 @@ class Compacted:
     turns: int
 
 
-AgentEvent = Text | Reasoning | ToolFinished | Compacted | Finished
+AgentEvent = Text | Reasoning | ToolFinished | Asked | Compacted | Finished
 
 
 CHECKPOINT_VERSION = 1
@@ -501,6 +511,7 @@ def run_agent(
     core_tools: Collection[str] | None = None,
     checkpoint: Callable[[Checkpoint], None] | None = None,
     resume: Checkpoint | None = None,
+    member_answer: str | None = None,
     verify: Verify | None = None,
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer.
@@ -517,7 +528,11 @@ def run_agent(
     ``checkpoint`` gets the run's state after each model step and each tool call; a run
     given ``resume`` starts from that state (``system`` and ``history`` are then unused):
     the calls it had not run yet run first, the finished ones are not repeated, and the
-    tools ``find_tools`` loaded stay loaded."""
+    tools ``find_tools`` loaded stay loaded.
+
+    A call to ``ask_member`` (a job's tool) ends the run with ``Asked`` once its checkpoint is
+    saved; resumed with the member's ``member_answer``, the call returns it as its result (quoted as
+    data, like any tool result). At most one question is asked per model step."""
     run = _Run()
     capabilities = gateway.capabilities()
     window = capabilities.context_window
@@ -576,7 +591,9 @@ def run_agent(
     def finish_call(call: ToolCall, outcome: ToolOutcome, duration: int) -> Iterator[AgentEvent]:
         """Report a finished call and hand its result to the model; the caller saves."""
         flagged = (
-            flagged_parts(call.name, outcome.content, inspect) if outcome.status == "ok" else []
+            flagged_parts(call.name, outcome.content, inspect)
+            if outcome.status == "ok" and call.name != ASK_MEMBER
+            else []
         )
         entry = ToolCallRecord(
             call.id,
@@ -618,7 +635,11 @@ def run_agent(
                     batch: list[ToolCall] = []
                     if is_read is not None:
                         for c in pending[: max(0, max_tool_calls - executed)]:
-                            if c.name not in specs or not is_read(c.name, c.arguments):
+                            if (
+                                c.name not in specs
+                                or c.name == ASK_MEMBER  # waits for a person: never in a batch
+                                or not is_read(c.name, c.arguments)
+                            ):
                                 break
                             batch.append(c)
                     if len(batch) > 1:
@@ -632,6 +653,20 @@ def run_agent(
                     if executed >= max_tool_calls:
                         limit_hit = True
                         outcome, duration = ToolOutcome(LIMIT_MESSAGE, "skipped"), 0
+                    elif call.name == ASK_MEMBER and call.name in known_tools:
+                        question = str(call.arguments.get("question", "")).strip()
+                        if member_answer is None and question:
+                            save()  # pending still holds this call: the answer completes it
+                            yield Asked(question)
+                            return
+                        outcome = ToolOutcome(
+                            member_answer
+                            if member_answer is not None
+                            else "The question was empty.",
+                            "ok" if member_answer is not None else "error",
+                        )
+                        member_answer, duration = None, 0
+                        executed += 1
                     else:
                         started = timer()
                         with tracing().tool_call(call.name, call.arguments) as span:
@@ -696,7 +731,9 @@ def run_agent(
                             yield Text(event.text)
                     elif isinstance(event, ToolCallEvent):
                         if offered and not prompted:
-                            pending.append(event.call)
+                            asking = any(c.name == ASK_MEMBER for c in pending)
+                            if not (asking and event.call.name == ASK_MEMBER):
+                                pending.append(event.call)
                     elif isinstance(event, Done) and event.usage is not None:
                         run.prompt += event.usage.prompt_tokens
                         run.completion += event.usage.completion_tokens

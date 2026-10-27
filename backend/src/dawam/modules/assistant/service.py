@@ -22,7 +22,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session, aliased
 
 from dawam.modules.auth import User
-from dawam.modules.jobs import JobCancelledError, JobContext
+from dawam.modules.jobs import JobCancelledError, JobContext, JobPausedError
 from dawam.modules.llm import LlmError, Message, RoleService, TextDelta, WorkspaceAiService
 from dawam.modules.workspaces import Action, WorkspaceScope, WorkspaceService
 from dawam.platform.clock import Clock
@@ -32,6 +32,7 @@ from dawam.platform.pii_validators import redact_json, redact_text
 from .internal.agent import (
     DEFAULT_MAX_JOB_TOOL_CALLS,
     DEFAULT_MAX_TOOL_CALLS,
+    Asked,
     Checkpoint,
     Compacted,
     Finished,
@@ -599,7 +600,8 @@ class AssistantService:
         spent budget or cancellation raises, so no Change Set is made. The outcome is also
         written into the conversation the task came from. The run and the changes collected
         are checkpointed after each step, so a job whose worker died resumes there without
-        repeating the tool calls it had finished."""
+        repeating the tool calls it had finished. A job that calls ``ask_member`` pauses
+        (the question goes into the conversation) and resumes with the member's answer."""
         task = str(params.get("task", ""))
         workspace_id = uuid.UUID(str(params["workspace_id"]))
         conversation_id = (
@@ -624,6 +626,8 @@ class AssistantService:
             ctx.log(f"Resumed after {calls} tool calls.")
         else:
             ctx.log(f"Started: {task[:200]}")
+        answer = saved.get("answer") if saved and resume else None
+        asked: Asked | None = None
         finished: Finished
         try:
             gateway = self._roles.gateway_for_role(
@@ -661,8 +665,12 @@ class AssistantService:
                 delta_poll_seconds=STOP_POLL_SECONDS,
                 checkpoint=save,
                 resume=resume,
+                member_answer=answer if isinstance(answer, str) else None,
                 verify=Verify(tools.written_names(), check=tools.check_proposals),
             ):
+                if isinstance(event, Asked):
+                    asked = event
+                    break
                 if isinstance(event, Finished):
                     finished = event
                     break
@@ -677,6 +685,16 @@ class AssistantService:
             finished = Finished(
                 "failed", "", [], 0, 0, "internal_error", "The assistant hit an unexpected error."
             )
+        if asked is not None:  # the checkpoint is saved: wait for the member's answer
+            if ctx.cancelled:  # cancelled meanwhile, or taken over: nobody waits for an answer
+                raise JobCancelledError
+            ctx.log(f"Asked the member: {asked.question[:200]}")
+            self._post(
+                workspace_id,
+                conversation_id,
+                f'The job "{title}" is waiting for your answer: {redact_text(asked.question)}',
+            )
+            raise JobPausedError(redact_text(asked.question))
         ctx.log(
             f"Ended: {finished.status} after {calls} tool calls, "
             f"{finished.prompt_tokens} prompt and {finished.completion_tokens} completion tokens."

@@ -23,7 +23,8 @@ class JobRecord(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         sa.CheckConstraint(
-            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="status"
+            "status IN ('queued', 'running', 'paused', 'succeeded', 'failed', 'cancelled')",
+            name="status",
         ),
         sa.CheckConstraint("progress BETWEEN 0 AND 100", name="progress"),
         sa.Index(

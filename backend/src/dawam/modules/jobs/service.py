@@ -27,6 +27,7 @@ from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
+from dawam.platform.pii_validators import redact_text
 
 from .tables import (
     ERROR_MAX_LENGTH,
@@ -45,7 +46,9 @@ MAX_ATTEMPTS = 3
 """Runs of a checkpointed job whose worker keeps dying before it is failed."""
 RESUMING = "The worker running this job stopped; it will resume from its last checkpoint."
 
-ACTIVE = ("queued", "running")
+ACTIVE = ("queued", "running", "paused")
+"""Not ended yet; a ``paused`` job waits for its creator's answer and can be cancelled."""
+ANSWER_MAX_LENGTH = 4000
 
 PRIORITY_LOW = 0
 """Bulk background work (re-indexing): runs when nothing more urgent is waiting."""
@@ -60,6 +63,16 @@ class UnknownJobTypeError(LookupError):
 
 class JobCancelledError(Exception):
     """Raised by ``JobContext.raise_if_cancelled``; ends the handler quietly."""
+
+
+class JobPausedError(Exception):
+    """Raised by a handler that needs the member's answer to go on. It has saved a
+    checkpoint first; the job becomes ``paused`` showing ``question``, and the answer queues
+    it again: the handler then finds the answer under ``"answer"`` in ``ctx.checkpoint``."""
+
+    def __init__(self, question: str) -> None:
+        super().__init__(question)
+        self.question = question
 
 
 class JobContext(Protocol):
@@ -175,7 +188,8 @@ class Job:
     """What the job does (spec §7), e.g. ``profile`` or ``export``."""
     title: str
     status: str
-    """``queued``, ``running``, ``succeeded``, ``failed`` or ``cancelled``."""
+    """``queued``, ``running``, ``paused`` (waiting for its creator's answer), ``succeeded``,
+    ``failed`` or ``cancelled``."""
     priority: int
     """Higher runs first; ties run oldest first."""
     progress: int
@@ -190,6 +204,8 @@ class Job:
     attempts: int = 0
     """How many times a worker has claimed it; a worker's writes count only while the job's
     attempt is still the one it claimed (a resumed job is another worker's now)."""
+    question: str | None = None
+    """What a ``paused`` job asks its creator."""
 
 
 @dataclass(frozen=True)
@@ -214,8 +230,16 @@ def _view(record: JobRecord) -> Job:
         started_at=record.started_at,
         finished_at=record.finished_at,
         attempts=record.attempts,
+        question=_question(record),
         plan=record.plan,
     )
+
+
+def _question(record: JobRecord) -> str | None:
+    if record.status != "paused" or not record.checkpoint:
+        return None
+    question = record.checkpoint.get("question")
+    return question if isinstance(question, str) else None
 
 
 def _not_found() -> ApiError:
@@ -403,6 +427,43 @@ class JobService:
             db.flush()
             return _view(record)
 
+    def answer(self, user: User, job_id: uuid.UUID, answer: str) -> Job:
+        """Answer the question a paused job asked: it is queued again and resumes with the
+        answer. Only the member who started the job may (403 ``not_job_creator``).
+        409 ``job_not_paused``, 422 ``invalid_answer``."""
+        with Session(self._engine) as db:
+            record = self._record(db, job_id)
+            workspace_id, created_by = record.workspace_id, record.created_by
+        self._workspaces().authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        if created_by != user.id:
+            raise ApiError(
+                403, "not_job_creator", "Only the member who started a job can answer it."
+            )
+        answer = answer.strip()
+        if not answer or len(answer) > ANSWER_MAX_LENGTH:
+            raise ApiError(
+                422,
+                "invalid_answer",
+                f"An answer must have 1 to {ANSWER_MAX_LENGTH} characters.",
+                {"field": "answer"},
+            )
+        with Session(self._engine) as db, db.begin():
+            record = self._record(db, job_id, lock=True)
+            if record.status != "paused":
+                raise ApiError(409, "job_not_paused", "This job is not waiting for an answer.", {})
+            record.checkpoint = {
+                **{k: v for k, v in (record.checkpoint or {}).items() if k != "question"},
+                "answer": redact_text(answer),
+            }
+            record.status = "queued"
+            record.heartbeat_at = None
+            line = f"{self._clock().isoformat()} Answered by the member.\n"
+            record.log = (record.log + line)[-LOG_MAX_LENGTH:]
+            db.flush()
+            view = _view(record)
+        self._run_inline(job_id)
+        return self._load_view(job_id) if self._runner.inline else view
+
     # -- for the worker --------------------------------------------------------------
 
     def claim_next(self) -> Job | None:
@@ -421,6 +482,8 @@ class JobService:
             self._runner.handler(job.type)(params, ctx)
         except JobCancelledError:
             return
+        except JobPausedError as paused:
+            self._pause(job.id, job.attempts, paused.question)
         except UnknownJobTypeError:
             self._finish(
                 job.id, job.attempts, "failed", f"No handler is registered for {job.type!r} jobs."
@@ -539,6 +602,29 @@ class JobService:
             record = self._record(db, job_id, lock=True)
             if record.status == "running" and record.attempts == attempt:
                 self._end(db, record, status, error, self._clock())
+
+    def _pause(self, job_id: uuid.UUID, attempt: int, question: str) -> None:
+        """A running job waits for its creator's answer, keeping the checkpoint it saved."""
+        with Session(self._engine) as db, db.begin():
+            record = self._record(db, job_id, lock=True)
+            if record.status != "running" or record.attempts != attempt:
+                return
+            record.status = "paused"
+            record.heartbeat_at = None
+            record.checkpoint = {
+                **{k: v for k, v in (record.checkpoint or {}).items() if k != "answer"},
+                "question": question[:ANSWER_MAX_LENGTH],
+            }
+            if record.created_by is not None:
+                self._notifications.notify(
+                    [record.created_by],
+                    kind="job",
+                    message=f'Job "{record.title}" needs your answer.',
+                    workspace_id=record.workspace_id,
+                    ref_type="job",
+                    ref_id=record.id,
+                    db=db,
+                )
 
     def _abandon(self, db: Session, record: JobRecord, reason: str) -> None:
         hook = self._runner.abandoned(record.type)
