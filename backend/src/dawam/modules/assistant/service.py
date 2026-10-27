@@ -55,6 +55,7 @@ from .internal.prompt import (
     quote_data,
     today_line,
 )
+from .internal.routing import is_simple_question
 from .internal.structured import strip_cards
 from .internal.tools import ToolRegistry
 from .tables import (
@@ -760,7 +761,10 @@ class AssistantService:
         try:
             yield started
             try:
-                if model_id is None:
+                if model_id is None and _routes_to_light(light, history):
+                    gateway = light
+                    answered_by = self._ai.light_model_id(workspace_id)
+                elif model_id is None:
                     gateway = self._roles.gateway_for_role(
                         "agent", workspace_id=workspace_id, user_id=user.id
                     )
@@ -1220,3 +1224,12 @@ def readable_conversations(engine: sa.Engine) -> Callable[..., set[uuid.UUID]]:
             )
 
     return readable
+
+
+def _routes_to_light(light: Any, history: _History) -> bool:
+    """A plain question, when the Workspace has a light model that can call tools, goes to
+    the light model (ticket #406). The member's own model pick always wins."""
+    if light is None or light.capabilities().tool_calling is not True:
+        return False
+    last = next((m for m in reversed(history.messages) if m.role == "user"), None)
+    return last is not None and is_simple_question(last.content or "")

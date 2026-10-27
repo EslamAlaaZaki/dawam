@@ -159,6 +159,23 @@ class WorkspaceModelRecord(Base):
     is_default: Mapped[bool]
 
 
+class RoleFallbackRecord(Base):
+    """One model in the installation's ordered fallback list for a Model Role: tried, in
+    ``position`` order, when the Workspace's model for the role is ``unavailable``."""
+
+    __tablename__ = "llm_role_fallbacks"
+    __table_args__ = (
+        sa.CheckConstraint("role IN ('agent', 'light')", name="role"),
+        sa.UniqueConstraint("role", "position", name="uq_llm_role_fallbacks_role_position"),
+    )
+
+    role: Mapped[str] = mapped_column(sa.String(16), primary_key=True)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("llm_models.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int]
+
+
 class UsageRecord(Base):
     """Tokens one model call used, with who and what it was for."""
 
