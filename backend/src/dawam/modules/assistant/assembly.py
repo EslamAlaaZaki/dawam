@@ -174,5 +174,6 @@ def build_assistant_service(
         clock=clock,
         max_tool_calls=settings.assistant_max_tool_calls,
         max_job_tool_calls=settings.assistant_job_max_tool_calls,
+        job_supervisor=settings.assistant_job_supervisor,
         users=AuthService(engine, settings, clock=clock).get_user,
     )
