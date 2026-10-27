@@ -438,6 +438,89 @@ def test_a_job_checkpoint_is_stored_redacted(app, services, roles, model):
     assert "jane.doe@example.com" not in saved and "redacted" in saved
 
 
+# -- planning (#403) -------------------------------------------------------------------------
+
+
+def test_a_job_shows_its_plan_and_keeps_it_current_as_it_runs(roles, model, fake_llm):
+    kpi = add_kpi(roles)
+    fake_llm.script(
+        Reply(tool_calls=(tool("start_job", title="Explore", task="Read every KPI"),)),
+        Reply(tool_calls=(tool("write_plan", "p1", steps=["Read KPIs", "Summarise"]),)),
+        Reply(
+            tool_calls=(
+                tool("update_plan", "p2", updates=[{"id": 1, "status": "failed"}]),
+                tool("get_object", "p3", kind="kpi", id=kpi),
+            )
+        ),
+        Reply(
+            tool_calls=(
+                tool(
+                    "update_plan",
+                    "p4",
+                    updates=[{"id": 2, "status": "done"}],
+                    add=["Retry reading"],
+                ),
+            )
+        ),
+        Reply(text="Done."),
+        Reply(text="Started."),
+    )
+    owner = roles.client("owner")
+    ask(owner, roles, conversation(owner, roles), "Explore everything")
+
+    [job] = jobs_of(roles)
+    assert job["status"] == "succeeded"
+    assert job["plan"] == [
+        {"id": 1, "text": "Read KPIs", "status": "failed"},
+        {"id": 2, "text": "Summarise", "status": "done"},
+        {"id": 3, "text": "Retry reading", "status": "pending"},
+    ]
+    chat_tools = {t.name for t in fake_llm.calls[0].tools}
+    job_tools = {t.name for t in fake_llm.calls[1].tools}
+    assert not chat_tools & {"write_plan", "update_plan"}  # only a job plans
+    assert {"write_plan", "update_plan"} <= job_tools
+
+
+def test_a_bad_plan_update_is_reported_to_the_model(roles, model, fake_llm):
+    fake_llm.script(
+        Reply(tool_calls=(tool("start_job", title="Explore", task="Plan"),)),
+        Reply(tool_calls=(tool("update_plan", "p1", updates=[{"id": 1, "status": "done"}]),)),
+        Reply(text="Done."),
+        Reply(text="Started."),
+    )
+    owner = roles.client("owner")
+    ask(owner, roles, conversation(owner, roles), "Plan it")
+
+    [job] = jobs_of(roles)
+    assert "update_plan error" in job["log"] and job["plan"] == []
+
+
+def test_a_resumed_job_keeps_the_plan_it_wrote(app, services, roles, model):
+    adapter = _DyingAdapter(at=3).script(
+        Reply(tool_calls=(tool("write_plan", "p1", steps=["One", "Two"]),)),
+        Reply(tool_calls=(tool("update_plan", "p2", updates=[{"id": 1, "status": "done"}]),)),
+        Reply(tool_calls=(tool("update_plan", "p3", updates=[{"id": 2, "status": "done"}]),)),
+        Reply(text="Done."),
+    )
+    services.llm_adapters = lambda kind, config: adapter
+    runner = QueuedJobRunner()
+    runner.register(JOB_TYPE, services.jobs.handler(JOB_TYPE))
+    queue = JobService(app.state.engine, runner=runner, clock=services.clock)
+    submit(app, services, roles, queue=queue)
+    with pytest.raises(WorkerKilled):
+        queue.execute(queue.claim_next())
+    [running] = jobs_of(roles)
+    assert [s["status"] for s in running["plan"]] == ["done", "pending"]  # visible mid-run
+
+    services.clock.advance(timedelta(minutes=5))
+    assert queue.fail_lost() == 1
+    queue.execute(queue.claim_next())
+
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded"
+    assert [s["status"] for s in resumed["plan"]] == ["done", "done"]
+
+
 # -- self-verification ---------------------------------------------------------------------
 
 
@@ -492,3 +575,17 @@ def test_a_proposal_the_real_validator_rejects_is_corrected_and_the_summary_repo
     [report] = [m["content"] for m in messages if m["content"].startswith("Job finished")]
     assert "Proposed changes: 0 errors." in report
     assert change_sets(roles)[0]["item_counts"] == {"pending": 1}
+
+
+def test_a_blank_plan_step_is_refused(roles, model, fake_llm):
+    fake_llm.script(
+        Reply(tool_calls=(tool("start_job", title="Explore", task="Plan"),)),
+        Reply(tool_calls=(tool("write_plan", "p1", steps=["Read", "   "]),)),
+        Reply(text="Done."),
+        Reply(text="Started."),
+    )
+    owner = roles.client("owner")
+    ask(owner, roles, conversation(owner, roles), "Plan it")
+
+    [job] = jobs_of(roles)
+    assert "write_plan error" in job["log"] and job["plan"] == []

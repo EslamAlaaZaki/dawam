@@ -634,12 +634,19 @@ class AssistantService:
             )
             if resume and saved:
                 tools.restore_proposals(saved["proposals"])
+                tools.restore_plan(saved.get("plan") or [])
 
             def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
                 # Stored like the run's other records: redacted (ADR 0002). The proposals stay
                 # as they are; they become the Change Set's items.
                 run = redact_json(state.to_json())
-                ctx.save_checkpoint({"run": run, "proposals": tools.saved_proposals()})
+                ctx.save_checkpoint(
+                    {
+                        "run": run,
+                        "proposals": tools.saved_proposals(),
+                        "plan": redact_json(tools.saved_plan()),
+                    }
+                )
 
             finished = Finished("completed", "", [], 0, 0)
             for event in run_agent(

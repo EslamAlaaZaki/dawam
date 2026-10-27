@@ -417,6 +417,11 @@ describe("the assistant's chat panel", () => {
           progress: 40,
           error: null,
           log: "",
+          plan: [
+            { id: 1, text: "Read the tables", status: "done" },
+            { id: 2, text: "Draft the mappings", status: "in_progress" },
+            { id: 3, text: "Retry the profile", status: "failed" },
+          ],
         },
         detail: {
           conversation: NEW_CONVERSATION,
@@ -457,6 +462,13 @@ describe("the assistant's chat panel", () => {
     expect(
       within(job).getByRole("button", { name: "Cancel job" }),
     ).toBeInTheDocument();
+    const plan = within(job).getByRole("list", { name: "Job plan" });
+    const steps = within(plan).getAllByRole("listitem");
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toHaveTextContent("Read the tables");
+    expect(steps[0]).toHaveTextContent("done");
+    expect(steps[1]).toHaveTextContent("in progress");
+    expect(steps[2]).toHaveTextContent("failed");
   });
 
   it("streams the model's reasoning while it answers, when its model shows it", async () => {

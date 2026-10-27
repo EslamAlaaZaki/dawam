@@ -22432,6 +22432,21 @@
             "title": "Error",
             "description": "Why the job failed; null otherwise."
           },
+          "plan": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PlanStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan",
+            "description": "The job's todo list, updated as it runs; null if it keeps none."
+          },
           "created_by": {
             "anyOf": [
               {
@@ -22484,6 +22499,7 @@
           "progress",
           "log",
           "error",
+          "plan",
           "created_by",
           "created_at",
           "started_at",
@@ -26325,6 +26341,36 @@
           "kpis"
         ],
         "title": "PiiViewReport"
+      },
+      "PlanStep": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "status"
+        ],
+        "title": "PlanStep"
       },
       "Platform": {
         "properties": {
