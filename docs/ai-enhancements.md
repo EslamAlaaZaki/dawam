@@ -21,11 +21,8 @@ Today's design has strengths worth keeping whatever we adopt:
 ## 1. Orchestration: LangGraph, LangChain or our own loop?
 
 ### Today
-A hand-written single-agent loop (`assistant/internal/agent.py`). It works, it's small, tested and provider-neutral, but it lacks:
+A hand-written loop (`assistant/internal/agent.py`), small, tested and provider-neutral. Option C below was taken: jobs now have checkpointing ([#401](https://github.com/EslamAlaaZaki/dawam/issues/401)), `ask_member` ([#402](https://github.com/EslamAlaaZaki/dawam/issues/402)), planning ([#403](https://github.com/EslamAlaaZaki/dawam/issues/403)), self-verification ([#404](https://github.com/EslamAlaaZaki/dawam/issues/404)) and an optional supervisor with specialists ([#412](https://github.com/EslamAlaaZaki/dawam/issues/412), ADR 0009, off by default). What it still lacks:
 
-- **durable state**: a job whose worker dies starts from zero and its progress is lost;
-- **mid-run human approval** (pause, ask, resume);
-- **planning** and **multi-agent** structure;
 - **graph-level observability** (which step, which branch, how long).
 
 ### Options
@@ -39,7 +36,7 @@ A hand-written single-agent loop (`assistant/internal/agent.py`). It works, it's
 
 ### Recommendation
 
-- **Short term: C.** Add checkpointing and interrupts to our loop; it's the smallest change with the biggest win for long jobs.
+- **Short term: C.** Add checkpointing and interrupts to our loop; it's the smallest change with the biggest win for long jobs. **Done**: see §6 and ADR 0009 (supervisor and specialists on our own loop, no LangGraph).
 - **When we need multi-agent, planning graphs or complex HITL: A (LangGraph), adopted carefully:**
   - Wrap our `Gateway` / `MeteredGateway` as a LangChain `BaseChatModel` (and an `Embeddings` class), so every call still goes through budgets, internal-only and usage.
   - Wrap each bound tool as a `StructuredTool` whose function is `BoundTools.execute(name, args)`, so authorization and data-sharing checks stay.
@@ -208,17 +205,17 @@ flowchart TD
 
 | Area | Today | Enhancement |
 |---|---|---|
-| **Planning** | none: the model improvises | Plan-then-execute for jobs: a `write_plan` / `update_plan` (todo list) tool, the plan shown in the job UI; re-plan after failures |
-| **Self-verification** | none built in | After generation, automatically call `run_validation` / `get_score`, fix and retry (bounded), "reflection" before the final answer |
-| **Multi-agent** | one agent with 26 tools | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools |
-| **Tool selection** | all allowed tools sent every turn | **Dynamic tool loading / tool search**: send a short list plus a `find_tools` tool; big win for small models and token cost |
-| **Parallel tools** | calls in one turn run one after another | Run independent **read** tools concurrently (thread pool), keep writes sequential |
-| **Ask the member** | jobs can't ask; chats just answer | An `ask_member` interrupt: the run pauses (checkpointed), the question shows in the chat, the answer resumes it |
-| **Approvals mid-run** | approvals happen afterwards via Change Sets | Optional pre-approval for expensive actions (a long source query, a whole-layer regeneration) |
-| **Structured final answers** | free Markdown | Use the gateway's `json_schema` support for answers the UI renders as cards (e.g. a KPI suggestion list) |
-| **Use the `light` role** | defined, unused | Conversation titles, summaries, query rewriting, routing, contextual chunk headers, classification |
-| **Model routing and fallback** | one model per message; retries only | Fallback chain (primary → secondary provider on `unavailable`); route by task (light for simple questions, agent for generation); per-model cost table to show cost in currency |
-| **Reasoning models** | not specially handled | Support "thinking" settings (Anthropic extended thinking, OpenAI reasoning effort, Qwen3/DeepSeek-R1 think tags), stream or hide the reasoning, count its tokens |
+| **Planning** | none: the model improvises | Plan-then-execute for jobs: a `write_plan` / `update_plan` (todo list) tool, the plan shown in the job UI; re-plan after failures. **Done** ([#403](https://github.com/EslamAlaaZaki/dawam/issues/403)) |
+| **Self-verification** | none built in | After generation, automatically call `run_validation` / `get_score`, fix and retry (bounded), "reflection" before the final answer. **Done** ([#404](https://github.com/EslamAlaaZaki/dawam/issues/404)) |
+| **Multi-agent** | one agent with 33 catalogue tools plus a few loop and job-only ones (architecture §6.2); the supervisor is behind a flag, off by default | Specialist sub-agents with fewer tools each (source analyst, DW modeler, mapper, KPI analyst, documentation writer) under a supervisor; each with its own context window (context isolation). Good for small self-hosted models, which choose better among fewer tools. **Done** ([#412](https://github.com/EslamAlaaZaki/dawam/issues/412)): supervisor and four specialists (no documentation writer) on our own loop, behind `DAWAM_ASSISTANT_JOB_SUPERVISOR`, off by default |
+| **Tool selection** | all allowed tools sent every turn | **Dynamic tool loading / tool search**: send a short list plus a `find_tools` tool; big win for small models and token cost. **Done** ([#408](https://github.com/EslamAlaaZaki/dawam/issues/408)) |
+| **Parallel tools** | calls in one turn run one after another | Run independent **read** tools concurrently (thread pool), keep writes sequential. **Done** ([#407](https://github.com/EslamAlaaZaki/dawam/issues/407)) |
+| **Ask the member** | jobs can't ask; chats just answer | An `ask_member` interrupt: the run pauses (checkpointed), the question shows in the chat, the answer resumes it. **Done** ([#402](https://github.com/EslamAlaaZaki/dawam/issues/402)) |
+| **Approvals mid-run** | approvals happen afterwards via Change Sets | Optional pre-approval for expensive actions (a long source query, a whole-layer regeneration). **Done** ([#411](https://github.com/EslamAlaaZaki/dawam/issues/411)) |
+| **Structured final answers** | free Markdown | Use the gateway's `json_schema` support for answers the UI renders as cards (e.g. a KPI suggestion list). **Done** ([#410](https://github.com/EslamAlaaZaki/dawam/issues/410)) |
+| **Use the `light` role** | defined, unused | Conversation titles, summaries, query rewriting, routing, contextual chunk headers, classification. **Done**: titles ([#405](https://github.com/EslamAlaaZaki/dawam/issues/405)), summaries ([#354](https://github.com/EslamAlaaZaki/dawam/issues/354)), routing and classification ([#406](https://github.com/EslamAlaaZaki/dawam/issues/406)), headers ([#369](https://github.com/EslamAlaaZaki/dawam/issues/369)), rewriting ([#377](https://github.com/EslamAlaaZaki/dawam/issues/377)) |
+| **Model routing and fallback** | one model per message; retries only | Fallback chain (primary → secondary provider on `unavailable`); route by task (light for simple questions, agent for generation); per-model cost table to show cost in currency. Fallback and routing **done** ([#406](https://github.com/EslamAlaaZaki/dawam/issues/406)); cost in currency already shipped (architecture §12.1) |
+| **Reasoning models** | not specially handled | Support "thinking" settings (Anthropic extended thinking, OpenAI reasoning effort, Qwen3/DeepSeek-R1 think tags), stream or hide the reasoning, count its tokens. **Done** ([#409](https://github.com/EslamAlaaZaki/dawam/issues/409)) |
 
 ```mermaid
 flowchart TD
@@ -424,14 +421,14 @@ Effort: S (days), M (1–2 weeks), L (several weeks). Impact is for DAWAM's user
 | 5 | Admin / Workspace RAG settings + retrieval playground | §5 | High | M | Makes 2–4 tunable. **Done** ([#380](https://github.com/EslamAlaaZaki/dawam/issues/380), [#381](https://github.com/EslamAlaaZaki/dawam/issues/381), [#382](https://github.com/EslamAlaaZaki/dawam/issues/382), [#383](https://github.com/EslamAlaaZaki/dawam/issues/383)): settings with Workspace overrides, re-index prompt, index status page, playground |
 | 6 | Tracing (OTel → Langfuse) + run explorer + feedback | §8 | High | M | Needed to measure everything else. **Done** (#355, #423, #356) |
 | 7 | RAG and tool-selection eval sets | §8 | High | M | Guards regressions. **Done** (#359, #360, #361, #362) |
-| 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | Our loop, or LangGraph if #15 happens |
+| 8 | Checkpointing + `ask_member` interrupt for jobs | §1, §6 | Medium | M | **Done** ([#401](https://github.com/EslamAlaaZaki/dawam/issues/401), [#402](https://github.com/EslamAlaaZaki/dawam/issues/402)) on our own loop |
 | 9 | Layout-aware parsing (Docling) + table-aware chunking + overlap | §2.2, §3 | Medium | M | Parsing **done** (#364); table-aware chunking **done** (#366); overlap **done** (#365) |
 | 10 | HNSW per-model indexes | §3 | Medium (at scale) | S | Do when Workspaces have thousands of chunks. **Done** (#371) |
 | 11 | Conversation compaction + Workspace memory | §7 | Medium | M | Compaction **done** (#354); Workspace memory not yet |
-| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | Contextual headers **done** (#369); query rewriting **done** (#377); titles not yet |
-| 13 | Planning + self-verification in jobs | §6 | Medium | M | |
-| 14 | Model fallback + cost tables | §6, §8 | Medium | S | |
-| 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | Only after 6–8 are in place |
+| 12 | Use the light role (titles, rewriting, contextual headers) | §6 | Medium | S | Contextual headers **done** (#369); query rewriting **done** (#377); titles **done** ([#405](https://github.com/EslamAlaaZaki/dawam/issues/405)); classification via routing ([#406](https://github.com/EslamAlaaZaki/dawam/issues/406)) |
+| 13 | Planning + self-verification in jobs | §6 | Medium | M | **Done** ([#403](https://github.com/EslamAlaaZaki/dawam/issues/403), [#404](https://github.com/EslamAlaaZaki/dawam/issues/404)) |
+| 14 | Model fallback + cost tables | §6, §8 | Medium | S | Fallback and routing **done** ([#406](https://github.com/EslamAlaaZaki/dawam/issues/406)); cost tables shipped earlier (architecture §12.1) |
+| 15 | Multi-agent with LangGraph (supervisor + specialists) | §1, §6 | Medium–High | L | **Done** on our own loop, not LangGraph ([#412](https://github.com/EslamAlaaZaki/dawam/issues/412), ADR 0009); off by default until an eval shows it beats the single agent |
 | 16 | Prompt-injection classifier + NER PII | §9 | Medium | M | **Done** (#384, #385); also SUBSTR leak path closed (#386), rate limits (#388) |
 | 17 | Re-embed on model change (ADR 0005 follow-up) | §3 | Low–Medium | M | **Done** (#372); ADR 0006 supersedes 0005 |
 | 18 | Image/diagram understanding (ERDs) | §2.3 | Medium | M | Needs the vision role from #2. **Done** (#426) |

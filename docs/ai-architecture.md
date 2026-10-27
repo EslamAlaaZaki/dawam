@@ -51,8 +51,9 @@ flowchart TD
     API --> SVC["AssistantService.send_message<br/>authorize, rate limit, store message, create run"]
     SVC --> LOOP["run_agent<br/>assistant/internal/agent.py"]
     WORKER["Worker process<br/>assistant_task job"] --> LOOP
+    LOOP -.->|"jobs: checkpoint, plan"| CKP[("jobs row:<br/>checkpoint, plan")]
 
-    LOOP -->|"chat(messages, tools)"| MG["MeteredGateway<br/>budgets, usage, internal-only<br/>llm/role_service.py"]
+    LOOP -->|"chat(messages, tools)"| MG["MeteredGateway<br/>budgets, usage, internal-only, fallback<br/>llm/role_service.py"]
     MG --> GW["Gateway<br/>retries, backoff, token estimates<br/>llm/gateway.py"]
     GW --> AD{"Adapter"}
     AD --> A1["openai_compatible<br/>OpenAI, Ollama, vLLM, SGLang..."]
@@ -63,7 +64,7 @@ flowchart TD
     AD --> A6["plugin entry point"]
     A1 & A2 & A3 & A4 & A5 & A6 --> TR["UrllibTransport"] --> P(["Model provider over HTTPS"])
 
-    LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>26 tools"]
+    LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>read tools run in parallel"]
     TOOLS --> AUTHZ{"Policy action allowed?<br/>Data-sharing level allowed?"}
     AUTHZ -->|no| REF["refused result"]
     AUTHZ -->|yes| SL["Service layer<br/>same one the REST API uses"]
@@ -168,6 +169,10 @@ flowchart LR
 ### 3.5 Model roles, Workspace Models and budgets
 
 - **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3), passage context headers (§8.2) and query rewriting (§8.4); no fallback to the agent role for those) and `embedding` (document vectors), `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed) and `rerank` (a cross-encoder that reorders search results, §8.4; optional, with no fallback: a Workspace without one keeps the fused order, #373). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it. Gateway `rerank(query, documents)` returns one score per document; only the OpenAI-compatible adapter implements it (`POST /rerank`, Cohere, Jina and vLLM reply shapes; malformed, partial, duplicate or non-finite scores are rejected), the others refuse with `bad_request`. It is retried like `chat`, goes through the `MeteredGateway` (budgets, internal-only, tokens recorded under `rerank`), and "Test connection" ranks two documents; a rerank-only model is never asked to chat.
+- **Light role uses:** besides the above, the light model writes **conversation titles** after the first answer (the first-line title stays until then, on any failure, and for member-named conversations; listed in the AI settings light features) and takes **simple chat questions** (see routing below). Summaries run on it too (#354).
+- **Fallback chain** (#406): admins set an ordered fallback list per role (`agent`, `light`) in `llm_role_fallbacks` (`GET/PUT /admin/llm/fallbacks`, "Fallback models" on the Language models page). `MeteredGateway.chat` moves to the next model only on `unavailable` (timeouts included) and only before any event; budget or policy refusals and other errors never fall back, and a started reply is never restarted. Fallbacks that are no longer enabled and tested are dropped, and external ones are skipped in an internal-only Workspace.
+- **Task routing** (`assistant/internal/routing.py`): a short single-line question goes to the light model when one with tool calling exists; generation goes to the agent model; a member's explicit model pick always wins.
+- **Reasoning models** (#409): a model can carry reasoning settings (effort, token budget, show or hide) on `llm_models`. Adapters map them to Anthropic extended thinking, OpenAI-compatible `reasoning_effort` and `reasoning`/`reasoning_content`, or a chunk-safe `<think>` tag splitter; Bedrock, Gemini and legacy plugins are never passed them. Shown reasoning streams as `ReasoningDelta`; hidden reasoning is dropped at the gateway and never reaches SSE or the saved answer. `Usage.reasoning_tokens` (part of the completion tokens, estimated if the provider doesn't say) is stored in `llm_usage`.
 - **Minimum window for `agent`:** `AGENT_MIN_CONTEXT = 32_768`. Assigning the role to a model with a known window below it, or lowering an agent model's window below it, is rejected with 422 `context_window_too_small`. An unknown window is allowed with a warning. For Ollama, "Test connection" reads `num_ctx` through `/api/show` and warns when it is below 32K or not set (the warning is not stored).
 - **Workspace Models** (`llm/workspace_ai.py`): each Workspace picks one embedding model and one or more agent and light models, with a default for each. Members can pick any of the Workspace's agent models per message.
 - **`RoleService.gateway_for_role(role, workspace_id=, user_id=)`** returns a **`MeteredGateway`** that:
@@ -180,7 +185,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     F["Feature asks for a model<br/>gateway_for_role(role, workspace, user)"] --> R{"Role"}
-    R -->|agent| M1["Workspace default agent model<br/>or the member's pick for this message"]
+    R -->|agent| M1["Workspace default agent model<br/>or the member's pick for this message<br/>(simple questions: light model)"]
     R -->|light| M2["Workspace default light model,<br/>else default agent model"]
     R -->|embedding| M3["Workspace embedding model"]
     M1 & M2 & M3 --> IO{"Workspace internal-only<br/>and provider external?"}
@@ -189,6 +194,7 @@ flowchart TD
     MG --> B{"Installation and Workspace<br/>monthly budgets left?"}
     B -->|no| E2["429 token_budget_exhausted"]
     B -->|yes| CALL["Gateway.chat / embed"]
+    CALL -->|"unavailable before any event"| FB["Next model in the role's<br/>fallback chain"] --> CALL
     CALL --> U["Record tokens in llm_usage<br/>workspace, user, model"]
 ```
 
@@ -213,6 +219,8 @@ Tools declare the level they need; the tool registry hides and refuses tools abo
 
 - `Text(text)` — answer text as it streams;
 - `ToolFinished(ToolCallRecord)` — after each tool call (name, arguments, status `ok|refused|error|skipped`, duration, what may be saved);
+- `Reasoning(text)` — shown thinking from a reasoning model (§3.5);
+- `Asked(question)` — jobs only: the run saved its checkpoint and stopped to ask the member (§4.5);
 - one final `Finished(status, text, tool_calls, prompt_tokens, completion_tokens, error_code, error_message)` with status `completed`, `tool_limit`, `cancelled` or `failed`.
 
 ### 4.1 The loop, step by step
@@ -282,8 +290,9 @@ flowchart TD
     ERR -->|yes| X2(["Finished: failed"])
     ERR -->|no| PEND{"Any tool calls?"}
     PEND -->|no| X3(["Finished: completed,<br/>or tool_limit if the cap was hit"])
-    PEND -->|yes| EXEC["For each call:<br/>cap left? execute, else skipped"]
-    EXEC --> QUOTE["Append quoted, shortened results"]
+    PEND -->|yes| EXEC["Run the calls in order, each leading run<br/>of read tools in parallel; cap left? else skipped"]
+    EXEC --> QUOTE["Append quoted, shortened results<br/>(jobs: save checkpoint)"]
+    QUOTE -->|"ask_member or approval needed (jobs)"| X4(["Asked: job pauses"])
     QUOTE --> CAN
 ```
 
@@ -315,7 +324,7 @@ LlmError / ApiError → Finished("failed", code, message)
 Key behaviours:
 
 - **Tool-call cap:** 25 per chat message (`DAWAM_ASSISTANT_MAX_TOOL_CALLS`), 150 per background job (`DAWAM_ASSISTANT_JOB_MAX_TOOL_CALLS`). When the cap is hit, the next model call is offered **no tools**, so the model has to answer with what it has; the run ends as `tool_limit`.
-- **Parallel tool calls:** if a model returns several calls in one turn, they all run (one after another), each counted against the cap.
+- **Parallel tool calls** (#407): in a turn's pending calls, each leading run of consecutive read tools runs in a thread pool (`MAX_PARALLEL_READS = 8`). Writes and `find_tools` are barriers, so call order is kept and a read after a write sees the write. Results are recorded in asked order, each worker runs in a copied context (request id in logs), and a failing worker becomes an `error` outcome without dropping the others. Unknown, invalid, refused and over-cap calls get their status without running. Source queries still run one after another (`QueryBudget` holds a lock per query). Every call counts against the cap.
 - **Cancellation:** the member presses Stop → `cancel_requested=true` on the run row; the loop checks it before each model call, before each tool call, and (rate-limited) while text streams. If the browser disconnects, the run is saved as `cancelled`.
 - **Tool results are untrusted:** each one is wrapped in `<data source="tool:...">…</data>` (§7.1).
 
@@ -388,6 +397,24 @@ The member's latest message and the current run's calls are never dropped. Token
 - There is no long-term or vector memory of conversations (see `docs/ai-enhancements.md`). Conversations are private to their starter unless shared with the Workspace (others can read; Owners and Editors can post).
 - Only one run at a time per conversation (409 `run_in_progress`; a run older than 15 minutes stops blocking).
 
+### 4.5 Jobs: checkpoint, plan, verify, ask
+
+These are options of the same `run_agent`, switched on by background jobs only; chat is unchanged (#401 to #404, #411).
+
+- **Checkpointing** (#401): with `checkpoint=` the loop saves messages, finished and pending tool calls, text and tokens after each model step and each tool call (and after a parallel batch). A resumed run (`resume=`) runs only the pending calls; finished ones never repeat, and the tool-call cap and tokens count across attempts. The run part is redacted before saving.
+- **Planning** (#403): job-only `write_plan` (1 to 20 steps) and `update_plan` (status, reword, append steps to re-plan). Unknown step ids are reported to the model. The plan is kept in the checkpoint and in `jobs.plan`, and the job card shows it as an ordered list.
+- **Self-verification** (#404): when a job is about to answer after writing, the loop checks its pending proposals as a whole with `change_sets.validate`. Errors go back to the model (quoted as data) for a bounded fix-and-retry (`max_rounds = 2`). `run_validation` and `get_score` then run once as a labelled baseline of the current warehouse, since proposals become a Change Set only after the job ends. The final summary reports the latest check and the baseline. Verification calls are logged but don't count against the cap; the verify state survives a resume.
+- **Ask the member** (#402): job-only `ask_member`. The loop saves the checkpoint and ends with `Asked(question)`; the job goes to `paused`. The member's answer (`POST /jobs/{id}/answer`) comes back on resume as the tool result, quoted as data.
+- **Pre-approval** (#411, jobs only; chat can't wait): `BoundTools.approval(name, args)` gates `run_source_query` with no literal row bound or one above 100 (parsed in the source's dialect; unparsable means gated), `generate_dw_schema` when it would regenerate existing Core or Mart tables, and the job-only `reindex_documents` (always). A gated call pauses the job through the `ask_member` path; only an exact reply from a fixed word list approves (yes, y, approve, approved, ok, okay, go ahead, proceed, sure; case-insensitive, a trailing `.` or `!` ignored), and anything else, including "yes but...", is a refusal, and an approval is used once. Gated calls never run inside a parallel batch. The job card shows Approve and Decline buttons.
+
+### 4.6 Tool search (`find_tools`)
+
+When more than 30 tools are allowed (`TOOL_SEARCH_THRESHOLD`), the agent is offered the page's core tools plus `find_tools(query)` instead of the whole list (#408). `find_tools` ranks the other allowed tools by name and description and loads the top 5 into the next call. Core sets: `BASE_TOOLS`, `PAGE_TOOLS` (keyed by page-context type, e.g. `source_system`, `failed_check`) and `FOLDER_TOOLS` (keyed by file-folder id, e.g. `kpis`, `lineage`, `ddl`). Jobs use the base set. Hidden tools still pass `BoundTools.execute`, so `find_tools` only searches what the role may use.
+
+### 4.7 Structured answers (KPI cards)
+
+After a run that called `suggest_kpis`, one extra metered `json_schema` call returns an intro sentence plus KPI cards (name, rationale, definition, unit) (#410). The answer is saved as the intro plus a `dawam-kpis` block in place of the Markdown list, and the chat draws it as cards (`KpiCards`; a malformed block shows as code). On skip or failure (model without `json_schema`, tool cap hit, invalid JSON) the Markdown answer stands. `dawam-kpis` blocks are stripped from history on later turns.
+
 ---
 
 ## 5. The prompts (`assistant/internal/prompt.py`)
@@ -398,7 +425,7 @@ The member's latest message and the current run's calls are never dropped. Token
 
 **Page context:** the frontend sends what the member is looking at (`type`, `id`, `label`); it is appended to the system prompt as a quoted `page context` data block.
 
-**Job prompt** (appended for background jobs): you are running as a background job; work through the task with your tools and finish with a short summary; changes you propose are collected into a single Change Set the member reviews afterwards; you can't ask questions, so state your assumptions.
+**Job prompt** (appended for background jobs): you are running as a background job; work through the task with your tools and finish with a short summary; changes you propose are collected into a single Change Set the member reviews afterwards; plan first with `write_plan`, keep the plan current and re-plan after a failure; ask the member with `ask_member` only when a decision is truly needed, otherwise state your assumptions.
 
 ---
 
@@ -499,6 +526,16 @@ There are 33 tools.
 | `generate_file` | Save a file: Markdown the model writes (gaps report, KPI docs, documentation) or an export (`ddl`, `mapping_sheet`, `data_dictionary`). If the file exists, returns a diff and overwrites only with `replace=true` after the user agrees |
 | `update_file` | Propose a new text for an existing text file → shown as a diff in a Change Set |
 | `start_job` | Hand a large task to a background job (chat only) |
+
+**Loop and job-only tools** (not in the catalogue count above)
+
+| Tool | What it does |
+|---|---|
+| `find_tools` | Chat and jobs when more than 30 tools are allowed: search the hidden tools and load the top 5 (§4.6, #408) |
+| `write_plan`, `update_plan` | Jobs only: a plan of 1 to 20 steps, then status updates and re-plans (§4.5, #403) |
+| `ask_member` | Jobs only: pause and ask the member; the answer resumes the job (§4.5, #402) |
+| `reindex_documents` | Jobs only: re-index the Workspace's documents; always needs the member's approval (#411) |
+| `delegate` | Supervisor mode only: run a specialist (§9, #412) |
 
 Several write tools follow a **two-phase pattern**: call once without the payload to read the inputs (e.g. `generate_dw_schema` without `tables`), then again with the full model or drafts.
 
@@ -788,9 +825,13 @@ RAG over documents is only one source. The agent also grounds its answers throug
 
 - The model calls `start_job` with a complete task (or a long tool like `generate_dw_schema` starts one); a row is queued in the `jobs` table with type `assistant_task`.
 - The **worker process** (`python -m dawam worker`, `worker.py`) claims jobs one at a time with `SELECT … FOR UPDATE SKIP LOCKED` (highest `priority` first, then oldest; #391), sends heartbeats, and fails jobs whose worker died. Tests run jobs inline (`InlineJobRunner`).
-- `AssistantService.run_job` re-checks that the member who started it is still active and may still ask the assistant, then runs **the same `run_agent` loop** with `SYSTEM_PROMPT + JOB_PROMPT`, a cap of 150 tool calls, and job-mode tools (no `start_job`; write proposals are **collected**, not proposed one by one).
+- `AssistantService.run_job` re-checks that the member who started it is still active and may still ask the assistant, then runs **the same `run_agent` loop** with `SYSTEM_PROMPT + JOB_PROMPT`, a cap of 150 tool calls, and job-mode tools (no `start_job`; plus `write_plan`, `update_plan`, `ask_member`; write proposals are **collected**, not proposed one by one).
 - **Priorities and scaling** (#391): `jobs.priority` is LOW 0 (re-index and re-embed), NORMAL 50 (per-file index jobs, the default) or CHAT 100 (assistant-started jobs), so a chat job runs before a queue of re-index jobs. There is no aging, so LOW jobs can starve under a constant stream of higher ones. The compose worker service runs `DAWAM_WORKERS` replicas (default 2); GPU replicas share the GPUs, and the systemd unit still starts one worker.
 - Progress and each tool call go to the job log; progress percentage is based on tool calls used.
+- **Durable runs** (#401): the checkpoint (`jobs.checkpoint`, JSONB, versioned) and `jobs.attempts` are saved as the loop goes. If the worker dies, `fail_lost` requeues a job that has a checkpoint (up to `MAX_ATTEMPTS = 3`) and it resumes with only the pending tool calls; without a checkpoint it fails as before. Writes are fenced by attempt: a stalled, superseded worker's heartbeats, logs, checkpoint saves and finish are dropped, and it sees itself as cancelled. The checkpoint is cleared on end or cancel. Proposals are restored, so a resumed job still ends in one Change Set.
+- **Pausing** (#402, #411): `ask_member` (or a gated expensive call) saves the checkpoint and sets the job to `paused`. A paused job is never claimed and counts as active, so cancel and Workspace archive cover it. The question is redacted, posted into the conversation and notified to the creator. `POST /jobs/{id}/answer` is creator only (403 `not_job_creator`), 409 `job_not_paused`, 422 `invalid_answer`; it moves `paused` to `queued` under a row lock, so a double answer or an answer racing a cancel can't run twice. The job card shows the question with an answer box (and Approve / Decline for approvals); the Jobs popover says "Waiting for your answer".
+- **Plan and verification**: the plan is saved in `jobs.plan`, returned by `GET /jobs` and shown on the job card, and kept after the job ends. Before the final summary, the job checks its proposals and reports a validation baseline (§4.5).
+- **Supervisor mode** (#412, ADR 0009): with `DAWAM_ASSISTANT_JOB_SUPERVISOR` on (default **off**, jobs then run exactly as above), the job runs as a supervisor on the unchanged `run_agent`. Its tools are `delegate`, `write_plan`/`update_plan`, `ask_member`, and `run_validation`/`get_score` for verification. `delegate` runs a nested `run_agent` for a specialist (source analyst, DW modeler, mapper, KPI analyst) with only its own tools and context. Every specialist tool call still goes through `BoundTools.execute`; one tool-call cap is shared across levels, the same metered gateway enforces budgets, and specialist tokens roll into the job totals. The checkpoint stores the in-progress specialist, so a resume continues mid-specialist, and a finished specialist's report is kept until the supervisor saves. A job keeps the mode it started in. It ships off until an eval shows it beats the single agent.
 - On success, `submit_proposals` turns everything collected into **one Change Set**, and the job's summary is posted back into the conversation. On failure or cancellation, no Change Set is made and the conversation is told why.
 
 ```mermaid
@@ -808,11 +849,21 @@ sequenceDiagram
     C-->>M: "Started a job"
     W->>Q: claim highest priority, then oldest, FOR UPDATE SKIP LOCKED
     W->>W: member still active and allowed?
-    W->>A: SYSTEM_PROMPT + JOB_PROMPT, cap 150
-    loop tool calls
-        A->>A: read tools, collect proposals (not applied)
-        A-->>Q: job log and progress
+    W->>A: SYSTEM_PROMPT + JOB_PROMPT, cap 150 (resume: checkpoint)
+    A->>A: write_plan (saved in jobs.plan)
+    loop until the answer
+        A->>A: tool calls: leading read tools in parallel, writes one by one, proposals collected
+        A-->>Q: save checkpoint, job log and progress
+        opt ask_member, or an expensive call needs approval
+            A-->>Q: status paused, question shown to the member
+            M->>Q: POST /jobs/{id}/answer
+            Q->>W: queued again, resumes from the checkpoint
+        end
+        opt worker died
+            Q->>W: fail_lost requeues (up to 3 attempts), resume
+        end
     end
+    A->>A: verify proposals (bounded fix and retry), validation baseline
     alt completed
         A-->>W: Finished: completed
         W->>CS: submit_proposals, one Change Set
@@ -821,6 +872,20 @@ sequenceDiagram
         W->>C: post why, no changes proposed
     end
     M->>CS: review, accept or reject
+```
+
+With the supervisor flag on, the tool loop is run by a supervisor that calls `delegate` for specialists:
+
+```mermaid
+flowchart TD
+    J["Job starts<br/>(supervisor mode)"] --> SUP["Supervisor: run_agent<br/>write_plan, delegate, ask_member,<br/>run_validation, get_score"]
+    SUP -->|"delegate(specialist, task)"| SP["Specialist: nested run_agent<br/>source analyst, DW modeler,<br/>mapper or KPI analyst<br/>own tools and context"]
+    SP -->|"every tool call"| BT["BoundTools.execute<br/>role and data-sharing checks"]
+    SP -->|"report"| SUP
+    SUP -->|"decision needed"| ASK["ask_member: job paused"] --> SUP
+    SUP --> V{"Verify:<br/>proposals valid?"}
+    V -->|"no, rounds left"| SUP
+    V -->|yes| CS["One Change Set + summary"]
 ```
 
 ---
@@ -833,10 +898,11 @@ sequenceDiagram
 |---|---|
 | `started` | `run_id`, `message_id` |
 | `text` | `{text}` — a delta |
+| `reasoning` | `{text}` — a piece of the model's thinking, only for a reasoning model whose settings show it (#409) |
 | `tool` | name, redacted arguments, status, duration, saved result |
 | final event | the saved run (status, tool calls, tokens, duration, error), the answer message id and the model name |
 
-The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx`) POSTs the message with `fetch`, reads `response.body.getReader()`, splits frames on `event:` / `data:` lines, renders text incrementally with `react-markdown`, shows each tool call as it finishes, and has a Stop button that calls the stop endpoint. A fenced `mermaid` code block in an answer (what `render_diagram` asks the model to emit) is drawn as a diagram by `MermaidDiagram.tsx`: the library loads on first use, runs with `securityLevel: "strict"`, waits 300 ms for a streaming reply to settle, and falls back to showing the source as code if it doesn't parse (#399).
+The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx`) POSTs the message with `fetch`, reads `response.body.getReader()`, splits frames on `event:` / `data:` lines, renders text incrementally with `react-markdown`, shows each tool call as it finishes, shows `reasoning` events as a collapsible "Reasoning" block, draws a `dawam-kpis` block as KPI cards (`KpiCards`, #410), and has a Stop button that calls the stop endpoint. A fenced `mermaid` code block in an answer (what `render_diagram` asks the model to emit) is drawn as a diagram by `MermaidDiagram.tsx`: the library loads on first use, runs with `securityLevel: "strict"`, waits 300 ms for a streaming reply to settle, and falls back to showing the source as code if it doesn't parse (#399).
 
 ---
 
@@ -848,6 +914,7 @@ The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/Assistan
 | `DAWAM_ASSISTANT_JOB_MAX_TOOL_CALLS` | 150 | tool calls per background job |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | 120 | total source-query seconds per run |
 | `DAWAM_REQUEST_THREADS` | 200 | request thread pool; each streaming answer holds one thread |
+| `DAWAM_ASSISTANT_JOB_SUPERVISOR` | false | run jobs as a supervisor with specialists (§9, ADR 0009) |
 | `DAWAM_WORKERS` | 2 | worker replicas in the compose file |
 | `DAWAM_PII_NER_ENABLED` | false | mask person names and addresses with NER (§7.4); needs the `ner` extra, the app and worker refuse to start without it |
 | `DAWAM_OTEL_ENDPOINT` | unset | OTLP/HTTP collector URL; tracing is off unless set |
@@ -899,7 +966,7 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | Tracing | `platform/tracing.py` |
 | Run explorer, feedback | `assistant/run_explorer.py`, `assistant/admin_api.py`, `assistant/api.py` |
 | Workspace AI settings, data-sharing policy | `llm/workspace_ai.py`, `llm/workspace_ai_api.py` |
-| Agent loop | `assistant/internal/agent.py` |
+| Agent loop | `assistant/internal/agent.py` (checkpoint, resume, parallel reads, tool search, verify, ask), `assistant/internal/supervisor.py` (supervisor and specialists), `assistant/internal/routing.py` (task routing), `assistant/internal/structured.py` (KPI cards) |
 | Prompts and quoting | `assistant/internal/prompt.py` |
 | Limited mode | `assistant/internal/prompted.py`, `assistant/internal/json_schema.py` |
 | Context management | `assistant/internal/context.py` |
@@ -914,4 +981,4 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | PII validators and redaction | `platform/pii_validators.py`, `sources/internal/pii*.py` |
 | Worker and jobs | `worker.py`, `job_handlers.py`, `modules/jobs/` |
 | Frontend | `frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx`, `frontend/src/workspaces/MermaidDiagram.tsx`, `frontend/src/admin/WebAccessPage.tsx`, `frontend/src/api/web.ts` |
-| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`, `docs/adr/0008-assistant-outbound-web-access.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |
+| Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`, `docs/adr/0008-assistant-outbound-web-access.md`, `docs/adr/0009-supervisor-and-specialists-on-our-own-loop.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |
