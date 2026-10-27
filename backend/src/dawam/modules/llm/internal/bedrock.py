@@ -40,6 +40,7 @@ from ..gateway import (
     Image,
     LlmError,
     Message,
+    ReasoningSettings,
     TextDelta,
     ToolCall,
     ToolCallEvent,
@@ -271,6 +272,7 @@ class BedrockAdapter:
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
         system, wire_messages = _wire_messages(messages)
         body: dict[str, Any] = {

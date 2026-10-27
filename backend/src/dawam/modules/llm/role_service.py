@@ -32,6 +32,7 @@ from .gateway import (
     Gateway,
     Image,
     Message,
+    ReasoningDelta,
     TextDelta,
     ToolCallEvent,
     ToolSpec,
@@ -327,12 +328,15 @@ class MeteredGateway:
         self, start: Callable[[], Iterator[ChatEvent]], messages: Sequence[Message]
     ) -> Iterator[ChatEvent]:
         produced: list[str] = []
+        thought: list[str] = []
         reported: Usage | None = None
         with tracing().model_call(self._model_name, self._role) as span:
             try:
                 for event in start():
                     if isinstance(event, TextDelta):
                         produced.append(event.text)
+                    elif isinstance(event, ReasoningDelta):
+                        thought.append(event.text)
                     elif isinstance(event, ToolCallEvent):
                         produced.append(f"{event.call.name}{json.dumps(event.call.arguments)}")
                     elif isinstance(event, Done):
@@ -342,7 +346,9 @@ class MeteredGateway:
                 # Errors and abandoned streams count too: estimate what was sent and received.
                 if reported is None:
                     prompt = estimate_prompt_tokens(messages)
-                    reported = Usage(prompt, estimate_tokens("".join(produced)), estimated=True)
+                    reasoning = estimate_tokens("".join(thought))
+                    completion = estimate_tokens("".join(produced)) + reasoning
+                    reported = Usage(prompt, completion, estimated=True, reasoning_tokens=reasoning)
                 self._record(reported)
                 span.usage(reported.prompt_tokens, reported.completion_tokens)
                 if tracing().capture_content:

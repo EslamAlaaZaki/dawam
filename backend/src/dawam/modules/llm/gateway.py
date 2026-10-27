@@ -9,6 +9,7 @@ unavailability, and token usage (estimated when the provider reports none).
 
 from __future__ import annotations
 
+import inspect
 import json
 import struct
 import time
@@ -193,6 +194,7 @@ class Adapter(Protocol):
         tools: Sequence[ToolSpec],
         stream: bool,
         json_schema: dict[str, Any] | None,
+        reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]: ...
 
     # An adapter that supports reasoning models also takes ``reasoning: ReasoningSettings | None
@@ -214,6 +216,13 @@ class Adapter(Protocol):
     # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
     # Optional: ``ollama_context(self, model) -> OllamaContext | None`` (``None``: the
     # server is not Ollama).
+
+
+def _takes_reasoning(adapter: Adapter) -> bool:
+    try:
+        return "reasoning" in inspect.signature(adapter.chat).parameters
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def estimate_tokens(text: str) -> int:
@@ -245,6 +254,8 @@ class Gateway:
     ) -> None:
         self._adapter = adapter
         self._reasoning = reasoning
+        # A plugin adapter written before reasoning models does not take the argument.
+        self._takes_reasoning = _takes_reasoning(adapter)
         self._model = model
         self._capabilities = capabilities or Capabilities()
         self._max_retries = max_retries
@@ -301,7 +312,9 @@ class Gateway:
         """Send the conversation and yield events. A rate limit or an unavailable provider
         is retried with backoff, but only until the first event: a stream already begun
         is never restarted. Token usage is estimated when the provider reports none."""
-        extra: dict[str, Any] = {"reasoning": self._reasoning} if self._reasoning else {}
+        extra: dict[str, Any] = (
+            {"reasoning": self._reasoning} if self._reasoning and self._takes_reasoning else {}
+        )
         events = self._estimated(
             self._retrying(
                 lambda: self._adapter.chat(
