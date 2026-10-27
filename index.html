@@ -4,37 +4,321 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DAWAM Architecture</title>
-<meta name="description" content="Interactive, source-linked architecture diagrams of DAWAM.">
+<meta name="description" content="DAWAM, the Data Analysis & Warehouse Architecture Modeler: analyse source systems and design a data warehouse with an AI assistant. Interactive architecture diagrams.">
+<meta property="og:title" content="DAWAM: Data Analysis & Warehouse Architecture Modeler">
+<meta property="og:description" content="Analyse your source systems and design your data warehouse in one place, with an AI assistant at each step.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 3 21 7.5 12 12 3 7.5Z' fill='%235B5BD6'/%3E%3Cpath d='M3 12 12 16.5 21 12' stroke='%2316161A' stroke-width='1.8' stroke-linejoin='round' opacity='.55'/%3E%3Cpath d='M3 16.5 12 21 21 16.5' stroke='%2316161A' stroke-width='1.8' stroke-linejoin='round' opacity='.3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #f6f8fa; --card: #ffffff; --text: #1f2328; --muted: #59636e; --line: #d1d9e0; --accent: #0d9488; }
+  /* Tokens from DAWAM's DESIGN.md (Precision minimal). */
+  :root {
+    --background: #FFFFFF; --surface: #FAFAFA; --surface-raised: #FFFFFF; --muted: #F4F4F5;
+    --border: #E6E6E9; --border-strong: #D4D4D8;
+    --foreground: #16161A; --muted-foreground: #5F5F6B; --subtle-foreground: #71717A;
+    --primary: #5B5BD6; --primary-foreground: #FFFFFF; --primary-subtle: #EEEEFC;
+    --success: #16A34A;
+    --ai-from: #6E56CF; --ai-to: #0EA5E9; --ai-subtle: #F5F3FF;
+    --ai-gradient: linear-gradient(135deg, var(--ai-from), var(--ai-to));
+    --grid: rgba(22, 22, 26, .045);
+    --glow: rgba(91, 91, 214, .16);
+    color-scheme: light;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #0d1117; --card: #151b23; --text: #e6edf3; --muted: #9198a1; --line: #3d444d; --accent: #2dd4bf; }
+    :root {
+      --background: #0B0B0F; --surface: #111116; --surface-raised: #17171D; --muted: #1C1C23;
+      --border: #25252D; --border-strong: #34343D;
+      --foreground: #EDEDF0; --muted-foreground: #A1A1AA; --subtle-foreground: #8B8B95;
+      --primary: #8B8BF5; --primary-foreground: #0B0B0F; --primary-subtle: #1E1E3A;
+      --success: #4ADE80; --ai-subtle: #1A1630;
+      --grid: rgba(237, 237, 240, .05);
+      --glow: rgba(139, 139, 245, .18);
+      color-scheme: dark;
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 880px; margin: 0 auto; padding: 48px 16px; }
-  h1 { margin: 0 0 8px; font-size: 28px; }
-  p.lead { margin: 0 0 32px; color: var(--muted); }
-  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-  a.card { display: block; padding: 16px 20px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; color: inherit; text-decoration: none; }
-  a.card:hover { border-color: var(--accent); }
-  a.card strong { display: block; color: var(--accent); font-size: 17px; }
-  a.card span { color: var(--muted); }
-  footer { margin-top: 32px; color: var(--muted); font-size: 14px; }
-  footer a { color: var(--accent); }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--background); color: var(--foreground);
+    font: 16px/1.6 "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+  /* Top bar */
+  header.bar { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--background) 80%, transparent); border-bottom: 1px solid var(--border); }
+  header.bar .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; letter-spacing: .14em; font-size: 14px; }
+  .brand svg { width: 22px; height: 22px; }
+  .mark-top { fill: var(--primary); }
+  .mark-line { stroke: currentColor; }
+  nav.links { display: flex; gap: 20px; font-size: 14px; color: var(--muted-foreground); }
+  nav.links a { text-decoration: none; }
+  nav.links a:hover { color: var(--foreground); }
+
+  /* Hero */
+  .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
+  .hero::before { content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px; mask-image: radial-gradient(ellipse at 50% 30%, #000 30%, transparent 75%); }
+  .hero::after { content: ""; position: absolute; width: 720px; height: 420px; left: 50%; top: -160px; transform: translateX(-50%);
+    background: radial-gradient(closest-side, var(--glow), transparent); pointer-events: none; }
+  .hero .wrap { position: relative; z-index: 1; padding-top: 88px; padding-bottom: 80px; text-align: center; }
+  .hero-mark { display: block; width: 72px; height: 72px; margin: 0 auto 24px; }
+  .eyebrow { display: inline-block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted-foreground);
+    border: 1px solid var(--border); background: var(--surface); padding: 4px 12px; border-radius: 999px; margin-bottom: 20px; }
+  h1 { font-size: clamp(40px, 7vw, 64px); line-height: 1.05; letter-spacing: -.02em; margin: 0 0 8px; font-weight: 700; }
+  .tagline { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted-foreground); margin: 0 auto 8px; }
+  .lead { max-width: 640px; margin: 16px auto 32px; font-size: 17px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 8px; font-weight: 500;
+    font-size: 15px; text-decoration: none; border: 1px solid var(--border-strong); background: var(--surface-raised); transition: border-color .15s, transform .15s; }
+  .btn:hover { border-color: var(--primary); transform: translateY(-1px); }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .btn svg { width: 18px; height: 18px; }
+  .chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
+  .chip { font-size: 13px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
+
+  section { padding: 72px 0; border-bottom: 1px solid var(--border); }
+  .section-head { max-width: 640px; margin-bottom: 32px; }
+  .kicker { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--primary); font-weight: 600; }
+  h2 { font-size: 30px; line-height: 1.2; letter-spacing: -.01em; margin: 6px 0 12px; }
+  .section-head p { color: var(--muted-foreground); margin: 0; }
+
+  /* Six-step flow */
+  .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; counter-reset: step; }
+  .step { position: relative; padding: 20px 16px 0 0; }
+  .step::before { counter-increment: step; content: counter(step, decimal-leading-zero);
+    font-family: "Geist Mono", monospace; font-size: 12px; color: var(--primary); display: block; margin-bottom: 10px; }
+  .step::after { content: ""; position: absolute; top: 28px; left: 28px; right: 0; height: 1px;
+    background: linear-gradient(90deg, var(--border-strong), transparent); }
+  .step:last-child::after { display: none; }
+  .step h3 { font-size: 16px; margin: 0 0 4px; }
+  .step p { font-size: 14px; color: var(--muted-foreground); margin: 0; }
+
+  /* Capabilities */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cap { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .cap h3 { font-size: 16px; margin: 0 0 6px; }
+  .cap p { font-size: 14px; color: var(--muted-foreground); margin: 0; }
+  .cap .ico { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--primary-subtle); color: var(--primary); margin-bottom: 12px; }
+  .cap .ico svg { width: 18px; height: 18px; }
+
+  /* AI block: the only place with the AI gradient and the ✦ mark */
+  .ai { position: relative; border-radius: 16px; padding: 1px; background: var(--ai-gradient); }
+  .ai-inner { border-radius: 15px; background: var(--surface-raised); padding: 32px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; }
+  .ai h2 .spark { background: var(--ai-gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .ai ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .ai li { display: flex; gap: 10px; font-size: 15px; }
+  .ai li::before { content: "✦"; background: var(--ai-gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+  .tools span { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--ai-subtle); border: 1px solid var(--border); }
+
+  /* Diagram cards */
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  a.diag { display: flex; flex-direction: column; text-decoration: none; background: var(--surface-raised); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; transition: border-color .15s, transform .15s, box-shadow .15s; }
+  a.diag:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 12px 32px -16px var(--glow); }
+  .diag .art { height: 132px; background: var(--surface); border-bottom: 1px solid var(--border); display: grid; place-items: center; }
+  .diag .art svg { width: 82%; height: 100px; }
+  .art .n { fill: var(--surface-raised); stroke: var(--border-strong); }
+  .art .p { fill: var(--primary-subtle); stroke: var(--primary); }
+  .art .l { stroke: var(--subtle-foreground); fill: none; stroke-width: 1.5; }
+  .art .la { stroke: var(--primary); fill: none; stroke-width: 1.5; }
+  .art .d { stroke: var(--subtle-foreground); fill: none; stroke-width: 1.5; stroke-dasharray: 4 3; }
+  .diag .body { padding: 18px 20px 20px; }
+  .diag h3 { font-size: 17px; margin: 0 0 4px; }
+  .diag p { font-size: 14px; color: var(--muted-foreground); margin: 0 0 12px; }
+  .diag .go { font-size: 14px; color: var(--primary); font-weight: 500; }
+  .note { margin-top: 20px; font-size: 14px; color: var(--muted-foreground); }
+  .note a { color: var(--primary); }
+
+  footer { padding: 40px 0 56px; color: var(--muted-foreground); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; }
+  footer a { color: var(--foreground); }
+
+  @media (max-width: 860px) {
+    .flow { grid-template-columns: repeat(2, 1fr); row-gap: 8px; }
+    .step::after { display: none; }
+    .grid3 { grid-template-columns: 1fr; }
+    .grid2 { grid-template-columns: 1fr; }
+    .ai-inner { grid-template-columns: 1fr; padding: 24px; }
+    nav.links { gap: 14px; }
+    nav.links .hide-sm { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } html { scroll-behavior: auto; } }
 </style>
 </head>
 <body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 24 24" fill="none">
+    <path class="mark-top" d="M12 3 21 7.5 12 12 3 7.5Z"/>
+    <path class="mark-line" d="M3 12 12 16.5 21 12" stroke-width="1.8" stroke-linejoin="round" opacity=".55"/>
+    <path class="mark-line" d="M3 16.5 12 21 21 16.5" stroke-width="1.8" stroke-linejoin="round" opacity=".3"/>
+  </symbol>
+  <symbol id="gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="#top"><svg><use href="#mark"/></svg>DAWAM</a>
+    <nav class="links">
+      <a href="#flow">Flow</a>
+      <a href="#ai" class="hide-sm">AI assistant</a>
+      <a href="#diagrams">Diagrams</a>
+      <a href="https://github.com/EslamAlaaZaki/dawam">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" id="top">
+  <div class="wrap">
+    <svg class="hero-mark"><use href="#mark"/></svg>
+    <div class="eyebrow">Open source · Self-hosted · Apache 2.0</div>
+    <h1>DAWAM</h1>
+    <p class="tagline">Data Analysis &amp; Warehouse Architecture Modeler</p>
+    <p class="lead">Analyse your source systems and design your data warehouse in one place, with every design
+      decision traceable to the real source schema and an AI assistant at each step.</p>
+    <div class="cta">
+      <a class="btn primary" href="#diagrams">Explore the architecture</a>
+      <a class="btn" href="https://github.com/EslamAlaaZaki/dawam"><svg><use href="#gh"/></svg>View on GitHub</a>
+    </div>
+    <div class="chips">
+      <span class="chip">PostgreSQL · SQL Server · MySQL · Oracle</span>
+      <span class="chip">Kimball modeling</span>
+      <span class="chip">Any LLM, even air-gapped</span>
+    </div>
+  </div>
+</div>
+
 <main>
-  <h1>DAWAM Architecture</h1>
-  <p class="lead">Interactive diagrams of DAWAM. Every box links to the source code it is based on.</p>
-  <ul>
-    <li><a class="card" href="architecture/main-flow.html"><strong>Main flow</strong><span>From connecting source systems to an approved data warehouse, and what the AI assistant does at each step.</span></a></li>
-    <li><a class="card" href="architecture/system-overview.html"><strong>System overview</strong><span>Services, stores, external systems and the agentic layer.</span></a></li>
-    <li><a class="card" href="architecture/llm-layer.html"><strong>LLM layer</strong><span>Model roles, the metered gateway and the adapters for self-hosted and external models.</span></a></li>
-    <li><a class="card" href="architecture/rag-pipeline.html"><strong>RAG pipeline</strong><span>How uploaded documents are parsed, indexed and retrieved for the assistant.</span></a></li>
-  </ul>
-  <footer>More diagrams, and their editable sources, are in <a href="https://github.com/EslamAlaaZaki/dawam/tree/main/docs/architecture">docs/architecture</a>.</footer>
+  <section id="flow">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">How it works</div>
+        <h2>From source systems to an approved warehouse</h2>
+        <p>DAWAM follows the stages of a warehouse project. Every change, from a person, the AI or a
+          schema sync, arrives as a reviewable Change Set.</p>
+      </div>
+      <div class="flow">
+        <div class="step"><h3>Connect</h3><p>Live connections or a schema file, kept as versioned Snapshots.</p></div>
+        <div class="step"><h3>Documents</h3><p>Upload SDAs, specs and ERD images; DAWAM indexes them.</p></div>
+        <div class="step"><h3>Understand</h3><p>ER diagrams, profiles, PII scans and inferred relationships.</p></div>
+        <div class="step"><h3>KPIs</h3><p>A KPI catalog linked to real source columns.</p></div>
+        <div class="step"><h3>Design</h3><p>Generated staging, Core and Mart, validated mappings with lineage.</p></div>
+        <div class="step"><h3>Evaluate</h3><p>Quality score, approval gate, then DDL and documentation.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Why teams use it</div>
+        <h2>One place instead of scattered drawings and spreadsheets</h2>
+      </div>
+      <div class="grid3">
+        <div class="cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div>
+          <h3>Understand undocumented sources</h3><p>Profile data, find undeclared relationships and let the AI draft descriptions and a gaps report.</p></div>
+        <div class="cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 6v6c0 4.4 3.4 8 8 9 4.6-1 8-4.6 8-9V6l-8-3Z"/></svg></div>
+          <h3>Find personal data early</h3><p>Arabic and English PII rules on names and sampled values, followed through lineage into the warehouse.</p></div>
+        <div class="cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6h3a3 3 0 0 1 3 3v.5M8.5 18h3a3 3 0 0 0 3-3v-.5"/></svg></div>
+          <h3>Answer "where does this number come from?"</h3><p>Column-level lineage from any KPI or warehouse column back to its source columns.</p></div>
+        <div class="cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v6H4zM4 14h7v6H4zM15 14h5v6h-5z"/></svg></div>
+          <h3>Design a Kimball warehouse</h3><p>Staging generated automatically; Core and Mart with grain, SCD types and validated mappings.</p></div>
+        <div class="cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 12a8 8 0 1 1-3-6.2M20 4v5h-5"/></svg></div>
+          <h3>Absorb schema changes safely</h3><p>Re-sync a source, see every affected asset, accept the propagated fixes in full or in part.</p></div>
+        <div class="cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+          <h3>Run anywhere, even air-gapped</h3><p>Self-hosted with Docker Compose; use local models (Ollama, vLLM, SGLang) so nothing leaves your network.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ai">
+    <div class="wrap">
+      <div class="ai"><div class="ai-inner">
+        <div>
+          <div class="kicker">AI assistant</div>
+          <h2><span class="spark">✦</span> An agent that works on real data</h2>
+          <ul>
+            <li>Explores sources through tools that read the real schema, statistics and data, not guesses.</li>
+            <li>Searches your uploaded documents (full-text and vector search) and cites the passages.</li>
+            <li>Acts with the user's permissions; everything it changes arrives as a Change Set to review.</li>
+            <li>Runs on any model: OpenAI-compatible servers, Anthropic, Azure OpenAI, Gemini or AWS Bedrock.</li>
+          </ul>
+        </div>
+        <div class="tools mono" aria-label="Some of the assistant's tools">
+          <span>search_documents</span><span>get_profile</span><span>run_source_query</span><span>get_lineage</span>
+          <span>suggest_kpis</span><span>generate_dw_schema</span><span>draft_mappings</span><span>evaluate_dw</span>
+          <span>render_diagram</span><span>propose_changes</span><span>describe_image</span><span>start_job</span>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <section id="diagrams">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Architecture</div>
+        <h2>Interactive diagrams</h2>
+        <p>Every box links to the source code it is based on. Zoom, follow a route, or switch to dark mode inside each diagram.</p>
+      </div>
+      <div class="grid2">
+        <a class="diag" href="architecture/main-flow.html">
+          <div class="art"><svg viewBox="0 0 300 100" aria-hidden="true">
+            <rect class="n" x="6" y="8" width="38" height="18" rx="4"/><rect class="n" x="56" y="8" width="38" height="18" rx="4"/><rect class="n" x="106" y="8" width="38" height="18" rx="4"/><rect class="n" x="156" y="8" width="38" height="18" rx="4"/><rect class="n" x="206" y="8" width="38" height="18" rx="4"/><rect class="n" x="256" y="8" width="38" height="18" rx="4"/>
+            <rect class="p" x="6" y="41" width="38" height="18" rx="4"/><rect class="p" x="56" y="41" width="38" height="18" rx="4"/><rect class="p" x="106" y="41" width="38" height="18" rx="4"/><rect class="p" x="156" y="41" width="38" height="18" rx="4"/><rect class="p" x="206" y="41" width="38" height="18" rx="4"/><rect class="p" x="256" y="41" width="38" height="18" rx="4"/>
+            <path class="la" d="M44 50h12M94 50h12M144 50h12M194 50h12M244 50h12"/>
+            <rect class="n" x="56" y="74" width="38" height="18" rx="4"/><rect class="n" x="106" y="74" width="38" height="18" rx="4"/><rect class="n" x="156" y="74" width="38" height="18" rx="4"/><rect class="n" x="206" y="74" width="38" height="18" rx="4"/><rect class="n" x="256" y="74" width="38" height="18" rx="4"/>
+            <path class="l" d="M25 26v15M75 26v15M125 26v15M175 26v15M225 26v15M275 26v15"/><path class="d" d="M75 74V59M125 74V59M175 74V59M225 74V59M275 74V59"/>
+          </svg></div>
+          <div class="body"><h3>Main flow</h3><p>The whole product in six steps, and what the AI assistant does at each.</p><span class="go">Open diagram →</span></div>
+        </a>
+        <a class="diag" href="architecture/system-overview.html">
+          <div class="art"><svg viewBox="0 0 300 100" aria-hidden="true">
+            <rect class="n" x="6" y="12" width="40" height="18" rx="4"/><rect class="n" x="66" y="12" width="40" height="18" rx="4"/><rect class="n" x="126" y="12" width="40" height="18" rx="4"/>
+            <rect class="p" x="66" y="42" width="140" height="18" rx="4"/><rect class="n" x="226" y="42" width="68" height="18" rx="4"/>
+            <rect class="n" x="66" y="72" width="40" height="18" rx="4"/><rect class="n" x="116" y="72" width="40" height="18" rx="4"/><rect class="n" x="166" y="72" width="40" height="18" rx="4"/>
+            <path class="la" d="M46 21h20M106 21h20M86 30v12M206 51h20"/><path class="l" d="M86 60v12M136 60v12M186 60v12"/>
+          </svg></div>
+          <div class="body"><h3>System overview</h3><p>Services, stores, external systems and the agentic layer.</p><span class="go">Open diagram →</span></div>
+        </a>
+        <a class="diag" href="architecture/llm-layer.html">
+          <div class="art"><svg viewBox="0 0 300 100" aria-hidden="true">
+            <rect class="n" x="40" y="4" width="60" height="14" rx="4"/><rect class="n" x="120" y="4" width="60" height="14" rx="4"/><rect class="n" x="200" y="4" width="60" height="14" rx="4"/>
+            <rect class="p" x="40" y="28" width="220" height="14" rx="4"/><rect class="p" x="40" y="50" width="220" height="14" rx="4"/>
+            <rect class="n" x="40" y="74" width="30" height="14" rx="4"/><rect class="n" x="78" y="74" width="30" height="14" rx="4"/><rect class="n" x="116" y="74" width="30" height="14" rx="4"/><rect class="n" x="154" y="74" width="30" height="14" rx="4"/><rect class="n" x="192" y="74" width="30" height="14" rx="4"/><rect class="n" x="230" y="74" width="30" height="14" rx="4"/>
+            <path class="l" d="M70 18v10M150 18v10M230 18v10"/><path class="la" d="M150 42v8"/><path class="l" d="M55 64v10M93 64v10M131 64v10M169 64v10M207 64v10M245 64v10"/>
+          </svg></div>
+          <div class="body"><h3>LLM layer</h3><p>Model roles, budgets, the metered gateway and adapters for self-hosted and external models.</p><span class="go">Open diagram →</span></div>
+        </a>
+        <a class="diag" href="architecture/rag-pipeline.html">
+          <div class="art"><svg viewBox="0 0 300 100" aria-hidden="true">
+            <rect class="n" x="6" y="20" width="44" height="18" rx="4"/><rect class="n" x="66" y="20" width="44" height="18" rx="4"/><rect class="n" x="126" y="20" width="44" height="18" rx="4"/><rect class="p" x="186" y="20" width="44" height="18" rx="4"/><rect class="n" x="246" y="20" width="48" height="18" rx="4"/>
+            <rect class="n" x="6" y="62" width="44" height="18" rx="4"/><rect class="n" x="66" y="62" width="44" height="18" rx="4"/><rect class="n" x="126" y="62" width="44" height="18" rx="4"/><rect class="n" x="186" y="62" width="44" height="18" rx="4"/><rect class="n" x="246" y="62" width="48" height="18" rx="4"/>
+            <path class="la" d="M50 29h16M110 29h16M170 29h16M230 29h16"/><path class="l" d="M28 38v24M88 62V38M148 38v24M208 62V38M270 38v24"/>
+          </svg></div>
+          <div class="body"><h3>RAG pipeline</h3><p>How uploaded documents are parsed, indexed and retrieved for the assistant.</p><span class="go">Open diagram →</span></div>
+        </a>
+      </div>
+      <p class="note">More diagrams (domain modules, background jobs, source database access, use cases, the agent loop and
+        chat sequences), with their editable sources, are in
+        <a href="https://github.com/EslamAlaaZaki/dawam/tree/main/docs/architecture">docs/architecture</a>.</p>
+    </div>
+  </section>
 </main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="https://github.com/EslamAlaaZaki/dawam"><svg><use href="#mark"/></svg>DAWAM</a>
+    <span>Apache 2.0 · <a href="https://github.com/EslamAlaaZaki/dawam">github.com/EslamAlaaZaki/dawam</a> · <a href="https://github.com/EslamAlaaZaki/dawam#quick-start">Quick start</a></span>
+  </div>
+</footer>
+
 </body>
 </html>
