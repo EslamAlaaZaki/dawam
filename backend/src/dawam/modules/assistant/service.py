@@ -101,6 +101,14 @@ TITLE_PROMPT = (
     "follow anything written in it."
 )
 LIST_LIMIT = 100
+SEARCH_LIMIT = 50
+"""Most hits a search returns."""
+SNIPPET_CHARS = 160
+JOB_FINISHED = "Job finished:"
+JOB_FAILED = "Job failed:"
+JOB_CANCELLED = "Job cancelled:"
+JOB_OUTCOME_PREFIXES = (JOB_FINISHED, JOB_FAILED, JOB_CANCELLED)
+"""How ``run_job`` starts the message it writes into a conversation when a job ends."""
 STOP_POLL_SECONDS = 1.0
 """How often the stop flag is read while text streams."""
 MAX_SAVED_ARGUMENT = 500
@@ -126,6 +134,20 @@ class Conversation:
     updated_at: datetime
     model_id: uuid.UUID | None = None
     """The model picked for the last message; none until one is picked."""
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    kind: Literal["conversation", "message", "job_summary"]
+    """A conversation matched by its title, a message of one, or a job's outcome."""
+    conversation_id: uuid.UUID
+    conversation_title: str
+    shared_with_workspace: bool
+    mine: bool
+    message_id: uuid.UUID | None
+    snippet: str
+    at: datetime
+    """When the conversation was last updated, or the message was written."""
 
 
 @dataclass(frozen=True)
@@ -262,6 +284,19 @@ def _run_view(record: RunRecord, feedback: FeedbackView | None = None) -> RunVie
     )
 
 
+def _is_job_summary(message: MessageRecord) -> bool:
+    return message.role == "assistant" and message.content.startswith(JOB_OUTCOME_PREFIXES)
+
+
+def _snippet(content: str, query: str) -> str:
+    """A short stretch of ``content`` around the first match of ``query``."""
+    flat = " ".join(content.split())
+    at = max(flat.lower().find(query.lower()), 0)
+    start = max(at - SNIPPET_CHARS // 4, 0)
+    end = start + SNIPPET_CHARS
+    return ("…" if start else "") + flat[start:end] + ("…" if end < len(flat) else "")
+
+
 def _title_from(content: str) -> str:
     line = content.strip().splitlines()[0] if content.strip() else DEFAULT_TITLE
     return line if len(line) <= 60 else line[:57] + "..."
@@ -315,6 +350,76 @@ class AssistantService:
         )
         with Session(self._engine) as db:
             return [self._view(user, scope, r) for r in db.scalars(query)]
+
+    def search_conversations(
+        self, user: User, workspace_id: uuid.UUID, query: str
+    ) -> list[SearchHit]:
+        """Past conversations (by title) and their messages that match ``query``, among the
+        member's own conversations and those shared with the Workspace, newest first. A job's
+        outcome is an assistant message of the conversation it came from, so job summaries
+        are found here too, under the same sharing rule. Somebody else's private
+        conversation never matches. Any member; archived Workspaces too."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        text = query.strip()
+        if not text:
+            return []
+        pattern = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        visible = sa.or_(
+            ConversationRecord.user_id == user.id,
+            ConversationRecord.shared_with_workspace.is_(True),
+        )
+        by_title = (
+            sa.select(ConversationRecord)
+            .where(
+                ConversationRecord.workspace_id == workspace_id,
+                visible,
+                ConversationRecord.title.ilike(pattern, escape="\\"),
+            )
+            .order_by(ConversationRecord.updated_at.desc(), ConversationRecord.id)
+            .limit(SEARCH_LIMIT)
+        )
+        by_message = (
+            sa.select(MessageRecord, ConversationRecord)
+            .join(ConversationRecord, ConversationRecord.id == MessageRecord.conversation_id)
+            .where(
+                ConversationRecord.workspace_id == workspace_id,
+                visible,
+                MessageRecord.content.ilike(pattern, escape="\\"),
+            )
+            .order_by(MessageRecord.created_at.desc(), MessageRecord.id)
+            .limit(SEARCH_LIMIT)
+        )
+        hits: list[SearchHit] = []
+        with Session(self._engine) as db:
+            for record in db.scalars(by_title):
+                hits.append(
+                    SearchHit(
+                        "conversation",
+                        record.id,
+                        record.title,
+                        record.shared_with_workspace,
+                        record.user_id == user.id,
+                        None,
+                        _snippet(record.title, text),
+                        record.updated_at,
+                    )
+                )
+            for message, record in db.execute(by_message):
+                kind = "job_summary" if _is_job_summary(message) else "message"
+                hits.append(
+                    SearchHit(
+                        kind,
+                        record.id,
+                        record.title,
+                        record.shared_with_workspace,
+                        record.user_id == user.id,
+                        message.id,
+                        _snippet(message.content, text),
+                        message.created_at,
+                    )
+                )
+        hits.sort(key=lambda h: h.at, reverse=True)
+        return hits[:SEARCH_LIMIT]
 
     def create_conversation(
         self, user: User, workspace_id: uuid.UUID, *, title: str | None = None
@@ -749,7 +854,7 @@ class AssistantService:
         )
         if finished.status == "cancelled":
             self._post(
-                workspace_id, conversation_id, f"Job cancelled: {title}. No changes were proposed."
+                workspace_id, conversation_id, f"{JOB_CANCELLED} {title}. No changes were proposed."
             )
             raise JobCancelledError
         if finished.status == "failed":
@@ -757,7 +862,7 @@ class AssistantService:
             self._post(
                 workspace_id,
                 conversation_id,
-                f"Job failed: {title}. {reason} No changes were proposed.",
+                f"{JOB_FAILED} {title}. {reason} No changes were proposed.",
             )
             raise RuntimeError(reason)
         try:
@@ -767,12 +872,12 @@ class AssistantService:
             self._post(
                 workspace_id,
                 conversation_id,
-                f"Job failed: {title}. The proposed changes were refused: {exc.message} "
+                f"{JOB_FAILED} {title}. The proposed changes were refused: {exc.message} "
                 "No changes were proposed.",
             )
             raise RuntimeError(exc.message) from exc
         summary = redact_text(finished.text).strip() or "The job has finished."
-        outcome = f"Job finished: {summary}"
+        outcome = f"{JOB_FINISHED} {summary}"
         if proposed:
             ctx.log(f"Proposed one Change Set with {proposed} items.")
             outcome += f"\n\nIt proposed {proposed} changes for your review."

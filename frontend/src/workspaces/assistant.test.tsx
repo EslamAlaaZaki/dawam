@@ -102,6 +102,7 @@ interface Options {
   job?: Record<string, unknown>;
   answered?: (body: unknown) => Response;
   ai?: Record<string, unknown>;
+  hits?: unknown[];
 }
 
 function backend(options: Options = {}) {
@@ -125,6 +126,8 @@ function backend(options: Options = {}) {
         return options.ai ? json(options.ai) : undefined;
       case `GET ${ASSISTANT}`:
         return json({ items: options.conversations ?? [] });
+      case `GET ${ASSISTANT}/search`:
+        return json({ items: options.hits ?? [] });
       case `POST ${ASSISTANT}`:
         return json(NEW_CONVERSATION, 201);
       case `GET ${ASSISTANT}/${CONVERSATION_ID}`:
@@ -1397,5 +1400,84 @@ describe("picking the model of a message", () => {
     expect(within(reply).getByLabelText("Answered by")).toHaveTextContent(
       "Small",
     );
+  });
+
+  it("searches past conversations and job summaries and opens a hit", async () => {
+    const OTHER_ID = "55555555-5555-4555-8555-555555555555";
+    const requests = renderApp(
+      backend({
+        conversations: [{ ...NEW_CONVERSATION, title: "Daily chat" }],
+        hits: [
+          {
+            kind: "job_summary",
+            conversation_id: OTHER_ID,
+            conversation_title: "Lineage review",
+            shared_with_workspace: true,
+            mine: false,
+            message_id: "m9",
+            snippet: "Job finished: mapped dim_customer.churn_flag",
+            at: "2026-01-06T10:00:00Z",
+          },
+        ],
+      }),
+      PATH,
+    );
+    await openAssistant();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show conversations" }),
+    );
+
+    fireEvent.change(await screen.findByLabelText("Search conversations"), {
+      target: { value: " churn_flag " },
+    });
+
+    const results = await screen.findByRole(
+      "list",
+      { name: "Search results" },
+      { timeout: 3000 },
+    );
+    expect(
+      requests.filter((r) => r.path === `${ASSISTANT}/search`).at(-1)?.query,
+    ).toEqual({ q: "churn_flag" });
+    expect(
+      await within(results).findByText("Lineage review", {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
+    expect(within(results).getByText("(shared)")).toBeInTheDocument();
+    expect(within(results).getByText("Job summary")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Conversations" }),
+      ).queryByText("Daily chat"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(results).getByRole("button"));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Search results" })).toBeNull(),
+    );
+    expect(requests.some((r) => r.path === `${ASSISTANT}/${OTHER_ID}`)).toBe(
+      true,
+    );
+  });
+
+  it("says when nothing matches and does not search a blank box", async () => {
+    const requests = renderApp(
+      backend({ conversations: [NEW_CONVERSATION], hits: [] }),
+      PATH,
+    );
+    await openAssistant();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show conversations" }),
+    );
+    const box = await screen.findByLabelText("Search conversations");
+
+    fireEvent.change(box, { target: { value: "   " } });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(requests.some((r) => r.path === `${ASSISTANT}/search`)).toBe(false);
+
+    fireEvent.change(box, { target: { value: "zzz" } });
+    expect(
+      await screen.findByText("Nothing matches.", {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
   });
 });

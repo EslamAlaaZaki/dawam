@@ -15863,6 +15863,72 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/assistant/conversations/search": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Search Conversations",
+        "description": "Search the titles and messages of your conversations and those members shared,\nincluding the outcomes of assistant jobs, newest first. Somebody else's private\nconversation never matches (any member; 404 for non-members).",
+        "operationId": "searchAssistantConversations",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Text to look for (case-insensitive).",
+              "title": "Q"
+            },
+            "description": "Text to look for (case-insensitive)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}": {
       "get": {
         "tags": [
@@ -19323,6 +19389,89 @@
           "model_id"
         ],
         "title": "ConversationOut"
+      },
+      "ConversationSearchHit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "message",
+              "job_summary"
+            ],
+            "title": "Kind",
+            "description": "A conversation matched by its title, a message of one, or the outcome an assistant job wrote into one."
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "conversation_title": {
+            "type": "string",
+            "title": "Conversation Title"
+          },
+          "shared_with_workspace": {
+            "type": "boolean",
+            "title": "Shared With Workspace"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine",
+            "description": "You started the conversation."
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "The matching message; none for a title."
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "description": "A short stretch of text around the match."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "conversation_id",
+          "conversation_title",
+          "shared_with_workspace",
+          "mine",
+          "message_id",
+          "snippet",
+          "at"
+        ],
+        "title": "ConversationSearchHit"
+      },
+      "ConversationSearchResults": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSearchHit"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ConversationSearchResults"
       },
       "CoverageOut": {
         "properties": {
