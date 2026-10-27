@@ -41,6 +41,9 @@ logger = logging.getLogger("dawam.jobs")
 STALE_AFTER = timedelta(seconds=60)
 """A running job whose worker has not reported for this long lost its worker."""
 WORKER_LOST = "The worker running this job stopped before it finished."
+MAX_ATTEMPTS = 3
+"""Runs of a checkpointed job whose worker keeps dying before it is failed."""
+RESUMING = "The worker running this job stopped; it will resume from its last checkpoint."
 
 ACTIVE = ("queued", "running")
 
@@ -79,6 +82,17 @@ class JobContext(Protocol):
         ...
 
     def raise_if_cancelled(self) -> None: ...
+
+    @property
+    def checkpoint(self) -> dict[str, Any] | None:
+        """The state saved by ``save_checkpoint`` before the worker running the job died;
+        ``None`` on a fresh run."""
+        ...
+
+    def save_checkpoint(self, state: Mapping[str, Any]) -> None:
+        """Save JSON ``state`` to resume from: a job with a checkpoint whose worker dies is
+        queued again (up to ``MAX_ATTEMPTS`` runs) instead of failed."""
+        ...
 
 
 JobHandler = Callable[[Mapping[str, Any], JobContext], None]
@@ -170,6 +184,9 @@ class Job:
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    attempts: int = 0
+    """How many times a worker has claimed it; a worker's writes count only while the job's
+    attempt is still the one it claimed (a resumed job is another worker's now)."""
 
 
 @dataclass(frozen=True)
@@ -193,6 +210,7 @@ def _view(record: JobRecord) -> Job:
         created_at=record.created_at,
         started_at=record.started_at,
         finished_at=record.finished_at,
+        attempts=record.attempts,
     )
 
 
@@ -201,29 +219,41 @@ def _not_found() -> ApiError:
 
 
 class _Context:
-    def __init__(self, service: JobService, job_id: uuid.UUID) -> None:
+    def __init__(self, service: JobService, job_id: uuid.UUID, attempt: int) -> None:
         self._service = service
         self._job_id = job_id
+        self._attempt = attempt
 
     @property
     def job_id(self) -> uuid.UUID:
         return self._job_id
 
     def progress(self, percent: int) -> None:
-        self._service._update(self._job_id, progress=max(0, min(100, int(percent))))
+        self._service._update(self._job_id, self._attempt, progress=max(0, min(100, int(percent))))
 
     def log(self, message: str) -> None:
-        self._service._append_log(self._job_id, message)
+        self._service._append_log(self._job_id, self._attempt, message)
 
     @property
     def cancelled(self) -> bool:
+        """Also true once another worker took the job over (this one was thought lost)."""
         with Session(self._service._engine) as db:
-            status = db.scalar(sa.select(JobRecord.status).where(JobRecord.id == self._job_id))
-        return status != "running"
+            row = db.execute(
+                sa.select(JobRecord.status, JobRecord.attempts).where(JobRecord.id == self._job_id)
+            ).first()
+        return row is None or tuple(row) != ("running", self._attempt)
 
     def raise_if_cancelled(self) -> None:
         if self.cancelled:
             raise JobCancelledError
+
+    @property
+    def checkpoint(self) -> dict[str, Any] | None:
+        with Session(self._service._engine) as db:
+            return db.scalar(sa.select(JobRecord.checkpoint).where(JobRecord.id == self._job_id))
+
+    def save_checkpoint(self, state: Mapping[str, Any]) -> None:
+        self._service._update(self._job_id, self._attempt, checkpoint=dict(state))
 
 
 class JobService:
@@ -302,7 +332,7 @@ class JobService:
         db.execute(
             sa.update(JobRecord)
             .where(JobRecord.workspace_id == workspace_id, JobRecord.status.in_(ACTIVE))
-            .values(status="cancelled", finished_at=at)
+            .values(status="cancelled", finished_at=at, checkpoint=None)
         )
         for record in active:
             self._abandon(db, record, "The job was cancelled.")
@@ -361,6 +391,7 @@ class JobService:
                 raise ApiError(409, "job_finished", f"This job has already {record.status}.", {})
             record.status = "cancelled"
             record.finished_at = self._clock()
+            record.checkpoint = None
             self._abandon(db, record, "The job was cancelled.")
             db.flush()
             return _view(record)
@@ -376,7 +407,7 @@ class JobService:
     def execute(self, job: Job) -> None:
         """Run a claimed job's handler and record how it ended. A job cancelled meanwhile
         keeps its ``cancelled`` status."""
-        ctx = _Context(self, job.id)
+        ctx = _Context(self, job.id, job.attempts)
         with Session(self._engine) as db:
             params = db.scalar(sa.select(JobRecord.params).where(JobRecord.id == job.id)) or {}
         try:
@@ -384,20 +415,24 @@ class JobService:
         except JobCancelledError:
             return
         except UnknownJobTypeError:
-            self._finish(job.id, "failed", f"No handler is registered for {job.type!r} jobs.")
+            self._finish(
+                job.id, job.attempts, "failed", f"No handler is registered for {job.type!r} jobs."
+            )
         except Exception as exc:  # a handler may fail in any way; the job records it
             logger.exception("job failed", extra={"job_id": str(job.id), "job_type": job.type})
-            self._finish(job.id, "failed", str(exc) or type(exc).__name__)
+            self._finish(job.id, job.attempts, "failed", str(exc) or type(exc).__name__)
         else:
-            self._finish(job.id, "succeeded", None)
+            self._finish(job.id, job.attempts, "succeeded", None)
 
-    def heartbeat(self, job_id: uuid.UUID) -> None:
-        """Tell the queue the worker is still running ``job_id``."""
-        self._update(job_id)
+    def heartbeat(self, job_id: uuid.UUID, attempt: int | None = None) -> None:
+        """Tell the queue the worker is still running ``job_id`` (its ``attempt``: ignored
+        once the job was resumed by another worker)."""
+        self._update(job_id, attempt)
 
     def fail_lost(self) -> int:
-        """Fail running jobs whose worker stopped reporting (it died or was restarted);
-        returns how many."""
+        """Deal with running jobs whose worker stopped reporting (it died or was restarted):
+        one with a checkpoint is queued again to resume from it, until it has run
+        ``MAX_ATTEMPTS`` times; the others are failed. Returns how many were lost."""
         now = self._clock()
         with Session(self._engine) as db, db.begin():
             lost = list(
@@ -411,6 +446,11 @@ class JobService:
                 )
             )
             for record in lost:
+                if record.checkpoint is not None and record.attempts < MAX_ATTEMPTS:
+                    record.status = "queued"
+                    record.heartbeat_at = None
+                    record.log = (record.log + f"{now.isoformat()} {RESUMING}\n")[-LOG_MAX_LENGTH:]
+                    continue
                 self._end(db, record, "failed", WORKER_LOST, now)
                 self._abandon(db, record, WORKER_LOST)
         return len(lost)
@@ -451,35 +491,44 @@ class JobService:
                 return None
             now = self._clock()
             record.status = "running"
-            record.started_at = now
+            record.started_at = record.started_at or now
             record.heartbeat_at = now
+            record.attempts += 1
             db.flush()
             return _view(record)
 
-    def _update(self, job_id: uuid.UUID, **values: Any) -> None:
+    @staticmethod
+    def _running(job_id: uuid.UUID, attempt: int | None) -> list[sa.ColumnElement[bool]]:
+        """The job, while it runs as ``attempt``: a superseded worker's writes match nothing."""
+        where = [JobRecord.id == job_id, JobRecord.status == "running"]
+        if attempt is not None:
+            where.append(JobRecord.attempts == attempt)
+        return where
+
+    def _update(self, job_id: uuid.UUID, attempt: int | None, **values: Any) -> None:
         with Session(self._engine) as db, db.begin():
             db.execute(
                 sa.update(JobRecord)
-                .where(JobRecord.id == job_id, JobRecord.status == "running")
+                .where(*self._running(job_id, attempt))
                 .values(heartbeat_at=self._clock(), **values)
             )
 
-    def _append_log(self, job_id: uuid.UUID, message: str) -> None:
+    def _append_log(self, job_id: uuid.UUID, attempt: int | None, message: str) -> None:
         line = f"{self._clock().isoformat()} {message.rstrip()}\n"
         with Session(self._engine) as db, db.begin():
             db.execute(
                 sa.update(JobRecord)
-                .where(JobRecord.id == job_id, JobRecord.status == "running")
+                .where(*self._running(job_id, attempt))
                 .values(
                     heartbeat_at=self._clock(),
                     log=sa.func.right(JobRecord.log + line, LOG_MAX_LENGTH),
                 )
             )
 
-    def _finish(self, job_id: uuid.UUID, status: str, error: str | None) -> None:
+    def _finish(self, job_id: uuid.UUID, attempt: int, status: str, error: str | None) -> None:
         with Session(self._engine) as db, db.begin():
             record = self._record(db, job_id, lock=True)
-            if record.status == "running":
+            if record.status == "running" and record.attempts == attempt:
                 self._end(db, record, status, error, self._clock())
 
     def _abandon(self, db: Session, record: JobRecord, reason: str) -> None:
@@ -494,6 +543,7 @@ class JobService:
         record.status = status
         record.error = error[:ERROR_MAX_LENGTH] if error else None
         record.finished_at = at
+        record.checkpoint = None
         if status == "succeeded":
             record.progress = 100
         if record.created_by is not None:

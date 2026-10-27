@@ -32,6 +32,7 @@ from dawam.platform.pii_validators import redact_json, redact_text
 from .internal.agent import (
     DEFAULT_MAX_JOB_TOOL_CALLS,
     DEFAULT_MAX_TOOL_CALLS,
+    Checkpoint,
     Compacted,
     Finished,
     Text,
@@ -593,7 +594,9 @@ class AssistantService:
         who handed the task over, with the higher job cap. Progress and each tool call go to
         the job's log. Success makes the changes it collected one Change Set; a failure,
         spent budget or cancellation raises, so no Change Set is made. The outcome is also
-        written into the conversation the task came from."""
+        written into the conversation the task came from. The run and the changes collected
+        are checkpointed after each step, so a job whose worker died resumes there without
+        repeating the tool calls it had finished."""
         task = str(params.get("task", ""))
         workspace_id = uuid.UUID(str(params["workspace_id"]))
         conversation_id = (
@@ -611,8 +614,13 @@ class AssistantService:
                 "The member who started this job may no longer use the assistant."
             ) from exc
         cap = self._max_job_tool_calls
-        ctx.log(f"Started: {task[:200]}")
-        calls = 0
+        saved = ctx.checkpoint
+        resume = Checkpoint.from_json(saved.get("run") or {}) if saved else None
+        calls = len(resume.calls) if resume else 0
+        if resume:
+            ctx.log(f"Resumed after {calls} tool calls.")
+        else:
+            ctx.log(f"Started: {task[:200]}")
         finished: Finished
         try:
             gateway = self._roles.gateway_for_role(
@@ -621,6 +629,15 @@ class AssistantService:
             tools = self._tools.bind(
                 user, workspace_id, self._ai.policy(workspace_id), conversation_id, job=True
             )
+            if resume and saved:
+                tools.restore_proposals(saved["proposals"])
+
+            def save(state: Checkpoint) -> None:  # after each step: a lost worker resumes here
+                # Stored like the run's other records: redacted (ADR 0002). The proposals stay
+                # as they are; they become the Change Set's items.
+                run = redact_json(state.to_json())
+                ctx.save_checkpoint({"run": run, "proposals": tools.saved_proposals()})
+
             finished = Finished("completed", "", [], 0, 0)
             for event in run_agent(
                 gateway,
@@ -632,6 +649,8 @@ class AssistantService:
                 is_cancelled=lambda: ctx.cancelled,
                 timer=self._timer,
                 delta_poll_seconds=STOP_POLL_SECONDS,
+                checkpoint=save,
+                resume=resume,
             ):
                 if isinstance(event, Finished):
                     finished = event
