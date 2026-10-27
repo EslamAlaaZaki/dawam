@@ -1,7 +1,7 @@
 """add the ordered model fallback list per role.
 
 Revision ID: d4f6a8c2e139
-Revises: b9e4d2a7c518
+Revises: d6a3f8b1c472
 Create Date: 2026-10-26 22:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d4f6a8c2e139"
-down_revision: str | Sequence[str] | None = "b9e4d2a7c518"
+down_revision: str | Sequence[str] | None = "d6a3f8b1c472"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
