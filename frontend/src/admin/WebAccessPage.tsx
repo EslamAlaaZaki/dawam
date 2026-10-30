@@ -102,8 +102,10 @@ function WebSwitchForm({ saved }: { saved: WebSettings }) {
         <div>
           <h3 className={h3Classes}>Web search and fetch</h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Search queries leave the network with values removed; pages are read
-            by DAWAM itself, never from private or internal addresses.
+            Before a search goes out, DAWAM removes sensitive data from it
+            (names, numbers, emails, dates and the like), so only the topic is
+            sent. DAWAM opens web pages itself and never opens internal company
+            addresses.
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm font-medium">
