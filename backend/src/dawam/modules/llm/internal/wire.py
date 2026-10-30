@@ -20,6 +20,7 @@ from .transport import HttpResponse
 MAX_DETAIL_CHARS = 300
 MAX_LIST_PAGES = 20
 """A cap on the pages read when listing a provider's models."""
+_CLOUDFLARE_BLOCK = "blocked access based on your browser's signature"
 _CONTEXT_MARKERS = (
     "context_length_exceeded",
     "context length",
@@ -65,6 +66,8 @@ def error_for(response: HttpResponse, redact: Callable[[str], str] | None = None
     explanation = detail(payload, redact)
     suffix = f" ({explanation})" if explanation else ""
     status = response.status
+    if status == 403 and _CLOUDFLARE_BLOCK in raw.lower():
+        return LlmError(BAD_REQUEST, "The provider's firewall blocked the request." + suffix)
     if status in (401, 403):
         return LlmError(AUTH, "The provider rejected the API key." + suffix)
     if status == 429:
