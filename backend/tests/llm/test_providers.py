@@ -38,15 +38,17 @@ def add_provider(client, **overrides) -> dict:
 
 
 def add_model(client, provider, name="qwen3", roles=("agent",), **extra) -> dict:
-    """Register a model (no role), then give it ``roles`` in the roles table."""
+    """Register a model with ``roles``; with none given, register it as ``light`` and then
+    clear its roles in the roles table (adding needs at least one)."""
     response = client.post(
-        f"{BASE}/providers/{provider['id']}/models", json={"name": name, **extra}
+        f"{BASE}/providers/{provider['id']}/models",
+        json={"name": name, "roles": list(roles) or ["light"], **extra},
     )
     assert response.status_code == 201, response.text
-    assert response.json()["roles"] == []
     model = response.json()
-    if roles:
-        response = client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": list(roles)})
+    assert set(model["roles"]) == set(roles or ("light",))
+    if not roles:
+        response = client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": []})
         assert response.status_code == 200, response.text
         model = response.json()
     return model
@@ -202,7 +204,7 @@ def test_model_names_are_unique_per_provider(admin_client):
     add_model(admin_client, provider, name="qwen3")
 
     duplicate = admin_client.post(
-        f"{BASE}/providers/{provider['id']}/models", json={"name": "qwen3"}
+        f"{BASE}/providers/{provider['id']}/models", json={"name": "qwen3", "roles": ["agent"]}
     )
 
     assert duplicate.status_code == 409 and code(duplicate) == "model_exists"
@@ -446,3 +448,56 @@ def test_an_unreachable_server_is_reported_not_raised(admin_client):
     failed = admin_client.post(f"{BASE}/models/{model['id']}/test").json()
 
     assert failed["test_ok"] is False and failed["test_error_code"] == "unavailable"
+
+
+def test_adding_a_model_needs_at_least_one_role(admin_client):
+    provider = add_provider(admin_client)
+    url = f"{BASE}/providers/{provider['id']}/models"
+
+    for body in ({"name": "qwen3"}, {"name": "qwen3", "roles": []}):
+        assert admin_client.post(url, json=body).status_code == 422
+    assert admin_client.get(f"{BASE}/providers/{provider['id']}").json()["models"] == []
+
+
+def test_a_model_added_as_embedding_stores_the_dimension_and_tests_only_that(
+    admin_client, fake_llm
+):
+    fake_llm.dimension = 3072
+    provider = add_provider(admin_client)
+
+    added = admin_client.post(
+        f"{BASE}/providers/{provider['id']}/models",
+        json={"name": "gemini-embedding-2", "roles": ["embedding"]},
+    )
+
+    assert added.status_code == 201, added.text
+    assert added.json()["roles"] == ["embedding"]
+    assert added.json()["embedding_dimension"] == 3072
+    tested = admin_client.post(f"{BASE}/models/{added.json()['id']}/test").json()
+    assert tested["test_ok"] is True and tested["embedding_dimension"] == 3072
+    assert tested["tool_calling"] is None
+
+
+def test_adding_an_embedding_model_that_cannot_embed_creates_nothing(admin_client, fake_llm):
+    provider = add_provider(admin_client)
+    fake_llm.script(LlmError("bad_request", "This model does not embed."))
+
+    refused = admin_client.post(
+        f"{BASE}/providers/{provider['id']}/models",
+        json={"name": "chat-only", "roles": ["embedding"]},
+    )
+
+    assert refused.status_code == 422 and code(refused) == "embedding_test_failed"
+    assert admin_client.get(f"{BASE}/providers/{provider['id']}").json()["models"] == []
+
+
+def test_adding_an_agent_model_with_a_small_window_creates_nothing(admin_client):
+    provider = add_provider(admin_client)
+
+    refused = admin_client.post(
+        f"{BASE}/providers/{provider['id']}/models",
+        json={"name": "tiny", "roles": ["agent"], "context_window": 8192},
+    )
+
+    assert refused.status_code == 422 and code(refused) == "context_window_too_small"
+    assert admin_client.get(f"{BASE}/providers/{provider['id']}").json()["models"] == []

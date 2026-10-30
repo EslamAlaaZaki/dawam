@@ -13972,7 +13972,7 @@
           "llm"
         ],
         "summary": "Add Model",
-        "description": "Register a model of the provider with no role (admins only): its roles are set in\nthe roles table. 409 `model_exists`.",
+        "description": "Register a model of the provider with its roles, at least one (admins only), under the\nroles table's rules: 422 `embedding_test_failed` when `embedding` is ticked and the model\ncannot embed, 422 `context_window_too_small` for `agent` with a window under 32K (an\nunknown window is allowed with a `warnings` entry). Nothing is created when a check\nfails. 409 `model_exists`.",
         "operationId": "addLlmModel",
         "parameters": [
           {
@@ -24329,11 +24329,29 @@
             ],
             "title": "Context Window",
             "description": "Tokens. Leave out to take the server's figure when it reports one."
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "light",
+                "embedding",
+                "vision",
+                "rerank"
+              ]
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Roles",
+            "description": "The roles the model fills, at least one; applied as in the roles table (`embedding` runs the embedding test, `agent` needs a 32K+ window when given)."
           }
         },
         "type": "object",
         "required": [
-          "name"
+          "name",
+          "roles"
         ],
         "title": "LlmModelRequest"
       },

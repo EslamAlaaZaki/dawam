@@ -124,12 +124,14 @@ class ProviderInput:
 
 @dataclass(frozen=True)
 class ModelInput:
-    """What an admin types for a model. Roles are not part of it: they are decided
-    separately, in the roles table (``ProviderService.set_model_roles``)."""
+    """What an admin types for a model. ``roles`` is required when adding (at least one)
+    and later changes go through the roles table (``ProviderService.set_model_roles``)."""
 
     name: str
     context_window: int | None = None
     """The admin's own figure; the test fills it from the server's metadata if left out."""
+    roles: Sequence[str] = ()
+    """On an add: the roles the model fills, at least one; ignored on an update."""
     reasoning: ReasoningConfig | None = None
     """On an update: the new thinking settings; ``None`` keeps the stored ones."""
 
@@ -312,6 +314,20 @@ def _reset_test(record: ModelRecord) -> None:
     record.embedding_dimension = None
 
 
+def _probe_embedding(gateway: Gateway) -> int | None:
+    """Run the embedding test; 422 ``embedding_test_failed`` carries the provider's error.
+    Returns the vector dimension."""
+    result = probe(gateway, chat=False, embedding=True)
+    if not result.ok:
+        raise ApiError(
+            422,
+            "embedding_test_failed",
+            f"The embedding test failed: {result.error}",
+            {"field": "roles", "error_code": result.error_code},
+        )
+    return result.capabilities.embedding_dimension
+
+
 class ProviderService:
     def __init__(
         self,
@@ -402,20 +418,44 @@ class ProviderService:
     # -- models ----------------------------------------------------------------------
 
     def add_model(self, provider_id: uuid.UUID, data: ModelInput) -> Model:
+        """Register a model with its roles (at least one), under the roles table's rules:
+        ``embedding`` runs the embedding test and stores the dimension (422
+        ``embedding_test_failed``), ``agent`` needs a context window of at least 32K when it
+        is given (422 ``context_window_too_small``). When a check fails nothing is created.
+        The probe talks to the provider outside any database transaction."""
         name = self._clean_name(data)
+        wanted = _clean_roles(data.roles)
+        if not wanted:
+            raise _invalid("Pick at least one role for the model.", "roles")
+        window = _clean_window(data.context_window)
+        if "agent" in wanted and window is not None and window < AGENT_MIN_CONTEXT:
+            raise _window_too_small(window, "roles")
+        gateway: Gateway | None = None
+        tested_provider_state: tuple[str, str | None] = ("", None)
+        with Session(self._engine) as db:
+            provider = self._load_provider(db, provider_id)
+            if "embedding" in wanted:
+                gateway = self._gateway(provider, name)
+                tested_provider_state = (provider.base_url, provider.secret_encrypted)
+        dimension = _probe_embedding(gateway) if gateway is not None else None
         now = self._clock()
         with Session(self._engine) as db:
-            self._load_provider(db, provider_id)
+            provider = self._load_provider(db, provider_id)
+            if gateway is not None and (provider.base_url, provider.secret_encrypted) != (
+                tested_provider_state
+            ):
+                raise ApiError(409, "model_changed", "The provider changed meanwhile: try again.")
             record = ModelRecord(
                 id=uuid.uuid4(),
                 provider_id=provider_id,
                 name=name,
-                roles=[],
-                context_window=_clean_window(data.context_window),
+                roles=wanted,
+                context_window=window,
                 created_at=now,
                 updated_at=now,
             )
             _reset_test(record)
+            record.embedding_dimension = dimension
             db.add(record)
             self._commit(db, "model_exists", "This provider already has a model with that name.")
             return _model_view(record)
@@ -458,17 +498,7 @@ class ProviderService:
             if "embedding" in wanted and "embedding" not in model.roles:
                 gateway = self._gateway(provider, model.name)
                 tested_provider_state = (provider.base_url, provider.secret_encrypted)
-        dimension: int | None = None
-        if gateway is not None:
-            result = probe(gateway, chat=False, embedding=True)
-            if not result.ok:
-                raise ApiError(
-                    422,
-                    "embedding_test_failed",
-                    f"The embedding test failed: {result.error}",
-                    {"field": "roles", "error_code": result.error_code},
-                )
-            dimension = result.capabilities.embedding_dimension
+        dimension = _probe_embedding(gateway) if gateway is not None else None
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)
             if gateway is not None:

@@ -59,6 +59,7 @@ import {
   h3Classes,
 } from "./parts";
 import {
+  ROLE_COLUMNS,
   ReplacementDialog,
   neededWorkspaces,
   type Candidate,
@@ -79,14 +80,6 @@ export function LlmSettingsPage() {
     </section>
   );
 }
-
-const ROLE_COLUMNS: { role: LlmModelRole; label: string }[] = [
-  { role: "agent", label: "Agent" },
-  { role: "light", label: "Light" },
-  { role: "embedding", label: "Embedding" },
-  { role: "vision", label: "Vision" },
-  { role: "rerank", label: "Rerank" },
-];
 
 const EMBEDDING_HINT =
   "Dedicated embedding models usually give better document search";

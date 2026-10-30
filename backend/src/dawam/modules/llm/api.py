@@ -175,6 +175,12 @@ class LlmModelRequest(BaseModel):
         ge=1,
         description="Tokens. Leave out to take the server's figure when it reports one.",
     )
+    roles: list[ModelRole] = Field(
+        min_length=1,
+        max_length=len(ROLES),
+        description="The roles the model fills, at least one; applied as in the roles table "
+        "(`embedding` runs the embedding test, `agent` needs a 32K+ window when given).",
+    )
 
 
 class LlmModelUpdateRequest(BaseModel):
@@ -275,7 +281,7 @@ def _provider_input(body: LlmProviderRequest) -> ProviderInput:
 
 
 def _model_input(body: LlmModelRequest) -> ModelInput:
-    return ModelInput(name=body.name, context_window=body.context_window)
+    return ModelInput(name=body.name, context_window=body.context_window, roles=body.roles)
 
 
 class LlmListedModel(BaseModel):
@@ -365,8 +371,11 @@ def add_model(
     _admin: LlmAdmin,
     providers: ProviderServiceDep,
 ) -> LlmModel:
-    """Register a model of the provider with no role (admins only): its roles are set in
-    the roles table. 409 `model_exists`."""
+    """Register a model of the provider with its roles, at least one (admins only), under the
+    roles table's rules: 422 `embedding_test_failed` when `embedding` is ticked and the model
+    cannot embed, 422 `context_window_too_small` for `agent` with a window under 32K (an
+    unknown window is allowed with a `warnings` entry). Nothing is created when a check
+    fails. 409 `model_exists`."""
     return _model_out(providers.add_model(provider_id, _model_input(body)))
 
 
