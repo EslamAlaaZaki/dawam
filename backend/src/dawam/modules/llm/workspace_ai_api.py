@@ -83,8 +83,8 @@ LIGHT_FEATURES = (
     ),
     (
         "chunk_context",
-        "Passage context",
-        "Prepends a one-sentence context to each document passage before it is embedded and "
+        "Chunk context",
+        "Prepends a one-sentence context to each document chunk before it is embedded and "
         "full-text indexed.",
     ),
     (

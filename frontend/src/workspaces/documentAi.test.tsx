@@ -50,8 +50,8 @@ const KNOBS: KnobInfo[] = [
     key: "chunk_size",
     group: "chunking",
     kind: "int",
-    label: "Passage size",
-    description: "Target tokens per passage.",
+    label: "Chunk size",
+    description: "Target tokens per chunk.",
     owner: true,
     reindex: true,
     default: 250,
@@ -132,7 +132,7 @@ describe("the Workspace's Document AI settings", () => {
 
     const dialog = await openSettings("Document AI");
 
-    expect(await within(dialog).findByText("Passage size")).toBeInTheDocument();
+    expect(await within(dialog).findByText("Chunk size")).toBeInTheDocument();
     expect(within(dialog).getByText("250")).toBeInTheDocument();
     expect(within(dialog).getByText("(this Workspace)")).toBeInTheDocument();
     expect(
@@ -158,7 +158,7 @@ describe("the Workspace's Document AI settings", () => {
     );
 
     const dialog = await openSettings("Document AI");
-    const size = await within(dialog).findByLabelText("Passage size");
+    const size = await within(dialog).findByLabelText("Chunk size");
     expect(size).toBeDisabled();
     expect(size).toHaveValue(250);
     expect(
@@ -169,8 +169,8 @@ describe("the Workspace's Document AI settings", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Results")).toHaveValue(5);
 
-    fireEvent.click(within(dialog).getByLabelText("Override Passage size"));
-    fireEvent.change(within(dialog).getByLabelText("Passage size"), {
+    fireEvent.click(within(dialog).getByLabelText("Override Chunk size"));
+    fireEvent.change(within(dialog).getByLabelText("Chunk size"), {
       target: { value: "300" },
     });
     fireEvent.click(within(dialog).getByLabelText("Override Results"));
@@ -214,9 +214,9 @@ describe("the Workspace's Document AI settings", () => {
     );
     const dialog = await openSettings("Document AI");
     fireEvent.click(
-      await within(dialog).findByLabelText("Override Passage size"),
+      await within(dialog).findByLabelText("Override Chunk size"),
     );
-    fireEvent.change(within(dialog).getByLabelText("Passage size"), {
+    fireEvent.change(within(dialog).getByLabelText("Chunk size"), {
       target: { value: "300" },
     });
     fireEvent.click(

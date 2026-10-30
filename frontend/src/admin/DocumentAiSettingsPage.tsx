@@ -15,15 +15,15 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs";
 import { Loading } from "../shell/Loading";
 import { KNOB_GROUPS, KnobControl, parseNumber } from "./KnobControl";
-import {
-  ErrorText,
-  PageHead,
-  formCardClasses,
-  h3Classes,
-  labelClasses,
-} from "./parts";
+import { ErrorText, PageHead, formCardClasses, labelClasses } from "./parts";
 
 type BoundsDraft = Record<string, { min: SettingValue; max: SettingValue }>;
 
@@ -131,27 +131,36 @@ function SettingsForm({
       aria-label="Document AI settings"
       className="flex flex-col gap-4"
     >
-      {KNOB_GROUPS.map((group) => (
-        <section
-          key={group.key}
-          aria-label={group.title}
-          className={formCardClasses}
+      <Tabs defaultValue={KNOB_GROUPS[0]?.key} className="gap-4">
+        <TabsList
+          aria-label="Document AI setting groups"
+          className="max-w-xl px-0"
         >
-          <h3 className={h3Classes}>{group.title}</h3>
-          {settings.knobs
-            .filter((knob) => knob.group === group.key)
-            .map((knob) => (
-              <KnobRow
-                key={knob.key}
-                knob={knob}
-                value={values[knob.key] ?? knob.default}
-                onChange={(v) => setValues({ ...values, [knob.key]: v })}
-                bounds={bounds[knob.key]}
-                onBounds={(b) => setBounds({ ...bounds, [knob.key]: b })}
-              />
-            ))}
-        </section>
-      ))}
+          {KNOB_GROUPS.map((group) => (
+            <TabsTrigger key={group.key} value={group.key}>
+              {group.title}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {KNOB_GROUPS.map((group) => (
+          <TabsContent key={group.key} value={group.key}>
+            <section aria-label={group.title} className={formCardClasses}>
+              {settings.knobs
+                .filter((knob) => knob.group === group.key)
+                .map((knob) => (
+                  <KnobRow
+                    key={knob.key}
+                    knob={knob}
+                    value={values[knob.key] ?? knob.default}
+                    onChange={(v) => setValues({ ...values, [knob.key]: v })}
+                    bounds={bounds[knob.key]}
+                    onBounds={(b) => setBounds({ ...bounds, [knob.key]: b })}
+                  />
+                ))}
+            </section>
+          </TabsContent>
+        ))}
+      </Tabs>
       {update.isError && <ErrorText>{update.error.message}</ErrorText>}
       {reindex && (
         <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
