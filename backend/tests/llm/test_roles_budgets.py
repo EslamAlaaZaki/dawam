@@ -21,10 +21,11 @@ ASK = [Message("user", "Hi")]
 
 
 def add_model(client, provider, name, roles=("agent",)) -> dict:
-    """Register a model (no role), then set its roles in the roles table."""
-    model = client.post(f"{BASE}/providers/{provider['id']}/models", json={"name": name}).json()
-    response = client.put(f"{BASE}/models/{model['id']}/roles", json={"roles": list(roles)})
-    assert response.status_code == 200, response.text
+    """Register a model with its roles."""
+    response = client.post(
+        f"{BASE}/providers/{provider['id']}/models", json={"name": name, "roles": list(roles)}
+    )
+    assert response.status_code == 201, response.text
     return response.json()
 
 

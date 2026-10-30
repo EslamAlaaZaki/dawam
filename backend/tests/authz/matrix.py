@@ -335,13 +335,11 @@ def model_id(roles: RoleClients) -> uuid.UUID:
     """A model of a fresh LLM provider, registered through the API."""
     admin = roles.client("admin")
     response = admin.post(
-        f"/api/v1/admin/llm/providers/{provider_id(roles)}/models", json={"name": "qwen3"}
+        f"/api/v1/admin/llm/providers/{provider_id(roles)}/models",
+        json={"name": "qwen3", "roles": ["agent"]},
     )
     assert response.status_code == 201, response.text
     model = response.json()["id"]
-    assert admin.put(
-        f"/api/v1/admin/llm/models/{model}/roles", json={"roles": ["agent"]}
-    ).is_success
     return uuid.UUID(model)
 
 

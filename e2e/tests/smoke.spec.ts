@@ -43,8 +43,8 @@ test("the main path: sign in to lineage", async ({ page }) => {
     });
     const model = await api(page, "POST", `/admin/llm/providers/${provider.id}/models`, {
       name: "fake-model",
+      roles: ["agent"],
     });
-    await api(page, "PUT", `/admin/llm/models/${model.id}/roles`, { roles: ["agent"] });
     const tested = await api(page, "POST", `/admin/llm/models/${model.id}/test`);
     expect(tested.test_ok).toBe(true);
     await api(page, "POST", "/admin/users", {

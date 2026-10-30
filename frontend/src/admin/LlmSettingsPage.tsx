@@ -80,7 +80,7 @@ export function LlmSettingsPage() {
   );
 }
 
-const ROLE_COLUMNS: { role: LlmModelRole; label: string }[] = [
+export const ROLE_COLUMNS: { role: LlmModelRole; label: string }[] = [
   { role: "agent", label: "Agent" },
   { role: "light", label: "Light" },
   { role: "embedding", label: "Embedding" },

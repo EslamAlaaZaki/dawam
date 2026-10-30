@@ -315,7 +315,10 @@ describe("language models page", () => {
     fireEvent.change(await within(dialog).findByLabelText("Model name"), {
       target: { value: "llama" },
     });
-    expect(within(dialog).queryByLabelText("Role")).not.toBeInTheDocument();
+    for (const label of ["Agent", "Light", "Embedding", "Vision", "Rerank"]) {
+      expect(within(dialog).getByLabelText(label)).not.toBeChecked();
+    }
+    fireEvent.click(within(dialog).getByLabelText("Embedding"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Add model" }));
 
     await waitFor(() =>
@@ -323,7 +326,25 @@ describe("language models page", () => {
     );
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       name: "llama",
+      roles: ["embedding"],
     });
+  });
+
+  it("will not add a model with no role ticked", async () => {
+    const requests = renderApp(providersApi([PROVIDER]), "/admin/llm");
+
+    await screen.findByRole("row", { name: "Model qwen3" });
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a model" });
+    fireEvent.change(await within(dialog).findByLabelText("Model name"), {
+      target: { value: "llama" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add model" }));
+
+    expect(
+      await within(dialog).findByText("Choose at least one role."),
+    ).toBeInTheDocument();
+    expect(requests.some((r) => r.method === "POST")).toBe(false);
   });
 
   describe("picking a model from the provider's list", () => {
@@ -379,12 +400,13 @@ describe("language models page", () => {
       expect(options[2]).toBeDisabled();
 
       fireEvent.change(pick, { target: { value: "mistral" } });
+      fireEvent.click(within(dialog).getByLabelText("Agent"));
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Add model" }),
       );
 
       await waitFor(() => expect(out.post).toBeDefined());
-      expect(out.post?.body).toEqual({ name: "mistral" });
+      expect(out.post?.body).toEqual({ name: "mistral", roles: ["agent"] });
     });
 
     it("asks for a choice before adding", async () => {
@@ -431,12 +453,13 @@ describe("language models page", () => {
       fireEvent.change(within(dialog).getByLabelText("Model name"), {
         target: { value: "typed-model" },
       });
+      fireEvent.click(within(dialog).getByLabelText("Agent"));
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Add model" }),
       );
 
       await waitFor(() => expect(out.post).toBeDefined());
-      expect(out.post?.body).toEqual({ name: "typed-model" });
+      expect(out.post?.body).toEqual({ name: "typed-model", roles: ["agent"] });
     });
 
     it("goes straight to typing when the provider cannot list", async () => {

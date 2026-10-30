@@ -338,7 +338,7 @@ ROWS: list[Row] = [
         "/api/v1/admin/llm/providers/{provider_id}/models",
         "register a model (story 155)",
         admin_only(),
-        json=lambda roles: {"name": "qwen3"},
+        json=lambda roles: {"name": "qwen3", "roles": ["agent"]},
     ),
     Row(
         "PUT",

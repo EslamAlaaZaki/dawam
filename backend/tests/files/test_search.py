@@ -52,11 +52,9 @@ def register_embedding_model(
     assert provider.status_code == 201, provider.text
     model = admin.post(
         f"{ADMIN}/providers/{provider.json()['id']}/models",
-        json={"name": name},
+        json={"name": name, "roles": ["embedding"]},
     )
     assert model.status_code == 201, model.text
-    roled = admin.put(f"{ADMIN}/models/{model.json()['id']}/roles", json={"roles": ["embedding"]})
-    assert roled.status_code == 200, roled.text
     tested = admin.post(f"{ADMIN}/models/{model.json()['id']}/test")
     assert tested.json()["test_ok"] is True, tested.text
     if use:

@@ -3762,8 +3762,11 @@ export interface paths {
         put?: never;
         /**
          * Add Model
-         * @description Register a model of the provider with no role (admins only): its roles are set in
-         *     the roles table. 409 `model_exists`.
+         * @description Register a model of the provider with its roles, at least one (admins only), under the
+         *     roles table's rules: 422 `embedding_test_failed` when `embedding` is ticked and the model
+         *     cannot embed, 422 `context_window_too_small` for `agent` with a window under 32K (an
+         *     unknown window is allowed with a `warnings` entry). Nothing is created when a check
+         *     fails. 409 `model_exists`.
          */
         post: operations["addLlmModel"];
         delete?: never;
@@ -7916,6 +7919,11 @@ export interface components {
              * @description Tokens. Leave out to take the server's figure when it reports one.
              */
             context_window?: number | null;
+            /**
+             * Roles
+             * @description The roles the model fills, at least one; applied as in the roles table (`embedding` runs the embedding test, `agent` needs a 32K+ window when given).
+             */
+            roles: ("agent" | "light" | "embedding" | "vision" | "rerank")[];
         };
         /** LlmModelRolesRequest */
         LlmModelRolesRequest: {

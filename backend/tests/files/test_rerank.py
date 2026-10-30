@@ -27,10 +27,11 @@ def register_rerank_model(
         json={"name": f"p-{name}", "base_url": "http://rerank:8000/v1", "internal": internal},
     )
     assert provider.status_code == 201, provider.text
-    model = admin.post(f"{ADMIN}/providers/{provider.json()['id']}/models", json={"name": name})
+    model = admin.post(
+        f"{ADMIN}/providers/{provider.json()['id']}/models",
+        json={"name": name, "roles": ["rerank"]},
+    )
     assert model.status_code == 201, model.text
-    roled = admin.put(f"{ADMIN}/models/{model.json()['id']}/roles", json={"roles": ["rerank"]})
-    assert roled.status_code == 200, roled.text
     tested = admin.post(f"{ADMIN}/models/{model.json()['id']}/test")
     assert tested.json()["test_ok"] is True, tested.text
     owner = roles.client("owner")
@@ -171,7 +172,9 @@ def test_only_a_model_enabled_for_the_rerank_role_can_be_chosen(roles, policy, f
     provider = admin.post(
         f"{ADMIN}/providers", json={"name": "p", "base_url": "http://x:1/v1", "internal": True}
     ).json()
-    model = admin.post(f"{ADMIN}/providers/{provider['id']}/models", json={"name": "m"}).json()
+    model = admin.post(
+        f"{ADMIN}/providers/{provider['id']}/models", json={"name": "m", "roles": ["light"]}
+    ).json()
     path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
     current = roles.client("owner").get(path).json()
 

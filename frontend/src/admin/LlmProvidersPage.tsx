@@ -17,6 +17,7 @@ import {
   useUpdateLlmModel,
   useUpdateLlmProvider,
   type LlmModel,
+  type LlmModelRole,
   type LlmProvider,
 } from "../api/llm";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
@@ -31,6 +32,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { LlmFallbacks } from "./LlmFallbacks";
+import { ROLE_COLUMNS } from "./LlmSettingsPage";
 import { ErrorText, NativeSelect, WarningNote, labelClasses } from "./parts";
 import {
   ROLE_LABELS,
@@ -619,19 +621,23 @@ function AddModelDialog({
   const add = useAddLlmModel(chosen);
   const [name, setName] = useState("");
   const [missing, setMissing] = useState(false);
+  const [roles, setRoles] = useState<LlmModelRole[]>([]);
+  const [noRole, setNoRole] = useState(false);
 
   function onSubmit(form: FormData) {
     const body = {
       name: name.trim(),
       context_window: contextWindow(form),
+      roles,
     };
-    if (!body.name) {
-      setMissing(true);
+    if (!body.name || roles.length === 0) {
+      setMissing(!body.name);
+      setNoRole(roles.length === 0);
       return;
     }
     add.mutate(body, {
       onSuccess: () => {
-        toast.success(`${body.name} added. Give it a role in AI settings.`);
+        toast.success(`${body.name} added.`);
         onOpenChange(false);
       },
     });
@@ -645,11 +651,13 @@ function AddModelDialog({
           add.reset();
           setName("");
           setMissing(false);
+          setRoles([]);
+          setNoRole(false);
         }
         onOpenChange(next);
       }}
       title="Add a model"
-      description="Register a model on one of the providers. Its roles are set in the AI settings."
+      description="Register a model on one of the providers and choose the roles it fills."
       submitLabel="Add model"
       onSubmit={onSubmit}
       pending={add.isPending}
@@ -682,6 +690,30 @@ function AddModelDialog({
       />
       {missing && <ErrorText>Choose or type a model name.</ErrorText>}
       <ContextWindowField />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">Roles</legend>
+        <div className="flex flex-wrap gap-4">
+          {ROLE_COLUMNS.map(({ role, label }) => (
+            <label key={role} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={roles.includes(role)}
+                onChange={(event) => {
+                  setNoRole(false);
+                  setRoles(
+                    ROLE_COLUMNS.map((c) => c.role).filter((r) =>
+                      r === role ? event.target.checked : roles.includes(r),
+                    ),
+                  );
+                }}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        {noRole && <ErrorText>Choose at least one role.</ErrorText>}
+      </fieldset>
     </EntityFormDialog>
   );
 }
