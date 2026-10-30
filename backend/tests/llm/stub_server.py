@@ -48,7 +48,13 @@ class StubLlmServer:
                 self.wfile.write(raw)
 
             def do_GET(self) -> None:
-                stub.requests.append({"path": self.path, "auth": self.headers.get("Authorization")})
+                stub.requests.append(
+                    {
+                        "path": self.path,
+                        "auth": self.headers.get("Authorization"),
+                        "user_agent": self.headers.get("User-Agent"),
+                    }
+                )
                 entry: dict[str, Any] = {"id": "stub-model", "object": "model"}
                 if stub.context_window:
                     entry["max_model_len"] = stub.context_window

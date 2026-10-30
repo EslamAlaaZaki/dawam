@@ -12,6 +12,10 @@ import urllib.request
 from collections.abc import Iterator, Mapping
 from typing import IO, Protocol
 
+import dawam
+
+USER_AGENT = f"dawam/{dawam.__version__}"
+
 
 class TransportError(Exception):
     """The server could not be reached, or did not answer in time."""
@@ -61,7 +65,11 @@ class UrllibTransport:
         body: bytes | None,
         timeout: float,
     ) -> HttpResponse:
-        request = urllib.request.Request(url, data=body, headers=dict(headers), method=method)
+        sent = dict(headers)
+        if not any(name.lower() == "user-agent" for name in sent):
+            # urllib's own ``Python-urllib/3.x`` is blocked by providers behind Cloudflare.
+            sent["User-Agent"] = USER_AGENT
+        request = urllib.request.Request(url, data=body, headers=sent, method=method)
         try:
             response = urllib.request.urlopen(request, timeout=timeout)
         except urllib.error.HTTPError as exc:
