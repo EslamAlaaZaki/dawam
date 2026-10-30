@@ -125,13 +125,13 @@ class ProviderInput:
 @dataclass(frozen=True)
 class ModelInput:
     """What an admin types for a model. ``roles`` is required when adding (at least one)
-    and ignored on an update: roles change later in the roles table
-    (``ProviderService.set_model_roles``)."""
+    and later changes go through the roles table (``ProviderService.set_model_roles``)."""
 
     name: str
     context_window: int | None = None
-    roles: Sequence[str] = ()
     """The admin's own figure; the test fills it from the server's metadata if left out."""
+    roles: Sequence[str] = ()
+    """On an add: the roles the model fills, at least one; ignored on an update."""
     reasoning: ReasoningConfig | None = None
     """On an update: the new thinking settings; ``None`` keeps the stored ones."""
 
@@ -314,6 +314,20 @@ def _reset_test(record: ModelRecord) -> None:
     record.embedding_dimension = None
 
 
+def _probe_embedding(gateway: Gateway) -> int | None:
+    """Run the embedding test; 422 ``embedding_test_failed`` carries the provider's error.
+    Returns the vector dimension."""
+    result = probe(gateway, chat=False, embedding=True)
+    if not result.ok:
+        raise ApiError(
+            422,
+            "embedding_test_failed",
+            f"The embedding test failed: {result.error}",
+            {"field": "roles", "error_code": result.error_code},
+        )
+    return result.capabilities.embedding_dimension
+
+
 class ProviderService:
     def __init__(
         self,
@@ -423,17 +437,7 @@ class ProviderService:
             if "embedding" in wanted:
                 gateway = self._gateway(provider, name)
                 tested_provider_state = (provider.base_url, provider.secret_encrypted)
-        dimension: int | None = None
-        if gateway is not None:
-            result = probe(gateway, chat=False, embedding=True)
-            if not result.ok:
-                raise ApiError(
-                    422,
-                    "embedding_test_failed",
-                    f"The embedding test failed: {result.error}",
-                    {"field": "roles", "error_code": result.error_code},
-                )
-            dimension = result.capabilities.embedding_dimension
+        dimension = _probe_embedding(gateway) if gateway is not None else None
         now = self._clock()
         with Session(self._engine) as db:
             provider = self._load_provider(db, provider_id)
@@ -494,17 +498,7 @@ class ProviderService:
             if "embedding" in wanted and "embedding" not in model.roles:
                 gateway = self._gateway(provider, model.name)
                 tested_provider_state = (provider.base_url, provider.secret_encrypted)
-        dimension: int | None = None
-        if gateway is not None:
-            result = probe(gateway, chat=False, embedding=True)
-            if not result.ok:
-                raise ApiError(
-                    422,
-                    "embedding_test_failed",
-                    f"The embedding test failed: {result.error}",
-                    {"field": "roles", "error_code": result.error_code},
-                )
-            dimension = result.capabilities.embedding_dimension
+        dimension = _probe_embedding(gateway) if gateway is not None else None
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)
             if gateway is not None:

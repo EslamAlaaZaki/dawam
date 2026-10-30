@@ -18,6 +18,11 @@ export const ROLE_LABELS: Record<Role, string> = {
   rerank: "Rerank",
 };
 
+/** Every Model Role in display order, as the checkbox lists show them. */
+export const ROLE_COLUMNS: { role: Role; label: string }[] = (
+  Object.keys(ROLE_LABELS) as Role[]
+).map((role) => ({ role, label: ROLE_LABELS[role] }));
+
 /** Vision and rerank are optional: a Workspace losing either model needs no replacement. */
 const REPLACEMENT_KEY: Partial<
   Record<Role, "agent_model_id" | "light_model_id" | "embedding_model_id">

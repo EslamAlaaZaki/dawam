@@ -32,9 +32,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { LlmFallbacks } from "./LlmFallbacks";
-import { ROLE_COLUMNS } from "./LlmSettingsPage";
 import { ErrorText, NativeSelect, WarningNote, labelClasses } from "./parts";
 import {
+  ROLE_COLUMNS,
   ROLE_LABELS,
   ReplacementDialog,
   neededWorkspaces,
