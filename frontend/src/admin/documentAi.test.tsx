@@ -97,6 +97,11 @@ describe("the Document AI settings page", () => {
     expect(
       await screen.findByRole("heading", { name: "Document AI" }),
     ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Chunking strategy")).toHaveValue(
+      "headings",
+    );
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Retrieval" }));
     const retrieval = await screen.findByRole("region", { name: "Retrieval" });
     expect(within(retrieval).getByLabelText("Results")).toHaveValue(10);
     expect(within(retrieval).getByLabelText("RRF constant")).toHaveValue(60);
@@ -107,9 +112,10 @@ describe("the Document AI settings page", () => {
     expect(
       within(retrieval).queryByLabelText("RRF constant: owners' maximum"),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Chunking strategy")).toHaveValue("headings");
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Reranking" }));
     expect(
-      screen.getByRole("switch", { name: "Rerank results" }),
+      await screen.findByRole("switch", { name: "Rerank results" }),
     ).toBeChecked();
   });
 
@@ -123,13 +129,17 @@ describe("the Document AI settings page", () => {
       "/admin/llm/document-ai",
     );
 
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Retrieval" }));
     fireEvent.change(await screen.findByLabelText("RRF constant"), {
       target: { value: "80" },
     });
     fireEvent.change(screen.getByLabelText("Results: owners' maximum"), {
       target: { value: "20" },
     });
-    fireEvent.click(screen.getByRole("switch", { name: "Rerank results" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Reranking" }));
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Rerank results" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
     expect(
@@ -200,6 +210,7 @@ describe("the Document AI settings page", () => {
       ),
       "/admin/llm/document-ai",
     );
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Reranking" }));
     fireEvent.click(
       await screen.findByRole("switch", { name: "Rerank results" }),
     );
