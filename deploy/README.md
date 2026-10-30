@@ -13,6 +13,9 @@ backups, upgrades and key rotation in [`docs/operations.md`](../docs/operations.
 | [4. Local run without Docker](#4-local-run-without-docker) | Running the built app on your machine | Python 3.12, Node.js 22.12+, PostgreSQL 16 + pgvector, nginx |
 | [5. Linux server without Docker](#5-linux-server-without-docker-systemd) | Hosts where containers are not allowed | Same as 4, plus systemd |
 
+For the Docker Compose commands of each setup (CPU or GPU, with or without Ollama),
+see [Docker Compose: the four setups](#docker-compose-the-four-setups).
+
 ## Components
 
 Every method runs the same components. The ones inside the box are DAWAM's own; the
@@ -91,6 +94,7 @@ Files in this folder:
 |------|---------|
 | `nginx/` | The `edge` image (methods 1–2) |
 | `docker-compose.yaml` | Method 2: every component in one Compose file, HTTPS disabled |
+| `docker-compose.gpu.yaml` | Methods 1–2: added after either Compose file to run document AI on an NVIDIA GPU |
 | `host/nginx.conf` | Methods 4–5: the entry proxy without Docker |
 | `host/dawam.env.example` | Methods 4–5: app and worker settings without Docker |
 | `host/systemd/*.service` | Method 5: the `app`, `worker` and `web` services |
@@ -111,6 +115,75 @@ python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_
 To create the first admin account, set `DAWAM_ADMIN_EMAIL` and `DAWAM_ADMIN_PASSWORD`
 before the first start (password: 10+ characters, not a common one). They are only
 used while no admin exists, so you can remove them afterwards.
+
+## Docker Compose: the four setups
+
+You don't need to build the images first: `up -d --build` builds them and starts them
+in one step. There are two Compose files, and each can run on the CPU or on an
+NVIDIA GPU:
+
+| Setup | Compose file | LLM | Document AI runs on |
+|-------|--------------|-----|---------------------|
+| 1. CPU, without Ollama | `compose.yaml` | An external provider you add in Admin > Language models | CPU |
+| 2. GPU, without Ollama | `compose.yaml` + `deploy/docker-compose.gpu.yaml` | An external provider you add in Admin > Language models | GPU |
+| 3. CPU, all-in-one | `deploy/docker-compose.yaml` | Ollama, models pulled on first start | CPU |
+| 4. GPU, all-in-one | `deploy/docker-compose.yaml` + `deploy/docker-compose.gpu.yaml` | Ollama, models pulled on first start (on the GPU if you enable it) | GPU |
+
+**For every setup, first** create `.env` in the repository root (`cp .env.example .env`,
+or `copy .env.example .env` in Windows PowerShell or Command Prompt) and set
+`DAWAM_ENCRYPTION_KEY`, `POSTGRES_PASSWORD`, `DAWAM_ADMIN_EMAIL` and
+`DAWAM_ADMIN_PASSWORD` ([above](#before-any-method-the-encryption-key)). Run every
+command from the repository root.
+
+**1. CPU, without Ollama**
+
+```sh
+docker compose up -d --build
+```
+
+**2. GPU, without Ollama**
+
+```sh
+docker compose -f compose.yaml -f deploy/docker-compose.gpu.yaml up -d --build
+```
+
+**3. CPU, all-in-one**
+
+```sh
+docker compose -f deploy/docker-compose.yaml --env-file .env up -d --build
+docker compose -f deploy/docker-compose.yaml --env-file .env logs -f ollama-pull   # model download
+```
+
+**4. GPU, all-in-one**
+
+To run Ollama on the GPU as well, first uncomment the `deploy:` block under `ollama` in
+[`docker-compose.yaml`](docker-compose.yaml). Without it, only document AI uses the GPU.
+
+```sh
+docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.gpu.yaml --env-file .env up -d --build
+```
+
+After starting:
+
+- Wait until `app`, `web` and `edge` are `healthy` in `docker compose ... ps`, then open
+  `http://localhost:8000`.
+- **Setups 3 and 4:** add the Ollama provider and its models in Admin > Language models,
+  and give the models their roles in Admin > Roles, budgets & usage
+  ([method 2](#2-all-in-one-compose-file), step 3).
+- **Setups 2 and 4:** check that the worker sees the GPU
+  ([Document AI: CPU vs GPU](#document-ai-cpu-vs-gpu)).
+
+Rules for all four:
+
+- Pass the same `-f` and `--env-file` flags to every later command (`ps`, `logs`,
+  `exec`, `down`).
+- Run one setup at a time. They share the same volumes, so you can switch without
+  losing data: stop the current one with `docker compose ... down` (with its flags),
+  then start the other. Never use `down -v`: it deletes the database and the uploads.
+- Switching between CPU and GPU rebuilds the backend image, which `--build` does. The
+  first GPU build is slow: the image is about 12 GB.
+- Setup 1 can still start Ollama with `docker compose --profile ollama up -d`, but then
+  you pull the models yourself. Setup 3 pulls them for you.
 
 ---
 
