@@ -2510,8 +2510,8 @@ class _WebSearch(BaseModel):
     query: str = Field(
         min_length=1,
         max_length=300,
-        description="Concepts to look up. Never data: values, names, ids and quoted text are "
-        "removed before it is sent.",
+        description="What to look up, such as a topic or a live fact. Never Workspace data: "
+        "values, names, ids and quoted text are removed before it is sent.",
     )
     limit: int = Field(default=5, ge=1, le=10)
 
@@ -2890,9 +2890,11 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "web_search",
-        "Search the web for outside knowledge: industry KPI definitions, regulations (IFRS "
-        "9, SAMA rules), Kimball patterns, SQL dialects, vendor schemas. Search for concepts, "
-        "never for Workspace data. The query is shown to the member and audited.",
+        "Search the web for anything outside the Workspace: live or recent facts (weather, "
+        "news, prices, today's events), general knowledge, and reference such as industry KPI "
+        "definitions, regulations (IFRS 9, SAMA rules), Kimball patterns, SQL dialects and "
+        "vendor schemas. Never put Workspace data (values, names, ids, quoted text) in the "
+        "query. The query is shown to the member and audited.",
         _WebSearch,
         "read",
         Action.ASK_ASSISTANT,
