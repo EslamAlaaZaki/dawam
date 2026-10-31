@@ -1,0 +1,13 @@
+# SearXNG for DAWAM's web_search: Admin > Web access, SearXNG provider, base URL
+# http://searxng:8080. Only DAWAM calls it, on the Compose network (no host port).
+# Everything not set here keeps SearXNG's defaults. The secret key comes from
+# SEARXNG_SECRET in .env (SearXNG reads that variable over server.secret_key).
+use_default_settings: true
+
+server:
+  limiter: false # no bot protection: DAWAM is the only client
+
+search:
+  formats:
+    - html
+    - json # DAWAM's adapter reads /search?q=...&format=json

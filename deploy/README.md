@@ -34,6 +34,7 @@ flowchart LR
         db[("<b>db</b><br/>PostgreSQL 16<br/>+ pgvector")]
         files[("<b>file storage</b><br/>local volume<br/>or S3 bucket")]
         ollama["<b>ollama</b> (optional)<br/>local LLM server<br/>:11434"]
+        searxng["<b>searxng</b><br/>web search<br/>:8080"]
     end
 
     subgraph external["External systems (configured in the admin console)"]
@@ -56,6 +57,7 @@ flowchart LR
     worker -- "chat, embeddings" --> llm
     app -. "optional" .-> ollama
     worker -. "optional" .-> ollama
+    app -. "web search, if turned on" .-> searxng
 
     app -- "read schema, profile, sample<br/>(read-only)" --> sources
     worker -- "read schema, profile, sample<br/>(read-only)" --> sources
@@ -72,6 +74,7 @@ flowchart LR
 | **db** | PostgreSQL 16 with the `vector` extension: DAWAM's only metadata store, including the document search index. You can use an external server instead (`DAWAM_DATABASE_URL`). | `pgvector/pgvector:pg16` | Yes |
 | **file storage** | Uploaded files and documents. A directory (`file-data` volume) or an S3-compatible bucket (`DAWAM_STORAGE_BACKEND=s3`, image built with the `s3` extra). | Volume or bucket | Yes |
 | **ollama** | Optional local LLM server, started with `--profile ollama`. | `ollama/ollama` | No |
+| **searxng** | Web search for the assistant's `web_search`, used once an admin adds it in Admin > Web access (base URL `http://searxng:8080`). Reached on the Compose network only; config in `searxng/settings.yml`, secret key `SEARXNG_SECRET`. | `searxng/searxng` | No |
 | **LLM providers** | The models behind AI features. Types: OpenAI-compatible (Ollama, vLLM, SGLang, OpenAI and others), Anthropic, Azure OpenAI, Gemini, AWS Bedrock. Added by an admin. | External | For AI features |
 | **Source databases** | The systems you analyse, reached through Connections with credentials encrypted by `DAWAM_ENCRYPTION_KEY`. Live connections: PostgreSQL, SQL Server, MySQL/MariaDB, Oracle. Schema Import from files needs no connection, with helper queries for those engines plus IBM Db2 and Teradata. | External | For live connections |
 | **SMTP server** | Sends invitations, password resets and notifications. Set in Admin > Email. Until then, links are shown to admins to share. | External | No |
@@ -93,6 +96,7 @@ Files in this folder:
 | Path | Used by |
 |------|---------|
 | `nginx/` | The `edge` image (methods 1–2) |
+| `searxng/settings.yml` | Methods 1–2: the `searxng` service's settings (JSON output on, no limiter) |
 | `docker-compose.yaml` | Method 2: every component in one Compose file, HTTPS disabled |
 | `docker-compose.gpu.yaml` | Methods 1–2: added after either Compose file to run document AI on an NVIDIA GPU |
 | `host/nginx.conf` | Methods 4–5: the entry proxy without Docker |
@@ -203,6 +207,7 @@ POSTGRES_PASSWORD=<a strong password>          # for anything others can reach
 DAWAM_ADMIN_EMAIL=admin@example.com            # first start only
 DAWAM_ADMIN_PASSWORD=<a long password>
 DAWAM_PUBLIC_URL=http://<host>:8000            # the address users open; used in emailed links
+SEARXNG_SECRET=<a long random string>          # the searxng service's key: openssl rand -hex 32
 # DAWAM_PORT=8000                              # host port, if 8000 is taken
 ```
 
@@ -215,6 +220,11 @@ curl http://localhost:8000/readyz  # 200 once the database is migrated
 ```
 
 Open `http://localhost:8000` (or your `DAWAM_PORT`) and sign in.
+
+**Web search:** to let the assistant search the web through the bundled `searxng`
+service, go to **Admin > Web access**, add a SearXNG provider with base URL
+`http://searxng:8080`, test it, and pick it as the provider. It counts as internal,
+so internal-only Workspaces can use it too.
 
 Day-to-day commands:
 
@@ -259,10 +269,11 @@ proxy):
 | `ollama` | none | Local LLM server, always on |
 | `ollama-pull` | none | Runs once at start, pulls `OLLAMA_MODELS`, then exits |
 | `mailpit` | `127.0.0.1:8025` (`MAILPIT_PORT`) | SMTP server that catches every email; read them in its web UI |
+| `searxng` | none | Web search for the assistant, reached as `http://searxng:8080` |
 | `source-db` | none | Demo PostgreSQL source with a small `sales` schema (profile `demo`) |
 
-1. Set up `.env` in the repository root as in method 1 (encryption key, first admin).
-   Optionally add:
+1. Set up `.env` in the repository root as in method 1 (encryption key, first admin,
+   `SEARXNG_SECRET`: a long random string, e.g. `openssl rand -hex 32`). Optionally add:
 
    ```sh
    OLLAMA_MODELS=qwen2.5:7b nomic-embed-text   # default: a chat model + an embedding model
@@ -296,6 +307,9 @@ proxy):
      role and `nomic-embed-text` the `embedding` role.
    - **Admin > Email:** host `mailpit`, port `1025`, no TLS, no login. Emails appear
      at `http://localhost:8025`. For real delivery, enter your own SMTP server instead.
+   - **Admin > Web access:** add a SearXNG provider with base URL
+     `http://searxng:8080`, test it, and pick it as the provider. It counts as
+     internal, so internal-only Workspaces can use it too.
    - **Demo source** (with `--profile demo`): in a Workspace, add a PostgreSQL
      Connection: host `source-db`, port `5432`, database `shop`, user `reader`,
      password `reader`.

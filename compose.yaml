@@ -2,7 +2,8 @@
 # DAWAM listens on http://localhost:${DAWAM_PORT:-8000}: the `edge` proxy, which sends
 # /api/, /healthz and /readyz to `app` and everything else to `web`. Only `edge` is
 # published; the other services are reachable inside the Compose network only.
-# Optional local LLM server: `docker compose --profile ollama up`.
+# Optional local LLM server: `docker compose --profile ollama up`. `searxng` serves the
+# assistant's web search (see deploy/README.md).
 
 name: dawam
 
@@ -98,6 +99,22 @@ services:
     profiles: ["ollama"]
     volumes:
       - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+  # Web search for the assistant: in Admin > Web access, add a SearXNG provider with base
+  # URL http://searxng:8080. No host port: only DAWAM calls it.
+  searxng:
+    image: searxng/searxng:2026.10.17-1c10abe2d
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me}
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
     restart: unless-stopped
 
 networks:
