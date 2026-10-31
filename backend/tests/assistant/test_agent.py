@@ -214,6 +214,28 @@ def test_a_request_refused_as_too_large_is_retried_once_with_older_results_short
     assert "x" * 300 in results[0] and "shortened" in results[0]
 
 
+class BigSchemaTools(Tools):
+    """A tool whose schema is as large as both results together."""
+
+    def specs(self) -> Sequence[ToolSpec]:
+        return [ToolSpec("lookup", "d" * 8000, LOOKUP.parameters)]
+
+
+def test_the_shortened_retry_counts_the_tool_schemas_too():
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(call(1),)), Reply(tool_calls=(call(2),)), TOO_LARGE, Reply(text="ok")
+    )
+
+    events = run(adapter, BigSchemaTools(ToolOutcome(BIG, "ok")))
+
+    assert events[-1].status == "completed"
+    schema = len(json.dumps(["lookup", "d" * 8000, LOOKUP.parameters]))
+    refused, retried = adapter.calls[2].messages, adapter.calls[3].messages
+    assert _sent_tokens(retried) + schema <= 0.75 * (_sent_tokens(refused) + schema)
+    # Counting the messages alone, shortening the oldest result would have been enough.
+    assert all(BIG not in (m.content or "") for m in retried if m.role == "tool")
+
+
 def test_a_second_too_large_refusal_fails_the_run_as_before():
     events, adapter = _two_lookups_then(TOO_LARGE, TOO_LARGE)
 

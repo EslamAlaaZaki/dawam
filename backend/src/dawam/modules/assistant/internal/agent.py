@@ -749,11 +749,11 @@ def run_agent(
         shortenable.append((result, short_result))
         pending.remove(call)
 
-    def shorten(refused: int, prepare: Callable[[], list[Message]]) -> bool:
-        """Swap the oldest tool results for their digests until the request is at most
-        ``TOO_LARGE_SHARE`` of ``refused`` tokens; ``False`` when nothing was swapped."""
+    def shorten(refused: int, size: Callable[[], int]) -> bool:
+        """Swap the oldest tool results for their digests until the request's ``size`` is
+        at most ``TOO_LARGE_SHARE`` of ``refused`` tokens; ``False`` when nothing was swapped."""
         swapped = False
-        while shortenable and request_tokens(prepare(), count) > refused * TOO_LARGE_SHARE:
+        while shortenable and size() > refused * TOO_LARGE_SHARE:
             full, short = shortenable.pop(0)
             at = next((i for i, m in enumerate(messages) if m is full), None)
             if at is not None:
@@ -877,6 +877,14 @@ def run_agent(
                     sent[0] = replace(head, content=head.content + "\n\n" + extra)
                 return sent
 
+            def size(
+                sent: list[Message] | None = None, reserved: int = reserved, extra: str = extra
+            ) -> int:
+                """The whole request: messages plus the reserved tool schemas (the prompted
+                tools text is already in the system message)."""
+                messages_size = request_tokens(prepare() if sent is None else sent, count)
+                return messages_size + (0 if extra else reserved)
+
             sent = prepare()
             sent_tools = () if prompted else offered
             try:
@@ -884,9 +892,7 @@ def run_agent(
             except LlmError as exc:
                 # Too large for the provider (a per-request token limit can sit far below the
                 # window): retried once with older results as digests; failing again ends it.
-                if exc.code != CONTEXT_OVERFLOW or not shorten(
-                    request_tokens(sent, count), prepare
-                ):
+                if exc.code != CONTEXT_OVERFLOW or not shorten(size(sent), size):
                     raise
                 started = _started(gateway.chat(prepare(), sent_tools, stream))
             with closing(started) as events:
