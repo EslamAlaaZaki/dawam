@@ -126,13 +126,13 @@ def test_web_search_covers_live_facts_and_keeps_workspace_data_out_of_the_query(
     assert "shown to the member and audited" in web_search.description
 
 
-# How to search (#533): open a result instead of searching again, search at most three
+# How to search (#533): open a result instead of searching again, search at most five
 # times, rephrase only off-topic results.
 
 
 def test_the_search_strategy_rules():
     assert "open the 1-2 most promising results with web_fetch" in SYSTEM_PROMPT
     assert "instead of searching again" in SYSTEM_PROMPT
-    assert "Search at most 3 times for one question" in SYSTEM_PROMPT
+    assert "Search at most 5 times for one question" in SYSTEM_PROMPT
     assert "say plainly what you could not find" in SYSTEM_PROMPT
     assert "Rephrase a query only when the results were off-topic" in SYSTEM_PROMPT

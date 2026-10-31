@@ -184,6 +184,60 @@ def test_a_provider_failure_ends_the_run_with_the_reason():
     assert finished.error_message == "The model server refused the key."
 
 
+# A provider refusing a request as too large (#533): older tool results become their digests
+# and the call is retried once.
+
+TOO_LARGE = LlmError("context_overflow", "The conversation is too long for the model.")
+BIG = "x" * 4000
+
+
+def _two_lookups_then(*replies: Reply | LlmError) -> tuple[list[Any], FakeAdapter]:
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(call(1),)), Reply(tool_calls=(call(2),)), *replies
+    )
+    return run(adapter, Tools(ToolOutcome(BIG, "ok"))), adapter
+
+
+def _sent_tokens(messages: Sequence[Message]) -> int:
+    return sum(len(m.content or "") for m in messages)
+
+
+def test_a_request_refused_as_too_large_is_retried_once_with_older_results_shortened():
+    events, adapter = _two_lookups_then(TOO_LARGE, Reply(text="Here it is"))
+
+    finished = events[-1]
+    assert finished.status == "completed" and finished.text == "Here it is"
+    refused, retried = adapter.calls[2].messages, adapter.calls[3].messages
+    assert _sent_tokens(retried) <= 0.75 * _sent_tokens(refused)
+    results = [m.content or "" for m in retried if m.role == "tool"]
+    assert BIG not in results[0]  # the oldest result became its digest
+    assert "x" * 300 in results[0] and "shortened" in results[0]
+
+
+def test_a_second_too_large_refusal_fails_the_run_as_before():
+    events, adapter = _two_lookups_then(TOO_LARGE, TOO_LARGE)
+
+    finished = events[-1]
+    assert finished.status == "failed" and finished.error_code == "context_overflow"
+    assert len(adapter.calls) == 4
+
+
+def test_other_refusals_are_not_retried():
+    events, adapter = _two_lookups_then(LlmError("bad_request", "no"), Reply(text="never"))
+
+    assert events[-1].status == "failed" and events[-1].error_code == "bad_request"
+    assert len(adapter.calls) == 3
+
+
+def test_a_too_large_refusal_with_nothing_to_shorten_fails_at_once():
+    adapter = FakeAdapter().script(TOO_LARGE, Reply(text="never"))
+
+    events = run(adapter)
+
+    assert events[-1].status == "failed" and events[-1].error_code == "context_overflow"
+    assert len(adapter.calls) == 1
+
+
 def test_a_stop_before_the_model_call_cancels_the_run():
     adapter = FakeAdapter().script(Reply(text="never"))
 

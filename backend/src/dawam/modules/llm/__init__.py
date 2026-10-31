@@ -62,6 +62,7 @@ from .document_ai import DocumentAiConfig, document_ai_config
 from .document_ai_api import admin_router as document_ai_admin_router
 from .document_ai_api import router as document_ai_router
 from .gateway import (
+    CONTEXT_OVERFLOW,
     Adapter,
     Capabilities,
     ChatEvent,
@@ -119,6 +120,7 @@ router.include_router(document_ai_router)
 router.include_router(new_workspace_router)
 
 __all__ = [
+    "CONTEXT_OVERFLOW",
     "Adapter",
     "AdapterConfig",
     "AdapterFactory",

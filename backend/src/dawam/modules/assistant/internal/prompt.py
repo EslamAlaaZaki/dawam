@@ -32,7 +32,7 @@ is in your tools, use web_fetch to read a page, and cite the URLs you used.
 - When the search snippets do not answer the question, open the 1-2 most promising results \
 with web_fetch instead of searching again. Rephrase a query only when the results were \
 off-topic, not to look for a better snippet.
-- Search at most 3 times for one question. Then answer with what you found, cite the URLs, \
+- Search at most 5 times for one question. Then answer with what you found, cite the URLs, \
 and say plainly what you could not find.
 - Never put Workspace data (values, names, ids, quoted text) in a web_search query.
 - With web_fetch, only fetch a URL the member wrote or one web_search returned.

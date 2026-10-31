@@ -37,6 +37,7 @@ from functools import lru_cache
 from typing import Any, Literal, Protocol
 
 from dawam.modules.llm import (
+    CONTEXT_OVERFLOW,
     Capabilities,
     ChatEvent,
     Done,
@@ -57,6 +58,7 @@ from .context import (
     fit_messages,
     history_drop,
     prompt_budget,
+    request_tokens,
     schema_tokens,
     shorten_result,
     summary_block,
@@ -552,6 +554,27 @@ def _run_reads(
         return [future.result() for future in futures]
 
 
+TOO_LARGE_SHARE = 0.75
+"""After a request refused as too large, older tool results are shortened to their digests
+until the retry is at most this share of the refused size (#533)."""
+SHORTENED = "[shortened to fit the provider's request limit] "
+
+
+def _started(events: Iterator[ChatEvent]) -> Iterator[ChatEvent]:
+    """``events`` with the first one already read: a refused request raises here, before
+    anything of the reply is used."""
+    try:
+        first = next(events)
+    except StopIteration:
+        return iter(())
+    return _prepend(first, events)
+
+
+def _prepend(first: ChatEvent, rest: Iterator[ChatEvent]) -> Iterator[ChatEvent]:
+    yield first
+    yield from rest
+
+
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
     """``counter`` (the gateway's real count) remembered per text, so a long conversation
     is counted once per message, not once per model call; none: the chars/4 estimate."""
@@ -669,6 +692,8 @@ def run_agent(
         known_tools.add(finder.name)
     if resume is not None and resume.loaded is not None:
         loaded = set(resume.loaded) & set(known_tools)
+    shortenable: list[tuple[Message, Message]] = []
+    """The run's tool results, oldest first, each with its digest form."""
     retries = 0
     compaction_tried = summarize is None
     last_poll = timer()
@@ -710,17 +735,31 @@ def run_agent(
         )
         run.calls.append(entry)
         yield ToolFinished(entry)
-        quoted = quote_data(
-            f"tool:{call.name if call.name in known_tools else 'unknown'}",
-            shorten_result(outcome.content, window),
-        )
+        tag = f"tool:{call.name if call.name in known_tools else 'unknown'}"
+        quoted = quote_data(tag, shorten_result(outcome.content, window))
+        short = quote_data(tag, SHORTENED + entry.digest)
         if flagged:
-            quoted = warn(quoted)
+            quoted, short = warn(quoted), warn(short)
         if prompted:
-            messages.append(Message("user", quoted))
+            result, short_result = Message("user", quoted), Message("user", short)
         else:
-            messages.append(Message("tool", quoted, tool_call_id=call.id))
+            result = Message("tool", quoted, tool_call_id=call.id)
+            short_result = Message("tool", short, tool_call_id=call.id)
+        messages.append(result)
+        shortenable.append((result, short_result))
         pending.remove(call)
+
+    def shorten(refused: int, prepare: Callable[[], list[Message]]) -> bool:
+        """Swap the oldest tool results for their digests until the request is at most
+        ``TOO_LARGE_SHARE`` of ``refused`` tokens; ``False`` when nothing was swapped."""
+        swapped = False
+        while shortenable and request_tokens(prepare(), count) > refused * TOO_LARGE_SHARE:
+            full, short = shortenable.pop(0)
+            at = next((i for i, m in enumerate(messages) if m is full), None)
+            if at is not None:
+                messages[at] = short
+                swapped = True
+        return swapped
 
     try:
         while True:
@@ -826,13 +865,31 @@ def run_agent(
                     protect_from -= turns
                     messages[0] = Message("system", system + summary_block(summary))
                     yield Compacted(summary, turns)
-            sent = fit_messages(
-                messages, window, protect_from=protect_from, count=count, reserved=reserved
-            )
-            if extra:
-                head = sent[0]
-                sent[0] = replace(head, content=head.content + "\n\n" + extra)
-            with closing(gateway.chat(sent, () if prompted else offered, stream)) as events:
+
+            def prepare(
+                reserved: int = reserved, extra: str = extra, protected: int = protect_from
+            ) -> list[Message]:
+                sent = fit_messages(
+                    messages, window, protect_from=protected, count=count, reserved=reserved
+                )
+                if extra:
+                    head = sent[0]
+                    sent[0] = replace(head, content=head.content + "\n\n" + extra)
+                return sent
+
+            sent = prepare()
+            sent_tools = () if prompted else offered
+            try:
+                started = _started(gateway.chat(sent, sent_tools, stream))
+            except LlmError as exc:
+                # Too large for the provider (a per-request token limit can sit far below the
+                # window): retried once with older results as digests; failing again ends it.
+                if exc.code != CONTEXT_OVERFLOW or not shorten(
+                    request_tokens(sent, count), prepare
+                ):
+                    raise
+                started = _started(gateway.chat(prepare(), sent_tools, stream))
+            with closing(started) as events:
                 for event in events:
                     # Reading the stop flag is a query: while text streams, not on every delta.
                     if timer() - last_poll >= delta_poll_seconds:

@@ -296,7 +296,9 @@ def test_a_search_asks_the_provider_for_three_results_by_default(
 
 
 def searches(*queries: str) -> list[Reply]:
-    return [Reply(tool_calls=(tool("web_search", f"c{n}", query=q),)) for n, q in enumerate(queries)]
+    return [
+        Reply(tool_calls=(tool("web_search", f"c{n}", query=q),)) for n, q in enumerate(queries)
+    ]
 
 
 @pytest.fixture
@@ -304,7 +306,7 @@ def two_searches(monkeypatch) -> None:
     """The cap lowered below the tests' tool-call cap, so the search cap is what stops."""
     from dawam.modules.assistant.internal import tools
 
-    assert tools.MAX_WEB_SEARCHES == 3
+    assert tools.MAX_WEB_SEARCHES == 5
     monkeypatch.setattr(tools, "MAX_WEB_SEARCHES", 2)
 
 
@@ -323,9 +325,7 @@ def test_a_search_past_the_cap_is_not_sent_and_tells_the_model_to_answer(
     assert "Answer now with what you found" in (fake_llm.calls[3].messages[-1].content or "")
 
 
-def test_the_search_cap_is_per_answer(
-    admin_client, roles, model, fake_llm, network, two_searches
-):
+def test_the_search_cap_is_per_answer(admin_client, roles, model, fake_llm, network, two_searches):
     configure(admin_client)
     owner = roles.client("owner")
     chat = conversation(owner, roles)

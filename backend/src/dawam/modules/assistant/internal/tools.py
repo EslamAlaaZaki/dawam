@@ -2483,7 +2483,7 @@ def _draft_mappings(ctx: ToolContext, args: _DraftMappings) -> Any:
     }
 
 
-MAX_WEB_SEARCHES = 3
+MAX_WEB_SEARCHES = 5
 """Searches per answer: past it the model is told to answer with what it found (#533)."""
 SEARCH_LIMIT_MESSAGE = (
     f"No more searching: this answer already used its {MAX_WEB_SEARCHES} web searches. "

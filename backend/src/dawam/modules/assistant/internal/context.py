@@ -55,6 +55,11 @@ def _tokens(message: Message, count: TokenCounter = estimate_tokens) -> int:
     return count((message.content or "") + calls)
 
 
+def request_tokens(messages: Sequence[Message], count: TokenCounter = estimate_tokens) -> int:
+    """The tokens of ``messages`` as sent (contents and tool calls, without tool schemas)."""
+    return sum(_tokens(m, count) for m in messages)
+
+
 def shorten_result(text: str, window: int | None) -> str:
     """``text`` cut to the share of ``window`` one tool result may use, with a note."""
     if window is None:

@@ -3,6 +3,8 @@ probe. Driven through the scripted fake provider, so no network or database is n
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from dawam.modules.llm import (
@@ -19,6 +21,8 @@ from dawam.modules.llm import (
     Usage,
 )
 from dawam.modules.llm.gateway import probe
+from dawam.modules.llm.internal.transport import HttpResponse
+from dawam.modules.llm.internal.wire import error_for
 
 ASK = [Message("user", "Hi")]
 
@@ -171,3 +175,16 @@ def test_probe_reports_an_embedding_models_dimension():
     result = probe(llm, chat=False, embedding=True)
 
     assert result.ok and result.capabilities.embedding_dimension == 768
+
+
+def test_a_request_too_large_is_a_context_overflow():
+    # Groq's per-minute token limit answers 413 without any context-window wording (#533).
+    body = (
+        b'{"error": {"message": "Request too large for model on tokens per minute (TPM): '
+        b'Limit 8000, Requested 8828, please reduce your message size and try again."}}'
+    )
+
+    error = error_for(HttpResponse(413, {}, io.BytesIO(body)))
+
+    assert error.code == "context_overflow" and not error.retryable
+    assert "Requested 8828" in error.message
