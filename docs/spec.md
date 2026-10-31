@@ -148,6 +148,7 @@ Roles apply to the whole Workspace (all Source Systems and the Data Warehouse). 
 | Ask the assistant questions, run an AI evaluation | ❌ | ✅ | ✅ | ✅ |
 | See conversations other members shared with the Workspace | ❌ | ✅ | ✅ | ✅ |
 | Post in a conversation another member shared with the Workspace | ❌ | ✅ | ✅ | ❌ |
+| Delete a conversation (only one they started) | ❌ | ✅ | ✅ | ✅ |
 | Let the assistant run source queries, generate files and propose changes | ❌ | ✅ | ✅ | ❌ |
 | Accept / reject Change Set items (owner-only items need an Owner) | ❌ | ✅ | ✅ | ❌ |
 | Choose the Workspace's agent and light models, data-sharing level and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
@@ -377,7 +378,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 148. As an editor, I want to accept all, accept some, or reject the items in a Change Set, so that I stay in control.
 149. As a viewer, I want to ask questions but not run source queries, generate files or propose changes, so that read-only access stays read-only.
 150. As a member, I want the assistant to act with my permissions only and never see connection credentials, so that it can't do anything I couldn't do myself.
-151. As a member, I want my conversations saved in the Workspace, private to me unless I share one with the Workspace's members (owners and editors can then post in it; viewers only read), so that I can come back to them and work on them together.
+151. As a member, I want my conversations saved in the Workspace, private to me unless I share one with the Workspace's members (owners and editors can then post in it; viewers only read), and to delete the ones I started, so that I can come back to them, work on them together and clear out what I no longer need.
 152. As a member, I want to stop a response while it is running, so that I can redirect it quickly.
 153. As an editor, I want large requests (e.g. "generate the core layer", "draft mappings for all 40 columns of fact_sales") to run as a background job with progress and end in one Change Set, so that big tasks don't time out. A job that is aborted (budget spent, model unavailable, cancelled) produces no Change Set and keeps its log.
 154. As a member, I want the assistant to reply in the language I write in (e.g. Arabic or English), so that the conversation feels natural.
@@ -697,6 +698,7 @@ Disabled checks are excluded from the formula and listed separately with their r
 - **Without a working model** (provider down, budget spent), the assistant shows the reason and every non-AI feature keeps working.
 - **Model per message.** The member may pick any chat model in the Workspace's Allowed Models for each message; it starts on the Workspace's agent model and the conversation remembers the last pick. Each reply records the model that answered. If that model is later removed, the conversation falls back to the Workspace's agent model.
 - **Shared conversations.** Only the member who started a conversation can share or unshare it. In a shared conversation every Owner and Editor of the Workspace may post; Viewers only read. Each message records its sender, and the assistant acts with the sender's permissions.
+- **Deleting a conversation.** Only the member who started a conversation can delete it, shared or not; nobody else, not even a Workspace Owner, and not in an archived Workspace. The delete is soft: the conversation, its messages and its runs are kept (run logs and feedback stay), but it is gone for every member, from the list, search and direct links.
 
 ### 6.17 Files
 

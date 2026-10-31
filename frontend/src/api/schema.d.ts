@@ -4386,7 +4386,13 @@ export interface paths {
         get: operations["getAssistantConversation"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Conversation
+         * @description Delete a conversation you started; it is gone for every member (soft delete). 403
+         *     `not_your_conversation` for a shared conversation somebody else started, 409
+         *     `workspace_archived`.
+         */
+        delete: operations["deleteAssistantConversation"];
         options?: never;
         head?: never;
         /**
@@ -22210,6 +22216,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationDetailOut"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteAssistantConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {

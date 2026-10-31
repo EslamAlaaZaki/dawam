@@ -811,6 +811,12 @@ ROWS: list[Row] = [
         json=lambda roles: {"title": "Renamed"},
     ),
     Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}",
+        "Delete a conversation (only one they started)",
+        workspace(admin=False, owner=True, editor=False, viewer=False),
+    ),
+    Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/assistant/conversations/{conversation_id}/messages",
         "Ask the assistant questions (post as the starter, or as an Owner or Editor in a "

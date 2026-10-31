@@ -565,6 +565,35 @@ def test_posting_and_sharing_rules_by_role(roles, model, fake_llm):
     assert editor.get(f"{base(roles)}/conversations").json()["items"] == []
 
 
+def test_only_the_starter_deletes_a_conversation_and_it_is_gone_for_everyone(
+    roles, model, fake_llm
+):
+    fake_llm.script(Reply(text="an answer"))
+    owner, editor, viewer = roles.client("owner"), roles.client("editor"), roles.client("viewer")
+    cid = conversation(editor, roles)
+    ask(editor, roles, cid, "A findable question")
+    url = f"{base(roles)}/conversations/{cid}"
+    editor.patch(url, json={"shared_with_workspace": True})
+
+    # shared, others read it but may not delete it, an Owner included
+    for client in (owner, viewer):
+        refusal = client.delete(url)
+        assert refusal.status_code == 403
+        assert refusal.json()["error"]["code"] == "not_your_conversation"
+    assert owner.get(url).status_code == 200
+
+    assert editor.delete(url).status_code == 204
+
+    for client in (owner, editor, viewer):
+        assert client.get(url).status_code == 404
+        assert client.get(f"{base(roles)}/conversations").json()["items"] == []
+        found = client.get(f"{base(roles)}/conversations/search", params={"q": "findable"})
+        assert found.json()["items"] == []
+    assert refused(editor, roles, cid).status_code == 404
+    assert editor.patch(url, json={"title": "Back"}).status_code == 404
+    assert editor.delete(url).status_code == 404
+
+
 def test_a_viewer_posts_in_their_own_conversation(roles, model, fake_llm):
     fake_llm.script(Reply(text="ok"))
     viewer = roles.client("viewer")

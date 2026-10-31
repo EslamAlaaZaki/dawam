@@ -340,6 +340,7 @@ class AssistantService:
             sa.select(ConversationRecord)
             .where(
                 ConversationRecord.workspace_id == workspace_id,
+                ConversationRecord.deleted_at.is_(None),
                 sa.or_(
                     ConversationRecord.user_id == user.id,
                     ConversationRecord.shared_with_workspace.is_(True),
@@ -364,9 +365,12 @@ class AssistantService:
         if not text:
             return []
         pattern = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        visible = sa.or_(
-            ConversationRecord.user_id == user.id,
-            ConversationRecord.shared_with_workspace.is_(True),
+        visible = sa.and_(
+            ConversationRecord.deleted_at.is_(None),
+            sa.or_(
+                ConversationRecord.user_id == user.id,
+                ConversationRecord.shared_with_workspace.is_(True),
+            ),
         )
         by_title = (
             sa.select(ConversationRecord)
@@ -512,6 +516,17 @@ class AssistantService:
                 record.shared_with_workspace = shared_with_workspace
             record.updated_at = self._clock()
             return self._view(user, scope, record)
+
+    def delete_conversation(
+        self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> None:
+        """Delete a conversation, by the member who started it: it is kept, marked deleted,
+        and nobody reaches it any more. 403 ``not_your_conversation`` for a shared one
+        somebody else started, 409 ``workspace_archived``."""
+        self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            record = self._load(db, user, workspace_id, conversation_id, access="starter")
+            record.deleted_at = self._clock()
 
     # -- asking ----------------------------------------------------------------------
 
@@ -1178,7 +1193,7 @@ class AssistantService:
         ``post``: also any Owner or Editor, as the conversation is shared)."""
         query = sa.select(ConversationRecord).where(ConversationRecord.id == conversation_id)
         record = db.scalars(query.with_for_update() if lock else query).first()
-        if record is None or record.workspace_id != workspace_id:
+        if record is None or record.workspace_id != workspace_id or record.deleted_at:
             raise _not_found()
         if record.user_id != user.id:
             if not record.shared_with_workspace:
@@ -1391,6 +1406,7 @@ def readable_conversations(engine: sa.Engine) -> Callable[..., set[uuid.UUID]]:
                     sa.select(ConversationRecord.id).where(
                         ConversationRecord.workspace_id == workspace_id,
                         ConversationRecord.id.in_(conversation_ids),
+                        ConversationRecord.deleted_at.is_(None),
                         (ConversationRecord.user_id == user_id)
                         | ConversationRecord.shared_with_workspace.is_(True),
                     )

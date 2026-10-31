@@ -141,6 +141,34 @@ export function useShareConversation(
   });
 }
 
+/** Delete a conversation the member started; it is gone for every member. */
+export function useDeleteConversation(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (conversationId: string) => {
+      const { error, response } = await client.DELETE(
+        `${ROOT}/{conversation_id}`,
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
+            },
+          },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: conversationsKey(workspaceId),
+      }),
+  });
+}
+
 export function useStopResponse(workspaceId: string) {
   const client = useApiClient();
   return useMutation({
