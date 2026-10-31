@@ -504,5 +504,35 @@ describe("the Workspace AI settings card", () => {
       expect(card).toHaveTextContent("Internal-onlyOn");
       expect(within(card).queryByRole("switch")).not.toBeInTheDocument();
     });
+
+    it("turning it on and off again restores the saved picks", async () => {
+      const { card } = await ownerForm();
+      for (const label of ["Turn on", "Turn off"]) {
+        fireEvent.click(within(card).getByRole("switch"));
+        const dialog = await screen.findByRole("dialog");
+        fireEvent.click(within(dialog).getByRole("button", { name: label }));
+      }
+      const agents = within(card).getByRole("group", { name: "Agent models" });
+      expect(
+        within(agents).getByRole("checkbox", { name: /^Big/ }),
+      ).toBeChecked();
+      expect(within(card).getByLabelText("Embedding model")).toHaveValue(EMBED);
+    });
+
+    it("is read-only in an archived Workspace", async () => {
+      renderApp(
+        backend(
+          "owner",
+          (r) =>
+            r.path === AI ? json(settings({ internal_only: true })) : undefined,
+          "archived",
+        ),
+        PATH,
+      );
+      await openSettings("AI");
+      const card = await screen.findByRole("region", { name: "AI settings" });
+      expect(card).toHaveTextContent("Internal-onlyOn");
+      expect(within(card).queryByRole("switch")).not.toBeInTheDocument();
+    });
   });
 });

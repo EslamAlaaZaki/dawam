@@ -218,6 +218,12 @@ function OwnerForm({
     setInternalOnly(next);
     setConfirming(false);
     if (!next) {
+      // Back to what is saved, so models dropped by an earlier "on" come back.
+      setAgent(initial(settings.agent_models));
+      setLight(initial(settings.light_models));
+      setEmbedding(settings.embedding_model?.id ?? NONE);
+      setVision(settings.vision_model?.id ?? NONE);
+      setRerank(settings.rerank_model?.id ?? NONE);
       return;
     }
     setAgent((p) => internalOnlyPick(p, settings.agent_models));
@@ -289,11 +295,12 @@ function OwnerForm({
             <>
               Only internal models are offered and accepted. External models
               chosen now are removed from the form, so choose internal ones
-              before you save. If the embedding model is replaced, indexed
-              documents are embedded again in the background and document search
-              matches text only until that finishes. Web search uses only the
-              internal provider (SearXNG), or none when the admin set none for
-              internal-only Workspaces.
+              before you save. An external embedding model is removed too: if
+              you choose no internal one, document search matches text only. A
+              new embedding model embeds indexed documents again in the
+              background, and search matches text only until that finishes. Web
+              search uses only the internal provider (SearXNG), or none when the
+              admin set none for internal-only Workspaces.
             </>
           )
         }
