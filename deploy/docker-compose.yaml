@@ -2,6 +2,7 @@
 #   edge, web, app, worker, db        DAWAM itself
 #   ollama + ollama-pull              local LLM server, with its models pulled on first start
 #   mailpit                           SMTP server that catches every email (web UI :8025)
+#   searxng                           web search for the assistant (http://searxng:8080)
 #   source-db (profile "demo")        a small seeded PostgreSQL source to try Connections on
 #
 # From the repository root:
@@ -159,6 +160,25 @@ services:
     image: axllent/mailpit
     ports:
       - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    restart: unless-stopped
+
+  # --- Web search ----------------------------------------------------------------
+  # The assistant's web_search. Add it in Admin > Web access as a SearXNG provider with
+  # base URL http://searxng:8080 and pick it; it counts as internal, so internal-only
+  # Workspaces can use it too. No host port: only DAWAM calls it.
+
+  searxng:
+    image: searxng/searxng:2026.10.17-1c10abe2d
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
     restart: unless-stopped
 
   # --- Demo source database (profile "demo") ------------------------------------

@@ -77,7 +77,11 @@ def error_for(response: HttpResponse, redact: Callable[[str], str] | None = None
             retry_after=retry_after(response.headers.get("retry-after")),
         )
     lowered = (raw or "").lower()
-    if status in (400, 413, 422) and any(marker in lowered for marker in _CONTEXT_MARKERS):
+    # 413 is always "too large": Groq's per-minute token limit says so with no context
+    # wording, and the agent shrinks the request and retries on this code.
+    if status == 413 or (
+        status in (400, 422) and any(marker in lowered for marker in _CONTEXT_MARKERS)
+    ):
         return LlmError(CONTEXT_OVERFLOW, "The conversation is too long for the model." + suffix)
     if status >= 500:
         return LlmError(UNAVAILABLE, f"The provider failed (HTTP {status})." + suffix)

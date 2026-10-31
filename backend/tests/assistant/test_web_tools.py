@@ -281,3 +281,55 @@ def test_with_web_access_off_the_web_tools_are_neither_sent_nor_named(
     assert offered(roles, fake_llm) == set()
     assert "find_tools" in tool_names(fake_llm)
     assert "web_" not in find_tools_text(fake_llm)
+
+
+def test_a_search_asks_the_provider_for_three_results_by_default(
+    admin_client, roles, model, fake_llm, network
+):
+    configure(admin_client)
+    fake_llm.script(Reply(tool_calls=(tool("web_search", query="IFRS 9"),)), Reply(text="ok"))
+    owner = roles.client("owner")
+
+    ask(owner, roles, conversation(owner, roles), "What is IFRS 9?")
+
+    assert json.loads(network.sent[0].body)["count"] == 3
+
+
+def searches(*queries: str) -> list[Reply]:
+    return [
+        Reply(tool_calls=(tool("web_search", f"c{n}", query=q),)) for n, q in enumerate(queries)
+    ]
+
+
+@pytest.fixture
+def two_searches(monkeypatch) -> None:
+    """The cap lowered below the tests' tool-call cap, so the search cap is what stops."""
+    from dawam.modules.assistant.internal import tools
+
+    assert tools.MAX_WEB_SEARCHES == 5
+    monkeypatch.setattr(tools, "MAX_WEB_SEARCHES", 2)
+
+
+def test_a_search_past_the_cap_is_not_sent_and_tells_the_model_to_answer(
+    admin_client, app, roles, model, fake_llm, network, two_searches
+):
+    configure(admin_client)
+    fake_llm.script(*searches("IFRS 9", "IFRS 9 stages", "IFRS 9 ECL"), Reply(text="ok"))
+    owner = roles.client("owner")
+
+    events = ask(owner, roles, conversation(owner, roles), "What is IFRS 9?")
+
+    assert [d["status"] for n, d in events if n == "tool"] == ["ok", "ok", "refused"]
+    assert len(network.sent) == 2
+    assert len(audit_rows(app, "web_search")) == 2
+    assert "Answer now with what you found" in (fake_llm.calls[3].messages[-1].content or "")
+
+
+def test_the_search_cap_is_per_answer(admin_client, roles, model, fake_llm, network, two_searches):
+    configure(admin_client)
+    owner = roles.client("owner")
+    chat = conversation(owner, roles)
+    for question in ("IFRS 9", "IFRS 17"):
+        fake_llm.script(*searches(question, f"{question} stages"), Reply(text="ok"))
+        events = ask(owner, roles, chat, question)
+        assert [d["status"] for n, d in events if n == "tool"] == ["ok", "ok"]
