@@ -980,3 +980,25 @@ def test_word_forms_match_both_ways():
     assert words("searching searches searched") == words("search")
     assert words("files") == words("file")
     assert words("tables") == words("table")
+    for forms in [
+        "process processes",
+        "address addresses",
+        "status statuses",
+        "class classes",
+        "string strings",
+        "use uses",
+        "map mapping mappings mapped",
+    ]:
+        first, *others = forms.split()
+        assert all(words(other) == words(first) for other in others), forms
+    assert words("string") != words("str")
+
+
+def test_find_tools_says_when_a_named_tool_is_already_available():
+    find = ToolCall("f1", "find_tools", {"query": "web_search"})
+    adapter = FakeAdapter().script(Reply(tool_calls=(find,)), Reply(text="done"))
+
+    run(adapter, WebTools(), core_tools={"tool_00"})
+
+    result = adapter.calls[1].messages[-1].content or ""
+    assert "Already available to call: web_search" in result

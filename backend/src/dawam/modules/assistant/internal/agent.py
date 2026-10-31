@@ -117,7 +117,8 @@ FIND_TOOLS = ToolSpec(
 
 def _finder(hidden: Sequence[str]) -> ToolSpec:
     """``find_tools`` naming the ``hidden`` tools (names only): built once per run from the
-    tools not sent at its start, so the tool list stays byte-identical from call to call."""
+    tools not sent at its start, so this text stays identical from call to call (and after a
+    resume) while ``find_tools`` loads tools."""
     if not hidden:
         return FIND_TOOLS
     names = ", ".join(sorted(hidden))
@@ -126,16 +127,26 @@ def _finder(hidden: Sequence[str]) -> ToolSpec:
     )
 
 
-_SUFFIXES = (("ies", "y"), ("ing", ""), ("es", ""), ("ed", ""), ("s", ""))
+_VOWELS = frozenset("aeiouy")
 
 
 def _stem(word: str) -> str:
-    """A light, lexical stem so simple word forms meet: searching, searches and searched all
-    become ``search``; files and file both become ``fil``."""
-    for suffix, instead in _SUFFIXES:
-        if word.endswith(suffix) and len(word) - len(suffix) + len(instead) >= 3:
-            word = word[: -len(suffix)] + instead
+    """A light, lexical stem so simple word forms meet, applied the same way to the query and
+    the tools: searching, searches and searched become ``search``; mapping, mappings and
+    mapped become ``map``; process and processes, file and files each meet."""
+    if word.endswith("ies") and len(word) > 4:
+        word = word[:-3] + "y"
+    elif word.endswith("es") and word[:-2].endswith(("s", "x", "z", "ch", "sh")) and len(word) > 4:
+        word = word[:-2]
+    elif word.endswith("s") and not word.endswith(("ss", "us", "is")):
+        word = word[:-1]
+    for suffix in ("ing", "ed"):
+        stem = word[: -len(suffix)]
+        if word.endswith(suffix) and len(stem) >= 3 and _VOWELS & set(stem):
+            word = stem
             break
+    if len(word) > 3 and word[-1] == word[-2] and word[-1] not in _VOWELS:
+        word = word[:-1]  # mapp(ing) -> map; class -> clas, like clas(ses)
     return word[:-1] if word.endswith("e") and len(word) > 3 else word
 
 
@@ -143,16 +154,22 @@ def _words(text: str) -> set[str]:
     return {_stem(w) for w in re.split(r"[^a-z0-9]+", text.lower()) if len(w) > 2}
 
 
+def _named(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
+    """The ``candidates`` that ``query`` names exactly, in the order named."""
+    by_name = {spec.name: spec for spec in candidates}
+    tokens = dict.fromkeys(re.findall(r"[a-z0-9_]+", query.lower()))
+    return [by_name[token] for token in tokens if token in by_name]
+
+
 def search_tools(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
     """The ``candidates`` that best match ``query``, best first: the ones it names exactly
     (in the order named), then the scored ones (name hits count double)."""
-    by_name = {spec.name: spec for spec in candidates}
-    tokens = dict.fromkeys(re.findall(r"[a-z0-9_]+", query.lower()))
-    named = [by_name[token] for token in tokens if token in by_name]
+    named = _named(query, candidates)
+    skip = {spec.name for spec in named}
     wanted = _words(query)
     scored: list[tuple[int, ToolSpec]] = []
     for spec in candidates:
-        if spec in named:
+        if spec.name in skip:
             continue
         score = 2 * len(wanted & _words(spec.name)) + len(wanted & _words(spec.description))
         if score:
@@ -471,11 +488,15 @@ def _find(
             "Invalid arguments for `find_tools`: query: a string is required", "error"
         )
     found = search_tools(query, [s for s in all_specs if s.name not in loaded])
+    # A tool named exactly that was sent already is not loaded again, but the model hears so.
+    already = [s.name for s in _named(query, [s for s in all_specs if s.name in loaded])]
+    note = f"Already available to call: {', '.join(already)}." if already else ""
     if not found:
-        return ToolOutcome("No other tool matches. Try different words.", "ok")
+        return ToolOutcome(note or "No other tool matches. Try different words.", "ok")
     loaded.update(s.name for s in found)
     text = "\n".join(f"- {s.name}: {s.description}" for s in found)
-    return ToolOutcome(f"These tools are now available to call:\n{text}", "ok")
+    lines = f"These tools are now available to call:\n{text}"
+    return ToolOutcome(f"{lines}\n{note}" if note else lines, "ok")
 
 
 def _run_reads(

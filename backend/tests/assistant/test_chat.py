@@ -156,6 +156,24 @@ def test_with_tool_search_on_find_tools_names_exactly_the_hidden_tools(
     assert fake_llm.calls[1].messages[0].content == fake_llm.calls[0].messages[0].content
 
 
+def test_the_find_tools_text_stays_identical_across_the_calls_of_a_chat_run(
+    roles, model, fake_llm, monkeypatch
+):
+    from dawam.modules.assistant.internal import agent
+
+    monkeypatch.setattr(agent, "TOOL_SEARCH_THRESHOLD", 5)
+    find = ToolCall("f1", "find_tools", {"query": "generate_dw_schema"})
+    fake_llm.script(Reply(tool_calls=(find,)), Reply(text="ok"))
+    owner = roles.client("owner")
+
+    ask(owner, roles, conversation(owner, roles), "Hi")
+
+    texts = [next(t.description for t in c.tools if t.name == "find_tools") for c in fake_llm.calls]
+    assert len(texts) == 2 and texts[0] == texts[1]
+    assert "generate_dw_schema" in tool_names(fake_llm, 1) - tool_names(fake_llm, 0)
+    assert fake_llm.calls[1].messages[0].content == fake_llm.calls[0].messages[0].content
+
+
 def test_the_page_decides_which_tools_are_sent_up_front(roles, model, fake_llm, monkeypatch):
     from dawam.modules.assistant.internal import agent
 
