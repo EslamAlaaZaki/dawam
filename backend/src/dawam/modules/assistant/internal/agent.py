@@ -98,33 +98,90 @@ LIMIT_MESSAGE = (
 TOOL_SEARCH_THRESHOLD = 30
 """Above this many tools, only the relevant ones are sent, plus ``find_tools``."""
 FIND_TOOLS_LIMIT = 5
+ALWAYS_SENT = frozenset({"web_search", "web_fetch", "write_plan", "update_plan"})
+"""Sent up front whenever they are offered, even with tool search on: a model asked about
+the outside world never thinks to look for the web tools, and a job is told to start with
+``write_plan`` (only a job is offered the plan tools) (#525)."""
 
 FIND_TOOLS = ToolSpec(
     "find_tools",
     "Search the tools you were not given up front by what you want to do (for example "
-    "'validate the warehouse'). The best matches become available to call right away.",
+    "'validate the warehouse'), or by their exact names. The best matches become available "
+    "to call right away.",
     {
         "type": "object",
-        "properties": {"query": {"type": "string", "description": "What you want to do."}},
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "What you want to do, or one or more exact tool names.",
+            }
+        },
         "required": ["query"],
     },
 )
 
 
+def _finder(hidden: Sequence[str]) -> ToolSpec:
+    """``find_tools`` naming the ``hidden`` tools (names only): built once per run from the
+    tools not sent at its start, so this text stays identical from call to call (and after a
+    resume) while ``find_tools`` loads tools."""
+    if not hidden:
+        return FIND_TOOLS
+    names = ", ".join(sorted(hidden))
+    return replace(
+        FIND_TOOLS, description=f"{FIND_TOOLS.description} Tools not sent up front: {names}."
+    )
+
+
+_VOWELS = frozenset("aeiouy")
+
+
+def _stem(word: str) -> str:
+    """A light, lexical stem so simple word forms meet, applied the same way to the query and
+    the tools: searching, searches and searched become ``search``; mapping, mappings and
+    mapped become ``map``; process and processes, file and files each meet."""
+    if word.endswith("ies") and len(word) > 4:
+        word = word[:-3] + "y"
+    elif word.endswith("es") and word[:-2].endswith(("s", "x", "z", "ch", "sh")) and len(word) > 4:
+        word = word[:-2]
+    elif word.endswith("s") and not word.endswith(("ss", "us", "is")):
+        word = word[:-1]
+    for suffix in ("ing", "ed"):
+        stem = word[: -len(suffix)]
+        if word.endswith(suffix) and len(stem) >= 3 and _VOWELS & set(stem):
+            word = stem
+            break
+    if len(word) > 3 and word[-1] == word[-2] and word[-1] not in _VOWELS:
+        word = word[:-1]  # mapp(ing) -> map; class -> clas, like clas(ses)
+    return word[:-1] if word.endswith("e") and len(word) > 3 else word
+
+
 def _words(text: str) -> set[str]:
-    return {w for w in re.split(r"[^a-z0-9]+", text.lower()) if len(w) > 2}
+    return {_stem(w) for w in re.split(r"[^a-z0-9]+", text.lower()) if len(w) > 2}
+
+
+def _named(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
+    """The ``candidates`` that ``query`` names exactly, in the order named."""
+    by_name = {spec.name: spec for spec in candidates}
+    tokens = dict.fromkeys(re.findall(r"[a-z0-9_]+", query.lower()))
+    return [by_name[token] for token in tokens if token in by_name]
 
 
 def search_tools(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
-    """The ``candidates`` that best match ``query`` (name hits count double), best first."""
+    """The ``candidates`` that best match ``query``, best first: the ones it names exactly
+    (in the order named), then the scored ones (name hits count double)."""
+    named = _named(query, candidates)
+    skip = {spec.name for spec in named}
     wanted = _words(query)
     scored: list[tuple[int, ToolSpec]] = []
     for spec in candidates:
+        if spec.name in skip:
+            continue
         score = 2 * len(wanted & _words(spec.name)) + len(wanted & _words(spec.description))
         if score:
             scored.append((score, spec))
     scored.sort(key=lambda pair: (-pair[0], pair[1].name))
-    return [spec for _, spec in scored[:FIND_TOOLS_LIMIT]]
+    return [*named, *(spec for _, spec in scored)][:FIND_TOOLS_LIMIT]
 
 
 Summarizer = Callable[[str | None, Sequence[Message]], str | None]
@@ -437,11 +494,15 @@ def _find(
             "Invalid arguments for `find_tools`: query: a string is required", "error"
         )
     found = search_tools(query, [s for s in all_specs if s.name not in loaded])
+    # A tool named exactly that was sent already is not loaded again, but the model hears so.
+    already = [s.name for s in _named(query, [s for s in all_specs if s.name in loaded])]
+    note = f"Already available to call: {', '.join(already)}." if already else ""
     if not found:
-        return ToolOutcome("No other tool matches. Try different words.", "ok")
+        return ToolOutcome(note or "No other tool matches. Try different words.", "ok")
     loaded.update(s.name for s in found)
     text = "\n".join(f"- {s.name}: {s.description}" for s in found)
-    return ToolOutcome(f"These tools are now available to call:\n{text}", "ok")
+    lines = f"These tools are now available to call:\n{text}"
+    return ToolOutcome(f"{lines}\n{note}" if note else lines, "ok")
 
 
 def _run_reads(
@@ -536,7 +597,8 @@ def run_agent(
     one still reaches the model, with a warning, and is reported on its record.
 
     With more than ``TOOL_SEARCH_THRESHOLD`` tools, only ``core_tools`` (none: the first
-    few) are sent, plus ``find_tools``, whose matches are added to what is sent.
+    few) and the offered ``ALWAYS_SENT`` ones are sent, plus ``find_tools``, which names the
+    rest and whose matches are added to what is sent.
 
     ``checkpoint`` gets the run's state after each model step and each tool call; a run
     given ``resume`` starts from that state (``system`` and ``history`` are then unused):
@@ -574,9 +636,14 @@ def run_agent(
     loaded = {s.name for s in all_specs if core_tools is None or s.name in core_tools}
     if searching and core_tools is None:
         loaded = {s.name for s in all_specs[: TOOL_SEARCH_THRESHOLD // 2]}
+    finder = FIND_TOOLS
     if searching:
-        specs[FIND_TOOLS.name] = FIND_TOOLS
-        known_tools.add(FIND_TOOLS.name)
+        loaded |= ALWAYS_SENT & known_tools
+        # Named from the tools hidden at the start (a resume works it out the same way), not
+        # from what is still hidden: the text must not change within a run.
+        finder = _finder([s.name for s in all_specs if s.name not in loaded])
+        specs[finder.name] = finder
+        known_tools.add(finder.name)
     if resume is not None and resume.loaded is not None:
         loaded = set(resume.loaded) & set(known_tools)
     retries = 0
@@ -712,7 +779,7 @@ def run_agent(
                 return
             under_cap = _counted(run.calls) < max_tool_calls
             if searching:
-                visible = [s for s in all_specs if s.name in loaded] + [FIND_TOOLS]
+                visible = [s for s in all_specs if s.name in loaded] + [finder]
             else:
                 visible = all_specs
             offered = visible if under_cap else ()
