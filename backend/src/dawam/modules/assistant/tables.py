@@ -44,6 +44,8 @@ class ConversationRecord(Base):
     """The position of the last message the summary covers."""
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """Set when its starter deleted it: kept (its runs stay in the logs) but gone for everyone."""
 
 
 class MessageRecord(Base):

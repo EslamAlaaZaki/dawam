@@ -390,6 +390,24 @@ def update_conversation(
     )
 
 
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=204,
+    operation_id="deleteAssistantConversation",
+)
+def delete_conversation(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    user: CurrentUser,
+    service: AssistantServiceDep,
+) -> Response:
+    """Delete a conversation you started; it is gone for every member (soft delete). 403
+    `not_your_conversation` for a shared conversation somebody else started, 409
+    `workspace_archived`."""
+    service.delete_conversation(user, workspace_id, conversation_id)
+    return Response(status_code=204)
+
+
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 

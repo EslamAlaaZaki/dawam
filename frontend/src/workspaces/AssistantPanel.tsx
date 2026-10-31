@@ -2,11 +2,14 @@
 
 import {
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
   PanelRightClose,
   PanelRightOpen,
   Plus,
   Square,
   ThumbsDown,
+  Trash2,
   ThumbsUp,
   X,
 } from "lucide-react";
@@ -23,6 +26,7 @@ import {
   useConversation,
   useConversations,
   useCreateConversation,
+  useDeleteConversation,
   useRateAnswer,
   useSendMessage,
   useShareConversation,
@@ -35,8 +39,17 @@ import {
 } from "../api/assistant";
 import { ApiError } from "../api/client";
 import { useMe } from "../api/queries";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -46,7 +59,10 @@ import {
   useJob,
   type Job,
 } from "../api/jobs";
-import { useWorkspaceAiSettings } from "../api/workspaceAi";
+import {
+  useWorkspaceAiSettings,
+  type WorkspaceModel,
+} from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
 import { ConversationChangeSets } from "./ChangeSetReview";
@@ -60,7 +76,6 @@ import type { AssistantRequest } from "./FailedChecksPanel";
 import {
   ErrorText,
   Hint,
-  NativeSelect,
   checkLabelClasses,
   h3Classes,
   monoClasses,
@@ -392,14 +407,16 @@ function hasNotes(run: Run | null | undefined): boolean {
 }
 
 /**
- * One message: an avatar, who sent it and when, and its bubble. `email` is null for the
- * assistant's replies, which carry the DAWAM avatar.
+ * One message. A member's message is a bubble on the right, under who sent it and when. The
+ * assistant's reply (`email` null) flows beside the ✦ avatar, with its time, model and
+ * `actions` (the rating) in a quiet row under it.
  */
 function Bubble({
   email,
   at,
   model = null,
   busy = false,
+  actions = null,
   children,
 }: {
   email: string | null;
@@ -407,35 +424,42 @@ function Bubble({
   /** On a reply: the model that answered. */
   model?: string | null;
   busy?: boolean;
+  /** On a reply: what can be done with it, shown before its time. */
+  actions?: ReactNode;
   children: ReactNode;
 }) {
-  const name = email ?? "DAWAM";
-  const assistant = email === null;
+  if (email !== null) {
+    return (
+      <li
+        aria-label={`Message from ${email}`}
+        className="flex flex-row-reverse gap-3 ps-12"
+      >
+        <Avatar email={email} />
+        <div className="flex min-w-0 flex-col items-end gap-1">
+          <p className="flex max-w-full items-baseline gap-2">
+            <span className="truncate text-xs font-medium text-muted-foreground">
+              {email}
+            </span>
+            <MessageTime at={at} />
+          </p>
+          <div className="max-w-full rounded-xl rounded-se-sm bg-muted px-3.5 py-2 break-words whitespace-pre-wrap">
+            {children}
+          </div>
+        </div>
+      </li>
+    );
+  }
   return (
     <li
-      aria-label={assistant ? "Reply from DAWAM" : `Message from ${email}`}
+      aria-label="Reply from DAWAM"
       aria-busy={busy || undefined}
-      className={cn("flex gap-2.5", !assistant && "flex-row-reverse pl-10")}
+      className="group/reply flex gap-3"
     >
-      <Avatar email={email} />
-      <div
-        className={cn(
-          "flex min-w-0 flex-col gap-1",
-          assistant ? "flex-1" : "items-end",
-        )}
-      >
-        <p
-          className={cn(
-            "flex max-w-full items-baseline gap-2",
-            !assistant && "flex-row-reverse",
-          )}
-        >
-          {assistant && (
-            <span aria-hidden className="self-center text-xs text-ai-from">
-              ✦
-            </span>
-          )}
-          <span className="truncate text-sm font-semibold">{name}</span>
+      <Avatar email={null} />
+      <div className="flex min-w-0 flex-1 flex-col gap-2 pt-1">
+        {children}
+        <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1">
+          {actions}
           <MessageTime at={at} />
           {model && (
             <span
@@ -448,16 +472,6 @@ function Bubble({
               {model}
             </span>
           )}
-        </p>
-        <div
-          className={cn(
-            "flex max-w-full flex-col gap-2 rounded-lg border px-3.5 py-2.5",
-            assistant
-              ? "border-border bg-ai-subtle"
-              : "border-border bg-muted whitespace-pre-wrap",
-          )}
-        >
-          {children}
         </div>
       </div>
     </li>
@@ -488,12 +502,13 @@ function AnswerFeedback({
       { onSuccess: () => setCommenting(false) },
     );
 
+  // Laid out in the reply's action row; the comment form and errors wrap below it.
   return (
-    <div className="flex flex-col gap-2">
+    <>
       <div
         role="group"
         aria-label="Rate this answer"
-        className="flex items-center gap-1"
+        className="-ms-1.5 flex items-center gap-0.5"
       >
         {(["up", "down"] as const).map((rating) => {
           const Icon = rating === "up" ? ThumbsUp : ThumbsDown;
@@ -506,6 +521,7 @@ function AnswerFeedback({
               aria-pressed={saved?.rating === rating}
               disabled={rate.isPending}
               className={cn(
+                "size-7 text-subtle-foreground [&_svg]:size-3.5",
                 saved?.rating === rating && "bg-muted text-foreground",
               )}
               onClick={() => send(rating, saved?.comment ?? "")}
@@ -518,6 +534,7 @@ function AnswerFeedback({
           <Button
             variant="ghost"
             size="sm"
+            className="text-subtle-foreground"
             onClick={() => {
               setComment(saved.comment ?? "");
               setCommenting(true);
@@ -529,7 +546,7 @@ function AnswerFeedback({
       </div>
       {saved && commenting && (
         <form
-          className="flex flex-col gap-2"
+          className="order-last flex basis-full flex-col gap-2 pt-1"
           onSubmit={(event) => {
             event.preventDefault();
             send(saved.rating, comment);
@@ -558,9 +575,11 @@ function AnswerFeedback({
         </form>
       )}
       {rate.error instanceof ApiError && (
-        <ErrorText>{rate.error.message}</ErrorText>
+        <div className="order-last basis-full">
+          <ErrorText>{rate.error.message}</ErrorText>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -592,19 +611,76 @@ function Turn({
           email={null}
           at={answer?.created_at ?? message.created_at}
           model={answer?.model}
+          actions={
+            answer &&
+            run &&
+            canRate && (
+              <AnswerFeedback
+                run={run}
+                workspaceId={workspaceId}
+                conversationId={conversationId}
+              />
+            )
+          }
         >
           {answer && <Markdown>{answer.content}</Markdown>}
           {run && <RunNotes run={run} workspaceId={workspaceId} />}
-          {answer && run && canRate && (
-            <AnswerFeedback
-              run={run}
-              workspaceId={workspaceId}
-              conversationId={conversationId}
-            />
-          )}
         </Bubble>
       )}
     </>
+  );
+}
+
+/**
+ * The model the next message goes to, as a chip in the input's toolbar. `value` may be a
+ * model no longer offered; the chip then names `fallback`.
+ */
+function ModelPicker({
+  models,
+  value,
+  fallback,
+  disabled,
+  onPick,
+}: {
+  models: readonly WorkspaceModel[];
+  value: string;
+  fallback: string;
+  disabled: boolean;
+  onPick: (id: string) => void;
+}) {
+  const name = models.find((m) => m.id === value)?.name ?? fallback;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Model for this message: ${name}`}
+          disabled={disabled}
+          className="min-w-0 max-w-56 data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        >
+          <span className="truncate">{name}</span>
+          <ChevronDown aria-hidden className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-64">
+        <DropdownMenuLabel>Model for this message</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={value} onValueChange={onPick}>
+          {models.map((m) => (
+            <DropdownMenuRadioItem key={m.id} value={m.id}>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{m.name}</span>
+                <span className="truncate text-xs text-subtle-foreground">
+                  {m.provider_name}
+                </span>
+              </span>
+              {m.limited && <Badge>limited</Badge>}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -647,6 +723,11 @@ export function AssistantPanel({
   const send = useSendMessage(workspace.id);
   const stop = useStopResponse(workspace.id);
   const share = useShareConversation(workspace.id, selected ?? "");
+  const remove = useDeleteConversation(workspace.id);
+  // The conversation the member asked to delete, while they confirm.
+  const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(
+    null,
+  );
   const canAsk = allows(workspace, "assistant.ask");
   const archived = workspace.status === "archived";
   const current = conversations.data?.find((c) => c.id === selected);
@@ -858,10 +939,8 @@ export function AssistantPanel({
         </div>
         {/* The assistant's signature: a 1px gradient rule under its header. */}
         <div aria-hidden className="h-px shrink-0 bg-ai-gradient" />
-        <div
-          ref={thread}
-          className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3"
-        >
+        <div ref={thread} className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
           {archived && (
             <Hint>
               This Workspace is archived: conversations are read-only.
@@ -877,7 +956,18 @@ export function AssistantPanel({
               Share with the Workspace&apos;s members
             </label>
           )}
-          <ol className="flex flex-col gap-4" aria-label="Conversation">
+          {turns.length === 0 && !draft && canAsk && !archived && (
+            <div className="m-auto flex flex-col items-center gap-3 py-8 text-center">
+              <span
+                aria-hidden
+                className="flex size-10 items-center justify-center rounded-xl bg-ai-gradient text-lg text-white"
+              >
+                ✦
+              </span>
+              <p className="text-xl font-semibold">How can I help?</p>
+            </div>
+          )}
+          <ol className="flex flex-col gap-6" aria-label="Conversation">
             {turns.map(({ message, answer }) => (
               <Turn
                 key={message.id}
@@ -895,11 +985,15 @@ export function AssistantPanel({
                 </Bubble>
                 <Bubble email={null} at={draft.askedAt} busy>
                   {draft.reasoning && (
-                    <details open={!draft.text} className="mb-2">
-                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                    <details open={!draft.text} className="group/reasoning">
+                      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-120 hover:text-foreground [&::-webkit-details-marker]:hidden">
+                        <ChevronRight
+                          aria-hidden
+                          className="size-3.5 transition-transform duration-120 group-open/reasoning:rotate-90"
+                        />
                         Reasoning
                       </summary>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                      <p className="mt-1.5 ms-1.5 max-h-48 overflow-y-auto border-s-2 border-border ps-3 text-sm whitespace-pre-wrap text-muted-foreground">
                         {draft.reasoning}
                       </p>
                     </details>
@@ -907,15 +1001,9 @@ export function AssistantPanel({
                   {draft.text ? (
                     <Markdown>{draft.text}</Markdown>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden
-                        className="size-2 animate-pulse rounded-full bg-ai-gradient motion-reduce:animate-none"
-                      />
-                      <Hint className="animate-pulse motion-reduce:animate-none">
-                        Thinking…
-                      </Hint>
-                    </div>
+                    <p className="ai-shimmer w-fit text-sm font-medium">
+                      Thinking…
+                    </p>
                   )}
                   <ToolNotes tools={draft.tools} workspaceId={workspace.id} />
                 </Bubble>
@@ -942,13 +1030,12 @@ export function AssistantPanel({
               <FailureNote run={failed} />
             )}
           {refusal && <ErrorText>{refusal}</ErrorText>}
+          </div>
         </div>
         {canAsk && !archived && (
-          <form
-            onSubmit={onSubmit}
-            className="border-t border-border bg-surface px-4 py-3"
-          >
-            <div className="relative">
+          <form onSubmit={onSubmit} className="px-4 pt-1 pb-3">
+            {/* One box, like a message being written: the text on top, its tools below. */}
+            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-xl border border-border-strong bg-surface-raised transition-colors duration-120 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-subtle">
               <Textarea
                 ref={input}
                 aria-label="Ask the assistant"
@@ -970,55 +1057,44 @@ export function AssistantPanel({
                 }}
                 rows={1}
                 maxLength={8000}
-                className={cn(
-                  "max-h-48 min-h-11 resize-none rounded-lg bg-surface-raised py-2.5 pr-11",
-                  models.length > 0 && "pr-52",
-                )}
+                className="max-h-48 min-h-11 resize-none border-0 bg-transparent px-3.5 pt-3 pb-1 focus-visible:outline-none"
               />
-              {models.length > 0 && (
-                <NativeSelect
-                  aria-label="Model for this message"
-                  className="absolute right-12 bottom-1.5 h-8 w-36 text-xs"
-                  disabled={!canPost || running}
-                  value={modelId}
-                  onChange={(event) => setPicked(event.target.value)}
-                >
-                  {!models.some((m) => m.id === modelId) && (
-                    <option value={modelId}>
-                      {fallback?.name ?? "Default"}
-                    </option>
-                  )}
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.limited ? `${m.name} (limited)` : m.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              )}
-              {running ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  aria-label="Stop"
-                  className="absolute right-1.5 bottom-1.5"
-                  onClick={() => selected && stop.mutate(selected)}
-                >
-                  <Square aria-hidden />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="icon"
-                  aria-label="Send"
-                  className="absolute right-1.5 bottom-1.5"
-                  disabled={!canPost || question.trim() === ""}
-                >
-                  <ArrowUp aria-hidden />
-                </Button>
-              )}
+              <div className="flex items-center gap-1 px-2 pb-2">
+                {models.length > 0 && (
+                  <ModelPicker
+                    models={models}
+                    value={modelId}
+                    fallback={fallback?.name ?? "Default"}
+                    disabled={!canPost || running}
+                    onPick={setPicked}
+                  />
+                )}
+                <span className="ms-auto" />
+                {running ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    aria-label="Stop"
+                    className="rounded-lg"
+                    onClick={() => selected && stop.mutate(selected)}
+                  >
+                    <Square aria-hidden className="fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="icon"
+                    aria-label="Send"
+                    className="rounded-lg"
+                    disabled={!canPost || question.trim() === ""}
+                  >
+                    <ArrowUp aria-hidden />
+                  </Button>
+                )}
+              </div>
             </div>
-            <p className="mt-1.5 text-xs text-subtle-foreground">
+            <p className="mt-1.5 text-center text-xs text-subtle-foreground">
               {canPost
                 ? "Enter to send, Shift+Enter for a new line."
                 : "Viewers can only read this shared conversation."}
@@ -1089,10 +1165,13 @@ export function AssistantPanel({
             {search.term === "" && (
               <ul className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-1 pb-3">
                 {conversations.data?.map((c) => (
-                  <li key={c.id}>
+                  <li key={c.id} className="group/row relative">
                     <button
                       type="button"
-                      className={conversationClasses}
+                      className={cn(
+                        conversationClasses,
+                        c.mine && canAsk && !archived && "pe-8",
+                      )}
                       aria-current={c.id === selected ? "true" : undefined}
                       disabled={running}
                       onClick={() => choose(c.id)}
@@ -1104,6 +1183,20 @@ export function AssistantPanel({
                         </span>
                       )}
                     </button>
+                    {/* Only who started a conversation may delete it. */}
+                    {c.mine && canAsk && !archived && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete ${c.title}`}
+                        disabled={running}
+                        className="absolute inset-y-0 end-1 my-auto size-6 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:text-danger-strong [&_svg]:size-3.5"
+                        onClick={() => setDeleting({ id: c.id, title: c.title })}
+                      >
+                        <Trash2 aria-hidden />
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -1111,6 +1204,40 @@ export function AssistantPanel({
           </nav>
         </>
       )}
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            remove.reset();
+          }
+        }}
+        title="Delete conversation"
+        description={
+          <>
+            Delete <strong className="font-medium">{deleting?.title}</strong>?
+            It is removed for you and for every member it is shared with.
+          </>
+        }
+        confirmLabel="Delete conversation"
+        pending={remove.isPending}
+        error={remove.error}
+        onConfirm={() => {
+          if (!deleting) {
+            return;
+          }
+          const id = deleting.id;
+          remove.mutate(id, {
+            onSuccess: () => {
+              if (id === selected) {
+                setChosen(null);
+                setPicked(null);
+              }
+              setDeleting(null);
+            },
+          });
+        }}
+      />
     </section>
   );
 }

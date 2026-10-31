@@ -162,6 +162,35 @@
   background-image: var(--ai-gradient);
 }
 
+/* The assistant's "thinking" text: the gradient sweeps across it (DESIGN.md §9). */
+@utility ai-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-muted-foreground) 30%,
+    var(--ai-from) 45%,
+    var(--ai-to) 55%,
+    var(--color-muted-foreground) 70%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: ai-shimmer 2s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    color: var(--color-muted-foreground);
+  }
+}
+
+@keyframes ai-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
 @layer base {
   /* The ground every page sits on, so the dark theme has no light flash or margin. */
   body {

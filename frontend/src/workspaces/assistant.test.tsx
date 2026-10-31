@@ -5,6 +5,7 @@ import { splitFrames } from "../api/assistant";
 import type { ConversationDetail, Run } from "../api/assistant";
 import type { Me } from "../api/queries";
 import type { Workspace } from "../api/workspaces";
+import { openMenu } from "../test/menus";
 import { currentLocation } from "../test/navigation";
 import {
   CSRF_TOKEN,
@@ -106,6 +107,7 @@ interface Options {
 }
 
 function backend(options: Options = {}) {
+  let deleted = false;
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
       case "GET /api/v1/me":
@@ -125,7 +127,11 @@ function backend(options: Options = {}) {
       case `GET ${API}/ai-settings`:
         return options.ai ? json(options.ai) : undefined;
       case `GET ${ASSISTANT}`:
-        return json({ items: options.conversations ?? [] });
+        return json({
+          items: (options.conversations ?? []).filter(
+            (c) => !(deleted && (c as { id: string }).id === CONVERSATION_ID),
+          ),
+        });
       case `GET ${ASSISTANT}/search`:
         return json({ items: options.hits ?? [] });
       case `POST ${ASSISTANT}`:
@@ -142,6 +148,9 @@ function backend(options: Options = {}) {
         return options.answered?.(r.body);
       case `PUT ${ASSISTANT}/${CONVERSATION_ID}/runs/${RUN_ID}/feedback`:
         return options.rated?.(r.body);
+      case `DELETE ${ASSISTANT}/${CONVERSATION_ID}`:
+        deleted = true;
+        return noContent();
       case `POST ${ASSISTANT}/${CONVERSATION_ID}/stop`:
         options.stopped?.();
         return noContent();
@@ -1075,10 +1084,10 @@ describe("the chat's messages, input and Conversation list", () => {
       within(list).getByRole("button", { name: "New conversation" }),
     ).toBeInTheDocument();
     expect(
-      await within(list).findByRole("button", { name: /Revenue questions/ }),
+      await within(list).findByRole("button", { name: /^Revenue questions/ }),
     ).toHaveAttribute("aria-current", "true");
 
-    fireEvent.click(within(list).getByRole("button", { name: /Loan tables/ }));
+    fireEvent.click(within(list).getByRole("button", { name: /^Loan tables/ }));
     await waitFor(() =>
       expect(requests.some((r) => r.path === `${ASSISTANT}/${OTHER}`)).toBe(
         true,
@@ -1097,6 +1106,63 @@ describe("the chat's messages, input and Conversation list", () => {
     expect(
       screen.queryByRole("navigation", { name: "Conversations" }),
     ).toBeNull();
+  });
+});
+
+describe("deleting a conversation", () => {
+  it("offers Delete only on the member's own conversations, asks first and removes it", async () => {
+    const OTHER = "88888888-8888-4888-8888-888888888888";
+    const requests = renderApp(
+      backend({
+        conversations: [
+          { ...NEW_CONVERSATION, title: "Revenue questions" },
+          {
+            ...NEW_CONVERSATION,
+            id: OTHER,
+            title: "Loan tables",
+            shared_with_workspace: true,
+            mine: false,
+            can_post: false,
+          },
+        ],
+      }),
+      PATH,
+    );
+    await openAssistant();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show conversations" }),
+    );
+    const list = screen.getByRole("navigation", { name: "Conversations" });
+    await within(list).findByRole("button", { name: /^Loan tables/ });
+
+    expect(
+      within(list).queryByRole("button", { name: "Delete Loan tables" }),
+    ).toBeNull();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "Delete Revenue questions" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete conversation",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete conversation" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (r) =>
+            r.method === "DELETE" &&
+            r.path === `${ASSISTANT}/${CONVERSATION_ID}`,
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(
+        within(list).queryByRole("button", { name: /^Revenue questions/ }),
+      ).toBeNull(),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 
@@ -1318,14 +1384,18 @@ describe("picking the model of a message", () => {
     );
     await openAssistant();
 
-    const picker = await screen.findByLabelText("Model for this message");
-    await waitFor(() => expect(picker).toHaveValue(BIG));
-    expect(
-      within(picker)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["Big", "Small (limited)"]);
-    fireEvent.change(picker, { target: { value: SMALL } });
+    const picker = await screen.findByRole("button", {
+      name: "Model for this message: Big",
+    });
+    openMenu(picker);
+    const options = await screen.findAllByRole("menuitemradio");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "BigCloud",
+      "SmallCloudlimited",
+    ]);
+    expect(options[0]).toBeChecked();
+    fireEvent.click(options[1]!);
+    await screen.findByRole("button", { name: "Model for this message: Small" });
     await ask("Hi");
 
     await waitFor(() =>
@@ -1350,8 +1420,7 @@ describe("picking the model of a message", () => {
     );
     await openAssistant();
 
-    const picker = await screen.findByLabelText("Model for this message");
-    await waitFor(() => expect(picker).toHaveValue(SMALL));
+    await screen.findByRole("button", { name: "Model for this message: Small" });
     await ask("Hi");
 
     await waitFor(() =>
