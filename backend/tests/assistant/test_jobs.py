@@ -619,6 +619,29 @@ def test_a_job_shows_its_plan_and_keeps_it_current_as_it_runs(roles, model, fake
     assert {"write_plan", "update_plan"} <= job_tools
 
 
+def test_with_tool_search_on_a_job_still_gets_the_plan_tools_up_front(
+    roles, model, fake_llm, monkeypatch
+):
+    from dawam.modules.assistant.internal import agent
+
+    monkeypatch.setattr(agent, "TOOL_SEARCH_THRESHOLD", 5)
+    fake_llm.script(
+        Reply(tool_calls=(tool("start_job", title="Explore", task="Read every KPI"),)),
+        Reply(text="Done."),
+        Reply(text="Started."),
+    )
+    owner = roles.client("owner")
+    ask(owner, roles, conversation(owner, roles), "Explore everything")
+
+    chat_tools = {t.name for t in fake_llm.calls[0].tools}
+    job_tools = {t.name for t in fake_llm.calls[1].tools}
+    assert "find_tools" in chat_tools and "find_tools" in job_tools  # tool search is on
+    assert not chat_tools & {"write_plan", "update_plan"}
+    assert {"write_plan", "update_plan"} <= job_tools
+    finder = next(t for t in fake_llm.calls[1].tools if t.name == "find_tools")
+    assert "write_plan" not in finder.description
+
+
 def test_a_bad_plan_update_is_reported_to_the_model(roles, model, fake_llm):
     fake_llm.script(
         Reply(tool_calls=(tool("start_job", title="Explore", task="Plan"),)),

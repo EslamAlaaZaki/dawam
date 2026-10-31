@@ -98,9 +98,10 @@ LIMIT_MESSAGE = (
 TOOL_SEARCH_THRESHOLD = 30
 """Above this many tools, only the relevant ones are sent, plus ``find_tools``."""
 FIND_TOOLS_LIMIT = 5
-ALWAYS_SENT = frozenset({"web_search", "web_fetch"})
+ALWAYS_SENT = frozenset({"web_search", "web_fetch", "write_plan", "update_plan"})
 """Sent up front whenever they are offered, even with tool search on: a model asked about
-the outside world never thinks to look for them (#525)."""
+the outside world never thinks to look for the web tools, and a job is told to start with
+``write_plan`` (only a job is offered the plan tools) (#525)."""
 
 FIND_TOOLS = ToolSpec(
     "find_tools",
