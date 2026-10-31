@@ -14,6 +14,16 @@ the source lines it is based on, pinned to commit `6d8a783`. Each diagram has an
 | [Background job lifecycle](lifecycle-background-jobs-20261027-213256/background-jobs.html) | How a job is queued, claimed, paused, retried, failed or cancelled | lifecycle |
 | [Source database access paths](architecture-source-db-flows-20261027-213256/source-db-flows.html) | Every path that opens a connection to a source database, and the guards on model-written SQL | architecture |
 
+## Database
+
+| Diagram | What it answers | Type |
+|---------|-----------------|------|
+| [Database ERD](database/erd.html) | Every table, column, type, default, allowed value, key, index, constraint and relationship (1:1, N:1, N:M) | ERD |
+
+The ERD is not an Archify diagram: `backend/tools/generate_erd.py` generates it from a database
+migrated to head, and `backend/tests/test_erd_is_current.py` fails CI when it is stale. Regenerate it
+with `python tools/generate_erd.py` in `backend/` whenever the schema changes.
+
 ## Functional architecture and use cases
 
 | Diagram | What it answers | Type |

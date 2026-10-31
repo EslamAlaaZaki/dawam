@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAWAM Database ERD</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 3 21 7.5 12 12 3 7.5Z' fill='%235B5BD6'/%3E%3Cpath d='M3 12 12 16.5 21 12' stroke='%2316161A' stroke-width='1.8' stroke-linejoin='round' opacity='.55'/%3E%3Cpath d='M3 16.5 12 21 21 16.5' stroke='%2316161A' stroke-width='1.8' stroke-linejoin='round' opacity='.3'/%3E%3C/svg%3E">
+<!--
+  GENERATED FILE. Do not edit by hand.
+  Source: backend/tools/generate_erd.py with backend/tools/erd_template.html.
+  Regenerate from backend/: python tools/generate_erd.py
+-->
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --border: #d9dde3; --border-strong: #b8bfc9;
+  --text: #16191d; --muted: #5d6673; --faint: #8a929d;
+  --accent: #2456d6; --accent-soft: rgba(36, 86, 214, .12);
+  --pk: #b7791f; --fk: #2f7d59; --edge: #9aa3ae; --edge-hi: #2456d6; --danger: #c0392b;
+  --module: rgba(36, 86, 214, .04); --module-border: rgba(36, 86, 214, .18);
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 12px rgba(16, 24, 40, .06);
+  --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b21; --surface-2: #1e232b; --border: #2b323c; --border-strong: #3d4652;
+    --text: #e6e9ee; --muted: #9aa3ae; --faint: #6b7480;
+    --accent: #6f9bff; --accent-soft: rgba(111, 155, 255, .16);
+    --pk: #e0a64a; --fk: #5cc08f; --edge: #4d5662; --edge-hi: #6f9bff; --danger: #ff7b6b;
+    --module: rgba(111, 155, 255, .04); --module-border: rgba(111, 155, 255, .2);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 12px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b21; --surface-2: #1e232b; --border: #2b323c; --border-strong: #3d4652;
+  --text: #e6e9ee; --muted: #9aa3ae; --faint: #6b7480;
+  --accent: #6f9bff; --accent-soft: rgba(111, 155, 255, .16);
+  --pk: #e0a64a; --fk: #5cc08f; --edge: #4d5662; --edge-hi: #6f9bff; --danger: #ff7b6b;
+  --module: rgba(111, 155, 255, .04); --module-border: rgba(111, 155, 255, .2);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 12px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); overflow: hidden; }
+.mono, code { font-family: var(--mono); }
+code { font-size: .92em; background: var(--surface-2); padding: 0 4px; border-radius: 4px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+.app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 15px; font-weight: 600; margin: 0; white-space: nowrap; }
+.stats { color: var(--muted); font-size: 12px; }
+.spacer { flex: 1; }
+.search { position: relative; }
+.search input {
+  width: 260px; max-width: 60vw; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); outline: none;
+}
+.search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.btn {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 5px 10px;
+  font-size: 13px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--border-strong); }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.group { display: inline-flex; gap: 4px; }
+
+.main { display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+aside { border-right: 1px solid var(--border); background: var(--surface); overflow: auto; min-height: 0; }
+aside .mod { border-bottom: 1px solid var(--border); }
+aside .mod > button {
+  width: 100%; text-align: left; background: none; border: 0; padding: 8px 14px; font-weight: 600;
+  display: flex; justify-content: space-between; font-size: 13px;
+}
+aside .mod > button span { color: var(--faint); font-weight: 400; }
+aside ul { list-style: none; margin: 0; padding: 0 0 6px; }
+aside li button {
+  width: 100%; text-align: left; background: none; border: 0; padding: 3px 14px 3px 26px;
+  font: 12.5px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+aside li button:hover, aside li button.active { color: var(--accent); background: var(--accent-soft); }
+aside .hit { color: var(--text); }
+
+.canvas { position: relative; overflow: hidden; touch-action: none; cursor: grab; min-height: 0; }
+.canvas.panning { cursor: grabbing; }
+svg#diagram { width: 100%; height: 100%; display: block; user-select: none; }
+.zoom { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 4px; }
+.zoom .btn { width: 34px; padding: 5px 0; box-shadow: var(--shadow); }
+.legend {
+  position: absolute; left: 16px; bottom: 16px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--muted); box-shadow: var(--shadow);
+  display: grid; grid-template-columns: auto auto; gap: 3px 10px; align-items: center;
+}
+.legend svg { overflow: visible; }
+
+/* diagram */
+.module-bg { fill: var(--module); stroke: var(--module-border); stroke-dasharray: 4 4; }
+.module-label { fill: var(--accent); font: 600 15px var(--sans); letter-spacing: .02em; }
+.tbl { cursor: pointer; }
+.tbl-box { fill: var(--surface); stroke: var(--border-strong); }
+.tbl-head { fill: var(--surface-2); }
+.tbl-name { fill: var(--text); font: 600 12.5px var(--mono); }
+.col-name { fill: var(--text); font: 12px var(--mono); }
+.col-type { fill: var(--muted); font: 11px var(--mono); }
+.col-null { fill: var(--faint); font: 11px var(--mono); }
+.key-pk { fill: var(--pk); font: 700 9.5px var(--sans); }
+.key-fk { fill: var(--fk); font: 700 9.5px var(--sans); }
+.row-sep { stroke: var(--border); }
+.more { fill: var(--faint); font: italic 11px var(--sans); }
+.tbl.hover .tbl-box, .tbl.selected .tbl-box { stroke: var(--accent); stroke-width: 2; }
+.tbl.flash .tbl-box { stroke: var(--accent); stroke-width: 3; }
+.dim { opacity: .18; }
+.edge { fill: none; stroke: var(--edge); stroke-width: 1.2; }
+.edge.optional { stroke-dasharray: 5 3; }
+.edge.mm { stroke: var(--fk); stroke-dasharray: 2 4; stroke-width: 1.5; }
+.glyph { fill: none; stroke: var(--edge); stroke-width: 1.3; }
+.glyph-fill { fill: var(--surface); stroke: var(--edge); stroke-width: 1.3; }
+.edge-g.hi .edge, .edge-g.hi .glyph, .edge-g.hi .glyph-fill { stroke: var(--edge-hi); stroke-width: 2; }
+.edge-label { display: none; font: 600 11px var(--mono); fill: var(--edge-hi); paint-order: stroke; stroke: var(--bg); stroke-width: 4; }
+.edge-g.hi .edge-label { display: block; }
+.edges-hidden .edge-g:not(.hi) { display: none; }
+
+/* modal */
+.overlay {
+  position: fixed; inset: 0; background: rgba(10, 14, 20, .45); display: none; z-index: 10;
+  align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+  width: min(1180px, 100%); padding: 20px 24px 24px; position: relative;
+}
+.modal h2 { margin: 0; font: 600 20px var(--mono); word-break: break-all; }
+.modal h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 8px; }
+.modal .close { position: absolute; top: 14px; right: 14px; }
+.meta { color: var(--muted); font-size: 13px; margin-top: 4px; display: flex; gap: 14px; flex-wrap: wrap; }
+.desc { white-space: pre-wrap; margin: 12px 0 0; color: var(--text); }
+.desc.module-desc { color: var(--muted); font-size: 13px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 10px; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--surface-2); font-weight: 600; font-size: 12px; color: var(--muted); white-space: nowrap; position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.mono { white-space: nowrap; font-size: 12.5px; }
+td.def { font-family: var(--mono); font-size: 12px; word-break: break-word; min-width: 260px; }
+td.cdesc { min-width: 240px; white-space: pre-wrap; color: var(--muted); }
+.badge {
+  display: inline-block; font: 700 10px var(--sans); padding: 1px 5px; border-radius: 4px; margin: 1px 3px 1px 0;
+  border: 1px solid currentColor; white-space: nowrap;
+}
+.badge.pk { color: var(--pk); } .badge.fk { color: var(--fk); } .badge.uq { color: var(--accent); }
+.badge.warn { color: var(--danger); }
+.chip { display: inline-block; font: 11.5px var(--mono); background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin: 1px 2px 1px 0; }
+.yes { color: var(--muted); } .no { font-weight: 600; }
+a.tlink { color: var(--accent); text-decoration: none; font-family: var(--mono); cursor: pointer; }
+a.tlink:hover { text-decoration: underline; }
+.empty { color: var(--faint); font-style: italic; }
+.small { font-size: 12px; color: var(--faint); }
+
+.menu-btn { display: none; }
+@media (max-width: 760px) {
+  .main { grid-template-columns: 1fr; }
+  aside { display: none; position: absolute; z-index: 5; top: 0; bottom: 0; left: 0; width: 260px; box-shadow: var(--shadow); }
+  .main.show-aside aside { display: block; }
+  .main { position: relative; }
+  .menu-btn { display: inline-block; }
+  .legend { display: none; }
+  .stats { display: none; }
+  .search input { width: 160px; }
+  .modal { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button class="btn menu-btn" id="menuBtn" aria-label="Tables list">☰</button>
+    <h1>DAWAM database</h1>
+    <span class="stats" id="stats"></span>
+    <span class="spacer"></span>
+    <div class="search">
+      <input id="search" type="search" placeholder="Search tables or columns  ( / )" autocomplete="off" aria-label="Search tables or columns">
+    </div>
+    <div class="group" role="group" aria-label="Columns shown">
+      <button class="btn" id="modeAll" aria-pressed="false">All columns</button>
+      <button class="btn" id="modeKeys" aria-pressed="true">Keys only</button>
+    </div>
+    <button class="btn" id="toggleMM" aria-pressed="false" title="Draw the N:M relationships junction tables make">N:M</button>
+    <button class="btn" id="toggleEdges" aria-pressed="false" title="Show every relationship line (off: only the hovered table's)">Lines</button>
+    <button class="btn" id="relayout" title="Reset table positions">Reset layout</button>
+    <button class="btn" id="theme" title="Toggle light / dark">◐</button>
+  </header>
+  <div class="main" id="main">
+    <aside id="aside" aria-label="Tables by module"></aside>
+    <div class="canvas" id="canvas">
+      <svg id="diagram" xmlns="http://www.w3.org/2000/svg">
+        <g id="viewport"><g id="modulesLayer"></g><g id="edgesLayer"></g><g id="tablesLayer"></g></g>
+      </svg>
+      <div class="legend" aria-label="Legend">
+        <svg width="46" height="12"><path class="glyph" d="M2 6H44M38 1V11M42 1V11"/></svg><span>exactly one (FK NOT NULL)</span>
+        <svg width="46" height="12"><path class="glyph" d="M2 6H34M42 1V11"/><circle class="glyph-fill" cx="37" cy="6" r="3.5"/></svg><span>zero or one (FK nullable, dashed)</span>
+        <svg width="46" height="12"><path class="glyph" d="M2 6H44M32 6L44 1M32 6L44 11M28 1V11"/></svg><span>many (N side)</span>
+        <svg width="46" height="12"><path class="edge mm" d="M2 6H44"/></svg><span>N:M via junction table</span>
+        <span class="badge pk">PK</span><span>primary key</span>
+        <span class="badge fk">FK</span><span>foreign key</span>
+      </div>
+      <div class="zoom">
+        <button class="btn" id="zoomIn" aria-label="Zoom in">+</button>
+        <button class="btn" id="zoomOut" aria-label="Zoom out">−</button>
+        <button class="btn" id="zoomFit" aria-label="Fit to screen" title="Fit">⤢</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script id="erd-data" type="application/json">/*__ERD_DATA__*/null</script>
+<script>
+(() => {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("erd-data").textContent);
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const ROW = 20, HEAD = 30, PAD = 10, CHAR = 7.3, CHAR_HEAD = 7.8;
+  const TABLE_GAP_Y = 28, TABLE_GAP_X = 70, MOD_PAD = 34, MOD_GAP = 90, COL_MAX_H = 1500, ROW_MAX_W = 5200;
+
+  const tables = DATA.tables;
+  const byName = new Map(tables.map(t => [t.name, t]));
+  const incoming = new Map(tables.map(t => [t.name, []]));
+  for (const r of DATA.relationships) incoming.get(r.to_table)?.push(r);
+  const modules = [...new Set(tables.map(t => t.module))].sort();
+  const moduleDesc = new Map(DATA.modules.map(m => [m.name, m.description]));
+
+  let mode = "keys";            // "all" | "keys"
+  let showMM = false, showEdges = false;
+  const pos = new Map();       // table -> {x, y}
+  const geom = new Map();      // table -> {w, h, rows: Map(col -> rowIndex)}
+  let view = { x: 0, y: 0, k: 1 };
+
+  const $ = id => document.getElementById(id);
+  const el = (name, attrs = {}, parent) => {
+    const n = document.createElementNS(SVGNS, name);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (parent) parent.appendChild(n);
+    return n;
+  };
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // Docstrings use RST ``code``: show it as <code>.
+  const rst = s => esc(s).replace(/``(.+?)``/g, "<code>$1</code>");
+  const shortType = t => t.replace("character varying", "varchar").replace("timestamp with time zone", "timestamptz")
+    .replace("timestamp without time zone", "timestamp").replace("double precision", "float8");
+
+  // ---------- stats & sidebar ----------
+  const nCols = tables.reduce((a, t) => a + t.columns.length, 0);
+  $("stats").innerHTML = `${tables.length} tables · ${nCols} columns · ${DATA.relationships.length} FKs · ${DATA.many_to_many.length} N:M · migration <span class="mono">${esc(DATA.alembic_head.join(", "))}</span>`;
+
+  function buildSidebar(filter) {
+    const aside = $("aside");
+    aside.innerHTML = "";
+    for (const m of modules) {
+      const list = tables.filter(t => t.module === m && (!filter || matches(t, filter)));
+      if (!list.length) continue;
+      const div = document.createElement("div");
+      div.className = "mod";
+      div.innerHTML = `<button title="Zoom to module">${esc(m)} <span>${list.length}</span></button><ul></ul>`;
+      div.firstChild.onclick = () => focusModule(m);
+      const ul = div.querySelector("ul");
+      for (const t of list) {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.textContent = t.name;
+        b.dataset.table = t.name;
+        if (filter && t.name.toLowerCase().includes(filter)) b.classList.add("hit");
+        b.onclick = () => { focusTable(t.name); openModal(t.name); $("main").classList.remove("show-aside"); };
+        li.appendChild(b); ul.appendChild(li);
+      }
+      aside.appendChild(div);
+    }
+    if (!aside.children.length) aside.innerHTML = `<p class="empty" style="padding:14px">No table or column matches.</p>`;
+  }
+  const matches = (t, q) => t.name.toLowerCase().includes(q) || t.columns.some(c => c.name.toLowerCase().includes(q));
+
+  // ---------- geometry & layout ----------
+  function visibleColumns(t) {
+    if (mode === "all") return t.columns;
+    return t.columns.filter(c => c.pk || c.fk.length);
+  }
+  function measure(t) {
+    const cols = visibleColumns(t);
+    const nameW = Math.max(...cols.map(c => c.name.length), 4) * CHAR;
+    const typeW = Math.max(...cols.map(c => shortType(c.type).length), 4) * 6.7;
+    const w = Math.ceil(Math.max(t.name.length * CHAR_HEAD + 2 * PAD, 34 + nameW + 16 + typeW + 28 + PAD));
+    const hidden = t.columns.length - cols.length;
+    const rows = new Map(cols.map((c, i) => [c.name, i]));
+    const h = HEAD + cols.length * ROW + (hidden ? ROW : 0) + 4;
+    geom.set(t.name, { w, h, cols, hidden, rows });
+  }
+
+  let moduleBoxes = [];
+  function layout() {
+    tables.forEach(measure);
+    moduleBoxes = [];
+    // Biggest modules first so rows pack well; within a module, most-referenced tables first.
+    const order = [...modules].sort((a, b) => tables.filter(t => t.module === b).length - tables.filter(t => t.module === a).length || a.localeCompare(b));
+    let x = 0, y = 0, rowH = 0;
+    for (const m of order) {
+      const list = tables.filter(t => t.module === m)
+        .sort((a, b) => incoming.get(b.name).length - incoming.get(a.name).length || a.name.localeCompare(b.name));
+      // Column-major packing inside the module.
+      const columns = [[]]; let colH = 0;
+      for (const t of list) {
+        const h = geom.get(t.name).h;
+        if (colH > 0 && colH + h > COL_MAX_H) { columns.push([]); colH = 0; }
+        columns[columns.length - 1].push(t); colH += h + TABLE_GAP_Y;
+      }
+      const widths = columns.map(c => Math.max(...c.map(t => geom.get(t.name).w)));
+      const heights = columns.map(c => c.reduce((a, t) => a + geom.get(t.name).h + TABLE_GAP_Y, -TABLE_GAP_Y));
+      const mw = widths.reduce((a, b) => a + b, 0) + TABLE_GAP_X * (columns.length - 1) + 2 * MOD_PAD;
+      const mh = Math.max(...heights) + 2 * MOD_PAD + 22;
+      if (x > 0 && x + mw > ROW_MAX_W) { x = 0; y += rowH + MOD_GAP; rowH = 0; }
+      let cx = x + MOD_PAD;
+      columns.forEach((c, i) => {
+        let cy = y + MOD_PAD + 22;
+        for (const t of c) { pos.set(t.name, { x: cx, y: cy }); cy += geom.get(t.name).h + TABLE_GAP_Y; }
+        cx += widths[i] + TABLE_GAP_X;
+      });
+      moduleBoxes.push({ name: m, tables: list.map(t => t.name) });
+      x += mw + MOD_GAP; rowH = Math.max(rowH, mh);
+    }
+  }
+  function moduleRect(m) {
+    const names = moduleBoxes.find(b => b.name === m).tables;
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const n of names) {
+      const p = pos.get(n), g = geom.get(n);
+      x1 = Math.min(x1, p.x); y1 = Math.min(y1, p.y); x2 = Math.max(x2, p.x + g.w); y2 = Math.max(y2, p.y + g.h);
+    }
+    return { x: x1 - MOD_PAD, y: y1 - MOD_PAD - 22, w: x2 - x1 + 2 * MOD_PAD, h: y2 - y1 + 2 * MOD_PAD + 22 };
+  }
+
+  // ---------- rendering ----------
+  const tableNodes = new Map();
+  function renderTables() {
+    const layer = $("tablesLayer");
+    layer.innerHTML = ""; tableNodes.clear();
+    for (const t of tables) {
+      const g = geom.get(t.name), p = pos.get(t.name);
+      const node = el("g", { class: "tbl", transform: `translate(${p.x},${p.y})`, "data-table": t.name, tabindex: 0, role: "button", "aria-label": `Table ${t.name}` }, layer);
+      el("rect", { class: "tbl-box", width: g.w, height: g.h, rx: 7 }, node);
+      el("path", { class: "tbl-head", d: `M0 7a7 7 0 0 1 7-7H${g.w - 7}a7 7 0 0 1 7 7V${HEAD}H0Z` }, node);
+      el("line", { class: "row-sep", x1: 0, x2: g.w, y1: HEAD, y2: HEAD }, node);
+      const name = el("text", { class: "tbl-name", x: PAD, y: 19 }, node); name.textContent = t.name;
+      g.cols.forEach((c, i) => {
+        const y = HEAD + i * ROW + 14;
+        if (c.pk) { const k = el("text", { class: "key-pk", x: PAD - 2, y }, node); k.textContent = "PK"; }
+        else if (c.fk.length) { const k = el("text", { class: "key-fk", x: PAD - 2, y }, node); k.textContent = "FK"; }
+        if (c.pk && c.fk.length) { const k = el("text", { class: "key-fk", x: PAD + 14, y }, node); k.textContent = "F"; }
+        const n = el("text", { class: "col-name", x: 34, y }, node); n.textContent = c.name;
+        const ty = el("text", { class: "col-type", x: g.w - PAD - 20, y, "text-anchor": "end" }, node); ty.textContent = shortType(c.type);
+        const nl = el("text", { class: "col-null", x: g.w - PAD, y, "text-anchor": "end" }, node); nl.textContent = c.nullable ? "?" : "";
+        const title = el("title", {}, n); title.textContent = `${c.name} ${c.type}${c.nullable ? " NULL" : " NOT NULL"}`;
+      });
+      if (g.hidden) {
+        const m = el("text", { class: "more", x: 34, y: HEAD + g.cols.length * ROW + 14 }, node);
+        m.textContent = `+ ${g.hidden} more column${g.hidden > 1 ? "s" : ""}`;
+      }
+      tableNodes.set(t.name, node);
+      attachTableEvents(node, t.name);
+    }
+  }
+  function renderModules() {
+    const layer = $("modulesLayer");
+    layer.innerHTML = "";
+    for (const b of moduleBoxes) {
+      const r = moduleRect(b.name);
+      el("rect", { class: "module-bg", x: r.x, y: r.y, width: r.w, height: r.h, rx: 14 }, layer);
+      const tx = el("text", { class: "module-label", x: r.x + 16, y: r.y + 26 }, layer); tx.textContent = b.name;
+    }
+  }
+
+  function anchor(table, column, side) {
+    const p = pos.get(table), g = geom.get(table);
+    const i = g.rows.get(column);
+    const y = i === undefined ? p.y + HEAD / 2 : p.y + HEAD + i * ROW + ROW / 2;
+    return { x: side > 0 ? p.x + g.w : p.x, y };
+  }
+  function sides(a, b) {
+    const pa = pos.get(a), ga = geom.get(a), pb = pos.get(b), gb = geom.get(b);
+    const ca = pa.x + ga.w / 2, cb = pb.x + gb.w / 2;
+    if (a === b) return [1, 1];
+    if (pa.x + ga.w + 20 < pb.x) return [1, -1];
+    if (pb.x + gb.w + 20 < pa.x) return [-1, 1];
+    return ca <= cb ? [1, 1] : [-1, -1];   // overlapping columns: loop out on one side
+  }
+  function curve(s, sa, t, sb) {
+    const d = Math.max(50, Math.abs(t.x - s.x) / 2);
+    const c1 = s.x + sa * d, c2 = t.x + sb * d;
+    if (sa === sb) {
+      const out = (sa > 0 ? Math.max(s.x, t.x) : Math.min(s.x, t.x)) + sa * (60 + Math.abs(s.y - t.y) * 0.04);
+      return `M${s.x} ${s.y}C${out} ${s.y} ${out} ${t.y} ${t.x} ${t.y}`;
+    }
+    return `M${s.x} ${s.y}C${c1} ${s.y} ${c2} ${t.y} ${t.x} ${t.y}`;
+  }
+  // Glyph at an endpoint p, edge leaving in direction dir (+1 right / -1 left).
+  function glyph(g, p, dir, kind) {
+    const x = p.x, y = p.y, o = v => x + dir * v;
+    if (kind === "many") {
+      el("path", { class: "glyph", d: `M${o(14)} ${y}L${x} ${y - 6}M${o(14)} ${y}L${x} ${y}M${o(14)} ${y}L${x} ${y + 6}M${o(18)} ${y - 6}V${y + 6}` }, g);
+    } else if (kind === "one") {
+      el("path", { class: "glyph", d: `M${o(6)} ${y - 6}V${y + 6}M${o(10)} ${y - 6}V${y + 6}` }, g);
+    } else { // zero or one
+      el("path", { class: "glyph", d: `M${o(6)} ${y - 6}V${y + 6}` }, g);
+      el("circle", { class: "glyph-fill", cx: o(14), cy: y, r: 3.8 }, g);
+    }
+  }
+
+  const edgeNodes = [];  // {g, tables:[a,b]}
+  function renderEdges() {
+    const layer = $("edgesLayer");
+    layer.innerHTML = ""; edgeNodes.length = 0;
+    for (const r of DATA.relationships) {
+      if (!pos.has(r.to_table)) continue;
+      const [sa, sb] = sides(r.from_table, r.to_table);
+      const s = anchor(r.from_table, r.from_columns[0], sa);
+      const t = anchor(r.to_table, r.to_columns[0], sb);
+      const g = el("g", { class: "edge-g" }, layer);
+      el("path", { class: "edge" + (r.optional ? " optional" : ""), d: curve(s, sa, t, sb) }, g);
+      glyph(g, s, sa, r.cardinality === "1:1" ? "zero-one" : "many");
+      glyph(g, t, sb, r.optional ? "zero-one" : "one");
+      const lbl = el("text", { class: "edge-label", x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 - 4, "text-anchor": "middle" }, g);
+      lbl.textContent = `${r.cardinality === "1:1" ? "1:1" : "N:1"}  ${r.from_columns.join(",")} → ${r.to_table}`;
+      const tt = el("title", {}, g); tt.textContent = `${r.from_table}.${r.from_columns.join(",")} → ${r.to_table}.${r.to_columns.join(",")} (${r.cardinality}, ON DELETE ${r.on_delete})`;
+      edgeNodes.push({ g, tables: [r.from_table, r.to_table] });
+    }
+    if (showMM) {
+      for (const m of DATA.many_to_many) {
+        const [sa, sb] = sides(m.a_table, m.b_table);
+        const s = anchor(m.a_table, null, sa), t = anchor(m.b_table, null, sb);
+        const g = el("g", { class: "edge-g" }, layer);
+        el("path", { class: "edge mm", d: curve(s, sa, t, sb) }, g);
+        glyph(g, s, sa, "many"); glyph(g, t, sb, "many");
+        const lbl = el("text", { class: "edge-label", x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 - 4, "text-anchor": "middle" }, g);
+        lbl.textContent = `N:M via ${m.via}`;
+        const tt = el("title", {}, g); tt.textContent = `${m.a_table} N:M ${m.b_table} via ${m.via}`;
+        edgeNodes.push({ g, tables: [m.a_table, m.b_table, m.via] });
+      }
+    }
+    $("diagram").classList.toggle("edges-hidden", !showEdges);
+  }
+  function renderAll() { renderModules(); renderEdges(); renderTables(); applySearchDim(); }
+
+  // ---------- view: zoom & pan ----------
+  const applyView = () => $("viewport").setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
+  function zoomAt(factor, cx, cy) {
+    const k = Math.min(3, Math.max(0.05, view.k * factor));
+    view.x = cx - (cx - view.x) * (k / view.k); view.y = cy - (cy - view.y) * (k / view.k); view.k = k;
+    applyView();
+  }
+  function fitRect(x, y, w, h, maxK = 1.2) {
+    const box = $("canvas").getBoundingClientRect();
+    const k = Math.min(maxK, (box.width - 40) / w, (box.height - 40) / h);
+    view.k = k; view.x = (box.width - w * k) / 2 - x * k; view.y = (box.height - h * k) / 2 - y * k;
+    applyView();
+  }
+  function fitAll() {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const b of moduleBoxes) { const r = moduleRect(b.name); x1 = Math.min(x1, r.x); y1 = Math.min(y1, r.y); x2 = Math.max(x2, r.x + r.w); y2 = Math.max(y2, r.y + r.h); }
+    fitRect(x1, y1, x2 - x1, y2 - y1);
+  }
+  function focusTable(name) {
+    const p = pos.get(name), g = geom.get(name);
+    if (!p) return;
+    const box = $("canvas").getBoundingClientRect();
+    const k = Math.max(view.k, 0.8);
+    view.k = Math.min(k, 1.4);
+    view.x = box.width / 2 - (p.x + g.w / 2) * view.k; view.y = box.height / 2 - (p.y + Math.min(g.h, box.height / view.k - 60) / 2) * view.k;
+    applyView();
+    const node = tableNodes.get(name);
+    node.classList.add("flash"); setTimeout(() => node.classList.remove("flash"), 1400);
+    highlight(name);
+  }
+  function focusModule(m) { const r = moduleRect(m); fitRect(r.x, r.y, r.w, r.h); }
+
+  const canvas = $("canvas");
+  canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    const b = canvas.getBoundingClientRect();
+    zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - b.left, e.clientY - b.top);
+  }, { passive: false });
+
+  // Pointer handling: background drag pans, table drag moves it, a click opens it.
+  let drag = null;
+  const pointers = new Map();
+  canvas.addEventListener("pointerdown", e => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) { drag = { pinch: dist(), k: view.k }; return; }
+    const tnode = e.target.closest?.(".tbl");
+    canvas.setPointerCapture(e.pointerId);
+    if (tnode) {
+      const name = tnode.dataset.table, p = pos.get(name);
+      drag = { table: name, sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y, moved: false };
+    } else {
+      drag = { pan: true, sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
+      canvas.classList.add("panning");
+    }
+  });
+  const dist = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  canvas.addEventListener("pointermove", e => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!drag) return;
+    if (drag.pinch) { const b = canvas.getBoundingClientRect(); const [a, c] = [...pointers.values()]; zoomAt(drag.k * dist() / drag.pinch / view.k, (a.x + c.x) / 2 - b.left, (a.y + c.y) / 2 - b.top); return; }
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (drag.pan) { view.x = drag.ox + dx; view.y = drag.oy + dy; applyView(); }
+    else if (drag.moved) {
+      pos.set(drag.table, { x: drag.ox + dx / view.k, y: drag.oy + dy / view.k });
+      tableNodes.get(drag.table).setAttribute("transform", `translate(${pos.get(drag.table).x},${pos.get(drag.table).y})`);
+      renderEdges(); renderModules(); highlight(drag.table);
+    }
+  });
+  const end = e => {
+    pointers.delete(e.pointerId);
+    if (drag && drag.table && !drag.moved) openModal(drag.table);
+    if (pointers.size < 2) drag = null;
+    canvas.classList.remove("panning");
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+
+  function attachTableEvents(node, name) {
+    node.addEventListener("mouseenter", () => highlight(name));
+    node.addEventListener("mouseleave", () => highlight(null));
+    node.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openModal(name); } });
+  }
+  function highlight(name) {
+    for (const [n, node] of tableNodes) node.classList.toggle("hover", n === name);
+    for (const e of edgeNodes) e.g.classList.toggle("hi", !!name && e.tables.includes(name));
+  }
+
+  // ---------- search ----------
+  let query = "";
+  function applySearchDim() {
+    for (const [n, node] of tableNodes) node.classList.toggle("dim", !!query && !matches(byName.get(n), query));
+  }
+  $("search").addEventListener("input", e => {
+    query = e.target.value.trim().toLowerCase();
+    buildSidebar(query); applySearchDim();
+  });
+  $("search").addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      const exact = tables.find(t => t.name.toLowerCase() === query);
+      const first = exact || tables.find(t => t.name.toLowerCase().includes(query)) || tables.find(t => matches(t, query));
+      if (first) focusTable(first.name);
+    } else if (e.key === "Escape") { e.target.value = ""; e.target.dispatchEvent(new Event("input")); }
+  });
+
+  // ---------- modal ----------
+  const yn = b => b ? `<span class="yes">YES</span>` : `<span class="no">NO</span>`;
+  const tlink = n => `<a class="tlink" data-open="${esc(n)}">${esc(n)}</a>`;
+  function openModal(name) {
+    const t = byName.get(name);
+    if (!t) return;
+    const uniques = t.constraints.filter(c => c.kind === "UNIQUE");
+    const indexedCols = new Set(t.indexes.flatMap(i => i.columns));
+    const out = DATA.relationships.filter(r => r.from_table === name);
+    const inc = incoming.get(name);
+    const mm = DATA.many_to_many.filter(m => m.via === name || m.a_table === name || m.b_table === name);
+
+    const colRows = t.columns.map((c, i) => {
+      const keys = [];
+      if (c.pk) keys.push(`<span class="badge pk">PK</span>`);
+      for (const f of c.fk) keys.push(`<span class="badge fk">FK</span>→ ${tlink(f.table)}<span class="mono">.${esc(f.column)}</span>`);
+      if (uniques.some(u => u.columns.includes(c.name))) keys.push(`<span class="badge uq">UQ</span>`);
+      if (indexedCols.has(c.name) && !c.pk) keys.push(`<span class="badge uq" title="Part of an index">IX</span>`);
+      if (!c.in_orm) keys.push(`<span class="badge warn" title="Not mapped by the ORM class">not in ORM</span>`);
+      const def = [];
+      if (c.default) def.push(`<div>DB: <span class="mono">${esc(c.default)}</span></div>`);
+      if (c.identity) def.push(`<div>IDENTITY ${esc(c.identity)}</div>`);
+      if (c.generated) def.push(`<div>GENERATED: <span class="mono">${esc(c.generated)}</span></div>`);
+      if (c.app_default) def.push(`<div class="small">app: <span class="mono">${esc(c.app_default)}</span></div>`);
+      const en = c.enum ? c.enum.values.map(v => `<span class="chip">${esc(v)}</span>`).join("") + `<div class="small">${esc(c.enum.source)}</div>` : "";
+      return `<tr><td class="small">${i + 1}</td><td class="mono"><b>${esc(c.name)}</b>${c.attribute && c.attribute !== c.name ? `<div class="small">attr ${esc(c.attribute)}</div>` : ""}</td>
+        <td class="mono">${esc(c.type)}</td><td>${yn(c.nullable)}</td><td>${keys.join(" ") || ""}</td>
+        <td>${def.join("") || '<span class="empty">none</span>'}</td><td>${en}</td><td class="cdesc">${c.description ? rst(c.description) : ""}</td></tr>`;
+    }).join("");
+
+    const relRows = [
+      ...out.map(r => `<tr><td>${r.cardinality === "1:1" ? "1:1" : "N:1"}</td><td class="mono">${esc(r.from_columns.join(", "))}</td><td>→ ${tlink(r.to_table)} <span class="mono">(${esc(r.to_columns.join(", "))})</span></td><td class="mono">${esc(r.on_delete)}</td><td class="mono">${esc(r.on_update)}</td><td class="mono small">${esc(r.name)}</td></tr>`),
+      ...inc.map(r => `<tr><td>${r.cardinality === "1:1" ? "1:1" : "1:N"}</td><td class="mono">${esc(r.to_columns.join(", "))}</td><td>← ${tlink(r.from_table)} <span class="mono">(${esc(r.from_columns.join(", "))})</span></td><td class="mono">${esc(r.on_delete)}</td><td class="mono">${esc(r.on_update)}</td><td class="mono small">${esc(r.name)}</td></tr>`),
+      ...mm.map(m => `<tr><td>N:M</td><td colspan="2">${tlink(m.a_table)} ⟷ ${tlink(m.b_table)} via ${tlink(m.via)}</td><td colspan="3" class="small">derived: the junction table's primary key is its foreign keys</td></tr>`),
+    ].join("");
+
+    const conRows = t.constraints.map(c => `<tr><td class="mono">${esc(c.name)}</td><td>${esc(c.kind)}</td><td class="mono">${esc(c.columns.join(", "))}</td><td class="def">${esc(c.definition)}${c.deferrable ? ` <span class="small">DEFERRABLE ${esc(c.deferrable)}</span>` : ""}</td></tr>`).join("");
+    const idxRows = t.indexes.map(i => `<tr><td class="mono">${esc(i.name)}</td><td>${i.unique ? "YES" : "NO"}</td><td class="mono">${esc(i.method)}</td><td class="mono">${esc(i.columns.join(", "))}</td><td class="def">${esc(i.definition)}${i.backs_constraint ? ' <span class="small">(backs a constraint)</span>' : ""}</td></tr>`).join("");
+    const trgRows = t.triggers.map(x => `<tr><td class="mono">${esc(x.name)}</td><td class="def">${esc(x.definition)}</td></tr>`).join("");
+    const md = moduleDesc.get(t.module);
+
+    $("modal").innerHTML = `
+      <button class="btn close" data-close aria-label="Close">✕</button>
+      <h2 id="mTitle">${esc(t.name)}</h2>
+      <div class="meta"><span>module <b>${esc(t.module)}</b></span>${t.orm_class ? `<span>ORM <span class="mono">${esc(t.orm_class)}</span></span>` : '<span class="badge warn">no ORM class</span>'}
+        ${t.source ? `<span class="mono">${esc(t.source)}</span>` : ""}<span>${t.columns.length} columns</span><span>PK <span class="mono">(${esc(t.primary_key.join(", ") || "none")})</span></span></div>
+      ${t.description ? `<p class="desc">${rst(t.description)}</p>` : `<p class="desc empty">No description in the table's ORM class.</p>`}
+      ${md ? `<details><summary>About the ${esc(t.module)} module's tables</summary><p class="desc module-desc">${rst(md)}</p></details>` : ""}
+      <h3>Columns</h3>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Nullable</th><th>Keys</th><th>Default</th><th>Allowed values</th><th>Description</th></tr></thead><tbody>${colRows}</tbody></table></div>
+      <h3>Relationships</h3>
+      ${relRows ? `<div class="table-wrap"><table><thead><tr><th>Cardinality</th><th>Columns</th><th>Table</th><th>On delete</th><th>On update</th><th>Constraint</th></tr></thead><tbody>${relRows}</tbody></table></div>` : '<p class="empty">None.</p>'}
+      <h3>Constraints</h3>
+      ${conRows ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Kind</th><th>Columns</th><th>Definition</th></tr></thead><tbody>${conRows}</tbody></table></div>` : '<p class="empty">None.</p>'}
+      <h3>Indexes</h3>
+      ${idxRows ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Unique</th><th>Method</th><th>Columns</th><th>Definition</th></tr></thead><tbody>${idxRows}</tbody></table></div>` : '<p class="empty">None.</p>'}
+      ${trgRows ? `<h3>Triggers</h3><div class="table-wrap"><table><thead><tr><th>Name</th><th>Definition</th></tr></thead><tbody>${trgRows}</tbody></table></div>` : ""}`;
+    $("overlay").classList.add("open");
+    $("overlay").scrollTop = 0;
+    $("modal").querySelector("[data-close]").focus();
+    for (const [n, node] of tableNodes) node.classList.toggle("selected", n === name);
+  }
+  function closeModal() { $("overlay").classList.remove("open"); for (const node of tableNodes.values()) node.classList.remove("selected"); }
+  $("overlay").addEventListener("click", e => {
+    if (e.target === $("overlay") || e.target.closest("[data-close]")) closeModal();
+    const link = e.target.closest("[data-open]");
+    if (link) { focusTable(link.dataset.open); openModal(link.dataset.open); }
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && $("overlay").classList.contains("open")) closeModal();
+    else if (e.key === "/" && document.activeElement !== $("search")) { e.preventDefault(); $("search").focus(); }
+  });
+
+  // ---------- toolbar ----------
+  function setMode(m) {
+    mode = m; $("modeAll").setAttribute("aria-pressed", m === "all"); $("modeKeys").setAttribute("aria-pressed", m === "keys");
+    layout(); renderAll(); fitAll();
+  }
+  $("modeAll").onclick = () => setMode("all");
+  $("modeKeys").onclick = () => setMode("keys");
+  $("toggleMM").onclick = e => { showMM = !showMM; e.currentTarget.setAttribute("aria-pressed", showMM); renderEdges(); };
+  $("toggleEdges").onclick = e => { showEdges = !showEdges; e.currentTarget.setAttribute("aria-pressed", showEdges); renderEdges(); };
+  $("relayout").onclick = () => { layout(); renderAll(); fitAll(); };
+  $("zoomIn").onclick = () => { const b = canvas.getBoundingClientRect(); zoomAt(1.25, b.width / 2, b.height / 2); };
+  $("zoomOut").onclick = () => { const b = canvas.getBoundingClientRect(); zoomAt(0.8, b.width / 2, b.height / 2); };
+  $("zoomFit").onclick = fitAll;
+  $("menuBtn").onclick = () => $("main").classList.toggle("show-aside");
+  $("theme").onclick = () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("dawam-erd-theme", root.dataset.theme); } catch (_) {}
+  };
+  try { const th = localStorage.getItem("dawam-erd-theme"); if (th) document.documentElement.dataset.theme = th; } catch (_) {}
+
+  buildSidebar("");
+  layout(); renderAll(); fitAll();
+  // Deep link: erd.html#table_name opens that table.
+  const hash = decodeURIComponent(location.hash.slice(1));
+  if (byName.has(hash)) { focusTable(hash); openModal(hash); }
+})();
+</script>
+</body>
+</html>

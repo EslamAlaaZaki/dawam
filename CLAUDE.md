@@ -4,6 +4,18 @@ Product spec: `docs/spec.md`. It is large (~130 KB): grep for the relevant headi
 
 AI docs: `docs/ai-architecture.md` (~50 KB, how the AI side works today) and `docs/ai-enhancements.md` (~34 KB, the AI roadmap). Open them only when the task is about the AI side, and then the same way: grep for the heading, read only that section.
 
+## Database ERD (permanent rule)
+
+`docs/architecture/database/erd.html` documents every table, column, type, nullability, default, enum value, key, index, constraint and relationship. It is generated, so edit the generator, not the HTML.
+
+Every task that changes the schema regenerates the ERD in that same task. The schema changes when you add or edit a migration, or edit a module's `tables.py` (its docstrings become the ERD's descriptions). In `backend/`:
+
+```sh
+python tools/generate_erd.py    # migrates a throwaway PostgreSQL (Docker), rewrites the ERD
+```
+
+Commit `erd.html` with the schema change. `tests/test_erd_is_current.py` fails CI when the ERD is stale. Details: `.claude/rules/database-erd.md`.
+
 ## Agent skills
 
 ### Issue tracker

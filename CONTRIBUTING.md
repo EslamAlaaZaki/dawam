@@ -186,7 +186,7 @@ Dockerfile          the image for the `app` and `worker` services
 
 | When you… | Also… |
 |-----------|-------|
-| Change a table | Add an Alembic migration: in `backend/`, run `alembic revision --autogenerate -m "describe the change"`, then review the generated file. Migrations run when the app starts. |
+| Change a table | Add an Alembic migration: in `backend/`, run `alembic revision --autogenerate -m "describe the change"`, then review the generated file. Migrations run when the app starts. Then regenerate the ERD with `python tools/generate_erd.py` (needs Docker) and commit `docs/architecture/database/erd.html`. CI fails if it is stale. |
 | Add or change an API route or schema | Regenerate the frontend client with `scripts/generate-api-client.sh` and commit `frontend/src/api/openapi.json` and `schema.d.ts`. CI fails if they are stale. |
 | Add an endpoint | Add its row to the permission matrix in `backend/tests/authz/matrix.py`. The permission suite fails for any route without one. |
 | Add a setting | Add it to `platform/config.py` with a safe default, and document it in `.env.example` and `docs/configuration.md`. |
@@ -266,6 +266,7 @@ spec's §4.3 matrix. It discovers routes from the app itself, so every new endpo
 a row in `tests/authz/matrix.py`.
 
 `tests/test_openapi_client_is_current.py` catches a stale API client locally.
+`tests/test_erd_is_current.py` catches a stale database ERD.
 
 ### Frontend
 
@@ -331,7 +332,7 @@ The full backend suite can take close to an hour. If a job fails with Docker Hub
    - [ ] `pytest` for the areas you touched
    - [ ] `npm run lint && npm test && npm run build` in `frontend/` (if you changed it)
    - [ ] `scripts/generate-api-client.sh` (if you changed the API), with the output committed
-   - [ ] A migration for any table change, and a permission-matrix row for any new endpoint
+   - [ ] A migration and a regenerated ERD (`python tools/generate_erd.py`) for any table change, and a permission-matrix row for any new endpoint
    - [ ] Updated docs and `.env.example` for anything users or operators see
 
 4. **Open the pull request** against `main`. Say what changed and why, how you tested it,
