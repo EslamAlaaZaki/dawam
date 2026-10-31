@@ -412,6 +412,11 @@ These are options of the same `run_agent`, switched on by background jobs only; 
 
 When more than 30 tools are allowed (`TOOL_SEARCH_THRESHOLD`), the agent is offered the page's core tools plus `find_tools(query)` instead of the whole list (#408). `find_tools` ranks the other allowed tools by name and description and loads the top 5 into the next call. Core sets: `BASE_TOOLS`, `PAGE_TOOLS` (keyed by page-context type, e.g. `source_system`, `failed_check`) and `FOLDER_TOOLS` (keyed by file-folder id, e.g. `kpis`, `lineage`, `ddl`). Jobs use the base set. Hidden tools still pass `BoundTools.execute`, so `find_tools` only searches what the role may use.
 
+Follow-ups (#525):
+- **Web tools always sent.** `web_search` and `web_fetch` (`ALWAYS_SENT` in `agent.py`) are sent up front whenever their `offered` check passes, on every path: chat core sets and the `core_tools=None` path (supervisor and specialists, which otherwise get the first 15 by name). With web access off they are not offered, so neither sent nor named.
+- **Hidden tools named.** The `find_tools` description ends with "Tools not sent up front: a, b, ..." (names only, sorted, about 10 tokens each). It is built once per run from the tools hidden at the start, never from what is still hidden after `find_tools` loads some, so the tool list stays byte-identical and the prompt cache keeps hitting; a resume rebuilds the same text. It sits in the description rather than the system message so it lives with the tool and is only sent while tool search is on (nothing is added at 30 tools or fewer). The names come from `tools.specs()`, so only offered tools the role and Workspace allow are listed.
+- **Better matching**, lexical only: exact tool names in the query (`web_search`, or several) load exactly those, first and in the order named; the rest are scored by word overlap after a light stem (`-ies`, `-ing`, `-es`, `-ed`, `-s`, trailing `-e`), so "searching" meets `search` and "files" meets `file`. Name hits still count double and at most 5 are loaded.
+
 ### 4.7 Structured answers (KPI cards)
 
 After a run that called `suggest_kpis`, one extra metered `json_schema` call returns an intro sentence plus KPI cards (name, rationale, definition, unit) (#410). The answer is saved as the intro plus a `dawam-kpis` block in place of the Markdown list, and the chat draws it as cards (`KpiCards`; a malformed block shows as code). On skip or failure (model without `json_schema`, tool cap hit, invalid JSON) the Markdown answer stands. `dawam-kpis` blocks are stripped from history on later turns.
@@ -534,7 +539,7 @@ There are 35 tools.
 
 | Tool | What it does |
 |---|---|
-| `find_tools` | Chat and jobs when more than 30 tools are allowed: search the hidden tools and load the top 5 (§4.6, #408) |
+| `find_tools` | Chat and jobs when more than 30 tools are allowed: names the hidden tools, loads exact names asked for, else the top 5 matches by stemmed word overlap (§4.6, #408, #525) |
 | `write_plan`, `update_plan` | Jobs only: a plan of 1 to 20 steps, then status updates and re-plans (§4.5, #403) |
 | `ask_member` | Jobs only: pause and ask the member; the answer resumes the job (§4.5, #402) |
 | `reindex_documents` | Jobs only: re-index the Workspace's documents; always needs the member's approval (#411) |

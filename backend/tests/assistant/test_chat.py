@@ -133,6 +133,29 @@ def test_over_the_threshold_a_chat_sends_a_short_list_plus_find_tools(
     assert "generate_dw_schema" not in names
 
 
+@pytest.mark.parametrize("role", ["owner", "viewer"])
+def test_with_tool_search_on_find_tools_names_exactly_the_hidden_tools(
+    roles, model, fake_llm, monkeypatch, role
+):
+    from dawam.modules.assistant.internal import agent
+
+    fake_llm.script(Reply(text="ok"), Reply(text="ok"))
+    owner = roles.client(role)
+    cid = conversation(owner, roles)
+    ask(owner, roles, cid, "Hi")  # tool search off: every offered tool is sent
+    offered = tool_names(fake_llm, 0)
+    monkeypatch.setattr(agent, "TOOL_SEARCH_THRESHOLD", 5)
+
+    ask(owner, roles, cid, "Hi")
+
+    sent = tool_names(fake_llm, 1)
+    finder = next(t for t in fake_llm.calls[1].tools if t.name == "find_tools")
+    named = finder.description.split("Tools not sent up front: ", 1)[1].rstrip(".").split(", ")
+    assert named == sorted(offered - sent)
+    assert "find_tools" not in offered
+    assert fake_llm.calls[1].messages[0].content == fake_llm.calls[0].messages[0].content
+
+
 def test_the_page_decides_which_tools_are_sent_up_front(roles, model, fake_llm, monkeypatch):
     from dawam.modules.assistant.internal import agent
 

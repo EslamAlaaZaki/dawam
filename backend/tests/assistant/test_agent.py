@@ -845,3 +845,138 @@ def test_the_fix_rounds_used_survive_a_checkpoint_resume():
 
     # the round is already used: the resumed run reports instead of retrying
     assert "Proposed changes: 1 errors" in resumed[-1].text
+
+
+# -- tool search: what is sent up front, the hidden names, find_tools matching (#525) ---
+
+
+WEB_SEARCH = ToolSpec("web_search", "Search the web for outside knowledge.", {"type": "object"})
+WEB_FETCH = ToolSpec("web_fetch", "Read the text of a web page.", {"type": "object"})
+
+
+class WebTools(ManyTools):
+    """``ManyTools`` with the web tools offered: they sort after the first 15."""
+
+    def specs(self) -> Sequence[ToolSpec]:
+        return sorted([*super().specs(), WEB_SEARCH, WEB_FETCH], key=lambda s: s.name)
+
+
+def sent(adapter: FakeAdapter, index: int = 0) -> list[str]:
+    return [t.name for t in adapter.calls[index].tools]
+
+
+def finder(adapter: FakeAdapter, index: int = 0) -> str:
+    return next(t.description for t in adapter.calls[index].tools if t.name == "find_tools")
+
+
+def hidden_line(text: str) -> list[str]:
+    """The names the ``find_tools`` description says were not sent."""
+    marker = "Tools not sent up front: "
+    assert marker in text
+    return text.split(marker, 1)[1].rstrip(".").split(", ")
+
+
+@pytest.mark.parametrize("core", [{"tool_00"}, None])
+def test_with_tool_search_on_the_web_tools_are_sent_up_front(core):
+    adapter = FakeAdapter().script(Reply(text="hi"))
+
+    run(adapter, WebTools(), core_tools=core)
+
+    assert {"web_search", "web_fetch"} <= set(sent(adapter))
+    assert "web_search" not in hidden_line(finder(adapter))
+
+
+def test_without_the_web_tools_offered_none_is_sent_or_named():
+    adapter = FakeAdapter().script(Reply(text="hi"))
+
+    run(adapter, ManyTools(), core_tools=None)
+
+    assert not {"web_search", "web_fetch"} & set(sent(adapter))
+    assert not {"web_search", "web_fetch"} & set(hidden_line(finder(adapter)))
+
+
+def test_find_tools_names_every_hidden_tool_and_only_those():
+    adapter = FakeAdapter().script(Reply(text="hi"))
+    tools = WebTools()
+
+    run(adapter, tools, core_tools={"tool_00", "tool_01"})
+
+    up_front = set(sent(adapter))
+    hidden = [s.name for s in tools.specs() if s.name not in up_front]
+    assert hidden_line(finder(adapter)) == hidden == sorted(hidden)
+    assert "find_tools" not in hidden
+
+
+def test_the_hidden_names_stay_identical_after_find_tools_loads_some():
+    find = ToolCall("f1", "find_tools", {"query": "revenue report"})
+    use = ToolCall("u1", "zeta_report", {})
+    adapter = FakeAdapter().script(
+        Reply(tool_calls=(find,)), Reply(tool_calls=(use,)), Reply(text="done")
+    )
+
+    run(adapter, WebTools(), core_tools={"tool_00"})
+
+    assert "zeta_report" in sent(adapter, 1)
+    assert finder(adapter, 0) == finder(adapter, 1) == finder(adapter, 2)
+    assert "zeta_report" in hidden_line(finder(adapter, 2))
+    assert adapter.calls[0].messages[0] == adapter.calls[2].messages[0]
+
+
+def test_a_resumed_run_names_the_same_hidden_tools():
+    find = ToolCall("f1", "find_tools", {"query": "revenue report"})
+    first = FakeAdapter().script(Reply(tool_calls=(find,)), Reply(text="x"))
+    saved, _ = checkpoints_of(first, WebTools(), core_tools={"tool_00"})
+    adapter = FakeAdapter().script(Reply(text="done"))
+
+    run(adapter, WebTools(), core_tools={"tool_00"}, resume=saved[-1])
+
+    assert "zeta_report" in sent(adapter)
+    assert finder(adapter) == finder(first)
+
+
+def test_with_tool_search_off_nothing_is_added(monkeypatch):
+    monkeypatch.setattr(agent_module, "TOOL_SEARCH_THRESHOLD", 1_000)
+    adapter = FakeAdapter().script(Reply(text="hi"))
+    tools = WebTools()
+
+    run(adapter, tools)
+
+    assert adapter.calls[0].tools == tuple(tools.specs())
+    assert adapter.calls[0].messages[0].content == "SYSTEM"
+
+
+def real_specs() -> list[ToolSpec]:
+    from dawam.modules.assistant.internal.tools import TOOLS
+
+    return [t.spec for t in TOOLS]
+
+
+@pytest.mark.parametrize(
+    ("query", "first"),
+    [
+        ("web_search", "web_search"),
+        ("searching the web", "web_search"),
+        ("list files", "list_files"),
+        ("please load list_files", "list_files"),
+    ],
+)
+def test_find_tools_matches_names_and_simple_word_forms(query, first):
+    found = agent_module.search_tools(query, real_specs())
+
+    assert found[0].name == first
+    assert len(found) <= agent_module.FIND_TOOLS_LIMIT
+
+
+def test_exact_names_come_first_in_the_order_given_then_the_scored_matches():
+    found = agent_module.search_tools(
+        "web_fetch and web_search, revenue report", WebTools().specs()
+    )
+
+    assert [s.name for s in found[:3]] == ["web_fetch", "web_search", "zeta_report"]
+
+
+def test_word_forms_match_both_ways():
+    words = agent_module._words
+    assert words("searching searches searched") == words("search")
+    assert words("files") == words("file")
+    assert words("tables") == words("table")

@@ -250,3 +250,34 @@ def test_a_fetched_page_with_instructions_is_flagged_as_injection(
 
     assert done(events)["run"]["tool_calls"][0]["flagged"] == ["web_fetch"]
     assert (fake_llm.calls[1].messages[-1].content or "").startswith("WARNING")
+
+
+def search_on(monkeypatch) -> None:
+    from dawam.modules.assistant.internal import agent
+
+    monkeypatch.setattr(agent, "TOOL_SEARCH_THRESHOLD", 5)
+
+
+def find_tools_text(fake_llm) -> str:
+    return next(t.description for t in fake_llm.calls[0].tools if t.name == "find_tools")
+
+
+def test_with_tool_search_on_the_web_tools_are_sent_up_front(
+    admin_client, roles, model, fake_llm, network, monkeypatch
+):
+    search_on(monkeypatch)
+    configure(admin_client)
+
+    assert offered(roles, fake_llm) == {"web_search", "web_fetch"}
+    assert "web_search" not in find_tools_text(fake_llm)
+
+
+def test_with_web_access_off_the_web_tools_are_neither_sent_nor_named(
+    admin_client, roles, model, fake_llm, network, monkeypatch
+):
+    search_on(monkeypatch)
+    configure(admin_client, enabled=False)
+
+    assert offered(roles, fake_llm) == set()
+    assert "find_tools" in tool_names(fake_llm)
+    assert "web_" not in find_tools_text(fake_llm)
