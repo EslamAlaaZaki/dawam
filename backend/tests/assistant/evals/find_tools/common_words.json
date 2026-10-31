@@ -1,0 +1,10 @@
+[
+ {"id": "common_words-29", "group": "common_words", "query": "I would like to know what the PII in the data of this system is", "expected": ["get_pii_findings"], "top1": "get_pii_findings"},
+ {"id": "common_words-30", "group": "common_words", "query": "can you generate the file for the report with all of the gaps", "expected": ["generate_file"], "top1": "generate_file"},
+ {"id": "common_words-31", "group": "common_words", "query": "show me the profile of the column for the data and the nulls", "expected": ["get_profile"], "top1": "get_profile"},
+ {"id": "common_words-32", "group": "common_words", "query": "use the tool for the data to draw the star schema of the warehouse", "expected": ["render_diagram"], "top1": "render_diagram"},
+ {"id": "common_words-33", "group": "common_words", "query": "what is the memory of the workspace for the team and the data", "expected": ["recall"], "top1": null},
+ {"id": "common_words-34", "group": "common_words", "query": "I need to run the query on the data of the source for a check", "expected": ["run_source_query"], "top1": "run_source_query"},
+ {"id": "common_words-35", "group": "common_words", "query": "for the KPI and the data, link them to the columns of the warehouse", "expected": ["propose_kpi_links"], "top1": null},
+ {"id": "common_words-36", "group": "common_words", "query": "what are the documents that talk about the data and the policy", "expected": ["search_documents"], "top1": "search_documents"}
+]
