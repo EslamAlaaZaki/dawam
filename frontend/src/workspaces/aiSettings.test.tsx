@@ -376,4 +376,163 @@ describe("the Workspace AI settings card", () => {
       await within(card).findByText(/only models on internal providers/),
     ).toBeInTheDocument();
   });
+
+  describe("internal-only switch", () => {
+    async function ownerForm(over: Partial<WorkspaceAiSettings> = {}) {
+      const requests = renderApp(
+        backend("owner", (r) =>
+          r.path === AI
+            ? r.method === "PUT"
+              ? json(settings(over))
+              : json(settings(over))
+            : undefined,
+        ),
+        PATH,
+      );
+      await openSettings("AI");
+      const card = await screen.findByRole("form", { name: "AI settings" });
+      return { requests, card };
+    }
+
+    it("turns on after a confirmation, replacing external models in the same save", async () => {
+      const { requests, card } = await ownerForm();
+      fireEvent.click(
+        within(card).getByRole("switch", { name: "Internal-only" }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("Only internal models are offered");
+      expect(dialog).toHaveTextContent("SearXNG");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));
+
+      expect(within(card).getByRole("switch")).toBeChecked();
+      const agents = within(card).getByRole("group", { name: "Agent models" });
+      expect(
+        within(agents)
+          .getAllByRole("checkbox")
+          .map((c) => c.parentElement?.textContent),
+      ).toEqual(["Local (Local)"]);
+      fireEvent.click(within(agents).getByRole("checkbox", { name: /^Local/ }));
+      fireEvent.change(within(card).getByLabelText("Embedding model"), {
+        target: { value: "" },
+      });
+      fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText("Saved.")).toBeInTheDocument();
+      expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
+        internal_only: true,
+        agent_model_ids: [LOCAL],
+        default_agent_model_id: LOCAL,
+        light_model_ids: [],
+        embedding_model_id: null,
+      });
+    });
+
+    it("cancelling the confirmation changes nothing", async () => {
+      const { card } = await ownerForm();
+      fireEvent.click(within(card).getByRole("switch"));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(within(card).getByRole("switch")).not.toBeChecked();
+    });
+
+    it("turns off after a warning", async () => {
+      const { requests, card } = await ownerForm({
+        internal_only: true,
+        agent_models: [{ ...chosen(LOCAL, "Local", true), internal: true }],
+        light_models: [],
+        embedding_model: null,
+      });
+      fireEvent.click(within(card).getByRole("switch"));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent(
+        "Data from this Workspace may be sent to external providers.",
+      );
+      fireEvent.click(within(dialog).getByRole("button", { name: "Turn off" }));
+      fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText("Saved.")).toBeInTheDocument();
+      expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
+        internal_only: false,
+      });
+    });
+
+    it("cannot be turned on without an internal agent model, and says why", async () => {
+      const { card } = await ownerForm({ internal_agent_available: false });
+      expect(within(card).getByRole("switch")).toBeDisabled();
+      expect(card).toHaveTextContent(
+        "Register and test an internal agent model first",
+      );
+    });
+
+    it("shows a refusal inline", async () => {
+      const requests = renderApp(
+        backend("owner", (r) => {
+          if (r.path !== AI) {
+            return undefined;
+          }
+          return r.method === "PUT"
+            ? apiError(
+                422,
+                "no_internal_model",
+                "Needs an internal agent model.",
+              )
+            : json(settings());
+        }),
+        PATH,
+      );
+      void requests;
+      await openSettings("AI");
+      const card = await screen.findByRole("form", { name: "AI settings" });
+      fireEvent.click(within(card).getByRole("switch"));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));
+      fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+      expect(
+        await within(card).findByText("Needs an internal agent model."),
+      ).toBeInTheDocument();
+    });
+
+    it("is read-only for editors and for an archived Workspace", async () => {
+      renderApp(
+        backend("editor", (r) =>
+          r.path === AI ? json(settings({ internal_only: true })) : undefined,
+        ),
+        PATH,
+      );
+      await openSettings("AI");
+      const card = await screen.findByRole("region", { name: "AI settings" });
+      expect(card).toHaveTextContent("Internal-onlyOn");
+      expect(within(card).queryByRole("switch")).not.toBeInTheDocument();
+    });
+
+    it("turning it on and off again restores the saved picks", async () => {
+      const { card } = await ownerForm();
+      for (const label of ["Turn on", "Turn off"]) {
+        fireEvent.click(within(card).getByRole("switch"));
+        const dialog = await screen.findByRole("dialog");
+        fireEvent.click(within(dialog).getByRole("button", { name: label }));
+      }
+      const agents = within(card).getByRole("group", { name: "Agent models" });
+      expect(
+        within(agents).getByRole("checkbox", { name: /^Big/ }),
+      ).toBeChecked();
+      expect(within(card).getByLabelText("Embedding model")).toHaveValue(EMBED);
+    });
+
+    it("is read-only in an archived Workspace", async () => {
+      renderApp(
+        backend(
+          "owner",
+          (r) =>
+            r.path === AI ? json(settings({ internal_only: true })) : undefined,
+          "archived",
+        ),
+        PATH,
+      );
+      await openSettings("AI");
+      const card = await screen.findByRole("region", { name: "AI settings" });
+      expect(card).toHaveTextContent("Internal-onlyOn");
+      expect(within(card).queryByRole("switch")).not.toBeInTheDocument();
+    });
+  });
 });

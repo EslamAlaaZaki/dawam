@@ -12,8 +12,10 @@ import {
 } from "../api/workspaceAi";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
+import { Switch } from "../components/ui/switch";
 import { Loading } from "../shell/Loading";
 import {
   Actions,
@@ -87,6 +89,8 @@ function names(models: WorkspaceModel[]): string {
 function Chosen({ settings }: { settings: WorkspaceAiSettings }) {
   return (
     <DetailList>
+      <dt>Internal-only</dt>
+      <dd>{settings.internal_only ? "On" : "Off"}</dd>
       <dt>Agent models</dt>
       <dd>{names(settings.agent_models) || "None chosen"}</dd>
       <dt>Light models</dt>
@@ -149,14 +153,26 @@ function initial(models: WorkspaceModel[]): Pick {
   };
 }
 
+/** The choice without its external models, the default moved to what is left. */
+function internalOnlyPick(pick: Pick, models: WorkspaceModel[]): Pick {
+  const ids = pick.ids.filter(
+    (id) => models.find((m) => m.id === id)?.internal ?? true,
+  );
+  const keep = pick.defaultId !== null && ids.includes(pick.defaultId);
+  return { ids, defaultId: keep ? pick.defaultId : (ids[0] ?? null) };
+}
+
 /** What an owner may choose for a role, plus chosen models no longer offered. */
 function offered(
-  settings: WorkspaceAiSettings,
+  internalOnly: boolean,
   choices: ModelChoice[],
   chosen: WorkspaceModel[],
 ): { model: ModelChoice; stale: boolean }[] {
-  const usable = choices.filter((m) => m.internal || !settings.internal_only);
-  const stale = chosen.filter((c) => !usable.some((m) => m.id === c.id));
+  const usable = choices.filter((m) => m.internal || !internalOnly);
+  // Turning internal-only on drops the external models from the form, so none is stale then.
+  const stale = chosen.filter(
+    (c) => (c.internal || !internalOnly) && !usable.some((m) => m.id === c.id),
+  );
   return [
     ...usable.map((model) => ({ model, stale: false })),
     ...stale.map((model) => ({ model, stale: true })),
@@ -173,32 +189,57 @@ function OwnerForm({
   const save = useSetWorkspaceAiSettings(workspaceId);
   const [agent, setAgent] = useState(() => initial(settings.agent_models));
   const [light, setLight] = useState(() => initial(settings.light_models));
+  const [internalOnly, setInternalOnly] = useState(settings.internal_only);
+  const [confirming, setConfirming] = useState(false);
   const [embedding, setEmbedding] = useState(
     settings.embedding_model?.id ?? NONE,
   );
   const embeddingChoices = offered(
-    settings,
+    internalOnly,
     settings.choices.embedding,
     settings.embedding_model ? [settings.embedding_model] : [],
   );
   const [vision, setVision] = useState(settings.vision_model?.id ?? NONE);
   const visionChoices = offered(
-    settings,
+    internalOnly,
     settings.choices.vision,
     settings.vision_model ? [settings.vision_model] : [],
   );
   const [rerank, setRerank] = useState(settings.rerank_model?.id ?? NONE);
   const rerankChoices = offered(
-    settings,
+    internalOnly,
     settings.choices.rerank,
     settings.rerank_model ? [settings.rerank_model] : [],
   );
+
+  /** Applies the switch to the form; the new value is saved with the next Save. Turning it
+   * on lets go of every external model, so the member picks internal ones in the same save. */
+  function applyInternalOnly(next: boolean) {
+    setInternalOnly(next);
+    setConfirming(false);
+    if (!next) {
+      // Back to what is saved, so models dropped by an earlier "on" come back.
+      setAgent(initial(settings.agent_models));
+      setLight(initial(settings.light_models));
+      setEmbedding(settings.embedding_model?.id ?? NONE);
+      setVision(settings.vision_model?.id ?? NONE);
+      setRerank(settings.rerank_model?.id ?? NONE);
+      return;
+    }
+    setAgent((p) => internalOnlyPick(p, settings.agent_models));
+    setLight((p) => internalOnlyPick(p, settings.light_models));
+    const internalId = (id: string, model: WorkspaceModel | null) =>
+      model?.id === id && !model.internal ? NONE : id;
+    setEmbedding((id) => internalId(id, settings.embedding_model));
+    setVision((id) => internalId(id, settings.vision_model));
+    setRerank((id) => internalId(id, settings.rerank_model));
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     save
       .mutateAsync({
-        internal_only: settings.internal_only,
+        internal_only: internalOnly,
         data_sharing_level: settings.data_sharing_level,
         agent_model_ids: agent.ids,
         default_agent_model_id: agent.defaultId,
@@ -223,17 +264,68 @@ function OwnerForm({
       <h3 id="ai-title" className={h3Classes}>
         AI settings
       </h3>
+      <section aria-label="Internal-only" className="flex flex-col gap-2">
+        <label className={checkLabelClasses}>
+          <Switch
+            checked={internalOnly}
+            disabled={!internalOnly && !settings.internal_agent_available}
+            onCheckedChange={() => setConfirming(true)}
+          />
+          Internal-only
+        </label>
+        {!internalOnly && !settings.internal_agent_available ? (
+          <Hint>Register and test an internal agent model first.</Hint>
+        ) : (
+          <Hint>
+            Restricts the Workspace to models on internal providers. Switching
+            it asks first; the change is saved with Save.
+          </Hint>
+        )}
+      </section>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={
+          internalOnly ? "Turn internal-only off?" : "Turn internal-only on?"
+        }
+        description={
+          internalOnly ? (
+            "Data from this Workspace may be sent to external providers."
+          ) : (
+            <>
+              Only internal models are offered and accepted. External models
+              chosen now are removed from the form, so choose internal ones
+              before you save. An external embedding model is removed too: if
+              you choose no internal one, document search matches text only. A
+              new embedding model embeds indexed documents again in the
+              background, and search matches text only until that finishes. Web
+              search uses only the internal provider (SearXNG), or none when the
+              admin set none for internal-only Workspaces.
+            </>
+          )
+        }
+        confirmLabel={internalOnly ? "Turn off" : "Turn on"}
+        onConfirm={() => applyInternalOnly(!internalOnly)}
+      />
       <RoleModels
         role="agent"
         title="Agent models"
-        rows={offered(settings, settings.choices.agent, settings.agent_models)}
+        rows={offered(
+          internalOnly,
+          settings.choices.agent,
+          settings.agent_models,
+        )}
         pick={agent}
         onChange={setAgent}
       />
       <RoleModels
         role="light"
         title="Light models"
-        rows={offered(settings, settings.choices.light, settings.light_models)}
+        rows={offered(
+          internalOnly,
+          settings.choices.light,
+          settings.light_models,
+        )}
         pick={light}
         onChange={setLight}
         none="None chosen: the light-role features are off."
@@ -307,7 +399,7 @@ function OwnerForm({
         model gets the passages only when the data-sharing level allows
         documents.
       </Hint>
-      {settings.internal_only && (
+      {internalOnly && (
         <Hint>
           The Workspace is internal-only: only internal models are offered.
         </Hint>
