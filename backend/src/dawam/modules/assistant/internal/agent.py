@@ -180,7 +180,9 @@ def _score(query: str, specs: Sequence[ToolSpec]) -> list[tuple[float, ToolSpec]
         weight[word] = math.sqrt(math.log(1 + (len(specs) - have + 0.5) / (have + 0.5)))
     return [
         (
-            sum(weight[w] * (NAME_WEIGHT * (w in name) + (w in description)) for w in wanted),
+            sum(
+                weight[w] * (NAME_WEIGHT * (w in name) + (w in description)) for w in sorted(wanted)
+            ),
             spec,
         )
         for spec, name, description in zip(specs, names, descriptions, strict=True)

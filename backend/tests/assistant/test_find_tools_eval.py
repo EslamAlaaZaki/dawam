@@ -43,3 +43,6 @@ def test_exact_names_are_found_first_and_the_rates_are_reported():
             print(f"  miss: {r.id} -> {list(r.found)}")
     for group in ("exact_name", "exact_names"):
         assert report.top1(group) == 1.0 and report.top5(group) == 1.0
+    # floors at the rates measured for #528: a ranking regression fails here
+    assert report.top1("paraphrase") >= 0.846 and report.top5("paraphrase") >= 0.929
+    assert report.top1("common_words") >= 0.909 and report.top5("common_words") >= 0.933
