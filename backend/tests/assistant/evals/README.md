@@ -3,6 +3,7 @@
 | Set | Cases | Runs in CI (recorded fakes) | Test |
 |---|---|---|---|
 | Tool selection | `tool_selection/*.json` | yes | `tests/assistant/test_tool_selection_eval.py` |
+| `find_tools` retrieval | `find_tools/*.json` | yes (no model at all) | `tests/assistant/test_find_tools_eval.py` |
 | Safety / prompt injection | `safety/*.json` | yes | `tests/assistant/test_safety_eval.py` |
 | DW generation | `dw_generation/*.json` | yes (reference), real model opt-in | `tests/assistant/test_dw_generation_eval.py` |
 | RAG | `tests/rag_eval/` | yes | `tests/rag_eval/test_rag_eval.py` |

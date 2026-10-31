@@ -26,6 +26,7 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+import math
 import re
 import time
 from collections.abc import Callable, Collection, Iterator, Sequence
@@ -160,6 +161,34 @@ def _words(text: str) -> set[str]:
     return {_stem(w) for w in re.split(r"[^a-z0-9]+", text.lower()) if len(w) > 2}
 
 
+NAME_WEIGHT = 3
+"""A query word found in a tool's name counts this many times a hit in its description."""
+
+
+def _score(query: str, specs: Sequence[ToolSpec]) -> list[tuple[float, ToolSpec]]:
+    """Each of ``specs`` scored against ``query`` by an IDF-weighted word overlap (the
+    BM25 idf, damped by a square root, over ``specs``): a word in most tools ("the", "data",
+    "tool") weighs little, a word in one or two weighs a lot. Plain BM25 (term-frequency
+    saturation and length normalisation) scored worse on the retrieval set (#528): a tool
+    description is a few words, not a document."""
+    wanted = _words(query)
+    names = [_words(spec.name) for spec in specs]
+    descriptions = [_words(spec.description) for spec in specs]
+    weight = {}
+    for word in wanted:
+        have = sum(1 for n, d in zip(names, descriptions, strict=True) if word in n or word in d)
+        weight[word] = math.sqrt(math.log(1 + (len(specs) - have + 0.5) / (have + 0.5)))
+    return [
+        (
+            sum(
+                weight[w] * (NAME_WEIGHT * (w in name) + (w in description)) for w in sorted(wanted)
+            ),
+            spec,
+        )
+        for spec, name, description in zip(specs, names, descriptions, strict=True)
+    ]
+
+
 def _named(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
     """The ``candidates`` that ``query`` names exactly, in the order named."""
     by_name = {spec.name: spec for spec in candidates}
@@ -169,17 +198,11 @@ def _named(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
 
 def search_tools(query: str, candidates: Sequence[ToolSpec]) -> list[ToolSpec]:
     """The ``candidates`` that best match ``query``, best first: the ones it names exactly
-    (in the order named), then the scored ones (name hits count double)."""
+    (in the order named), then the IDF-scored ones (ties by name, no zero scores)."""
     named = _named(query, candidates)
     skip = {spec.name for spec in named}
-    wanted = _words(query)
-    scored: list[tuple[int, ToolSpec]] = []
-    for spec in candidates:
-        if spec.name in skip:
-            continue
-        score = 2 * len(wanted & _words(spec.name)) + len(wanted & _words(spec.description))
-        if score:
-            scored.append((score, spec))
+    rest = [spec for spec in candidates if spec.name not in skip]
+    scored = [(score, spec) for score, spec in _score(query, rest) if score > 0]
     scored.sort(key=lambda pair: (-pair[0], pair[1].name))
     return [*named, *(spec for _, spec in scored)][:FIND_TOOLS_LIMIT]
 

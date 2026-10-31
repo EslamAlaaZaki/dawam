@@ -1,0 +1,258 @@
+[
+ {
+  "id": "paraphrase-01",
+  "group": "paraphrase",
+  "query": "check the warehouse design",
+  "expected": [
+   "evaluate_dw"
+  ],
+  "top1": "evaluate_dw"
+ },
+ {
+  "id": "paraphrase-02",
+  "group": "paraphrase",
+  "query": "map source columns to the warehouse",
+  "expected": [
+   "draft_mappings"
+  ],
+  "top1": "draft_mappings"
+ },
+ {
+  "id": "paraphrase-03",
+  "group": "paraphrase",
+  "query": "build the star schema",
+  "expected": [
+   "generate_dw_schema"
+  ],
+  "top1": "generate_dw_schema"
+ },
+ {
+  "id": "paraphrase-04",
+  "group": "paraphrase",
+  "query": "who uses this column downstream",
+  "expected": [
+   "get_lineage"
+  ],
+  "top1": "get_lineage"
+ },
+ {
+  "id": "paraphrase-05",
+  "group": "paraphrase",
+  "query": "find personal data",
+  "expected": [
+   "get_pii_findings"
+  ],
+  "top1": "get_pii_findings"
+ },
+ {
+  "id": "paraphrase-06",
+  "group": "paraphrase",
+  "query": "make an excel file",
+  "expected": [
+   "generate_file"
+  ],
+  "top1": "generate_file"
+ },
+ {
+  "id": "paraphrase-07",
+  "group": "paraphrase",
+  "query": "draw a diagram of the facts and dimensions",
+  "expected": [
+   "render_diagram"
+  ],
+  "top1": "render_diagram"
+ },
+ {
+  "id": "paraphrase-08",
+  "group": "paraphrase",
+  "query": "how healthy is the design, what is the grade",
+  "expected": [
+   "get_score"
+  ],
+  "top1": "get_score"
+ },
+ {
+  "id": "paraphrase-09",
+  "group": "paraphrase",
+  "query": "what changed between the two snapshots",
+  "expected": [
+   "get_snapshot_diff"
+  ],
+  "top1": "get_snapshot_diff"
+ },
+ {
+  "id": "paraphrase-10",
+  "group": "paraphrase",
+  "query": "suggest KPIs for this system",
+  "expected": [
+   "suggest_kpis"
+  ],
+  "top1": "suggest_kpis"
+ },
+ {
+  "id": "paraphrase-11",
+  "group": "paraphrase",
+  "query": "run a SQL check on the live source",
+  "expected": [
+   "run_source_query"
+  ],
+  "top1": "run_source_query"
+ },
+ {
+  "id": "paraphrase-12",
+  "group": "paraphrase",
+  "query": "look up what the team decided before",
+  "expected": [
+   "recall"
+  ],
+  "top1": null
+ },
+ {
+  "id": "paraphrase-13",
+  "group": "paraphrase",
+  "query": "which tables are related to each other",
+  "expected": [
+   "get_relationships"
+  ],
+  "top1": "get_relationships"
+ },
+ {
+  "id": "paraphrase-14",
+  "group": "paraphrase",
+  "query": "analyse the uploaded csv",
+  "expected": [
+   "query_file"
+  ],
+  "top1": "query_file"
+ },
+ {
+  "id": "common_words-15",
+  "group": "common_words",
+  "query": "search the web for the definition of the KPI",
+  "expected": [
+   "web_search"
+  ],
+  "top1": "web_search"
+ },
+ {
+  "id": "common_words-16",
+  "group": "common_words",
+  "query": "I want to find out what the data in the warehouse is for and the design of it",
+  "expected": [
+   "evaluate_dw"
+  ],
+  "top1": null
+ },
+ {
+  "id": "common_words-17",
+  "group": "common_words",
+  "query": "please show me the list of all the files for the system",
+  "expected": [
+   "list_files"
+  ],
+  "top1": "list_files"
+ },
+ {
+  "id": "common_words-18",
+  "group": "common_words",
+  "query": "can you use the tool to check and validate the mappings for the data",
+  "expected": [
+   "run_validation"
+  ],
+  "top1": "run_validation"
+ },
+ {
+  "id": "common_words-19",
+  "group": "common_words",
+  "query": "read the page of the web for the data and the text",
+  "expected": [
+   "web_fetch"
+  ],
+  "top1": null
+ },
+ {
+  "id": "common_words-20",
+  "group": "common_words",
+  "query": "the lineage of the column for the data in the warehouse",
+  "expected": [
+   "get_lineage"
+  ],
+  "top1": "get_lineage"
+ },
+ {
+  "id": "common_words-21",
+  "group": "common_words",
+  "query": "to propose the fix for the failed check of the score",
+  "expected": [
+   "propose_check_fix"
+  ],
+  "top1": "propose_check_fix"
+ },
+ {
+  "id": "exact_name-22",
+  "group": "exact_name",
+  "query": "get_lineage",
+  "expected": [
+   "get_lineage"
+  ],
+  "top1": "get_lineage"
+ },
+ {
+  "id": "exact_name-23",
+  "group": "exact_name",
+  "query": "evaluate_dw",
+  "expected": [
+   "evaluate_dw"
+  ],
+  "top1": "evaluate_dw"
+ },
+ {
+  "id": "exact_name-24",
+  "group": "exact_name",
+  "query": "draft_mappings",
+  "expected": [
+   "draft_mappings"
+  ],
+  "top1": "draft_mappings"
+ },
+ {
+  "id": "exact_name-25",
+  "group": "exact_name",
+  "query": "load generate_file please",
+  "expected": [
+   "generate_file"
+  ],
+  "top1": "generate_file"
+ },
+ {
+  "id": "exact_names-26",
+  "group": "exact_names",
+  "query": "get_lineage and evaluate_dw",
+  "expected": [
+   "get_lineage",
+   "evaluate_dw"
+  ],
+  "top1": "get_lineage"
+ },
+ {
+  "id": "exact_names-27",
+  "group": "exact_names",
+  "query": "run_validation, get_score, explain_check",
+  "expected": [
+   "run_validation",
+   "get_score",
+   "explain_check"
+  ],
+  "top1": "run_validation"
+ },
+ {
+  "id": "exact_names-28",
+  "group": "exact_names",
+  "query": "I need render_diagram and suggest_kpis",
+  "expected": [
+   "render_diagram",
+   "suggest_kpis"
+  ],
+  "top1": "render_diagram"
+ }
+]
