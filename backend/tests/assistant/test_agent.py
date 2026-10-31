@@ -975,6 +975,35 @@ def test_exact_names_come_first_in_the_order_given_then_the_scored_matches():
     assert [s.name for s in found[:3]] == ["web_fetch", "web_search", "zeta_report"]
 
 
+def test_common_words_do_not_outrank_the_meaningful_ones():
+    for query, first in [
+        ("lineage", "get_lineage"),
+        ("the and for lineage of the and for", "get_lineage"),
+        ("the and for the and for pii findings", "get_pii_findings"),
+        ("for the and a tool to see the and for snapshot diff", "get_snapshot_diff"),
+    ]:
+        found = agent_module.search_tools(query, real_specs())
+
+        assert found[0].name == first, query
+
+
+def test_a_word_in_few_tools_outweighs_a_word_in_many():
+    def spec(name: str, description: str) -> ToolSpec:
+        return ToolSpec(name, description, {"type": "object", "properties": {}})
+
+    found = agent_module.search_tools(
+        "data rare",
+        [
+            spec("aaa", "the data data"),
+            spec("bbb", "the data"),
+            spec("ccc", "the data"),
+            spec("ddd", "the rare"),
+        ],
+    )
+
+    assert found[0].name == "ddd"
+
+
 def test_word_forms_match_both_ways():
     words = agent_module._words
     assert words("searching searches searched") == words("search")
