@@ -110,7 +110,12 @@ FIND_TOOLS = ToolSpec(
     "to call right away.",
     {
         "type": "object",
-        "properties": {"query": {"type": "string", "description": "What you want to do."}},
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "What you want to do, or one or more exact tool names.",
+            }
+        },
         "required": ["query"],
     },
 )
