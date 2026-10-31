@@ -450,6 +450,21 @@ def test_changes_are_audited(roles: RoleClients, app: FastAPI, fake_llm):
     assert [i["verb"] for i in feed].count("workspace.ai_settings_changed") == 1
 
 
+def test_switching_internal_only_is_audited(roles: RoleClients, app: FastAPI, fake_llm):
+    local = register(roles.client("admin"), "agent-local", internal=True)
+    owner = roles.client("owner")
+    owner.put(settings_path(roles), json=body(local, internal_only=False))
+    owner.put(settings_path(roles), json=body(local, internal_only=True))
+
+    entries = AuditService(app.state.engine).list(
+        roles.workspace_id, entity_type="workspace_ai_settings", entity_id=str(roles.workspace_id)
+    )
+
+    assert any(
+        e.old.get("internal_only") is False and e.new.get("internal_only") is True for e in entries
+    )
+
+
 # -- the data-sharing policy -----------------------------------------------------------
 
 
