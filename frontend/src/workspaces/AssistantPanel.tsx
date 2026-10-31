@@ -1035,7 +1035,7 @@ export function AssistantPanel({
         {canAsk && !archived && (
           <form onSubmit={onSubmit} className="px-4 pt-1 pb-3">
             {/* One box, like a message being written: the text on top, its tools below. */}
-            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-xl border border-border-strong bg-surface-raised transition-colors duration-120 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-subtle">
+            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-xl border border-border-strong bg-surface-raised p-1">
               <Textarea
                 ref={input}
                 aria-label="Ask the assistant"
@@ -1057,9 +1057,9 @@ export function AssistantPanel({
                 }}
                 rows={1}
                 maxLength={8000}
-                className="max-h-48 min-h-11 resize-none border-0 bg-transparent px-3.5 pt-3 pb-1 focus-visible:outline-none"
+                className="max-h-48 min-h-11 resize-none rounded-lg border-0 bg-transparent px-2.5 pt-2 pb-1"
               />
-              <div className="flex items-center gap-1 px-2 pb-2">
+              <div className="flex items-center gap-1 px-1 pt-1">
                 {models.length > 0 && (
                   <ModelPicker
                     models={models}
