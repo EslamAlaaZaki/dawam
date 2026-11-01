@@ -14,6 +14,7 @@ import re
 from .fetch import (
     MAX_FETCH_BYTES,
     MAX_TEXT_CHARS,
+    MAX_TITLE_CHARS,
     MAX_URL_LENGTH,
     USER_AGENT,
     FetchedPage,
@@ -25,7 +26,6 @@ from .network import HttpReply, HttpRequest, Network, NetworkError
 READER = "jina"
 READER_URL = "https://r.jina.ai/"
 READER_TIMEOUT_SECONDS = 30.0
-MAX_TITLE_CHARS = 300
 NOISE_HEADERS = {
     "X-Retain-Images": "none",
     "X-Md-Link-Style": "discarded",
@@ -46,7 +46,13 @@ def _failed(reason: str) -> FetchError:
     return FetchError("reader_failed", f"The page could not be read through Jina: {reason}.")
 
 
-def read_through_jina(network: Network, url: str, *, api_key: str | None = None) -> FetchedPage:
+def read_through_jina(
+    network: Network,
+    url: str,
+    *,
+    api_key: str | None = None,
+    timeout: float = READER_TIMEOUT_SECONDS,
+) -> FetchedPage:
     """One read of ``url``, never retried; ``reader_failed`` when it gave no page."""
     headers = {"User-Agent": USER_AGENT, "Accept": "text/plain", **NOISE_HEADERS}
     if api_key:
@@ -57,7 +63,7 @@ def read_through_jina(network: Network, url: str, *, api_key: str | None = None)
                 "GET",
                 f"{READER_URL}{url}",
                 headers=headers,
-                timeout=READER_TIMEOUT_SECONDS,
+                timeout=timeout,
                 max_bytes=MAX_FETCH_BYTES,
             )
         )

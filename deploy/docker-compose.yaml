@@ -4,6 +4,7 @@
 #   mailpit                           SMTP server that catches every email (web UI :8025)
 #   searxng                           web search for the assistant (http://searxng:8080)
 #   source-db (profile "demo")        a small seeded PostgreSQL source to try Connections on
+#   crawl4ai (profile "crawl4ai")     a browser for pages web fetch cannot read, locked down
 #
 # From the repository root:
 #   cp .env.example .env              # set DAWAM_ENCRYPTION_KEY (and the first admin)
@@ -74,6 +75,11 @@ services:
 
   app:
     <<: *dawam
+    # crawl4ai-internal: the one way to reach Crawl4AI. Only `app` joins it: web fetch runs in
+    # chat, never in a background job.
+    networks:
+      - default
+      - crawl4ai-internal
     healthcheck:
       test:
         - CMD
@@ -183,6 +189,104 @@ services:
       retries: 6
     restart: unless-stopped
 
+  # --- Browser for web fetch (profile "crawl4ai") --------------------------------
+  # For pages web fetch cannot read (ADR 0008, #545). Set DAWAM_CRAWL4AI_URL and
+  # DAWAM_CRAWL4AI_API_TOKEN in .env; deploy/README.md has the rest. A page's JavaScript runs
+  # here, so it is on the internal network only, away from the database, SearXNG, Ollama and
+  # the rest: its only way out is egress-filter. Update crawl4ai/config.yml with the image.
+
+  crawl4ai:
+    image: unclecode/crawl4ai:0.9.5@sha256:0b05666882bfb67f45d559a5b827839c54127b74aedd723f8ab338a3571b5fc9
+    profiles: ["crawl4ai"]
+    environment:
+      # Empty: the server stays on its own loopback and DAWAM cannot reach it.
+      CRAWL4AI_API_TOKEN: ${DAWAM_CRAWL4AI_API_TOKEN:-}
+      # Crawl4AI's browser always goes through its own proxy, which refuses internal addresses
+      # and asks this upstream for the address it checked.
+      CRAWL4AI_UPSTREAM_PROXY: http://172.30.127.10:3128
+    volumes:
+      - ./crawl4ai/config.yml:/app/config.yml:ro
+      - ./crawl4ai/resolv.conf:/etc/resolv.conf:ro
+    networks:
+      - crawl4ai-internal
+    depends_on:
+      - egress-filter
+      - crawl4ai-dns
+    user: appuser
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/lib/redis:uid=999,gid=999,mode=0700
+      - /var/lib/crawl4ai/outputs:uid=999,gid=999,mode=0700
+      - /home/appuser/.crawl4ai:uid=999,gid=999,mode=0700
+      - /home/appuser/.cache/url_seeder:uid=999,gid=999,mode=0700
+      - /home/appuser/.gunicorn:uid=999,gid=999,mode=0700
+    shm_size: 1gb
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          pids: 512
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11235/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    restart: unless-stopped
+
+  # What refuses internal addresses for crawl4ai; crawl4ai/squid.conf.
+  egress-filter:
+    # No stable channel is published for a supported Squid: _edge, frozen by the digest.
+    image: ubuntu/squid:7.2-26.04_edge@sha256:74a4935c1329cde41522d2fbc8351101b9ac3be0b5129c49e1803ff6df589027
+    profiles: ["crawl4ai"]
+    # Squid itself: the image's service manager needs to write to the root file system.
+    entrypoint: ["/usr/sbin/squid-gnutls", "-f", "/etc/squid/squid.conf", "-NYC", "-d", "1"]
+    volumes:
+      - ./crawl4ai/squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      crawl4ai-internal:
+        ipv4_address: 172.30.127.10
+      crawl4ai-egress: {}
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run:uid=584792,gid=584792,mode=0700
+      - /var/log/squid:uid=584792,gid=584792,mode=0700
+      - /var/spool/squid:uid=584792,gid=584792,mode=0700
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    restart: unless-stopped
+
+  # Resolves outside names for crawl4ai; crawl4ai/Corefile.
+  crawl4ai-dns:
+    image: coredns/coredns:1.15.0@sha256:0a9d8c8ddf34347eb59aad9a8784f0710de88d6d112726d11d271f9bc6daca26
+    profiles: ["crawl4ai"]
+    volumes:
+      - ./crawl4ai/Corefile:/Corefile:ro
+    networks:
+      crawl4ai-internal:
+        ipv4_address: 172.30.127.11
+      crawl4ai-egress: {}
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    restart: unless-stopped
+
   # --- Demo source database (profile "demo") ------------------------------------
   # A small shop in schema `sales`. Add a Connection: PostgreSQL, host source-db,
   # port 5432, database shop, user reader, password reader (read-only).
@@ -212,6 +316,17 @@ networks:
         # and DAWAM_FORWARDED_ALLOW_IPS together.
         - subnet: 172.30.126.0/24
           ip_range: 172.30.126.128/25
+  # No route out: crawl4ai reaches only `app`, egress-filter and crawl4ai-dns. If this clashes
+  # with a network on your host, change it together with the two fixed addresses above,
+  # CRAWL4AI_UPSTREAM_PROXY, crawl4ai/resolv.conf and crawl4ai/squid.conf.
+  crawl4ai-internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.127.0/24
+          ip_range: 172.30.127.128/25
+  # The way out, for egress-filter and crawl4ai-dns only.
+  crawl4ai-egress: {}
 
 volumes:
   db-data:

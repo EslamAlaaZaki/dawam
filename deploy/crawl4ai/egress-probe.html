@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- A hostile page, for the by-hand check in deploy/README.md. verify-egress.py holds the list
+     of targets, passes it in the query string and reads what each request got.
+     ?targets=<base64 JSON>: fetch each one. ?location=<url>: navigate there. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DAWAM egress probe</title>
+  </head>
+  <body>
+    <h1>DAWAM egress probe</h1>
+    <p>This page asks the browser for internal addresses. None of them may answer.</p>
+    <script>
+      const query = new URLSearchParams(location.search);
+      for (const target of JSON.parse(atob(query.get("targets") || "W10="))) {
+        fetch(target, { mode: "no-cors" }).catch(() => {});
+      }
+      if (query.get("location")) {
+        location = query.get("location");
+      }
+    </script>
+  </body>
+</html>

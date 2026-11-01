@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.server
 import threading
+import time
 
 import pytest
 
@@ -15,6 +16,7 @@ from dawam.modules.web import (
     fetch_page,
     is_public_address,
 )
+from dawam.modules.web.internal.network import _read
 from tests.web.fakes import FakeNetwork, reply
 
 PUBLIC = "93.184.215.14"
@@ -459,6 +461,109 @@ def test_a_hop_spends_at_most_twenty_seconds(monkeypatch):
 
     assert [r.address for r in network.sent] == ["8.8.8.8", "8.8.4.4"]
     assert sum(r.timeout for r in network.sent) <= 20.0
+
+
+def test_a_deadline_shortens_a_hop_and_running_out_is_a_timeout_a_reader_may_follow():
+    clock = [0.0]
+
+    def slow(request):
+        clock[0] += request.timeout
+        raise SLOW
+
+    network = FakeNetwork(hosts={"multi.example.com": ["8.8.8.8", "8.8.4.4", "1.1.1.1"]})
+    network.pages[URL] = slow
+
+    with pytest.raises(FetchError) as raised:
+        fetch_page(network, URL, deadline=14.0, clock=lambda: clock[0])
+
+    assert [r.timeout for r in network.sent] == [10.0, 4.0]
+    assert (raised.value.code, raised.value.reader_may_try) == ("timeout", True)
+
+
+def test_a_redirect_past_the_deadline_sends_nothing_more():
+    clock = [0.0]
+    first = "https://a.example.com/start"
+    second = "https://a.example.com/next"
+
+    def moved(request):
+        clock[0] = 45.0
+        return reply("", 302, {"location": second})
+
+    network = FakeNetwork(hosts={"a.example.com": ["8.8.8.8"]}, pages={first: moved})
+
+    with pytest.raises(FetchError) as raised:
+        fetch_page(network, first, deadline=45.0, clock=lambda: clock[0])
+
+    assert [r.url for r in network.sent] == [first]
+    assert (raised.value.code, raised.value.reader_may_try) == ("timeout", True)
+
+
+def test_a_slow_body_cannot_outlast_the_whole_exchanges_timeout():
+    class Silence:
+        def __init__(self):
+            self.timeouts = []
+
+        def fileno(self):
+            return 7
+
+        def settimeout(self, value):
+            self.timeouts.append(value)
+
+    class Trickle:
+        def read1(self, _size):
+            return b"x"
+
+    with pytest.raises(TimeoutError):
+        _read(Trickle(), 10**9, time.monotonic() + 0.05, Silence())
+
+
+class _SlowServer:
+    """A real local server: its headers come after ``pause`` seconds, its body after as long."""
+
+    def __init__(self, pause: float) -> None:
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                time.sleep(pause)
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                time.sleep(pause)
+                self.wfile.write(b"ok")
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+
+    def __enter__(self) -> str:
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{self.server.server_address[1]}/"
+
+    def __exit__(self, *_exc) -> None:
+        self.server.shutdown()
+
+
+def test_by_default_the_timeout_is_each_wait_as_for_search_providers_and_jina():
+    with _SlowServer(0.3) as url:
+        got = SystemNetwork().send(HttpRequest("GET", url, timeout=0.5))
+
+    assert got.body == b"ok"  # 0.6 s in all, over the 0.5 s timeout: each wait was within it
+
+
+def test_asked_for_the_timeout_is_the_whole_exchange():
+    with _SlowServer(0.3) as url, pytest.raises(NetworkError) as caught:
+        SystemNetwork().send(HttpRequest("GET", url, timeout=0.5, whole_exchange=True))
+
+    assert caught.value.timeout
+
+
+def test_only_web_fetch_asks_for_the_whole_exchange():
+    network = site(**{"https://docs.example.com/p": reply("<p>x</p>")})
+
+    fetch_page(network, "https://docs.example.com/p")
+
+    assert network.sent[0].whole_exchange
+    assert not HttpRequest("GET", "https://example.com").whole_exchange
 
 
 # -- page furniture and thin pages (#547) ---------------------------------------------------

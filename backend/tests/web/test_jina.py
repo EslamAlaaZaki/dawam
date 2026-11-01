@@ -42,6 +42,7 @@ def test_the_request_is_a_get_with_the_noise_headers_and_a_30_second_timeout():
     [sent] = network.sent
     assert (sent.method, sent.url) == ("GET", READER)
     assert sent.timeout == 30.0
+    assert not sent.whole_exchange
     assert sent.address is None
     assert sent.headers["Accept"] == "text/plain"
     assert sent.headers["X-Retain-Images"] == "none"

@@ -10,19 +10,26 @@ picked for the others. Every query and every fetch is audited (channel ``ai``) b
 leaves. API keys are sealed with ``SecretBox`` and never returned: callers get
 ``has_api_key``.
 
-A page DAWAM cannot read itself goes to Jina Reader, an outside service, when the fetch says
-it may (``reader_may_try``), or when the page is empty or thin (#547: the reader's text is used
-only if it is longer and not a block page), the URL has no query string and the Workspace is not
-internal-only. There is no setting for it beyond the web access switch; the optional key
-(``DAWAM_JINA_API_KEY``) comes from the deployment and is only ever sent to Jina.
+A page DAWAM cannot read itself goes down a chain of readers when the fetch says it may
+(``reader_may_try``), or when the page is empty or thin (#547: a reader's text is used only if
+it is longer and not a block page); the first read that is used stops the chain:
+
+- Crawl4AI (#545), a browser on the installation's own locked-down network, when
+  ``DAWAM_CRAWL4AI_URL`` is set. Internal-only Workspaces and URLs with a query string may use it.
+- Jina Reader, an outside service, only when the URL has no query string and the Workspace is
+  not internal-only. The optional key (``DAWAM_JINA_API_KEY``) is only ever sent to Jina.
+
+There is no setting for either beyond the web access switch. One fetch spends at most
+``FETCH_BUDGET_SECONDS`` across all its steps.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
+from time import monotonic
 from urllib.parse import urlsplit, urlunsplit
 
 import sqlalchemy as sa
@@ -34,8 +41,12 @@ from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
 
+from .internal.crawl4ai import READER as CRAWL4AI_READER
+from .internal.crawl4ai import read_through_crawl4ai
 from .internal.fetch import FetchedPage, FetchError, fetch_page, looks_blocked
-from .internal.jina import READER, read_through_jina
+from .internal.jina import READER as JINA_READER
+from .internal.jina import READER_TIMEOUT_SECONDS as JINA_TIMEOUT_SECONDS
+from .internal.jina import read_through_jina
 from .internal.network import Network, SystemNetwork
 from .internal.providers import (
     KINDS,
@@ -56,6 +67,12 @@ TEST_QUERY = "data warehouse star schema"
 AUDIT_SEARCH = "web_search"
 AUDIT_FETCH = "web_fetch"
 MAX_AUDIT_URL_CHARS = 500
+FETCH_BUDGET_SECONDS = 45.0
+"""One ``fetch``, across its own fetch and every reader (#545)."""
+MIN_JINA_SECONDS = 5.0
+"""Jina is skipped with less than this left: it could not finish."""
+MIN_CRAWL4AI_SECONDS = 25.0
+"""Crawl4AI is skipped with less than this left: a page holds it for up to 20 s plus a 4 s delay."""
 
 
 @dataclass(frozen=True)
@@ -120,6 +137,8 @@ class WebService:
         network: Network | None = None,
         internal_only: Callable[[uuid.UUID], bool] = lambda _workspace_id: True,
         jina_api_key: str | None = None,
+        crawl4ai_url: str | None = None,
+        crawl4ai_api_token: str | None = None,
     ) -> None:
         self._engine = engine
         self._box = SecretBox(encryption_key)
@@ -127,6 +146,8 @@ class WebService:
         self._network = network or SystemNetwork()
         self._internal_only = internal_only
         self._jina_api_key = jina_api_key
+        self._crawl4ai_url = crawl4ai_url
+        self._crawl4ai_api_token = crawl4ai_api_token
 
     # -- admin -------------------------------------------------------------------------
 
@@ -368,38 +389,51 @@ class WebService:
     def fetch(self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str) -> FetchedPage:
         if not self.fetch_available(workspace_id):
             raise ApiError(403, "web_fetch_off", "Web fetch is not available here.")
+        deadline = monotonic() + FETCH_BUDGET_SECONDS
         self._audit_fetch(actor_id, workspace_id, url)
         try:
-            page = fetch_page(self._network, url)
+            page = fetch_page(self._network, url, deadline=deadline, clock=monotonic)
         except FetchError as exc:
-            if exc.reader_may_try and (for_reader := self._reader_url(workspace_id, url)):
-                read = self._read_through_reader(actor_id, workspace_id, for_reader)
+            if exc.reader_may_try:
+                read = next(self._reader_reads(actor_id, workspace_id, url, deadline), None)
                 if read is not None:
                     return read
             status = 403 if exc.code == "address_blocked" else 502
             raise ApiError(status, exc.code, exc.message) from None
         if page.text and not page.thin:
             return page
-        # Empty or thin (#547): the reader gets the same chance as after an error, and the
-        # longer text wins. Nothing is lost: a failed or shorter read leaves DAWAM's own text.
-        for_reader = self._reader_url(workspace_id, url)
-        if for_reader is None:
-            return page
-        read = self._read_through_reader(actor_id, workspace_id, for_reader)
-        if (
-            read is not None
-            and len(read.text) > len(page.text)
-            and not (page.text and looks_blocked(read.title, read.text))
-        ):
-            return read  # a thin page's own text is not replaced by a block page
+        # Empty or thin (#547): the readers get the same chance as after an error, and the
+        # longer text wins. Nothing is lost: failed or shorter reads leave DAWAM's own text.
+        for read in self._reader_reads(actor_id, workspace_id, url, deadline):
+            if len(read.text) > len(page.text) and not (
+                page.text and looks_blocked(read.title, read.text)
+            ):
+                return read  # a thin page's own text is not replaced by a block page
         if not page.text:
             raise ApiError(502, "empty_page", "The page has no text to read.")
         return page
 
-    def _reader_url(self, workspace_id: uuid.UUID, url: str) -> str | None:
-        """What may be sent to the reader, ``None``: nothing may. A query string can carry a
-        token or data; a fragment is not part of the address. Internal-only and the switch
-        are read again here, right before the call, not when the fetch began."""
+    def _reader_reads(
+        self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str, deadline: float
+    ) -> Iterator[FetchedPage]:
+        """What each reader in the chain could read. One at a time: the caller stops the chain
+        by not asking for the next, so nothing further is audited or sent."""
+        if (read := self._read_through_crawl4ai(actor_id, workspace_id, url, deadline)) is not None:
+            yield read
+        if (read := self._read_through_jina(actor_id, workspace_id, url, deadline)) is not None:
+            yield read
+
+    def _crawl4ai_target(self, workspace_id: uuid.UUID, url: str) -> str | None:
+        """What may be sent to Crawl4AI, ``None``: nothing may. It stays on this network, so
+        the query string may too; the switch is read again here, right before the call."""
+        if self._crawl4ai_url is None or not self.fetch_available(workspace_id):
+            return None
+        return urlunsplit(urlsplit(url.strip())._replace(fragment=""))
+
+    def _jina_target(self, workspace_id: uuid.UUID, url: str) -> str | None:
+        """What may be sent to Jina, ``None``: nothing may. A query string can carry a token or
+        data; a fragment is not part of the address. Internal-only and the switch are read
+        again here, right before the call, not when the fetch began."""
         parts = urlsplit(url.strip())
         if parts.query:
             return None
@@ -407,13 +441,44 @@ class WebService:
             return None
         return urlunsplit(parts._replace(fragment=""))
 
-    def _read_through_reader(
-        self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str
+    def _read_through_crawl4ai(
+        self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str, deadline: float
     ) -> FetchedPage | None:
-        """The page through the reader, ``None`` when it could not read it either."""
-        self._audit_fetch(actor_id, workspace_id, url, reader=READER)
+        """The page through Crawl4AI, ``None`` when it was not tried or could not read it."""
+        target = self._crawl4ai_target(workspace_id, url)
+        if (
+            target is None
+            or self._crawl4ai_url is None
+            or deadline - monotonic() < MIN_CRAWL4AI_SECONDS
+        ):
+            return None
+        self._audit_fetch(actor_id, workspace_id, target, reader=CRAWL4AI_READER)
         try:
-            return read_through_jina(self._network, url, api_key=self._jina_api_key)
+            return read_through_crawl4ai(
+                self._network,
+                self._crawl4ai_url,
+                target,
+                api_token=self._crawl4ai_api_token,
+            )
+        except FetchError:
+            return None
+
+    def _read_through_jina(
+        self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str, deadline: float
+    ) -> FetchedPage | None:
+        """The page through Jina, ``None`` when it was not tried or could not read it."""
+        target = self._jina_target(workspace_id, url)
+        left = deadline - monotonic()
+        if target is None or left < MIN_JINA_SECONDS:
+            return None
+        self._audit_fetch(actor_id, workspace_id, target, reader=JINA_READER)
+        try:
+            return read_through_jina(
+                self._network,
+                target,
+                api_key=self._jina_api_key,
+                timeout=min(JINA_TIMEOUT_SECONDS, left),
+            )
         except FetchError:
             return None
 

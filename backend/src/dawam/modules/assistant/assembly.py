@@ -166,6 +166,12 @@ def build_assistant_service(
                 jina_api_key=(
                     settings.jina_api_key.get_secret_value() if settings.jina_api_key else None
                 ),
+                crawl4ai_url=settings.crawl4ai_url,
+                crawl4ai_api_token=(
+                    settings.crawl4ai_api_token.get_secret_value()
+                    if settings.crawl4ai_api_token
+                    else None
+                ),
             ),
             memory=MemoryService(engine, workspaces=workspaces, change_sets=change_sets),
         ),

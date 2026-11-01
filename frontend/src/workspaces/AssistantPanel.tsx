@@ -286,7 +286,9 @@ function webOf(tools: readonly ToolCall[]) {
       const label =
         tool.result.reader === "jina"
           ? "Read a web page (Jina)"
-          : "Read a web page";
+          : tool.result.reader === "crawl4ai"
+            ? "Read a web page (Crawl4AI)"
+            : "Read a web page";
       return [{ label, detail: tool.result.url }];
     }
     return [];
