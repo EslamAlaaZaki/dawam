@@ -2,9 +2,11 @@
 
 The URL comes from the model, so it is treated as hostile (SSRF): only ``http``/``https``
 on the default ports, no credentials, and every address the host resolves to must be on
-the public internet. The connection goes to the address that was checked (no second
-lookup), and every redirect is checked the same way before it is followed. The body is
-capped in size and time, only text types are read, and HTML is reduced to its text.
+the public internet. The connection goes to an address that was checked (no second
+lookup per hop); when it fails or times out, the next checked address is tried (at most
+three, twenty seconds in all). Every redirect is checked the same way before it is followed.
+The body is capped in size and time, only text types are read, and HTML is reduced to its
+text.
 
 A failure says whether the page may be read through the reader instead (``reader_may_try``,
 ADR 0008): only when the address was checked and the site itself did not give the page. Off
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
@@ -24,6 +27,10 @@ from .network import HttpReply, HttpRequest, Network, NetworkError
 MAX_FETCH_BYTES = 2_000_000
 """What is read of a page's body; the rest is cut."""
 FETCH_TIMEOUT_SECONDS = 10.0
+MAX_ADDRESS_ATTEMPTS = 3
+"""Addresses tried for one request (redirect hop)."""
+HOP_TIMEOUT_SECONDS = 20.0
+"""All attempts for one hop together."""
 MAX_REDIRECTS = 5
 MAX_URL_LENGTH = 2000
 MAX_TEXT_CHARS = 12_000
@@ -103,8 +110,8 @@ def _checked(url: str) -> tuple[str, int]:
     return parts.hostname, PORTS[parts.scheme]
 
 
-def _public_address(network: Network, host: str, port: int) -> str:
-    """An address of ``host`` to connect to, when every address it has is public."""
+def _public_addresses(network: Network, host: str, port: int) -> list[str]:
+    """The addresses of ``host`` to try, in order, when every address it has is public."""
     blocked = FetchError(
         "address_blocked",
         "This address is on a private or internal network, which web fetch never reads.",
@@ -115,7 +122,7 @@ def _public_address(network: Network, host: str, port: int) -> str:
         raise FetchError("unreachable", "The host name could not be resolved.") from None
     if not addresses or not all(is_public_address(a) for a in addresses):
         raise blocked
-    return addresses[0]
+    return addresses[:MAX_ADDRESS_ATTEMPTS]
 
 
 def fetch_page(
@@ -128,21 +135,31 @@ def fetch_page(
     current = url.strip()
     for _ in range(MAX_REDIRECTS + 1):
         host, port = _checked(current)
-        address = _public_address(network, host, port)
-        try:
-            got = network.send(
-                HttpRequest(
-                    "GET",
-                    current,
-                    headers={"User-Agent": USER_AGENT, "Accept": ", ".join(TEXT_TYPES)},
-                    timeout=timeout,
-                    max_bytes=max_bytes,
-                    address=address,
+        addresses = _public_addresses(network, host, port)  # one lookup for the whole hop
+        deadline = time.monotonic() + HOP_TIMEOUT_SECONDS
+        got: HttpReply | None = None
+        failure = NetworkError("The server could not be reached.")
+        for attempt, address in enumerate(addresses):
+            left = deadline - time.monotonic()
+            if attempt and left <= 0:
+                break
+            try:
+                got = network.send(
+                    HttpRequest(
+                        "GET",
+                        current,
+                        headers={"User-Agent": USER_AGENT, "Accept": ", ".join(TEXT_TYPES)},
+                        timeout=min(timeout, left),
+                        max_bytes=max_bytes,
+                        address=address,
+                    )
                 )
-            )
-        except NetworkError as exc:
-            code = "timeout" if exc.timeout else "unreachable"
-            raise FetchError(code, str(exc), reader_may_try=True) from None
+                break
+            except NetworkError as exc:
+                failure = exc  # only a failed connection moves on; any reply ends the hop
+        if got is None:
+            code = "timeout" if failure.timeout else "unreachable"
+            raise FetchError(code, str(failure), reader_may_try=True) from None
         if got.status in (301, 302, 303, 307, 308):
             location = got.headers.get("location")
             if not location:
