@@ -26,7 +26,8 @@ import urllib.request
 
 FILTER = ("172.30.127.10", 3128)
 PUBLIC_PAGE = "https://example.com/"
-TUNNEL_REFUSED = "net::ERR_TUNNEL_CONNECTION_FAILED"
+TUNNEL_FAILED = "net::ERR_TUNNEL_CONNECTION_FAILED"
+DENIED = "ERR_ACCESS_DENIED"  # any other Squid error means it tried, or could not tell
 CRAWL4AI_REFUSAL = "URL blocked"  # the body of a refusal by Crawl4AI's own proxy
 CANARY = "dawam-egress-canary-7f3a"
 REDIRECTED = ["http://169.254.169.254/", "http://10.0.0.1/"]
@@ -52,7 +53,10 @@ PAGE_TARGETS = [
     "http://172.30.127.10:3128/",
     "http://10.0.0.1.nip.io/",  # a static answer, not rebinding: see rebinding_checks
 ]
-# Target -> the filter's acceptable errors. `db` is on no network the filter can name.
+# Target -> the filter's acceptable errors. `http://db/` is the one exception, here only: the
+# filter is on no network with `db`, so failing to resolve it is what proves that isolation,
+# and port 80 passes the ACL. A page never gets this far: Crawl4AI's proxy cannot resolve `db`
+# either, so it answers its own `URL blocked`, and ERR_DNS_FAIL on a page is a FAIL.
 FILTER_GET = {
     "http://db:5432/": {"ERR_ACCESS_DENIED"},
     "http://db/": {"ERR_DNS_FAIL"},
@@ -108,9 +112,12 @@ def squid_error(headers) -> str | None:
     return None
 
 
-def judge_event(events: list, target: str) -> tuple[bool, str]:
+def judge_event(events: list, target: str, ask_filter=None) -> tuple[bool, str]:
     """Did the page's request for ``target`` end in a refusal? Exactly one final event, and only
-    a refusal's own marks pass: a 403 alone could be the internal service answering."""
+    a refusal's own marks pass: a 403 alone could be the internal service answering, and another
+    Squid error (ERR_CONNECT_FAIL, ERR_READ_TIMEOUT) means it tried. A failed tunnel looks the same
+    whether refused or unreachable, so it is not proven until ``ask_filter(target)``, the filter
+    asked directly for that address, gives ERR_ACCESS_DENIED."""
     final = [
         e
         for e in events
@@ -123,17 +130,20 @@ def judge_event(events: list, target: str) -> tuple[bool, str]:
     event = final[0]
     if event["event_type"] == "request_failed":
         text = event.get("failure_text") or ""
-        return text == TUNNEL_REFUSED, text
+        if text != TUNNEL_FAILED:
+            return False, text
+        error = ask_filter(target) if ask_filter else None
+        return error == DENIED, f"{text}; the filter, asked directly: {error}"
     if event["event_type"] != "response":
         return False, event["event_type"]
     status = event.get("status")
     body = ((event.get("body") or {}).get("text") or "").strip()
     error = squid_error(event.get("headers") or {})
-    if error or "(squid" in body.lower():
-        return True, f"{status}, refused by the filter: {error}"
+    if error == DENIED or (DENIED in body and "(squid" in body.lower()):
+        return True, f"{status}, refused by the filter"
     if status == 403 and body == CRAWL4AI_REFUSAL:
         return True, f"{status}, refused by Crawl4AI's proxy"
-    return False, f"{status}, not a refusal: {body[:80]!r}"
+    return False, f"{status} {error}, not a refusal: {body[:80]!r}"
 
 
 def judge_refused_crawl(status: int, answer: dict) -> tuple[bool, str]:
@@ -146,6 +156,26 @@ def judge_refused_crawl(status: int, answer: dict) -> tuple[bool, str]:
     error = str(answer.get("error_message") or "")
     named = CRAWL4AI_REFUSAL in error or "ERR_TUNNEL_CONNECTION_FAILED" in error
     return answer.get("success") is not True and named, error[:80]
+
+
+def judge_rebinding_crawl(status: int, answer: dict) -> tuple[bool, str]:
+    """A crawl of a rebinding name. It passes as a page read without the canary (the public
+    answer) or as a named refusal (the private answer). Anything else proves nothing: FAIL."""
+    html = answer.get("html")
+    if CANARY in str(html):
+        return False, "the canary answered: the browser reached this container"
+    if status == 200 and answer.get("success") is True and html:
+        return True, "read the public answer"
+    refused, detail = judge_refused_crawl(status, answer)
+    return refused, (f"refused: {detail}" if refused else f"inconclusive: {status} {detail}")
+
+
+def filter_says(target):
+    """The filter's error when asked directly for ``target``, by the route a browser would use."""
+    parts = urllib.parse.urlsplit(target)
+    if parts.scheme == "https":
+        return through_filter("CONNECT", f"{parts.netloc}:443")[1]
+    return through_filter("GET", target)[1]
 
 
 def through_filter(method, target):
@@ -233,18 +263,18 @@ def page_checks(service, token, probe):
         report(False, "the negatives prove nothing without the positive control")
         return
     for target in PAGE_TARGETS:
-        ok, detail = judge_event(events, target)
+        ok, detail = judge_event(events, target, filter_says)
         report(ok, f"page asked {target}", detail)
 
     print("-- the browser, redirected to internal addresses")
     for target in REDIRECTED:
         moved = urllib.parse.urlencode({"url": target, "status_code": 302})
         status, result = crawl(service, token, f"https://httpbin.org/redirect-to?{moved}")
-        ok, detail = judge_event(result.get("network_requests") or [], target)
+        ok, detail = judge_event(result.get("network_requests") or [], target, filter_says)
         report(status == 200 and ok, f"302 to {target}", f"{status} {detail}")
         moved = urllib.parse.urlencode({"location": target})
         status, result = crawl(service, token, f"{probe}?{moved}")
-        ok, detail = judge_event(result.get("network_requests") or [], target)
+        ok, detail = judge_event(result.get("network_requests") or [], target, filter_says)
         report(status == 200 and ok, f"location= to {target}", f"{status} {detail}")
 
 
@@ -273,7 +303,7 @@ def rebinding_checks(service, token):
     try:
         server = http.server.ThreadingHTTPServer(("0.0.0.0", 80), Canary)
     except OSError as error:
-        report(False, "listening on port 80 for the canary", error)
+        report(False, "listening on port 80: run with `exec -u root` (deploy/README.md)", error)
         return
     threading.Thread(target=server.serve_forever, daemon=True).start()
     probe = socket.create_connection(FILTER, timeout=10)
@@ -302,7 +332,8 @@ def rebinding_checks(service, token):
     for public in PUBLIC_RESOLVERS[:4]:
         name = f"{hex_of(own)}.{hex_of(public)}.rbndr.us"
         status, result = crawl(service, token, f"http://{name}/", capture_network_requests=False)
-        report(CANARY not in str(result.get("html")), f"browser, http://{name}/", status)
+        ok, detail = judge_rebinding_crawl(status, result)
+        report(ok, f"browser, http://{name}/", detail)
     server.shutdown()
 
 

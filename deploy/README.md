@@ -375,6 +375,8 @@ docker compose exec -T app python - http://<public-ip>/egress-probe.html \
   < deploy/crawl4ai/verify-egress.py                       # every line PASS, ending ALL PASSED
 ```
 
+The image's Squid binary is `squid-gnutls`, so that is what `-k parse` names; run it first, because a config error stops the filter and everything after it fails. `app` runs as a non-root user (uid 10001). The rebinding section listens on port 80 inside it, which Docker normally allows; if that line FAILs, run the last command with `docker compose exec -u root -T app ...`.
+
 The script passes a check only on a refusal's own mark, so any error or missing event is a FAIL. It needs `httpbin.org` and `rbndr.us` to be up; if either is down, those checks fail and prove nothing. A code that gets out of the browser can still reach `app:8000` directly, because `app` has to share this network.
 
 ## Document AI: CPU vs GPU
