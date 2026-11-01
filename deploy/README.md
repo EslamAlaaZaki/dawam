@@ -35,6 +35,7 @@ flowchart LR
         files[("<b>file storage</b><br/>local volume<br/>or S3 bucket")]
         ollama["<b>ollama</b> (optional)<br/>local LLM server<br/>:11434"]
         searxng["<b>searxng</b><br/>web search<br/>:8080"]
+        crawl4ai["<b>crawl4ai</b> (optional)<br/>browser, locked-down network<br/>:11235"]
     end
 
     subgraph external["External systems (configured in the admin console)"]
@@ -58,6 +59,7 @@ flowchart LR
     app -. "optional" .-> ollama
     worker -. "optional" .-> ollama
     app -. "web search, if turned on" .-> searxng
+    app -. "pages fetch cannot read, if configured" .-> crawl4ai
 
     app -- "read schema, profile, sample<br/>(read-only)" --> sources
     worker -- "read schema, profile, sample<br/>(read-only)" --> sources
@@ -75,6 +77,7 @@ flowchart LR
 | **file storage** | Uploaded files and documents. A directory (`file-data` volume) or an S3-compatible bucket (`DAWAM_STORAGE_BACKEND=s3`, image built with the `s3` extra). | Volume or bucket | Yes |
 | **ollama** | Optional local LLM server, started with `--profile ollama`. | `ollama/ollama` | No |
 | **searxng** | Web search for the assistant's `web_search`, used once an admin adds it in Admin > Web access (base URL `http://searxng:8080`). Reached on the Compose network only; config in `searxng/settings.yml`, secret key `SEARXNG_SECRET`. | `searxng/searxng` | No |
+| **crawl4ai** | Optional browser for pages web fetch can't read, started with `--profile crawl4ai`, with its `egress-filter` and `crawl4ai-dns` sidecars. On a locked-down network; see [Crawl4AI](#crawl4ai-a-browser-for-pages-web-fetch-cant-read). | `unclecode/crawl4ai`, `ubuntu/squid`, `coredns/coredns` | No |
 | **LLM providers** | The models behind AI features. Types: OpenAI-compatible (Ollama, vLLM, SGLang, OpenAI and others), Anthropic, Azure OpenAI, Gemini, AWS Bedrock. Added by an admin. | External | For AI features |
 | **Source databases** | The systems you analyse, reached through Connections with credentials encrypted by `DAWAM_ENCRYPTION_KEY`. Live connections: PostgreSQL, SQL Server, MySQL/MariaDB, Oracle. Schema Import from files needs no connection, with helper queries for those engines plus IBM Db2 and Teradata. | External | For live connections |
 | **SMTP server** | Sends invitations, password resets and notifications. Set in Admin > Email. Until then, links are shown to admins to share. | External | No |
@@ -88,7 +91,8 @@ Network access the installation needs:
   (off by default, [ADR 0008](../docs/adr/0008-assistant-outbound-web-access.md)). When web
   access is on, the address of a page DAWAM can't read itself goes to **Jina Reader**
   (`r.jina.ai`), an external service, for Workspaces that are not internal-only (never a
-  URL with a query string; `DAWAM_JINA_API_KEY` is optional). With local models and no
+  URL with a query string; `DAWAM_JINA_API_KEY` is optional). The optional `crawl4ai` profile
+  reads such a page first, and goes out only through `egress-filter`. With local models and no
   external services, DAWAM runs fully offline ([`docs/install.md`](../docs/install.md),
   "Air-Gapped Installation").
 - **Browser:** the API docs page (`/api/v1/docs`) loads Swagger UI from
@@ -100,6 +104,7 @@ Files in this folder:
 |------|---------|
 | `nginx/` | The `edge` image (methods 1–2) |
 | `searxng/settings.yml` | Methods 1–2: the `searxng` service's settings (JSON output on, no limiter) |
+| `crawl4ai/` | Methods 1–2: the `crawl4ai` profile's settings (server, egress filter, resolver) and its by-hand check |
 | `docker-compose.yaml` | Method 2: every component in one Compose file, HTTPS disabled |
 | `docker-compose.gpu.yaml` | Methods 1–2: added after either Compose file to run document AI on an NVIDIA GPU |
 | `host/nginx.conf` | Methods 4–5: the entry proxy without Docker |
@@ -231,6 +236,8 @@ so internal-only Workspaces can use it too.
 
 SearXNG depends on public search engines (Google, Brave, DuckDuckGo and others) that can block it with rate limits or CAPTCHAs. Register a second provider (LangSearch, with an API key) in the same place and DAWAM falls back to it when SearXNG cannot answer. Internal-only Workspaces never use it.
 
+**A browser for refused pages:** see [Crawl4AI](#crawl4ai-a-browser-for-pages-web-fetch-cant-read).
+
 Day-to-day commands:
 
 ```sh
@@ -276,6 +283,7 @@ proxy):
 | `mailpit` | `127.0.0.1:8025` (`MAILPIT_PORT`) | SMTP server that catches every email; read them in its web UI |
 | `searxng` | none | Web search for the assistant, reached as `http://searxng:8080` |
 | `source-db` | none | Demo PostgreSQL source with a small `sales` schema (profile `demo`) |
+| `crawl4ai`, `egress-filter`, `crawl4ai-dns` | none | A browser for pages web fetch can't read (profile `crawl4ai`); see [Crawl4AI](#crawl4ai-a-browser-for-pages-web-fetch-cant-read) |
 
 1. Set up `.env` in the repository root as in method 1 (encryption key, first admin,
    `SEARXNG_SECRET`: a long random string, e.g. `openssl rand -hex 32`). Optionally add:
@@ -323,6 +331,48 @@ GPU: uncomment the `deploy:` block under `ollama` (needs the NVIDIA Container
 Toolkit). The volumes are the same as in method 1 (the project is named `dawam` in
 both), so you can switch between the two files without losing data. Don't run both
 at the same time.
+
+## Crawl4AI: a browser for pages web fetch can't read
+
+Optional, in both Compose files. Bot protection refuses many sites to DAWAM's own fetch. With this profile, `web_fetch` tries a real browser inside the installation before Jina Reader (ADR 0008). Internal-only Workspaces can use it, and so can URLs with a query string, because nothing but the page request leaves the installation.
+
+**Memory:** the browser has a 2 GB limit, for at most 2 pages at once. Leave that free on the host.
+
+**Identity:** it runs the full browser with Crawl4AI's default settings. No stealth, `magic`, `simulate_user`, external proxy or CAPTCHA solving is enabled. Those defaults still present a normal Chrome browser and hide the automation flag, which may be why it reads pages that refuse a plain headless browser. **If you enable this profile, check the rules of the sites involved.**
+
+To enable it:
+
+1. Add to `.env`:
+
+   ```sh
+   DAWAM_CRAWL4AI_URL=http://crawl4ai:11235
+   DAWAM_CRAWL4AI_API_TOKEN=<openssl rand -hex 32>
+   ```
+
+2. Start it, adding `--profile crawl4ai` to the command you use, for example `docker compose --profile crawl4ai up -d --build`. Use the same flag on every later command. No admin setting is involved: web access in **Admin > Web access** still has to be on.
+
+The chat then shows "Read a web page (Crawl4AI)" for a page read this way. With `DAWAM_CRAWL4AI_URL` unset, nothing calls it. If `172.30.127.0/24` clashes with a network on your host, see the comment on `crawl4ai-internal` in the Compose file.
+
+**Network.** A browser runs a page's JavaScript and loads whatever the page asks for, so DAWAM's own address check can't cover it:
+
+- `crawl4ai` is only on `crawl4ai-internal`, an `internal: true` network with no route out, which it shares with `app`, `egress-filter` and `crawl4ai-dns`. It can't reach the database, SearXNG, Ollama or Mailpit. It has no host port.
+- Its only way out is `egress-filter` (Squid, settings in `crawl4ai/egress-filter.conf`), which refuses private, loopback, link-local, shared, reserved and multicast destinations, including through DNS rebinding and redirects, and reaches ports 80 and 443 only.
+- `crawl4ai-dns` (CoreDNS, `crawl4ai/Corefile`) resolves outside names, because Docker's resolver answers none on an internal network. It doesn't know DAWAM's services.
+
+Known limit: a plain `http://` page reaches its site with the IP address as its `Host` header, because the filter is asked for the checked address and not the name. A site that serves several names from one address may answer with the wrong page or an error, and then the chain moves on. `https://` is not affected.
+
+**Check it by hand** after setting it up and after changing the image or these settings. It needs a public address for the probe page, such as GitHub Pages or `cloudflared tunnel --url http://localhost:9000` next to `python -m http.server 9000 --directory deploy/crawl4ai`:
+
+```sh
+# From the repository root, with the profile running (add -f and --env-file for method 2).
+docker compose ps crawl4ai egress-filter crawl4ai-dns      # up, and crawl4ai healthy
+docker compose exec egress-filter squid -k parse           # no FATAL or ERROR line
+docker compose exec crawl4ai curl -m 5 -sS https://example.com     # fails: no route out
+docker compose exec crawl4ai curl -m 5 -sS http://1.1.1.1          # fails: no route out
+docker compose exec crawl4ai curl -m 5 -sS http://db:5432          # fails: no such host
+docker compose exec -T app python - https://<public-address>/egress-probe.html \
+  < deploy/crawl4ai/verify-egress.py                       # every line PASS, ending ALL PASSED
+```
 
 ## Document AI: CPU vs GPU
 

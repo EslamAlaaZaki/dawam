@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- A hostile page, for the by-hand check in deploy/README.md: it asks the browser for what a
+     page must never reach. verify-egress.py reads what each request got. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DAWAM egress probe</title>
+  </head>
+  <body>
+    <h1>DAWAM egress probe</h1>
+    <p>This page asks the browser for internal addresses. None of them may answer.</p>
+    <script>
+      const targets = [
+        "http://db:5432/",
+        "http://db/",
+        "http://app:8000/healthz",
+        "http://crawl4ai:11235/health",
+        "http://localhost:11235/health",
+        "http://127.0.0.1:11235/health",
+        "http://[::1]:11235/health",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.1/",
+        "http://192.168.1.1/",
+        "http://172.30.126.10:8080/",
+        "http://172.30.127.10:3128/",
+        "http://169.254.169.254.nip.io/latest/meta-data/",
+      ];
+      for (const target of targets) {
+        fetch(target, { mode: "no-cors" }).catch(() => {});
+      }
+    </script>
+  </body>
+</html>

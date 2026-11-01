@@ -18,6 +18,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
@@ -35,6 +36,8 @@ MAX_REDIRECTS = 5
 MAX_URL_LENGTH = 2000
 MAX_TEXT_CHARS = 12_000
 """What of a page's text reaches the model."""
+MAX_TITLE_CHARS = 300
+"""What of a title a reader's answer may set."""
 MIN_USEFUL_TEXT_CHARS = 1500
 """An HTML page whose cleaned text is shorter than this is thin: the reader may know more (#547)."""
 TEXT_TYPES = (
@@ -90,7 +93,7 @@ class FetchedPage:
     text: str
     truncated: bool
     reader: str = OWN_READER
-    """Who read it: DAWAM itself or, through the fallback, ``jina``."""
+    """Who read it: DAWAM itself or, through the fallback, ``crawl4ai`` or ``jina``."""
     thin: bool = False
     """An HTML page with under ``MIN_USEFUL_TEXT_CHARS`` of text once cleaned (before the cut)."""
 
@@ -160,17 +163,26 @@ def fetch_page(
     *,
     max_bytes: int = MAX_FETCH_BYTES,
     timeout: float = FETCH_TIMEOUT_SECONDS,
+    deadline: float | None = None,
+    clock: Callable[[], float] | None = None,
 ) -> FetchedPage:
+    """``deadline``, on ``clock`` (monotonic by default), is when the whole fetch must stop:
+    running out of it is a timeout, like a site that never answers."""
+    now = clock or time.monotonic
     current = url.strip()
     for _ in range(MAX_REDIRECTS + 1):
         host, port = _checked(current)
         addresses = _public_addresses(network, host, port)  # one lookup for the whole hop
-        deadline = time.monotonic() + HOP_TIMEOUT_SECONDS
+        hop_ends = now() + HOP_TIMEOUT_SECONDS
+        if deadline is not None:
+            hop_ends = min(hop_ends, deadline)
         got: HttpReply | None = None
         failure = NetworkError("The server could not be reached.")
         for attempt, address in enumerate(addresses):
-            left = deadline - time.monotonic()
-            if attempt and left <= 0:
+            left = hop_ends - now()
+            if left <= 0:
+                if not attempt:
+                    failure = NetworkError("The server did not answer in time.", timeout=True)
                 break
             try:
                 got = network.send(

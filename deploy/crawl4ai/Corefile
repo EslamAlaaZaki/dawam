@@ -1,0 +1,10 @@
+# Name resolution for the crawl4ai network (ADR 0008, #545). Docker's own resolver answers no
+# outside name on an `internal` network, and Crawl4AI 0.9.5 must resolve a host itself before
+# it asks the egress filter for that host's address. This server is on the egress network too,
+# not on the default one, so `db` and the other DAWAM services do not resolve through it. An
+# answer with a private address is refused twice, by Crawl4AI and by the filter.
+.:53 {
+    forward . /etc/resolv.conf
+    cache 30
+    errors
+}

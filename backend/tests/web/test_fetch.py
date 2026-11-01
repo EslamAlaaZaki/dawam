@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.server
 import threading
+import time
 
 import pytest
 
@@ -15,6 +16,7 @@ from dawam.modules.web import (
     fetch_page,
     is_public_address,
 )
+from dawam.modules.web.internal.network import _read
 from tests.web.fakes import FakeNetwork, reply
 
 PUBLIC = "93.184.215.14"
@@ -459,6 +461,60 @@ def test_a_hop_spends_at_most_twenty_seconds(monkeypatch):
 
     assert [r.address for r in network.sent] == ["8.8.8.8", "8.8.4.4"]
     assert sum(r.timeout for r in network.sent) <= 20.0
+
+
+def test_a_deadline_shortens_a_hop_and_running_out_is_a_timeout_a_reader_may_follow():
+    clock = [0.0]
+
+    def slow(request):
+        clock[0] += request.timeout
+        raise SLOW
+
+    network = FakeNetwork(hosts={"multi.example.com": ["8.8.8.8", "8.8.4.4", "1.1.1.1"]})
+    network.pages[URL] = slow
+
+    with pytest.raises(FetchError) as raised:
+        fetch_page(network, URL, deadline=14.0, clock=lambda: clock[0])
+
+    assert [r.timeout for r in network.sent] == [10.0, 4.0]
+    assert (raised.value.code, raised.value.reader_may_try) == ("timeout", True)
+
+
+def test_a_redirect_past_the_deadline_sends_nothing_more():
+    clock = [0.0]
+    first = "https://a.example.com/start"
+    second = "https://a.example.com/next"
+
+    def moved(request):
+        clock[0] = 45.0
+        return reply("", 302, {"location": second})
+
+    network = FakeNetwork(hosts={"a.example.com": ["8.8.8.8"]}, pages={first: moved})
+
+    with pytest.raises(FetchError) as raised:
+        fetch_page(network, first, deadline=45.0, clock=lambda: clock[0])
+
+    assert [r.url for r in network.sent] == [first]
+    assert (raised.value.code, raised.value.reader_may_try) == ("timeout", True)
+
+
+def test_a_slow_body_cannot_outlast_the_whole_exchanges_timeout():
+    class Silence:
+        def __init__(self):
+            self.timeouts = []
+
+        def fileno(self):
+            return 7
+
+        def settimeout(self, value):
+            self.timeouts.append(value)
+
+    class Trickle:
+        def read1(self, _size):
+            return b"x"
+
+    with pytest.raises(TimeoutError):
+        _read(Trickle(), 10**9, time.monotonic() + 0.05, Silence())
 
 
 # -- page furniture and thin pages (#547) ---------------------------------------------------

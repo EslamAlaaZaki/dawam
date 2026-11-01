@@ -73,6 +73,7 @@ class SystemNetwork:
         return list(dict.fromkeys(addresses))
 
     def send(self, request: HttpRequest) -> HttpReply:
+        deadline = time.monotonic() + request.timeout  # the whole exchange, not each read
         parts = urlsplit(request.url)
         host = parts.hostname or ""
         https = parts.scheme == "https"
@@ -89,8 +90,10 @@ class SystemNetwork:
             connection.request(
                 request.method, target, body=request.body, headers=dict(request.headers)
             )
+            sock = connection.sock  # getresponse may drop it from the connection
+            _spend(sock, deadline)
             response = connection.getresponse()
-            body = _read(response, request.max_bytes + 1, time.monotonic() + request.timeout)
+            body = _read(response, request.max_bytes + 1, deadline, sock)
             headers = {key.lower(): value for key, value in response.getheaders()}
             return HttpReply(
                 response.status,
@@ -108,14 +111,24 @@ class SystemNetwork:
             connection.close()
 
 
-def _read(response: http.client.HTTPResponse, limit: int, deadline: float) -> bytes:
+def _spend(sock: socket.socket, deadline: float) -> None:
+    """The next read on ``sock`` waits at most until ``deadline``."""
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise TimeoutError
+    if sock.fileno() != -1:  # the end of the body closes it
+        sock.settimeout(left)
+
+
+def _read(
+    response: http.client.HTTPResponse, limit: int, deadline: float, sock: socket.socket
+) -> bytes:
     """Up to ``limit`` bytes of the body, chunk by chunk: a server that trickles its body
     still runs out of time (the socket timeout alone applies to each read)."""
     chunks: list[bytes] = []
     size = 0
     while size < limit:
-        if time.monotonic() > deadline:
-            raise TimeoutError
+        _spend(sock, deadline)
         chunk = response.read1(min(READ_CHUNK, limit - size))
         if not chunk:
             break

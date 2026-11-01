@@ -11,12 +11,14 @@ import base64
 import binascii
 import re
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     Field,
     SecretBytes,
     SecretStr,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -216,10 +218,16 @@ class Settings(DatabaseSettings):
     jina_api_key: SecretStr | None = None
     """Optional key for Jina Reader, which web fetch falls back to for a page it cannot read
     (ADR 0008). It works without one, at a lower rate limit. Empty counts as unset."""
+    crawl4ai_url: str | None = None
+    """The Crawl4AI server web fetch tries first for a page it cannot read (ADR 0008), such as
+    ``http://crawl4ai:11235``. Unset: that step is skipped. Empty counts as unset."""
+    crawl4ai_api_token: SecretStr | None = None
+    """The token that server requires (its ``CRAWL4AI_API_TOKEN``; the Compose files set it from
+    this same variable). It is only ever sent to that server. Empty counts as unset."""
 
-    @field_validator("jina_api_key", mode="before")
+    @field_validator("jina_api_key", "crawl4ai_api_token", mode="before")
     @classmethod
-    def _clean_jina_api_key(cls, value: object) -> object:
+    def _clean_header_secret(cls, value: object, info: ValidationInfo) -> object:
         text = value.get_secret_value() if isinstance(value, SecretStr) else value
         if not isinstance(text, str):
             return value
@@ -228,9 +236,34 @@ class Settings(DatabaseSettings):
             return None
         if not re.fullmatch(r"[!-~]+", text):  # it goes in a header; the message never shows it
             raise PydanticCustomError(
-                "invalid_jina_api_key", "must be printable characters without spaces"
+                f"invalid_{info.field_name}", "must be printable characters without spaces"
             )
         return text
+
+    @field_validator("crawl4ai_url", mode="before")
+    @classmethod
+    def _clean_crawl4ai_url(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        url = value.strip().rstrip("/")
+        if not url:
+            return None
+        try:
+            parts = urlsplit(url)
+            usable = (
+                parts.scheme in ("http", "https")
+                and parts.hostname
+                and (parts.port is None or parts.port > 0)  # .port raises on a bad port
+                and not (parts.username or parts.password or parts.query or parts.fragment)
+            )
+        except ValueError:
+            usable = False
+        if not usable:  # the message never shows it: a URL may hold a password
+            raise PydanticCustomError(
+                "invalid_crawl4ai_url",
+                "must be an http:// or https:// address without a login, query or fragment",
+            )
+        return url
 
     assistant_job_max_tool_calls: int = Field(default=150, ge=1)
     """Tool calls an assistant job may make (spec §6.16); a job explores far more than a chat."""

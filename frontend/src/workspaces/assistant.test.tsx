@@ -374,6 +374,13 @@ describe("the assistant's chat panel", () => {
       duration_ms: 50,
       result: { url: "https://guarded.example/report", title: "Report", reader: "jina" },
     };
+    const throughCrawl4ai = {
+      name: "web_fetch",
+      arguments: { url: "https://browser.example/page" },
+      status: "ok",
+      duration_ms: 60,
+      result: { url: "https://browser.example/page", title: "Page", reader: "crawl4ai" },
+    };
     renderApp(
       backend({
         answer: () =>
@@ -382,9 +389,10 @@ describe("the assistant's chat panel", () => {
             frame("tool", search),
             frame("tool", fetched),
             frame("tool", throughJina),
+            frame("tool", throughCrawl4ai),
             frame("text", { text: "Three stages." }),
             frame("done", {
-              run: run({ tool_calls: [search, fetched, throughJina] }),
+              run: run({ tool_calls: [search, fetched, throughJina, throughCrawl4ai] }),
               message_id: "a",
             }),
           ]),
@@ -396,7 +404,7 @@ describe("the assistant's chat panel", () => {
               role: "user",
               content: "IFRS 9 stages?",
               created_at: "2026-01-05T10:00:00Z",
-              run: run({ tool_calls: [search, fetched, throughJina] }),
+              run: run({ tool_calls: [search, fetched, throughJina, throughCrawl4ai] }),
               sender: ADA_SENDER,
               model: null,
             },
@@ -424,6 +432,9 @@ describe("the assistant's chat panel", () => {
     expect(web).toHaveTextContent("Read a web page: https://ifrs.example/9");
     expect(web).toHaveTextContent(
       "Read a web page (Jina): https://guarded.example/report",
+    );
+    expect(web).toHaveTextContent(
+      "Read a web page (Crawl4AI): https://browser.example/page",
     );
   });
 

@@ -68,6 +68,57 @@ def test_a_malformed_jina_key_stops_startup_without_showing_it(monkeypatch):
     assert "secret" not in str(raised.value)
 
 
+def test_the_crawl4ai_address_is_optional_and_loses_its_trailing_slash(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+
+    assert load_settings().crawl4ai_url is None
+
+    monkeypatch.setenv("DAWAM_CRAWL4AI_URL", "  ")
+    assert load_settings().crawl4ai_url is None
+
+    monkeypatch.setenv("DAWAM_CRAWL4AI_URL", " http://crawl4ai:11235/ ")
+    assert load_settings().crawl4ai_url == "http://crawl4ai:11235"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "crawl4ai:11235",
+        "ftp://crawl4ai",
+        "http://",
+        "http://user:hunter2@crawl4ai:11235",
+        "http://crawl4ai:11235?hunter2",
+        "http://crawl4ai:11235#hunter2",
+        "http://crawl4ai:port",
+    ],
+)
+def test_a_malformed_crawl4ai_address_stops_startup_without_showing_it(monkeypatch, url):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_CRAWL4AI_URL", url)
+
+    with pytest.raises(ConfigError) as raised:
+        load_settings()
+
+    assert "DAWAM_CRAWL4AI_URL" in str(raised.value)
+    assert "hunter2" not in str(raised.value)
+
+
+def test_the_crawl4ai_token_is_optional_and_never_shown_in_the_settings(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+
+    assert load_settings().crawl4ai_api_token is None
+
+    monkeypatch.setenv("DAWAM_CRAWL4AI_API_TOKEN", " c4a-123 ")
+    settings = load_settings()
+    assert settings.crawl4ai_api_token.get_secret_value() == "c4a-123"
+    assert "c4a-123" not in repr(settings)
+
+    monkeypatch.setenv("DAWAM_CRAWL4AI_API_TOKEN", "c4a secret")
+    with pytest.raises(ConfigError) as raised:
+        load_settings()
+    assert "secret" not in str(raised.value)
+
+
 def test_the_encryption_key_is_never_shown_in_the_settings(monkeypatch):
     key = new_key()
     monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", key)

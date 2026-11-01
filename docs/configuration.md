@@ -58,6 +58,8 @@ required. `.env.example` has a longer comment on each setting.
 | `DAWAM_ASSISTANT_JOB_SUPERVISOR` | `false` | Run background jobs as a supervisor routing to specialist agents (ADR 0009) |
 | `DAWAM_ASSISTANT_SOURCE_QUERY_SECONDS` | `120` | Seconds of source queries allowed per message |
 | `DAWAM_JINA_API_KEY` | none | Optional key for Jina Reader, which web fetch falls back to for a page it can't read (ADR 0008); works without one, at a lower rate limit |
+| `DAWAM_CRAWL4AI_URL` | none | The Crawl4AI server web fetch tries before Jina for a page it can't read, in internal-only Workspaces too (ADR 0008; `http://crawl4ai:11235` with the `crawl4ai` Compose profile). Unset: that step is skipped |
+| `DAWAM_CRAWL4AI_API_TOKEN` | none | The token that server requires; the Compose files hand it this same variable, and without one DAWAM cannot reach it. Only ever sent to that server. Generate one with `openssl rand -hex 32` |
 | `DAWAM_SCORE_DEBOUNCE_SECONDS` | `2` | Wait after a design change before the Data Warehouse score is recalculated |
 
 ## Documents (document AI)
