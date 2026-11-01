@@ -413,6 +413,14 @@ def test_one_private_address_refuses_the_host_before_any_attempt():
     assert network.sent == []
 
 
+def test_a_private_fourth_address_refuses_the_host_before_any_attempt():
+    addresses = ["8.8.8.8", "8.8.4.4", "1.1.1.1", "10.0.0.1"]
+    network = multi(addresses, **dict.fromkeys(addresses, reply("x")))
+
+    assert failing_fetch(network, URL).code == "address_blocked"
+    assert network.sent == []
+
+
 def test_a_hop_resolves_once_and_tries_at_most_three_addresses():
     dead = ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1"]
     network = multi(dead, **dict.fromkeys(dead, SLOW))

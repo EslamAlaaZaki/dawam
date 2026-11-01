@@ -136,7 +136,7 @@ def fetch_page(
     for _ in range(MAX_REDIRECTS + 1):
         host, port = _checked(current)
         addresses = _public_addresses(network, host, port)  # one lookup for the whole hop
-        deadline = time.monotonic() + max(HOP_TIMEOUT_SECONDS, timeout)
+        deadline = time.monotonic() + HOP_TIMEOUT_SECONDS
         got: HttpReply | None = None
         failure = NetworkError("The server could not be reached.")
         for attempt, address in enumerate(addresses):
@@ -149,7 +149,7 @@ def fetch_page(
                         "GET",
                         current,
                         headers={"User-Agent": USER_AGENT, "Accept": ", ".join(TEXT_TYPES)},
-                        timeout=min(timeout, left) if attempt else timeout,
+                        timeout=min(timeout, left),
                         max_bytes=max_bytes,
                         address=address,
                     )
