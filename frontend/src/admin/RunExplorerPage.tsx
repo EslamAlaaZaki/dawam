@@ -57,6 +57,13 @@ function money(cost: RunSummary["cost"]): string {
   return cost ? `${Number(cost.amount).toFixed(6)} ${cost.currency}` : "unpriced";
 }
 
+/** How long the run took; a run still going has no time yet. */
+function responseTime(run: RunSummary): string {
+  if (run.status === "running") return "—";
+  const ms = run.duration_ms;
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
 /** The assistant's runs across all Workspaces, with each run's step timeline. */
 export function RunExplorerPage() {
   const [filters, setFilters] = useState<RunFilters>({});
@@ -156,6 +163,7 @@ export function RunExplorerPage() {
                   <TableHead scope="col">Workspace</TableHead>
                   <TableHead scope="col">Member</TableHead>
                   <TableHead scope="col">Status</TableHead>
+                  <TableHead scope="col">Response time</TableHead>
                   <TableHead scope="col">Tokens in / out</TableHead>
                   <TableHead scope="col">Cost</TableHead>
                   <TableHead scope="col">Feedback</TableHead>
@@ -175,6 +183,7 @@ export function RunExplorerPage() {
                     <TableCell>
                       <Badge variant={statusVariant(run.status)}>{run.status}</Badge>
                     </TableCell>
+                    <TableCell numeric>{responseTime(run)}</TableCell>
                     <TableCell numeric>
                       {run.input_tokens} / {run.output_tokens}
                     </TableCell>

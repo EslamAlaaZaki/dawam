@@ -121,6 +121,7 @@ describe("the assistant run explorer", () => {
     const row = await screen.findByRole("row", { name: `Run ${RUN.id}` });
     expect(row).toHaveTextContent("Retail DW");
     expect(row).toHaveTextContent("grace@example.com");
+    expect(row).toHaveTextContent("420 ms");
     expect(row).toHaveTextContent("30 / 10");
     expect(row).toHaveTextContent("0.000240 USD");
     expect(row).toHaveTextContent("0 up, 1 down");
