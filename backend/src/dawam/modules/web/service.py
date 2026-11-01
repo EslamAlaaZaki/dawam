@@ -42,7 +42,6 @@ from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
 
 from .internal.crawl4ai import READER as CRAWL4AI_READER
-from .internal.crawl4ai import READER_TIMEOUT_SECONDS as CRAWL4AI_TIMEOUT_SECONDS
 from .internal.crawl4ai import read_through_crawl4ai
 from .internal.fetch import FetchedPage, FetchError, fetch_page, looks_blocked
 from .internal.jina import READER as JINA_READER
@@ -70,8 +69,10 @@ AUDIT_FETCH = "web_fetch"
 MAX_AUDIT_URL_CHARS = 500
 FETCH_BUDGET_SECONDS = 45.0
 """One ``fetch``, across its own fetch and every reader (#545)."""
-MIN_READER_SECONDS = 5.0
-"""A reader is skipped with less than this left: it could not finish."""
+MIN_JINA_SECONDS = 5.0
+"""Jina is skipped with less than this left: it could not finish."""
+MIN_CRAWL4AI_SECONDS = 25.0
+"""Crawl4AI is skipped with less than this left: a page holds it for up to 20 s plus a 4 s delay."""
 
 
 @dataclass(frozen=True)
@@ -445,8 +446,11 @@ class WebService:
     ) -> FetchedPage | None:
         """The page through Crawl4AI, ``None`` when it was not tried or could not read it."""
         target = self._crawl4ai_target(workspace_id, url)
-        left = deadline - monotonic()
-        if target is None or self._crawl4ai_url is None or left < MIN_READER_SECONDS:
+        if (
+            target is None
+            or self._crawl4ai_url is None
+            or deadline - monotonic() < MIN_CRAWL4AI_SECONDS
+        ):
             return None
         self._audit_fetch(actor_id, workspace_id, target, reader=CRAWL4AI_READER)
         try:
@@ -455,7 +459,6 @@ class WebService:
                 self._crawl4ai_url,
                 target,
                 api_token=self._crawl4ai_api_token,
-                timeout=min(CRAWL4AI_TIMEOUT_SECONDS, left),
             )
         except FetchError:
             return None
@@ -466,7 +469,7 @@ class WebService:
         """The page through Jina, ``None`` when it was not tried or could not read it."""
         target = self._jina_target(workspace_id, url)
         left = deadline - monotonic()
-        if target is None or left < MIN_READER_SECONDS:
+        if target is None or left < MIN_JINA_SECONDS:
             return None
         self._audit_fetch(actor_id, workspace_id, target, reader=JINA_READER)
         try:

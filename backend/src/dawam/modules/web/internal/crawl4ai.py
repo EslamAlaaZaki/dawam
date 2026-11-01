@@ -18,7 +18,6 @@ import json
 from typing import Any
 
 from .fetch import (
-    MAX_FETCH_BYTES,
     MAX_TEXT_CHARS,
     MAX_TITLE_CHARS,
     MAX_URL_LENGTH,
@@ -30,6 +29,9 @@ from .network import HttpReply, HttpRequest, Network, NetworkError
 
 READER = "crawl4ai"
 READER_TIMEOUT_SECONDS = 25.0
+MAX_REPLY_BYTES = 10_000_000
+"""The server has no way to leave a field out of ``/crawl``'s reply, and it holds the page's HTML
+several times over: a page of 0.5 MB makes a reply of over 2 MB. Only the raw Markdown is kept."""
 CRAWLER_CONFIG = {
     "type": "CrawlerRunConfig",
     "params": {
@@ -69,7 +71,6 @@ def read_through_crawl4ai(
     url: str,
     *,
     api_token: str | None = None,
-    timeout: float = READER_TIMEOUT_SECONDS,
 ) -> FetchedPage:
     """One read of ``url``, never retried; ``reader_failed`` when it gave no page."""
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -83,8 +84,9 @@ def read_through_crawl4ai(
                 f"{service_url}/crawl",
                 headers=headers,
                 body=json.dumps(body).encode(),
-                timeout=timeout,
-                max_bytes=MAX_FETCH_BYTES,
+                timeout=READER_TIMEOUT_SECONDS,
+                max_bytes=MAX_REPLY_BYTES,
+                whole_exchange=True,
             )
         )
     except NetworkError as exc:

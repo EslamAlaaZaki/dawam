@@ -193,6 +193,7 @@ def fetch_page(
                         timeout=min(timeout, left),
                         max_bytes=max_bytes,
                         address=address,
+                        whole_exchange=True,
                     )
                 )
                 break

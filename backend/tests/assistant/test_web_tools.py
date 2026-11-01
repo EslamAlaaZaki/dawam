@@ -1349,6 +1349,32 @@ def test_each_step_gets_the_smaller_of_its_timeout_and_the_time_left(
     assert sum(r.timeout for r in browser.sent) == 45.0
 
 
+def test_crawl4ai_with_under_25_seconds_left_is_skipped_for_jina_and_not_audited(
+    admin_client, app, roles, model, fake_llm, browser, web_clock
+):
+    browser.pages[GUARDED] = spends(web_clock, 20.5, reply("Forbidden", status=403))
+    configure(admin_client)
+
+    events = read_guarded(fake_llm, roles)
+
+    assert statuses(events) == ["ok"]
+    assert chain_order(browser) == ["own", "jina"]
+    assert jina_calls(browser)[0].timeout == 24.5
+    assert [row[1].get("reader") for row in audit_rows(app, "web_fetch")] == [None, "jina"]
+
+
+def test_crawl4ai_with_exactly_25_seconds_left_still_runs(
+    admin_client, roles, model, fake_llm, browser, web_clock
+):
+    browser.pages[GUARDED] = spends(web_clock, 20, reply("Forbidden", status=403))
+    configure(admin_client)
+
+    read_guarded(fake_llm, roles)
+
+    assert chain_order(browser) == ["own", "crawl4ai"]
+    assert crawl4ai_calls(browser)[0].timeout == 25.0
+
+
 def test_a_step_with_under_5_seconds_left_is_skipped_and_not_audited(
     admin_client, app, roles, model, fake_llm, browser, web_clock
 ):

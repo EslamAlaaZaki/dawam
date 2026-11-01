@@ -1,8 +1,12 @@
 # Name resolution for the crawl4ai network (ADR 0008, #545). Docker's own resolver answers no
 # outside name on an `internal` network, and Crawl4AI 0.9.5 must resolve a host itself before
 # it asks the egress filter for that host's address. This server is on the egress network too,
-# not on the default one, so `db` and the other DAWAM services do not resolve through it. An
-# answer with a private address is refused twice, by Crawl4AI and by the filter.
+# not on the default one, so `db` and the other DAWAM services on it do not resolve through it.
+# An answer with a private address is refused twice, by Crawl4AI and by the filter.
+#
+# Known limit: it forwards any name, so code running in the crawl4ai container can leak data at
+# low volume through DNS queries, past the filter. A page's JavaScript cannot send a DNS query of
+# its own except by naming hosts, which the proxy would resolve.
 .:53 {
     forward . /etc/resolv.conf
     cache 30

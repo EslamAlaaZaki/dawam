@@ -14,13 +14,14 @@ from dawam.modules.web import is_public_address
 
 REPO = Path(__file__).resolve().parents[3]
 CRAWL4AI_DIR = REPO / "deploy" / "crawl4ai"
-FILTER_CONF = CRAWL4AI_DIR / "egress-filter.conf"
+FILTER_CONF = CRAWL4AI_DIR / "squid.conf"
 LOCKED_DOWN = ("crawl4ai", "egress-filter", "crawl4ai-dns")
 INTERNAL = "crawl4ai-internal"
 EGRESS = "crawl4ai-egress"
 FILTER_ADDRESS = "172.30.127.10"
 DNS_ADDRESS = "172.30.127.11"
-PINNED = re.compile(r"^[^:@]+(/[^:@]+)*:[^:@]+@sha256:[0-9a-f]{64}$")
+PINNED = re.compile(r"^[a-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$")
+"""A tag and its digest: a tag alone can move."""
 
 
 @pytest.fixture(params=["compose.yaml", "deploy/docker-compose.yaml"])
@@ -189,16 +190,55 @@ def test_the_filter_does_not_list_ipv4_mapped_which_would_refuse_every_ipv4_addr
     )
 
 
-def test_the_refusals_come_before_the_only_allow_rule():
+def test_the_refusals_come_before_the_only_allow_rule_and_all_else_is_denied():
     rules = [line for line in filter_lines() if line.startswith("http_access ")]
 
     assert rules == [
+        "http_access deny manager",
         "http_access deny !crawl4ai_network",
         "http_access deny refused_address",
         "http_access deny !web_port",
-        "http_access deny CONNECT !SSL_ports",
+        "http_access deny CONNECT !tls_port",
         "http_access allow crawl4ai_network",
+        "http_access deny all",
     ]
+
+
+def test_the_filters_whole_configuration_is_ours_so_nothing_can_come_before_its_rules(compose):
+    lines = filter_lines()
+    assert not any(line.startswith("include") for line in lines)
+    assert "http_port 3128" in lines
+    assert not any("localnet" in line for line in lines)  # the image's own rule lets it all out
+
+    service = compose["services"]["egress-filter"]
+    assert [v.split(":", 1)[1] for v in service["volumes"]] == ["/etc/squid/squid.conf:ro"]
+    assert service["entrypoint"][:3] == ["/usr/sbin/squid-gnutls", "-f", "/etc/squid/squid.conf"]
+
+
+def test_the_filter_runs_with_least_privilege(compose):
+    service = compose["services"]["egress-filter"]
+    assert service["cap_drop"] == ["ALL"]
+    assert "cap_add" not in service
+    assert "no-new-privileges:true" in service["security_opt"]
+    assert service["read_only"] is True
+    tmpfs = {path.split(":", 1)[0] for path in service["tmpfs"]}
+    assert tmpfs == {"/tmp", "/run", "/var/log/squid", "/var/spool/squid"}
+    lines = filter_lines()
+    assert "pinger_enable off" in lines  # setuid, which no-new-privileges refuses
+
+
+@pytest.mark.parametrize(
+    "image",
+    ["ubuntu/squid:7.2", "ubuntu/squid", "ubuntu/squid@sha256:" + "a" * 64, "x:y@sha256:abc"],
+)
+def test_the_pin_requires_a_tag_and_a_whole_digest(image):
+    assert not PINNED.match(image)
+
+
+def test_the_corefile_states_the_dns_tunnel_limit():
+    corefile = (CRAWL4AI_DIR / "Corefile").read_text(encoding="utf-8")
+
+    assert "low volume through DNS" in corefile
 
 
 def test_the_filter_only_reaches_web_ports_and_only_serves_the_crawl4ai_network():

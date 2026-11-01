@@ -517,6 +517,55 @@ def test_a_slow_body_cannot_outlast_the_whole_exchanges_timeout():
         _read(Trickle(), 10**9, time.monotonic() + 0.05, Silence())
 
 
+class _SlowServer:
+    """A real local server: its headers come after ``pause`` seconds, its body after as long."""
+
+    def __init__(self, pause: float) -> None:
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                time.sleep(pause)
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                time.sleep(pause)
+                self.wfile.write(b"ok")
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+
+    def __enter__(self) -> str:
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{self.server.server_address[1]}/"
+
+    def __exit__(self, *_exc) -> None:
+        self.server.shutdown()
+
+
+def test_by_default_the_timeout_is_each_wait_as_for_search_providers_and_jina():
+    with _SlowServer(0.3) as url:
+        got = SystemNetwork().send(HttpRequest("GET", url, timeout=0.5))
+
+    assert got.body == b"ok"  # 0.6 s in all, over the 0.5 s timeout: each wait was within it
+
+
+def test_asked_for_the_timeout_is_the_whole_exchange():
+    with _SlowServer(0.3) as url, pytest.raises(NetworkError) as caught:
+        SystemNetwork().send(HttpRequest("GET", url, timeout=0.5, whole_exchange=True))
+
+    assert caught.value.timeout
+
+
+def test_only_web_fetch_asks_for_the_whole_exchange():
+    network = site(**{"https://docs.example.com/p": reply("<p>x</p>")})
+
+    fetch_page(network, "https://docs.example.com/p")
+
+    assert network.sent[0].whole_exchange
+    assert not HttpRequest("GET", "https://example.com").whole_exchange
+
+
 # -- page furniture and thin pages (#547) ---------------------------------------------------
 
 MIN_USEFUL = 1500  # MIN_USEFUL_TEXT_CHARS

@@ -147,21 +147,39 @@ def test_the_request_carries_no_identity_proxy_or_captcha_option():
         assert forbidden not in sent
 
 
-def test_the_timeout_defaults_to_25_seconds_and_the_caller_can_lower_it():
-    network = service(crawl_reply(result()))
-
-    read(network)
-    read(network, timeout=7.5)
-
-    assert [r.timeout for r in network.sent] == [25.0, 7.5]
-
-
-def test_the_reply_is_read_up_to_2_mb():
+def test_the_timeout_is_25_seconds_for_the_whole_exchange():
     network = service(crawl_reply(result()))
 
     read(network)
 
-    assert network.sent[0].max_bytes == 2_000_000
+    assert network.sent[0].timeout == 25.0
+    assert network.sent[0].whole_exchange
+
+
+def test_the_reply_is_read_up_to_10_mb():
+    network = service(crawl_reply(result()))
+
+    read(network)
+
+    assert network.sent[0].max_bytes == 10_000_000
+
+
+def test_a_page_whose_reply_is_over_2_mb_is_read_and_only_the_raw_markdown_is_kept():
+    html = "<p>" + "x" * 1_000_000 + "</p>"
+    answer = result(
+        "The article.",
+        html=html,
+        cleaned_html=html,
+        links={"internal": [{"href": "https://a.example"}] * 1000},
+    )
+    answer["markdown"]["markdown_with_citations"] = html
+    answer["markdown"]["references_markdown"] = html
+    answered = crawl_reply(answer)
+    assert len(answered.body) > 2_000_000
+
+    page = read(service(answered))
+
+    assert page.text == "The article."
 
 
 def test_without_a_token_there_is_no_authorization_header():
@@ -290,10 +308,10 @@ def test_an_unusable_reply_is_a_failed_read(body):
     failed(service(reply(body, content_type="application/json")))
 
 
-def test_a_reply_over_2_mb_is_a_failed_read_not_half_a_document():
-    huge = json.dumps({"success": True, "results": [result("x" * 2_100_000)]})
+def test_a_reply_over_10_mb_is_a_failed_read_not_half_a_document():
+    huge = json.dumps({"success": True, "results": [result("x" * 10_100_000)]})
 
-    failed(service(reply(huge, content_type="application/json")))
+    assert "too large" in failed(service(reply(huge, content_type="application/json"))).message
 
 
 def test_an_unreachable_service_and_a_timeout_are_failed_reads_without_a_retry():

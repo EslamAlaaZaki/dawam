@@ -356,23 +356,26 @@ The chat then shows "Read a web page (Crawl4AI)" for a page read this way. With 
 **Network.** A browser runs a page's JavaScript and loads whatever the page asks for, so DAWAM's own address check can't cover it:
 
 - `crawl4ai` is only on `crawl4ai-internal`, an `internal: true` network with no route out, which it shares with `app`, `egress-filter` and `crawl4ai-dns`. It can't reach the database, SearXNG, Ollama or Mailpit. It has no host port.
-- Its only way out is `egress-filter` (Squid, settings in `crawl4ai/egress-filter.conf`), which refuses private, loopback, link-local, shared, reserved and multicast destinations, including through DNS rebinding and redirects, and reaches ports 80 and 443 only.
-- `crawl4ai-dns` (CoreDNS, `crawl4ai/Corefile`) resolves outside names, because Docker's resolver answers none on an internal network. It doesn't know DAWAM's services.
+- Its only way out is `egress-filter` (Squid, settings in `crawl4ai/squid.conf`), which refuses private, loopback, link-local, shared, reserved and multicast destinations, including through DNS rebinding and redirects, and reaches ports 80 and 443 only.
+- `crawl4ai-dns` (CoreDNS, `crawl4ai/Corefile`) resolves outside names, because Docker's resolver answers none on an internal network. It doesn't know DAWAM's services on the default network. It forwards any name, so code that escapes the browser into that container could leak data at low volume through DNS.
 
 Known limit: a plain `http://` page reaches its site with the IP address as its `Host` header, because the filter is asked for the checked address and not the name. A site that serves several names from one address may answer with the wrong page or an error, and then the chain moves on. `https://` is not affected.
 
-**Check it by hand** after setting it up and after changing the image or these settings. It needs a public address for the probe page, such as GitHub Pages or `cloudflared tunnel --url http://localhost:9000` next to `python -m http.server 9000 --directory deploy/crawl4ai`:
+**Check it by hand** after setting it up and after changing the image or these settings. It reaches real sites (`example.com`, `httpbin.org`, `rbndr.us`, `nip.io`), and needs `egress-probe.html` on plain http on a public IP address, because an https page can't request http targets, and a plain http request reaches its site with the IP address as `Host`. On any public machine: `sudo python3 -m http.server 80 --directory deploy/crawl4ai`.
 
 ```sh
 # From the repository root, with the profile running (add -f and --env-file for method 2).
 docker compose ps crawl4ai egress-filter crawl4ai-dns      # up, and crawl4ai healthy
-docker compose exec egress-filter squid -k parse           # no FATAL or ERROR line
+docker compose exec egress-filter /usr/sbin/squid-gnutls -k parse -f /etc/squid/squid.conf
+                                                           # no FATAL or ERROR line
 docker compose exec crawl4ai curl -m 5 -sS https://example.com     # fails: no route out
 docker compose exec crawl4ai curl -m 5 -sS http://1.1.1.1          # fails: no route out
 docker compose exec crawl4ai curl -m 5 -sS http://db:5432          # fails: no such host
-docker compose exec -T app python - https://<public-address>/egress-probe.html \
+docker compose exec -T app python - http://<public-ip>/egress-probe.html \
   < deploy/crawl4ai/verify-egress.py                       # every line PASS, ending ALL PASSED
 ```
+
+The script passes a check only on a refusal's own mark, so any error or missing event is a FAIL. It needs `httpbin.org` and `rbndr.us` to be up; if either is down, those checks fail and prove nothing. A code that gets out of the browser can still reach `app:8000` directly, because `app` has to share this network.
 
 ## Document AI: CPU vs GPU
 

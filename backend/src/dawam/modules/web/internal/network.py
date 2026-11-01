@@ -40,6 +40,9 @@ class HttpRequest:
     """Read at most this many bytes of the body (``HttpReply.truncated`` says if more came)."""
     address: str | None = None
     """The IP address to connect to; ``None``: resolve the URL's host as usual."""
+    whole_exchange: bool = False
+    """``timeout`` bounds the whole exchange, not each wait for the server. Web fetch and Crawl4AI
+    ask for it, to keep within their time limit; other callers keep each wait's own timeout."""
 
 
 @dataclass(frozen=True)
@@ -73,7 +76,7 @@ class SystemNetwork:
         return list(dict.fromkeys(addresses))
 
     def send(self, request: HttpRequest) -> HttpReply:
-        deadline = time.monotonic() + request.timeout  # the whole exchange, not each read
+        started = time.monotonic()
         parts = urlsplit(request.url)
         host = parts.hostname or ""
         https = parts.scheme == "https"
@@ -90,9 +93,11 @@ class SystemNetwork:
             connection.request(
                 request.method, target, body=request.body, headers=dict(request.headers)
             )
-            sock = connection.sock  # getresponse may drop it from the connection
-            _spend(sock, deadline)
+            sock = connection.sock if request.whole_exchange else None
+            if sock is not None:  # kept: getresponse may drop it from the connection
+                _spend(sock, started + request.timeout)
             response = connection.getresponse()
+            deadline = (started if sock is not None else time.monotonic()) + request.timeout
             body = _read(response, request.max_bytes + 1, deadline, sock)
             headers = {key.lower(): value for key, value in response.getheaders()}
             return HttpReply(
@@ -111,17 +116,17 @@ class SystemNetwork:
             connection.close()
 
 
-def _spend(sock: socket.socket, deadline: float) -> None:
-    """The next read on ``sock`` waits at most until ``deadline``."""
+def _spend(sock: socket.socket | None, deadline: float) -> None:
+    """Out of time, or the next read on ``sock`` (if given) waits at most until ``deadline``."""
     left = deadline - time.monotonic()
     if left <= 0:
         raise TimeoutError
-    if sock.fileno() != -1:  # the end of the body closes it
+    if sock is not None and sock.fileno() != -1:  # the end of the body closes it
         sock.settimeout(left)
 
 
 def _read(
-    response: http.client.HTTPResponse, limit: int, deadline: float, sock: socket.socket
+    response: http.client.HTTPResponse, limit: int, deadline: float, sock: socket.socket | None
 ) -> bytes:
     """Up to ``limit`` bytes of the body, chunk by chunk: a server that trickles its body
     still runs out of time (the socket timeout alone applies to each read)."""

@@ -172,16 +172,28 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # What refuses internal addresses for crawl4ai; deploy/crawl4ai/egress-filter.conf.
+  # What refuses internal addresses for crawl4ai; deploy/crawl4ai/squid.conf.
   egress-filter:
+    # No stable channel is published for a supported Squid: _edge, frozen by the digest.
     image: ubuntu/squid:7.2-26.04_edge@sha256:74a4935c1329cde41522d2fbc8351101b9ac3be0b5129c49e1803ff6df589027
     profiles: ["crawl4ai"]
+    # Squid itself: the image's service manager needs to write to the root file system.
+    entrypoint: ["/usr/sbin/squid-gnutls", "-f", "/etc/squid/squid.conf", "-NYC", "-d", "1"]
     volumes:
-      - ./deploy/crawl4ai/egress-filter.conf:/etc/squid/conf.d/egress-filter.conf:ro
+      - ./deploy/crawl4ai/squid.conf:/etc/squid/squid.conf:ro
     networks:
       crawl4ai-internal:
         ipv4_address: 172.30.127.10
       crawl4ai-egress: {}
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run:uid=584792,gid=584792,mode=0700
+      - /var/log/squid:uid=584792,gid=584792,mode=0700
+      - /var/spool/squid:uid=584792,gid=584792,mode=0700
     deploy:
       resources:
         limits:
@@ -220,7 +232,7 @@ networks:
           ip_range: 172.30.126.128/25
   # No route out: crawl4ai reaches only `app`, egress-filter and crawl4ai-dns. If this clashes
   # with a network on your host, change it together with the two fixed addresses above,
-  # CRAWL4AI_UPSTREAM_PROXY, deploy/crawl4ai/resolv.conf and egress-filter.conf.
+  # CRAWL4AI_UPSTREAM_PROXY, deploy/crawl4ai/resolv.conf and squid.conf.
   crawl4ai-internal:
     internal: true
     ipam:
