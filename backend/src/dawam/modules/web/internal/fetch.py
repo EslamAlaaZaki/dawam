@@ -5,6 +5,10 @@ on the default ports, no credentials, and every address the host resolves to mus
 the public internet. The connection goes to the address that was checked (no second
 lookup), and every redirect is checked the same way before it is followed. The body is
 capped in size and time, only text types are read, and HTML is reduced to its text.
+
+A failure says whether the page may be read through the reader instead (``reader_may_try``,
+ADR 0008): only when the address was checked and the site itself did not give the page. Off
+unless a failure turns it on, so a new failure stays inside the installation by default.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
-from .network import HttpRequest, Network, NetworkError
+from .network import HttpReply, HttpRequest, Network, NetworkError
 
 MAX_FETCH_BYTES = 2_000_000
 """What is read of a page's body; the rest is cut."""
@@ -36,15 +40,17 @@ TEXT_TYPES = (
 )
 PORTS = {"http": 80, "https": 443}
 USER_AGENT = "DAWAM-web-fetch/1.0"
+OWN_READER = "dawam"
 
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")
 
 
 class FetchError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, reader_may_try: bool = False) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.reader_may_try = reader_may_try
 
 
 @dataclass(frozen=True)
@@ -55,6 +61,8 @@ class FetchedPage:
     title: str | None
     text: str
     truncated: bool
+    reader: str = OWN_READER
+    """Who read it: DAWAM itself or, through the fallback, ``jina``."""
 
 
 def is_public_address(address: str) -> bool:
@@ -134,7 +142,7 @@ def fetch_page(
             )
         except NetworkError as exc:
             code = "timeout" if exc.timeout else "unreachable"
-            raise FetchError(code, str(exc)) from None
+            raise FetchError(code, str(exc), reader_may_try=True) from None
         if got.status in (301, 302, 303, 307, 308):
             location = got.headers.get("location")
             if not location:
@@ -142,19 +150,24 @@ def fetch_page(
             current = urljoin(current, location)
             continue
         if got.status >= 400:
-            raise FetchError("http_error", f"The server answered with HTTP {got.status}.")
+            raise FetchError(
+                "http_error", f"The server answered with HTTP {got.status}.", reader_may_try=True
+            )
         content_type = got.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if content_type not in TEXT_TYPES:
             raise FetchError(
                 "unsupported_type",
                 f"Web fetch reads text pages only, not `{content_type or 'unknown'}`.",
             )
-        charset = _charset(got.headers.get("content-type", ""))
-        raw = got.body.decode(charset, errors="replace")
+        raw = decoded(got)
         title, text = _html_text(raw) if "html" in content_type else (None, raw.strip())
         truncated = got.truncated or len(text) > MAX_TEXT_CHARS
         return FetchedPage(current, content_type, title, text[:MAX_TEXT_CHARS], truncated)
     raise FetchError("too_many_redirects", f"The page redirected more than {MAX_REDIRECTS} times.")
+
+
+def decoded(got: HttpReply) -> str:
+    return got.body.decode(_charset(got.headers.get("content-type", "")), errors="replace")
 
 
 def _charset(content_type: str) -> str:

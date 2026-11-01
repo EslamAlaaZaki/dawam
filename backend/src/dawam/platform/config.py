@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from typing import Literal
 
 from pydantic import (
@@ -212,6 +213,25 @@ class Settings(DatabaseSettings):
     fake_llm: bool = False
     """Tests only: replace every LLM provider with a rule-based fake that never calls a model
     (the browser end-to-end suite). Never on in a real installation."""
+    jina_api_key: SecretStr | None = None
+    """Optional key for Jina Reader, which web fetch falls back to for a page it cannot read
+    (ADR 0008). It works without one, at a lower rate limit. Empty counts as unset."""
+
+    @field_validator("jina_api_key", mode="before")
+    @classmethod
+    def _clean_jina_api_key(cls, value: object) -> object:
+        text = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(text, str):
+            return value
+        text = text.strip()
+        if not text:
+            return None
+        if not re.fullmatch(r"[!-~]+", text):  # it goes in a header; the message never shows it
+            raise PydanticCustomError(
+                "invalid_jina_api_key", "must be printable characters without spaces"
+            )
+        return text
+
     assistant_job_max_tool_calls: int = Field(default=150, ge=1)
     """Tool calls an assistant job may make (spec §6.16); a job explores far more than a chat."""
     assistant_job_supervisor: bool = False

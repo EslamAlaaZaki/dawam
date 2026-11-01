@@ -365,7 +365,14 @@ describe("the assistant's chat panel", () => {
       arguments: { url: "https://ifrs.example/9" },
       status: "ok",
       duration_ms: 40,
-      result: { url: "https://ifrs.example/9", title: "IFRS 9" },
+      result: { url: "https://ifrs.example/9", title: "IFRS 9", reader: "dawam" },
+    };
+    const throughJina = {
+      name: "web_fetch",
+      arguments: { url: "https://guarded.example/report" },
+      status: "ok",
+      duration_ms: 50,
+      result: { url: "https://guarded.example/report", title: "Report", reader: "jina" },
     };
     renderApp(
       backend({
@@ -374,9 +381,10 @@ describe("the assistant's chat panel", () => {
             frame("started", { run_id: "r", message_id: "m" }),
             frame("tool", search),
             frame("tool", fetched),
+            frame("tool", throughJina),
             frame("text", { text: "Three stages." }),
             frame("done", {
-              run: run({ tool_calls: [search, fetched] }),
+              run: run({ tool_calls: [search, fetched, throughJina] }),
               message_id: "a",
             }),
           ]),
@@ -388,7 +396,7 @@ describe("the assistant's chat panel", () => {
               role: "user",
               content: "IFRS 9 stages?",
               created_at: "2026-01-05T10:00:00Z",
-              run: run({ tool_calls: [search, fetched] }),
+              run: run({ tool_calls: [search, fetched, throughJina] }),
               sender: ADA_SENDER,
               model: null,
             },
@@ -414,6 +422,9 @@ describe("the assistant's chat panel", () => {
     expect(web).toHaveTextContent("Searched the web (SearXNG): IFRS 9 stage");
     expect(web).not.toHaveTextContent("Ahmed");
     expect(web).toHaveTextContent("Read a web page: https://ifrs.example/9");
+    expect(web).toHaveTextContent(
+      "Read a web page (Jina): https://guarded.example/report",
+    );
   });
 
   it("shows the progress of a job the assistant started", async () => {

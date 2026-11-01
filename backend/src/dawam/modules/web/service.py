@@ -9,6 +9,11 @@ internal-only Workspace only ever uses an internal provider (SearXNG), whatever 
 picked for the others. Every query and every fetch is audited (channel ``ai``) before it
 leaves. API keys are sealed with ``SecretBox`` and never returned: callers get
 ``has_api_key``.
+
+A page DAWAM cannot read itself goes to Jina Reader, an outside service, when the fetch says
+it may (``reader_may_try``), the URL has no query string and the Workspace is not
+internal-only. There is no setting for it beyond the web access switch; the optional key
+(``DAWAM_JINA_API_KEY``) comes from the deployment and is only ever sent to Jina.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -29,6 +34,7 @@ from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
 
 from .internal.fetch import FetchedPage, FetchError, fetch_page
+from .internal.jina import READER, read_through_jina
 from .internal.network import Network, SystemNetwork
 from .internal.providers import (
     KINDS,
@@ -112,12 +118,14 @@ class WebService:
         clock: Clock,
         network: Network | None = None,
         internal_only: Callable[[uuid.UUID], bool] = lambda _workspace_id: True,
+        jina_api_key: str | None = None,
     ) -> None:
         self._engine = engine
         self._box = SecretBox(encryption_key)
         self._clock = clock
         self._network = network or SystemNetwork()
         self._internal_only = internal_only
+        self._jina_api_key = jina_api_key
 
     # -- admin -------------------------------------------------------------------------
 
@@ -359,7 +367,54 @@ class WebService:
     def fetch(self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str) -> FetchedPage:
         if not self.fetch_available(workspace_id):
             raise ApiError(403, "web_fetch_off", "Web fetch is not available here.")
+        self._audit_fetch(actor_id, workspace_id, url)
+        try:
+            page = fetch_page(self._network, url)
+        except FetchError as exc:
+            if exc.reader_may_try and (for_reader := self._reader_url(workspace_id, url)):
+                read = self._read_through_reader(actor_id, workspace_id, for_reader)
+                if read is not None:
+                    return read
+            status = 403 if exc.code == "address_blocked" else 502
+            raise ApiError(status, exc.code, exc.message) from None
+        if page.text:
+            return page
+        for_reader = self._reader_url(workspace_id, url)
+        if for_reader is None:
+            return page
+        read = self._read_through_reader(actor_id, workspace_id, for_reader)
+        if read is None:
+            raise ApiError(502, "empty_page", "The page has no text to read.")
+        return read
+
+    def _reader_url(self, workspace_id: uuid.UUID, url: str) -> str | None:
+        """What may be sent to the reader, ``None``: nothing may. A query string can carry a
+        token or data; a fragment is not part of the address. Internal-only and the switch
+        are read again here, right before the call, not when the fetch began."""
+        parts = urlsplit(url.strip())
+        if parts.query:
+            return None
+        if self._internal_only(workspace_id) or not self.fetch_available(workspace_id):
+            return None
+        return urlunsplit(parts._replace(fragment=""))
+
+    def _read_through_reader(
+        self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str
+    ) -> FetchedPage | None:
+        """The page through the reader, ``None`` when it could not read it either."""
+        self._audit_fetch(actor_id, workspace_id, url, reader=READER)
+        try:
+            return read_through_jina(self._network, url, api_key=self._jina_api_key)
+        except FetchError:
+            return None
+
+    def _audit_fetch(
+        self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str, *, reader: str | None = None
+    ) -> None:
         host = (urlsplit(url.strip()).hostname or "")[:64] or "unknown"
+        new = {"url": redact_text(url.strip(), entities=False)[:MAX_AUDIT_URL_CHARS]}
+        if reader is not None:
+            new["reader"] = reader
         with Session(self._engine) as db, db.begin():
             record_audit(
                 db,
@@ -368,15 +423,10 @@ class WebService:
                 entity_type=AUDIT_FETCH,
                 entity_id=host,
                 old=None,
-                new={"url": redact_text(url.strip(), entities=False)[:MAX_AUDIT_URL_CHARS]},
+                new=new,
                 at=self._clock(),
                 via="ai",
             )
-        try:
-            return fetch_page(self._network, url)
-        except FetchError as exc:
-            status = 403 if exc.code == "address_blocked" else 502
-            raise ApiError(status, exc.code, exc.message) from None
 
     # -- helpers -------------------------------------------------------------------------
 

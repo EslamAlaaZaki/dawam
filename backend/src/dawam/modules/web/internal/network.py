@@ -33,7 +33,7 @@ class NetworkError(Exception):
 class HttpRequest:
     method: str
     url: str
-    headers: Mapping[str, str] = field(default_factory=dict)
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)  # may hold an API key
     body: bytes | None = None
     timeout: float = 10.0
     max_bytes: int = 1_000_000
@@ -100,7 +100,9 @@ class SystemNetwork:
             )
         except TimeoutError:
             raise NetworkError("The server did not answer in time.", timeout=True) from None
-        except (OSError, http.client.HTTPException):
+        except (OSError, http.client.HTTPException, ValueError):
+            # ValueError: a URL or header http.client refuses; its message quotes the value,
+            # which may be an API key, so it goes no further.
             raise NetworkError("The server could not be reached.") from None
         finally:
             connection.close()
