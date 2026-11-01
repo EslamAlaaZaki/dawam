@@ -283,7 +283,11 @@ function webOf(tools: readonly ToolCall[]) {
       ];
     }
     if (tool.name === "web_fetch" && typeof tool.result?.url === "string") {
-      return [{ label: "Read a web page", detail: tool.result.url }];
+      const label =
+        tool.result.reader === "jina"
+          ? "Read a web page (Jina)"
+          : "Read a web page";
+      return [{ label, detail: tool.result.url }];
     }
     return [];
   });

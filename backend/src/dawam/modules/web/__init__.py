@@ -15,7 +15,9 @@ Public interface. Other modules import only what is re-exported here:
   self-hosted) and ``LangSearch`` (external, API key) are the adapters.
 - ``Network`` (``HttpRequest``, ``HttpReply``, ``NetworkError``): the network as a port;
   ``SystemNetwork`` is the real one, tests fake it, so CI never reaches a provider.
-  ``fetch_page`` and ``is_public_address`` are the fetch and its SSRF guard.
+  ``fetch_page`` and ``is_public_address`` are the fetch and its SSRF guard;
+  ``read_through_jina`` is the Jina Reader adapter ``fetch`` falls back to for a page it could
+  not read (never for an internal-only Workspace or a URL with a query string).
 - ``router``: ``/admin/web`` and ``/admin/web/providers/{kind}[/test]``, admins only.
 
 Owns the ``web_settings`` and ``web_search_providers`` tables. Imports ``auth``, ``audit``
@@ -24,6 +26,7 @@ and ``workspaces`` (for the admin policy).
 
 from .api import router
 from .internal.fetch import FetchedPage, FetchError, fetch_page, is_public_address
+from .internal.jina import read_through_jina
 from .internal.network import HttpReply, HttpRequest, Network, NetworkError, SystemNetwork
 from .internal.providers import LangSearch, SearchError, SearchProvider, SearchResult, Searxng
 from .internal.strip import strip_values
@@ -48,6 +51,7 @@ __all__ = [
     "WebSettings",
     "fetch_page",
     "is_public_address",
+    "read_through_jina",
     "router",
     "strip_values",
 ]

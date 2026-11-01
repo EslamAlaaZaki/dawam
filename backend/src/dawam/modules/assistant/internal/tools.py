@@ -2574,7 +2574,7 @@ def _web_fetch(ctx: ToolContext, args: _WebFetch) -> Any:
             "truncated": page.truncated,
             "note": WEB_NOTE,
         },
-        {"url": page.url, "title": page.title},
+        {"url": page.url, "title": page.title, "reader": page.reader},
     )
 
 

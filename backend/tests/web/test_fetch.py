@@ -7,7 +7,14 @@ import threading
 
 import pytest
 
-from dawam.modules.web import FetchError, HttpRequest, SystemNetwork, fetch_page, is_public_address
+from dawam.modules.web import (
+    FetchError,
+    HttpRequest,
+    NetworkError,
+    SystemNetwork,
+    fetch_page,
+    is_public_address,
+)
 from tests.web.fakes import FakeNetwork, reply
 
 PUBLIC = "93.184.215.14"
@@ -208,6 +215,123 @@ def test_an_error_status_is_reported():
         fetch_page(network, "https://docs.example.com/gone")
 
     assert caught.value.code == "http_error"
+
+
+def failing_fetch(network, url) -> FetchError:
+    with pytest.raises(FetchError) as caught:
+        fetch_page(network, url)
+    return caught.value
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
+def test_an_error_status_may_be_read_through_the_reader(status):
+    network = site(**{"https://docs.example.com/a": reply("no", status=status)})
+
+    assert failing_fetch(network, "https://docs.example.com/a").reader_may_try
+
+
+def test_a_timeout_after_resolving_may_be_read_through_the_reader():
+    def too_slow(request):
+        raise NetworkError("The server did not answer in time.", timeout=True)
+
+    error = failing_fetch(
+        site(**{"https://docs.example.com/a": too_slow}), "https://docs.example.com/a"
+    )
+
+    assert error.code == "timeout"
+    assert error.reader_may_try
+
+
+def test_a_failed_connection_after_resolving_may_be_read_through_the_reader():
+    error = failing_fetch(site(), "https://docs.example.com/a")  # resolves, no page answers
+
+    assert error.code == "unreachable"
+    assert error.reader_may_try
+
+
+def test_a_host_that_does_not_resolve_may_not_be_read_through_the_reader():
+    # The address could not be checked: an internal name must not leave the network.
+    network = FakeNetwork()
+
+    error = failing_fetch(network, "https://wiki.corp.internal/a")
+
+    assert error.code == "unreachable"
+    assert not error.reader_may_try
+    assert network.sent == []
+
+
+def test_a_redirect_to_a_host_that_does_not_resolve_may_not_be_read_through_the_reader():
+    network = site(
+        **{
+            "https://docs.example.com/go": reply(
+                status=302, headers={"location": "https://wiki.corp.internal/a"}
+            )
+        }
+    )
+
+    assert not failing_fetch(network, "https://docs.example.com/go").reader_may_try
+
+
+@pytest.mark.parametrize(
+    ("url", "pages"),
+    [
+        ("https://user:pass@docs.example.com/", {}),  # invalid_url
+        (
+            "https://docs.example.com/a.zip",
+            {"https://docs.example.com/a.zip": reply(b"PK", content_type="application/zip")},
+        ),
+        (
+            "https://docs.example.com/loop",
+            {"https://docs.example.com/loop": reply(status=302, headers={"location": "/loop"})},
+        ),
+        ("https://docs.example.com/where", {"https://docs.example.com/where": reply(status=302)}),
+        (
+            "https://docs.example.com/up",
+            {"https://docs.example.com/up": reply(status=302, headers={"location": "ftp://x/"})},
+        ),
+    ],
+)
+def test_the_other_failures_may_not_be_read_through_the_reader(url, pages):
+    assert not failing_fetch(site(**pages), url).reader_may_try
+
+
+def test_a_hop_blocked_by_the_address_check_may_not_be_read_through_the_reader():
+    network = FakeNetwork(
+        hosts={"docs.example.com": [PUBLIC], "metadata.internal": ["169.254.169.254"]},
+        pages={
+            "https://docs.example.com/go": reply(
+                status=302, headers={"location": "http://metadata.internal/latest/"}
+            ),
+        },
+    )
+
+    error = failing_fetch(network, "https://docs.example.com/go")
+
+    assert error.code == "address_blocked"
+    assert not error.reader_may_try
+
+
+def test_a_page_dawam_read_itself_says_so():
+    page = fetch_page(
+        site(**{"https://docs.example.com/a": reply("<p>hi</p>")}), "https://docs.example.com/a"
+    )
+
+    assert page.reader == "dawam"
+
+
+def test_a_header_the_system_network_refuses_is_a_network_error_that_does_not_quote_it():
+    # http.client's own message quotes the bad value: a mistyped key must not reach a log.
+    request = HttpRequest(
+        "GET",
+        "http://unresolvable.invalid/x",
+        headers={"Authorization": "Bearer jina\nsecret"},
+        address="127.0.0.1",
+    )
+
+    with pytest.raises(NetworkError) as caught:
+        SystemNetwork().send(request)
+
+    assert "secret" not in str(caught.value)
 
 
 def test_the_system_network_connects_to_the_pinned_address():

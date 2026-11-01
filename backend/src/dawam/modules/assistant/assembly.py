@@ -163,6 +163,9 @@ def build_assistant_service(
                 clock=clock,
                 network=web_network,
                 internal_only=lambda workspace_id: ai.settings(workspace_id).internal_only,
+                jina_api_key=(
+                    settings.jina_api_key.get_secret_value() if settings.jina_api_key else None
+                ),
             ),
             memory=MemoryService(engine, workspaces=workspaces, change_sets=change_sets),
         ),

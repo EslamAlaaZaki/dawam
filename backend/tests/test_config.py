@@ -43,6 +43,31 @@ def test_settings_are_read_from_the_environment(monkeypatch):
     assert settings.hsts_max_age_seconds == 600
 
 
+def test_the_jina_key_is_optional_and_never_shown_in_the_settings(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+
+    assert load_settings().jina_api_key is None
+
+    monkeypatch.setenv("DAWAM_JINA_API_KEY", "  ")
+    assert load_settings().jina_api_key is None
+
+    monkeypatch.setenv("DAWAM_JINA_API_KEY", " jina_abc-123 ")
+    settings = load_settings()
+    assert settings.jina_api_key.get_secret_value() == "jina_abc-123"
+    assert "jina_abc-123" not in repr(settings)
+
+
+def test_a_malformed_jina_key_stops_startup_without_showing_it(monkeypatch):
+    monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", new_key())
+    monkeypatch.setenv("DAWAM_JINA_API_KEY", "jina secret")
+
+    with pytest.raises(ConfigError) as raised:
+        load_settings()
+
+    assert "DAWAM_JINA_API_KEY" in str(raised.value)
+    assert "secret" not in str(raised.value)
+
+
 def test_the_encryption_key_is_never_shown_in_the_settings(monkeypatch):
     key = new_key()
     monkeypatch.setenv("DAWAM_ENCRYPTION_KEY", key)

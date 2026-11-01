@@ -85,7 +85,10 @@ Network access the installation needs:
 - **Outbound from `app` and `worker`:** the LLM providers and source databases you
   configure, the SMTP server (`app` only), plus the S3 endpoint if you use one, and the
   web search provider and fetched pages if an admin turns on the assistant's web access
-  (off by default, [ADR 0008](../docs/adr/0008-assistant-outbound-web-access.md)). With local models and no
+  (off by default, [ADR 0008](../docs/adr/0008-assistant-outbound-web-access.md)). When web
+  access is on, the address of a page DAWAM can't read itself goes to **Jina Reader**
+  (`r.jina.ai`), an external service, for Workspaces that are not internal-only (never a
+  URL with a query string; `DAWAM_JINA_API_KEY` is optional). With local models and no
   external services, DAWAM runs fully offline ([`docs/install.md`](../docs/install.md),
   "Air-Gapped Installation").
 - **Browser:** the API docs page (`/api/v1/docs`) loads Swagger UI from
