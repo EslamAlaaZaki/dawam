@@ -11,7 +11,8 @@ leaves. API keys are sealed with ``SecretBox`` and never returned: callers get
 ``has_api_key``.
 
 A page DAWAM cannot read itself goes to Jina Reader, an outside service, when the fetch says
-it may (``reader_may_try``), the URL has no query string and the Workspace is not
+it may (``reader_may_try``) or its text is empty or thin (#547; the longer text is kept), the
+URL has no query string and the Workspace is not
 internal-only. There is no setting for it beyond the web access switch; the optional key
 (``DAWAM_JINA_API_KEY``) comes from the deployment and is only ever sent to Jina.
 """
@@ -377,15 +378,19 @@ class WebService:
                     return read
             status = 403 if exc.code == "address_blocked" else 502
             raise ApiError(status, exc.code, exc.message) from None
-        if page.text:
+        if page.text and not page.thin:
             return page
+        # Empty or thin (#547): the reader gets the same chance as after an error, and the
+        # longer text wins. Nothing is lost: a failed or shorter read leaves DAWAM's own text.
         for_reader = self._reader_url(workspace_id, url)
         if for_reader is None:
             return page
         read = self._read_through_reader(actor_id, workspace_id, for_reader)
-        if read is None:
+        if read is not None and len(read.text) > len(page.text):
+            return read
+        if not page.text:
             raise ApiError(502, "empty_page", "The page has no text to read.")
-        return read
+        return page
 
     def _reader_url(self, workspace_id: uuid.UUID, url: str) -> str | None:
         """What may be sent to the reader, ``None``: nothing may. A query string can carry a
