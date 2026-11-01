@@ -478,3 +478,66 @@ def test_both_providers_failing_is_one_clear_error_and_one_search_count(
     assert [d["status"] for n, d in events if n == "tool"] == ["error", "error"]
     assert "unavailable right now" in (fake_llm.calls[1].messages[-1].content or "")
     assert len(audit_rows(app, "web_search")) == 4
+
+
+def corrupt_langsearch_key(app):
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "UPDATE web_search_providers SET secret_encrypted = 'unreadable'"
+                " WHERE kind = 'langsearch'"
+            )
+        )
+
+
+def test_an_unreadable_key_on_the_chosen_provider_fails_over_to_searxng(
+    admin_client, app, roles, model, fake_llm, network
+):
+    configure(admin_client, normal="langsearch")
+    corrupt_langsearch_key(app)
+
+    events = search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search"]
+    assert provider_shown(events) == "searxng"
+    assert [e for e, _, _ in audit_rows(app, "web_search")] == ["searxng"]
+
+
+def test_an_unreadable_key_on_the_failover_provider_is_skipped_with_the_clear_error(
+    admin_client, app, roles, model, fake_llm, network
+):
+    configure(admin_client, normal="searxng")
+    corrupt_langsearch_key(app)
+    network.pages[f"{SEARX}/search"] = json_reply(BLOCKED)
+
+    search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search"]
+    seen = fake_llm.calls[1].messages[-1].content or ""
+    assert "unavailable right now" in seen and "sk-lang" not in seen
+
+
+def test_a_workspace_that_turns_internal_only_before_the_failover_call_never_leaves(
+    admin_client, app, roles, model, fake_llm, network, monkeypatch
+):
+    from dawam.modules.web import WebService
+
+    state = {"internal": False}
+    init, order = WebService.__init__, WebService._search_order
+
+    def init_with_flag(self, *args, **kwargs):
+        init(self, *args, **{**kwargs, "internal_only": lambda _workspace_id: state["internal"]})
+
+    def order_then_flip(self, chosen):
+        state["internal"] = True  # after the first check, before the failover call
+        return order(self, chosen)
+
+    monkeypatch.setattr(WebService, "__init__", init_with_flag)
+    monkeypatch.setattr(WebService, "_search_order", order_then_flip)
+    configure(admin_client, normal="searxng")
+    network.pages[f"{SEARX}/search"] = json_reply(BLOCKED)
+
+    search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search"]
+    assert [e for e, _, _ in audit_rows(app, "web_search")] == ["searxng"]

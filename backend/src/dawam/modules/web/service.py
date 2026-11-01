@@ -294,7 +294,9 @@ class WebService:
                 and not KINDS[attempt].internal
             ):
                 continue
-            provider = self._attempt(workspace_id, actor_id, attempt, sent, first=attempt == kind)
+            provider = self._attempt(
+                workspace_id, actor_id, attempt, sent, first=attempt == kind, failures=failures
+            )
             if provider is None:
                 continue
             try:
@@ -308,22 +310,28 @@ class WebService:
         )
 
     def _search_order(self, chosen: str) -> list[str]:
-        """The chosen provider, then every other registered one that could answer (a
-        LangSearch with no saved key cannot)."""
+        """The chosen provider, then one other registered provider to fail over to."""
         with Session(self._engine) as db:
             others = [
                 r.kind
                 for r in db.scalars(sa.select(WebProviderRecord).order_by(WebProviderRecord.kind))
-                if r.kind != chosen
-                and r.kind in KINDS
-                and (r.kind == "searxng" or r.secret_encrypted is not None)
+                if r.kind != chosen and r.kind in KINDS
             ]
         return [chosen, *others[:1]]
 
     def _attempt(
-        self, workspace_id: uuid.UUID, actor_id: uuid.UUID, kind: str, sent: str, *, first: bool
+        self,
+        workspace_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        kind: str,
+        sent: str,
+        *,
+        first: bool,
+        failures: list[str],
     ) -> SearchProvider | None:
-        """Audit the attempt, then hand back its provider; ``None``: it cannot be tried."""
+        """Audit the attempt, then hand back its provider; ``None``: it cannot be tried. An
+        unreadable key is a failed attempt (its message joins ``failures``), so the search
+        can fail over."""
         with Session(self._engine) as db, db.begin():
             record = db.get(WebProviderRecord, kind)
             if record is None:
@@ -332,9 +340,8 @@ class WebService:
                 return None
             try:
                 provider = self._provider(record)
-            except ApiError:
-                if first:
-                    raise
+            except ApiError as exc:
+                failures.append(exc.message)
                 return None
             record_audit(
                 db,
