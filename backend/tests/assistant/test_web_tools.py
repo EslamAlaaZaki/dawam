@@ -547,6 +547,58 @@ def test_a_thin_page_the_reader_cannot_improve_stays_dawams_own_ok_result(
     assert done(events)["run"]["tool_calls"][0]["result"]["reader"] == "dawam"
 
 
+@pytest.mark.parametrize(
+    "block_page",
+    [
+        "Just a moment... " + "Checking your browser. " * 30,
+        "Please verify you are not a robot. " + "Hourly detail. " * 30,
+        "Enable JavaScript and cookies to continue. " * 20,
+    ],
+    ids=["moment", "verify", "enable-javascript"],
+)
+def test_a_longer_block_page_from_jina_does_not_replace_a_thin_pages_text(
+    admin_client, roles, model, fake_llm, guarded, block_page
+):
+    guarded.pages[GUARDED] = reply(THIN)
+    guarded.pages[f"{JINA}{GUARDED}"] = jina_page(block_page)
+    configure(admin_client)
+
+    events = read_guarded(fake_llm, roles)
+
+    assert statuses(events) == ["ok"]
+    assert done(events)["run"]["tool_calls"][0]["result"]["reader"] == "dawam"
+    assert "Riyadh today: sunny." in (fake_llm.calls[1].messages[-1].content or "")
+
+
+def test_a_block_phrase_in_jinas_title_keeps_a_thin_pages_text(
+    admin_client, roles, model, fake_llm, guarded
+):
+    guarded.pages[GUARDED] = reply(THIN)
+    guarded.pages[f"{JINA}{GUARDED}"] = reply(
+        f"Title: Access Denied\n\nURL Source: {GUARDED}\n\nMarkdown Content:\n{LONG_READ}",
+        content_type="text/plain",
+    )
+    configure(admin_client)
+
+    events = read_guarded(fake_llm, roles)
+
+    assert done(events)["run"]["tool_calls"][0]["result"]["reader"] == "dawam"
+
+
+def test_a_thin_page_reached_through_a_redirect_sends_the_original_url_to_jina(
+    admin_client, roles, model, fake_llm, guarded
+):
+    guarded.pages[GUARDED] = reply(status=302, headers={"location": "/moved"})
+    guarded.pages["https://guarded.example/moved"] = reply(THIN)
+    guarded.pages[f"{JINA}{GUARDED}"] = jina_page(LONG_READ)
+    configure(admin_client)
+
+    events = read_guarded(fake_llm, roles)
+
+    assert statuses(events) == ["ok"]
+    assert [r.url for r in jina_calls(guarded)] == [f"{JINA}{GUARDED}"]
+
+
 def test_a_thin_page_with_no_better_read_does_not_mark_the_host_as_failed(
     admin_client, roles, model, fake_llm, guarded
 ):

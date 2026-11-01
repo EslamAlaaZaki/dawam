@@ -11,8 +11,8 @@ leaves. API keys are sealed with ``SecretBox`` and never returned: callers get
 ``has_api_key``.
 
 A page DAWAM cannot read itself goes to Jina Reader, an outside service, when the fetch says
-it may (``reader_may_try``) or its text is empty or thin (#547; the longer text is kept), the
-URL has no query string and the Workspace is not
+it may (``reader_may_try``), or when the page is empty or thin (#547: the reader's text is used
+only if it is longer and not a block page), the URL has no query string and the Workspace is not
 internal-only. There is no setting for it beyond the web access switch; the optional key
 (``DAWAM_JINA_API_KEY``) comes from the deployment and is only ever sent to Jina.
 """
@@ -34,7 +34,7 @@ from dawam.platform.crypto import DecryptionError, SecretBox
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
 
-from .internal.fetch import FetchedPage, FetchError, fetch_page
+from .internal.fetch import FetchedPage, FetchError, fetch_page, looks_blocked
 from .internal.jina import READER, read_through_jina
 from .internal.network import Network, SystemNetwork
 from .internal.providers import (
@@ -386,8 +386,12 @@ class WebService:
         if for_reader is None:
             return page
         read = self._read_through_reader(actor_id, workspace_id, for_reader)
-        if read is not None and len(read.text) > len(page.text):
-            return read
+        if (
+            read is not None
+            and len(read.text) > len(page.text)
+            and not (page.text and looks_blocked(read.title, read.text))
+        ):
+            return read  # a thin page's own text is not replaced by a block page
         if not page.text:
             raise ApiError(502, "empty_page", "The page has no text to read.")
         return page

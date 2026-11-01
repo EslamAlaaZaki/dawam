@@ -509,6 +509,32 @@ def test_a_furniture_tag_left_open_does_not_lose_the_rest_of_the_page():
     assert "Rest of the page" in text_of("<aside>Menu<p>Rest of the page</p>")
 
 
+def test_a_parent_that_closes_open_furniture_gives_back_what_it_held():
+    html = "<div id=app><nav>Menu<p>Real article</p></div><p>After.</p>"
+
+    text = text_of(html)
+
+    assert "Real article" in text and "After." in text
+
+
+def test_furniture_closed_by_its_own_end_tag_is_still_dropped_inside_a_parent():
+    assert text_of("<div><nav>Menu</nav><p>Kept.</p></div>") == "Kept."
+
+
+def test_the_header_of_main_is_kept():
+    assert "Title" in text_of("<header>Banner</header><main><header><h1>Title</h1></header></main>")
+
+
+def test_deeply_nested_or_unclosed_tags_keep_all_text_and_cost_linear_time():
+    # Old code scanned the open-tag list on every end tag: this body took minutes.
+    unclosed = "<p>Head text" + "<p>x" * 150_000 + "</b>" * 300_000 + "<p>Tail text"
+    nested = "<div>" * 2000 + "<nav>Deep menu</nav><p>Deep text</p>" + "</div>" * 2000
+
+    assert text_of(unclosed).startswith("Head text")  # the page is read to its end, in time
+    assert "Deep text" in text_of(nested)  # past the tracked depth nothing is dropped
+    assert "Deep text" in text_of("<header>" + "<div>" * 2000 + "<p>Deep text</p>")
+
+
 def test_a_stray_end_tag_and_unclosed_inner_tags_change_nothing():
     text = text_of("</nav><div><p>One<p>Two<li>Three</div><footer>Bye</footer><p>Four")
 

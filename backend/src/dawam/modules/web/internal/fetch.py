@@ -47,6 +47,25 @@ TEXT_TYPES = (
     "application/xml",
     "text/xml",
 )
+BLOCK_PHRASES = (
+    "access denied",
+    "just a moment",
+    "attention required",
+    "security verification",
+    "request blocked",
+    "could not be satisfied",
+    "verify you",
+    "not a robot",
+    "prove your humanity",
+    "human verification",
+    "been blocked",
+    "captcha",
+    "enable javascript",
+    "please enable js",
+)
+"""Lower-case phrases of a bot-protection or cookie page. A reader's answer whose title or
+first ``BLOCK_CHECK_CHARS`` characters hold one is a block page, not the page (#547)."""
+BLOCK_CHECK_CHARS = 600
 PORTS = {"http": 80, "https": 443}
 USER_AGENT = "DAWAM-web-fetch/1.0"
 OWN_READER = "dawam"
@@ -74,6 +93,12 @@ class FetchedPage:
     """Who read it: DAWAM itself or, through the fallback, ``jina``."""
     thin: bool = False
     """An HTML page with under ``MIN_USEFUL_TEXT_CHARS`` of text once cleaned (before the cut)."""
+
+
+def looks_blocked(title: str | None, text: str) -> bool:
+    """Do the title or the start of the text read like a block, CAPTCHA or cookie page?"""
+    head = f"{title or ''}\n{text[:BLOCK_CHECK_CHARS]}".lower()
+    return any(phrase in head for phrase in BLOCK_PHRASES)
 
 
 def is_public_address(address: str) -> bool:
@@ -214,13 +239,16 @@ class _TextOnly(HTMLParser):
     FURNITURE = frozenset({"nav", "header", "footer", "aside"})
     """Menus and page furniture, dropped with their contents (#547). A ``header`` inside an
     ``article`` or ``section`` is the content's own heading, so it stays."""
-    CONTENT_ROOTS = frozenset({"article", "section"})
+    CONTENT_ROOTS = ("article", "section", "main")
     ENDS_FURNITURE = frozenset({"main", "article", "body"})
     """Furniture never contains these: one starting inside it means the furniture was left open."""
     VOID = frozenset(
         {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source"}
         | {"track", "wbr", "param"}
     )
+    MAX_DEPTH = 500
+    """Open tags tracked at once. Deeper ones are not tracked, so a hostile page costs linear
+    time and its text is never lost."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -229,6 +257,7 @@ class _TextOnly(HTMLParser):
         self._skipping = 0
         self._in_title = False
         self._open: list[str] = []
+        self._counts: dict[str, int] = {}  # open tags by name, so no end tag scans the stack
         self._furniture_at: int | None = None  # index in ``_open`` of the outermost furniture
         self._held: list[str] = []  # what the open furniture contains, kept in case it never closes
 
@@ -240,17 +269,18 @@ class _TextOnly(HTMLParser):
             self._skipping += 1
             return
         if self._furniture_at is not None and tag in self.ENDS_FURNITURE:
-            self._end_furniture(self._furniture_at)  # left open: what it held is page text
-        if tag not in self.VOID:
+            self._end_furniture()  # left open: what it held is page text
+        if tag not in self.VOID and len(self._open) < self.MAX_DEPTH:
             if (
                 self._furniture_at is None
                 and tag in self.FURNITURE
-                and not (tag == "header" and self.CONTENT_ROOTS.intersection(self._open))
+                and not (tag == "header" and self._in_content())
                 and not self._skipping
             ):
                 self._furniture_at = len(self._open)
                 self._held = []
             self._open.append(tag)
+            self._counts[tag] = self._counts.get(tag, 0) + 1
         if tag in self.BLOCK:
             self._emit("\n")
 
@@ -260,12 +290,19 @@ class _TextOnly(HTMLParser):
         elif tag in self.SKIP:
             self._skipping = max(0, self._skipping - 1)
         else:
-            if tag in self._open:  # a stray end tag closes nothing
-                at = len(self._open) - 1 - self._open[::-1].index(tag)  # closes what it holds too
-                del self._open[at:]
-                if self._furniture_at is not None and at <= self._furniture_at:
-                    self._furniture_at = None  # closed: its contents are dropped
-                    self._held = []
+            if self._counts.get(tag):  # a stray end tag closes nothing
+                while True:  # closes what it holds too; each tag is popped once
+                    top = len(self._open) - 1
+                    if self._furniture_at == top:
+                        if self._open[top] == tag:
+                            self._furniture_at = None  # its own end tag: contents are dropped
+                            self._held = []
+                        else:
+                            self._end_furniture()  # an ancestor closed it: keep what it held
+                    closed = self._open.pop()
+                    self._counts[closed] -= 1
+                    if closed == tag:
+                        break
             if tag in self.BLOCK:
                 self._emit("\n")
 
@@ -275,19 +312,22 @@ class _TextOnly(HTMLParser):
         elif not self._skipping:
             self._emit(data)
 
+    def _in_content(self) -> bool:
+        return any(self._counts.get(root) for root in self.CONTENT_ROOTS)
+
     def _emit(self, text: str) -> None:
         (self.parts if self._furniture_at is None else self._held).append(text)
 
-    def _end_furniture(self, depth: int) -> None:
+    def _end_furniture(self) -> None:
+        """Furniture that was left open: what it held is page text after all."""
         self.parts.extend(self._held)
         self._held = []
         self._furniture_at = None
-        del self._open[min(depth, len(self._open)) :]
 
     def close(self) -> None:
         super().close()
         if self._furniture_at is not None:
-            self._end_furniture(len(self._open))  # never closed: do not lose the rest of the page
+            self._end_furniture()  # never closed: do not lose the rest of the page
 
 
 def _html_text(html: str) -> tuple[str | None, str]:
