@@ -6,7 +6,7 @@ the public internet. The connection goes to an address that was checked (no seco
 lookup per hop); when it fails or times out, the next checked address is tried (at most
 three, twenty seconds in all). Every redirect is checked the same way before it is followed.
 The body is capped in size and time, only text types are read, and HTML is reduced to its
-text.
+text without menus and page furniture (nav, footer, aside, a page-level header).
 
 A failure says whether the page may be read through the reader instead (``reader_may_try``,
 ADR 0008): only when the address was checked and the site itself did not give the page. Off
@@ -35,6 +35,8 @@ MAX_REDIRECTS = 5
 MAX_URL_LENGTH = 2000
 MAX_TEXT_CHARS = 12_000
 """What of a page's text reaches the model."""
+MIN_USEFUL_TEXT_CHARS = 1500
+"""An HTML page whose cleaned text is shorter than this is thin: the reader may know more (#547)."""
 TEXT_TYPES = (
     "text/html",
     "application/xhtml+xml",
@@ -45,6 +47,25 @@ TEXT_TYPES = (
     "application/xml",
     "text/xml",
 )
+BLOCK_PHRASES = (
+    "access denied",
+    "just a moment",
+    "attention required",
+    "security verification",
+    "request blocked",
+    "could not be satisfied",
+    "verify you",
+    "not a robot",
+    "prove your humanity",
+    "human verification",
+    "been blocked",
+    "captcha",
+    "enable javascript",
+    "please enable js",
+)
+"""Lower-case phrases of a bot-protection or cookie page. A reader's answer whose title or
+first ``BLOCK_CHECK_CHARS`` characters hold one is a block page, not the page (#547)."""
+BLOCK_CHECK_CHARS = 600
 PORTS = {"http": 80, "https": 443}
 USER_AGENT = "DAWAM-web-fetch/1.0"
 OWN_READER = "dawam"
@@ -70,6 +91,14 @@ class FetchedPage:
     truncated: bool
     reader: str = OWN_READER
     """Who read it: DAWAM itself or, through the fallback, ``jina``."""
+    thin: bool = False
+    """An HTML page with under ``MIN_USEFUL_TEXT_CHARS`` of text once cleaned (before the cut)."""
+
+
+def looks_blocked(title: str | None, text: str) -> bool:
+    """Do the title or the start of the text read like a block, CAPTCHA or cookie page?"""
+    head = f"{title or ''}\n{text[:BLOCK_CHECK_CHARS]}".lower()
+    return any(phrase in head for phrase in BLOCK_PHRASES)
 
 
 def is_public_address(address: str) -> bool:
@@ -177,9 +206,13 @@ def fetch_page(
                 f"Web fetch reads text pages only, not `{content_type or 'unknown'}`.",
             )
         raw = decoded(got)
-        title, text = _html_text(raw) if "html" in content_type else (None, raw.strip())
+        is_html = "html" in content_type
+        title, text = _html_text(raw) if is_html else (None, raw.strip())
         truncated = got.truncated or len(text) > MAX_TEXT_CHARS
-        return FetchedPage(current, content_type, title, text[:MAX_TEXT_CHARS], truncated)
+        thin = is_html and len(text) < MIN_USEFUL_TEXT_CHARS
+        return FetchedPage(
+            current, content_type, title, text[:MAX_TEXT_CHARS], truncated, thin=thin
+        )
     raise FetchError("too_many_redirects", f"The page redirected more than {MAX_REDIRECTS} times.")
 
 
@@ -203,6 +236,19 @@ class _TextOnly(HTMLParser):
     BLOCK = frozenset(
         {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "section", "pre"}
     )
+    FURNITURE = frozenset({"nav", "header", "footer", "aside"})
+    """Menus and page furniture, dropped with their contents (#547). A ``header`` inside an
+    ``article`` or ``section`` is the content's own heading, so it stays."""
+    CONTENT_ROOTS = ("article", "section", "main")
+    ENDS_FURNITURE = frozenset({"main", "article", "body"})
+    """Furniture never contains these: one starting inside it means the furniture was left open."""
+    VOID = frozenset(
+        {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source"}
+        | {"track", "wbr", "param"}
+    )
+    MAX_DEPTH = 500
+    """Open tags tracked at once. Deeper ones are not tracked, so a hostile page costs linear
+    time and its text is never lost."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -210,28 +256,78 @@ class _TextOnly(HTMLParser):
         self.title: list[str] = []
         self._skipping = 0
         self._in_title = False
+        self._open: list[str] = []
+        self._counts: dict[str, int] = {}  # open tags by name, so no end tag scans the stack
+        self._furniture_at: int | None = None  # index in ``_open`` of the outermost furniture
+        self._held: list[str] = []  # what the open furniture contains, kept in case it never closes
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "title":
             self._in_title = True
-        elif tag in self.SKIP:
+            return
+        if tag in self.SKIP:
             self._skipping += 1
-        elif tag in self.BLOCK:
-            self.parts.append("\n")
+            return
+        if self._furniture_at is not None and tag in self.ENDS_FURNITURE:
+            self._end_furniture()  # left open: what it held is page text
+        if tag not in self.VOID and len(self._open) < self.MAX_DEPTH:
+            if (
+                self._furniture_at is None
+                and tag in self.FURNITURE
+                and not (tag == "header" and self._in_content())
+                and not self._skipping
+            ):
+                self._furniture_at = len(self._open)
+                self._held = []
+            self._open.append(tag)
+            self._counts[tag] = self._counts.get(tag, 0) + 1
+        if tag in self.BLOCK:
+            self._emit("\n")
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self._in_title = False
         elif tag in self.SKIP:
             self._skipping = max(0, self._skipping - 1)
-        elif tag in self.BLOCK:
-            self.parts.append("\n")
+        else:
+            if self._counts.get(tag):  # a stray end tag closes nothing
+                while True:  # closes what it holds too; each tag is popped once
+                    top = len(self._open) - 1
+                    if self._furniture_at == top:
+                        if self._open[top] == tag:
+                            self._furniture_at = None  # its own end tag: contents are dropped
+                            self._held = []
+                        else:
+                            self._end_furniture()  # an ancestor closed it: keep what it held
+                    closed = self._open.pop()
+                    self._counts[closed] -= 1
+                    if closed == tag:
+                        break
+            if tag in self.BLOCK:
+                self._emit("\n")
 
     def handle_data(self, data: str) -> None:
         if self._in_title:
             self.title.append(data)
         elif not self._skipping:
-            self.parts.append(data)
+            self._emit(data)
+
+    def _in_content(self) -> bool:
+        return any(self._counts.get(root) for root in self.CONTENT_ROOTS)
+
+    def _emit(self, text: str) -> None:
+        (self.parts if self._furniture_at is None else self._held).append(text)
+
+    def _end_furniture(self) -> None:
+        """Furniture that was left open: what it held is page text after all."""
+        self.parts.extend(self._held)
+        self._held = []
+        self._furniture_at = None
+
+    def close(self) -> None:
+        super().close()
+        if self._furniture_at is not None:
+            self._end_furniture()  # never closed: do not lose the rest of the page
 
 
 def _html_text(html: str) -> tuple[str | None, str]:

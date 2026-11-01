@@ -459,3 +459,101 @@ def test_a_hop_spends_at_most_twenty_seconds(monkeypatch):
 
     assert [r.address for r in network.sent] == ["8.8.8.8", "8.8.4.4"]
     assert sum(r.timeout for r in network.sent) <= 20.0
+
+
+# -- page furniture and thin pages (#547) ---------------------------------------------------
+
+MIN_USEFUL = 1500  # MIN_USEFUL_TEXT_CHARS
+LIMIT = 12_000  # MAX_TEXT_CHARS
+
+
+def page_of(body: str, *, content_type: str = "text/html; charset=utf-8"):
+    network = site(**{"https://docs.example.com/p": reply(body, content_type=content_type)})
+    return fetch_page(network, "https://docs.example.com/p")
+
+
+def text_of(html: str) -> str:
+    return page_of(html).text
+
+
+def test_nav_footer_aside_and_a_page_level_header_are_dropped():
+    html = (
+        "<body><header>Site banner</header><nav><ul><li>Menu item</li></ul></nav>"
+        "<main><p>The real content.</p><aside>Related links</aside></main>"
+        "<footer>Copyright</footer></body>"
+    )
+
+    assert text_of(html) == "The real content."
+
+
+def test_the_header_of_an_article_or_section_is_kept():
+    html = (
+        "<header>Banner</header>"
+        "<article><header><h1>Title</h1></header><p>Body.</p></article>"
+        "<section><header>Part one</header><p>More.</p></section>"
+    )
+
+    text = text_of(html)
+
+    assert "Title" in text and "Part one" in text and "Banner" not in text
+
+
+def test_furniture_nested_in_furniture_is_dropped_once_and_the_page_goes_on():
+    assert text_of("<nav><div><nav>inner</nav>outer</div></nav><p>After.</p>") == "After."
+
+
+def test_a_furniture_tag_left_open_does_not_lose_the_rest_of_the_page():
+    assert "Rest of the page" in text_of("<div><nav>Menu</div><p>Rest of the page</p>")
+    assert "Rest of the page" in text_of("<body><nav>Menu<main><p>Rest of the page</p>")
+    # Never closed and nothing says where it ends: nothing is lost.
+    assert "Rest of the page" in text_of("<aside>Menu<p>Rest of the page</p>")
+
+
+def test_a_parent_that_closes_open_furniture_gives_back_what_it_held():
+    html = "<div id=app><nav>Menu<p>Real article</p></div><p>After.</p>"
+
+    text = text_of(html)
+
+    assert "Real article" in text and "After." in text
+
+
+def test_furniture_closed_by_its_own_end_tag_is_still_dropped_inside_a_parent():
+    assert text_of("<div><nav>Menu</nav><p>Kept.</p></div>") == "Kept."
+
+
+def test_the_header_of_main_is_kept():
+    assert "Title" in text_of("<header>Banner</header><main><header><h1>Title</h1></header></main>")
+
+
+def test_deeply_nested_or_unclosed_tags_keep_all_text_and_cost_linear_time():
+    # Old code scanned the open-tag list on every end tag: this body took minutes.
+    unclosed = "<p>Head text" + "<p>x" * 150_000 + "</b>" * 300_000 + "<p>Tail text"
+    nested = "<div>" * 2000 + "<nav>Deep menu</nav><p>Deep text</p>" + "</div>" * 2000
+
+    assert text_of(unclosed).startswith("Head text")  # the page is read to its end, in time
+    assert "Deep text" in text_of(nested)  # past the tracked depth nothing is dropped
+    assert "Deep text" in text_of("<header>" + "<div>" * 2000 + "<p>Deep text</p>")
+
+
+def test_a_stray_end_tag_and_unclosed_inner_tags_change_nothing():
+    text = text_of("</nav><div><p>One<p>Two<li>Three</div><footer>Bye</footer><p>Four")
+
+    assert "Bye" not in text and {"One", "Two", "Three", "Four"} <= set(text.split("\n"))
+
+
+def test_html_under_the_useful_minimum_is_thin_and_at_it_is_not():
+    assert page_of("<p>" + "a" * (MIN_USEFUL - 1) + "</p>").thin
+    assert page_of("<nav>" + "a" * MIN_USEFUL + "</nav><p>short</p>").thin  # furniture: not text
+    assert not page_of("<p>" + "a" * MIN_USEFUL + "</p>").thin
+
+
+def test_the_minimum_is_measured_before_the_cut_and_only_for_html():
+    assert not page_of("<p>" + "a" * (LIMIT + 500) + "</p>").thin
+    for content_type, body in [
+        ("text/plain", "short"),
+        ("application/json", '{"a": 1}'),
+        ("text/csv", "a,b"),
+        ("application/xml", "<a/>"),
+    ]:
+        page = page_of(body, content_type=content_type)
+        assert not page.thin and page.text == body
