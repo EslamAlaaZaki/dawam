@@ -333,3 +333,148 @@ def test_the_search_cap_is_per_answer(admin_client, roles, model, fake_llm, netw
         fake_llm.script(*searches(question, f"{question} stages"), Reply(text="ok"))
         events = ask(owner, roles, chat, question)
         assert [d["status"] for n, d in events if n == "tool"] == ["ok", "ok"]
+
+
+# -- failover (#540) ---------------------------------------------------------------------
+
+BLOCKED = {
+    "results": [],
+    "unresponsive_engines": [["brave", "Suspended: too many requests"], ["duckduckgo", "CAPTCHA"]],
+}
+
+
+def json_reply(body, status=200):
+    return reply(json.dumps(body), status=status, content_type="application/json")
+
+
+def search_once(roles, fake_llm):
+    call = tool("web_search", query="kimball scd type 2")
+    fake_llm.script(Reply(tool_calls=(call,)), Reply(text="ok"))
+    owner = roles.client("owner")
+    return ask(owner, roles, conversation(owner, roles), "Look up SCD type 2")
+
+
+def hosts(network):
+    return [r.url.split("?")[0] for r in network.sent]
+
+
+def provider_shown(events):
+    return done(events)["run"]["tool_calls"][0]["result"]["provider"]
+
+
+@pytest.mark.parametrize(
+    "searx",
+    [
+        json_reply(BLOCKED),
+        json_reply({}, status=429),
+        json_reply({}, status=500),
+        reply("<html>not json</html>"),
+        None,  # unreachable
+    ],
+    ids=["blocked", "429", "500", "not-json", "unreachable"],
+)
+def test_a_blocked_or_failing_searxng_fails_over_to_langsearch(
+    admin_client, app, roles, model, fake_llm, network, searx
+):
+    configure(admin_client, normal="searxng")
+    if searx is None:
+        network.pages.pop(f"{SEARX}/search")
+    else:
+        network.pages[f"{SEARX}/search"] = searx
+
+    events = search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search", LANGSEARCH]
+    assert provider_shown(events) == "langsearch"
+    assert [e for e, _, _ in audit_rows(app, "web_search")] == ["searxng", "langsearch"]
+
+
+def test_one_rate_limited_engine_with_results_from_another_does_not_fail_over(
+    admin_client, roles, model, fake_llm, network
+):
+    configure(admin_client, normal="searxng")
+    partial = {
+        "results": [{"url": "https://kimball.example/scd", "title": "SCD", "content": "c"}],
+        "unresponsive_engines": BLOCKED["unresponsive_engines"],
+    }
+    network.pages[f"{SEARX}/search"] = json_reply(partial)
+
+    events = search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search"]
+    assert provider_shown(events) == "searxng"
+
+
+def test_langsearch_failing_fails_over_to_searxng(admin_client, roles, model, fake_llm, network):
+    configure(admin_client, normal="langsearch")
+    network.pages[LANGSEARCH] = json_reply({}, status=500)
+
+    events = search_once(roles, fake_llm)
+
+    assert hosts(network) == [LANGSEARCH, f"{SEARX}/search"]
+    assert provider_shown(events) == "searxng"
+
+
+@pytest.mark.parametrize("chosen", ["searxng", "langsearch"])
+def test_an_empty_result_does_not_fail_over(admin_client, roles, model, fake_llm, network, chosen):
+    configure(admin_client, normal=chosen)
+    network.pages[f"{SEARX}/search"] = json_reply({"results": []})
+    network.pages[LANGSEARCH] = json_reply({"data": {"webPages": {"value": []}}})
+
+    events = search_once(roles, fake_llm)
+
+    assert len(network.sent) == 1
+    assert done(events)["run"]["tool_calls"][0]["result"]["results"] == 0
+
+
+def test_an_internal_only_workspace_never_fails_over_to_langsearch(
+    admin_client, app, roles, model, fake_llm, network
+):
+    configure(admin_client, normal="langsearch", internal="searxng")
+    internal_only(roles, model)
+    network.pages[f"{SEARX}/search"] = json_reply(BLOCKED)
+
+    events = search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search"]
+    assert [d["status"] for n, d in events if n == "tool"] == ["error"]
+    assert [e for e, _, _ in audit_rows(app, "web_search")] == ["searxng"]
+
+
+def test_with_no_other_provider_the_search_fails_clearly(
+    admin_client, roles, model, fake_llm, network
+):
+    admin_client.put(f"{WEB}/providers/searxng", json={"base_url": SEARX})
+    body = {"enabled": True, "normal_provider": "searxng", "internal_provider": None}
+    admin_client.put(WEB, json=body)
+    network.pages[f"{SEARX}/search"] = json_reply(BLOCKED)
+
+    search_once(roles, fake_llm)
+
+    assert hosts(network) == [f"{SEARX}/search"]
+    seen = fake_llm.calls[1].messages[-1].content or ""
+    assert "unavailable right now" in seen and "brave" in seen
+
+
+def test_both_providers_failing_is_one_clear_error_and_one_search_count(
+    admin_client, app, roles, model, fake_llm, network, monkeypatch
+):
+    from dawam.modules.assistant.internal import tools
+
+    monkeypatch.setattr(tools, "MAX_WEB_SEARCHES", 2)
+    configure(admin_client, normal="searxng")
+    network.pages[f"{SEARX}/search"] = json_reply(BLOCKED)
+    network.pages[LANGSEARCH] = json_reply({}, status=500)
+    fake_llm.script(
+        Reply(tool_calls=(tool("web_search", "c0", query="kimball scd"),)),
+        Reply(tool_calls=(tool("web_search", "c1", query="kimball scd 2"),)),
+        Reply(text="ok"),
+    )
+    owner = roles.client("owner")
+
+    events = ask(owner, roles, conversation(owner, roles), "Look up SCD")
+
+    # Each search failed over once, yet neither was refused by the cap of 2.
+    assert [d["status"] for n, d in events if n == "tool"] == ["error", "error"]
+    assert "unavailable right now" in (fake_llm.calls[1].messages[-1].content or "")
+    assert len(audit_rows(app, "web_search")) == 4

@@ -74,6 +74,32 @@ def _result(title: Any, url: Any, snippet: Any) -> SearchResult | None:
     )
 
 
+MAX_ENGINES_SHOWN = 8
+MAX_ENGINE_TEXT_CHARS = 80
+
+
+def _blocked_engines(raw: Any) -> str:
+    """The engines SearXNG reports as unresponsive, as ``name (reason)`` text safe to show.
+    The JSON field is a list of ``[name, reason]`` pairs; any other shape is skipped."""
+    if not isinstance(raw, list):
+        return ""
+    shown: list[str] = []
+    for entry in raw:
+        if isinstance(entry, (list, tuple)) and entry:
+            name, reason = entry[0], entry[1] if len(entry) > 1 else ""
+        elif isinstance(entry, str):
+            name, reason = entry, ""
+        else:
+            continue
+        name = " ".join(str(name).split())[:MAX_ENGINE_TEXT_CHARS]
+        reason = " ".join(str(reason or "").split())[:MAX_ENGINE_TEXT_CHARS]
+        if name:
+            shown.append(f"{name} ({reason})" if reason else name)
+    extra = len(shown) - MAX_ENGINES_SHOWN
+    text = ", ".join(shown[:MAX_ENGINES_SHOWN])
+    return f"{text} and {extra} more" if extra > 0 else text
+
+
 class Searxng:
     """``GET <url>/search?q=...&format=json``; the server's ``settings.yml`` must list
     ``json`` under ``search.formats``."""
@@ -102,7 +128,14 @@ class Searxng:
             for item in data.get("results") or []
             if isinstance(item, dict)
         ]
-        return [r for r in found if r is not None][:limit]
+        results = [r for r in found if r is not None][:limit]
+        if not results:
+            blocked = _blocked_engines(data.get("unresponsive_engines"))
+            if blocked:
+                raise SearchError(
+                    f"SearXNG found nothing because its search engines are unavailable: {blocked}."
+                )
+        return results
 
 
 class LangSearch:

@@ -106,6 +106,48 @@ def test_an_unreachable_provider_is_a_search_error():
         Searxng("http://searx.internal", FakeNetwork()).search("x", limit=3)
 
 
+BLOCKED = [["brave", "Suspended: too many requests"], ["duckduckgo", "CAPTCHA"]]
+
+
+def searx_answering(body: dict) -> Searxng:
+    page = reply(json.dumps(body), content_type="application/json")
+    network = FakeNetwork(pages={"http://searx.internal/search": page})
+    return Searxng("http://searx.internal", network)
+
+
+def test_no_results_with_blocked_engines_is_a_search_error_naming_them():
+    searx = searx_answering({"results": [], "unresponsive_engines": BLOCKED})
+
+    with pytest.raises(SearchError) as caught:
+        searx.search("x", limit=3)
+
+    message = str(caught.value)
+    assert "brave (Suspended: too many requests)" in message and "duckduckgo (CAPTCHA)" in message
+
+
+def test_no_results_without_blocked_engines_is_an_empty_result():
+    assert searx_answering({"results": [], "unresponsive_engines": []}).search("x", limit=3) == []
+    assert searx_answering({"results": []}).search("x", limit=3) == []
+
+
+def test_results_from_some_engines_are_kept_while_others_fail():
+    body = {**SEARXNG, "unresponsive_engines": BLOCKED}
+
+    assert len(searx_answering(body).search("x", limit=5)) == 2
+
+
+@pytest.mark.parametrize("junk", ["brave", {"a": 1}, [None, 3, []], 7])
+def test_a_malformed_unresponsive_list_is_not_a_failure(junk):
+    assert searx_answering({"results": [], "unresponsive_engines": junk}).search("x", limit=3) == []
+
+
+def test_a_bare_engine_name_in_the_list_still_counts_as_blocked():
+    searx = searx_answering({"results": [], "unresponsive_engines": [["brave"], "bing", [1, 2]]})
+
+    with pytest.raises(SearchError, match="brave"):
+        searx.search("x", limit=3)
+
+
 @pytest.mark.parametrize(
     ("query", "sent"),
     [

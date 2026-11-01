@@ -91,6 +91,16 @@ def test_each_provider_is_tested_through_the_faked_port(admin_client, network):
     assert network.sent[1].headers["Authorization"] == "Bearer sk-lang-1"
 
 
+def test_searxng_with_all_engines_blocked_fails_its_test_naming_them(admin_client, network):
+    register_both(admin_client)
+    blocked = {"results": [], "unresponsive_engines": [["brave", "Suspended: too many requests"]]}
+    network.pages[f"{SEARX}/search"] = reply(json.dumps(blocked), content_type="application/json")
+
+    searx = admin_client.post(f"{WEB}/providers/searxng/test").json()
+
+    assert searx["test_ok"] is False and "brave" in searx["test_error"]
+
+
 def test_the_admin_turns_it_on_and_picks_a_provider_for_each_kind_of_workspace(admin_client):
     register_both(admin_client)
 
