@@ -720,7 +720,7 @@ def run_agent(
         """Report a finished call and hand its result to the model; the caller saves."""
         flagged = (
             flagged_parts(call.name, outcome.content, inspect)
-            if outcome.status == "ok" and call.name != ASK_MEMBER
+            if (outcome.status == "ok" or call.name == "web_fetch") and call.name != ASK_MEMBER
             else []
         )
         entry = ToolCallRecord(

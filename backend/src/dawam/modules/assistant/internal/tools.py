@@ -155,9 +155,9 @@ class ToolContext:
     they were found: what ``web_fetch`` falls back on when a page cannot be read."""
     web_read: set[str] = field(default_factory=set)
     """The ``web_urls`` keys ``web_fetch`` has read, so recovery offers only unread results."""
-    web_failed: dict[str, str] = field(default_factory=dict)
-    """Hosts whose page could not be read in this answer, with the reason; a second fetch to
-    one is not sent."""
+    web_failed: dict[str, tuple[str, str]] = field(default_factory=dict)
+    """Hosts whose page could not be read in this answer, with the failure code and reason; a
+    second fetch to one is not sent."""
     web_searches: Iterator[int] = field(default_factory=itertools.count)
     """Numbers this run's ``web_search`` calls (``next`` is atomic, and reads run in
     parallel): past ``MAX_WEB_SEARCHES`` a call is refused before reaching the provider."""
@@ -2573,6 +2573,7 @@ RECOVERY_CHARS = 1500
 """The most a failed read's reply to the model holds, the failure code and reason included."""
 RECOVERY_RESULTS = 3
 _SNIPPET_CHARS = 300
+_URL_CHARS = 200
 RECOVERY_HINT = (
     "Answer from a snippet if it is enough and cite its URL; otherwise open one of these "
     "results with web_fetch."
@@ -2580,11 +2581,16 @@ RECOVERY_HINT = (
 
 
 def _host(url: str) -> str:
-    return (urlsplit(url).hostname or "").lower()
+    host = (urlsplit(url).hostname or "").lower()
+    return host.removeprefix("www.")
 
 
-def _snippet_line(result: dict[str, str]) -> str:
-    return f"- {result['url'][:200]}: {result['snippet'].strip()[:_SNIPPET_CHARS]}"
+def _snippet_line(result: dict[str, str]) -> str | None:
+    """One result as a line, or ``None`` for a URL too long to show whole (a cut URL the
+    model copied would be refused by ``web_fetch``)."""
+    if len(result["url"]) > _URL_CHARS:
+        return None
+    return f"- {result['url']}: {result['snippet'].strip()[:_SNIPPET_CHARS]}"
 
 
 def _recovery(
@@ -2599,15 +2605,17 @@ def _recovery(
     own = ctx.web_results.get(key)
     others = [
         r
-        for k, r in ctx.web_results.items()
+        for k, r in list(ctx.web_results.items())
         if k != key and k not in ctx.web_read and _host(r["url"]) not in ctx.web_failed
     ][:RECOVERY_RESULTS]
     lines = [head[:limit]]
-    if own and own["snippet"].strip():
-        lines += ["Snippet of the page you tried:", _snippet_line(own)]
-    if others:
+    own_line = _snippet_line(own) if own and own["snippet"].strip() else None
+    if own_line:
+        lines += ["Snippet of the page you tried:", own_line]
+    other_lines = [line for r in others if (line := _snippet_line(r))]
+    if other_lines:
         lines.append("Other results from this answer's searches (not read yet):")
-        lines += [_snippet_line(r) for r in others]
+        lines += other_lines
     room = limit - len(RECOVERY_HINT) - 1
     kept: list[str] = []
     for line in lines:  # whole lines only, the reason first; the hint always fits
@@ -2629,7 +2637,8 @@ def _web_fetch(ctx: ToolContext, args: _WebFetch) -> Any:
     url = args.url.strip()
     host = _host(url)
     if host in ctx.web_failed:
-        raise _recovery(ctx, url, "http_error", ctx.web_failed[host], retried=False)
+        code, reason = ctx.web_failed[host]
+        raise _recovery(ctx, url, code, reason, retried=False)
     try:
         page = _web(ctx).fetch(ctx.user.id, ctx.workspace_id, url)
         if not page.text:  # empty, and the reader was not tried (or is not allowed)
@@ -2637,7 +2646,7 @@ def _web_fetch(ctx: ToolContext, args: _WebFetch) -> Any:
     except ApiError as exc:
         if exc.code not in _FAILED_READS:
             raise  # address_blocked, web_fetch_off and the like keep their own reply
-        ctx.web_failed[host] = exc.message
+        ctx.web_failed[host] = (exc.code, exc.message)
         raise _recovery(ctx, url, exc.code, exc.message) from None
     ctx.web_read.add(_url_key(url))
     return Reported(
