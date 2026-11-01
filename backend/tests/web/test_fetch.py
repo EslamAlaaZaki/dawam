@@ -363,3 +363,91 @@ def test_the_system_network_connects_to_the_pinned_address():
 
     assert got.status == 200
     assert got.body == f"host=unresolvable.invalid:{port}".encode()
+
+
+# --- Other addresses of a site (#538) ---
+
+
+def by_address(**answers):
+    """A page that answers by the address connected to; an exception is raised."""
+
+    def respond(request):
+        got = answers[request.address]
+        if isinstance(got, Exception):
+            raise got
+        return got
+
+    return respond
+
+
+SLOW = NetworkError("The server did not answer in time.", timeout=True)
+URL = "https://multi.example.com/a"
+
+
+def multi(addresses, **answers):
+    return FakeNetwork(hosts={"multi.example.com": addresses}, pages={URL: by_address(**answers)})
+
+
+def test_the_next_address_is_tried_when_the_first_times_out():
+    network = multi(["8.8.8.8", PUBLIC], **{"8.8.8.8": SLOW, PUBLIC: reply("<p>hello</p>")})
+
+    page = fetch_page(network, URL)
+
+    assert page.text == "hello"
+    assert [r.address for r in network.sent] == ["8.8.8.8", PUBLIC]
+
+
+def test_an_http_reply_ends_the_attempts_for_the_hop():
+    network = multi(["8.8.8.8", PUBLIC], **{"8.8.8.8": reply("no", status=403), PUBLIC: reply("x")})
+
+    error = failing_fetch(network, URL)
+
+    assert error.code == "http_error"
+    assert [r.address for r in network.sent] == ["8.8.8.8"]
+
+
+def test_one_private_address_refuses_the_host_before_any_attempt():
+    network = multi(["8.8.8.8", "10.0.0.1"], **{"8.8.8.8": reply("x")})
+
+    assert failing_fetch(network, URL).code == "address_blocked"
+    assert network.sent == []
+
+
+def test_a_hop_resolves_once_and_tries_at_most_three_addresses():
+    dead = ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1"]
+    network = multi(dead, **dict.fromkeys(dead, SLOW))
+    lookups = []
+    resolve = network.resolve
+    network.resolve = lambda host, port: lookups.append(host) or resolve(host, port)
+
+    error = failing_fetch(network, URL)
+
+    assert len(lookups) == 1
+    assert [r.address for r in network.sent] == ["8.8.8.8", "8.8.4.4", "1.1.1.1"]
+    assert (error.code, error.reader_may_try) == ("timeout", True)
+
+
+def test_every_address_failing_keeps_the_last_error_and_the_reader_fallback():
+    refused = NetworkError("The server could not be reached.")
+    network = multi(["8.8.8.8", PUBLIC], **{"8.8.8.8": SLOW, PUBLIC: refused})
+
+    error = failing_fetch(network, URL)
+
+    assert (error.code, error.reader_may_try) == ("unreachable", True)
+
+
+def test_a_hop_spends_at_most_twenty_seconds(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr("dawam.modules.web.internal.fetch.time.monotonic", lambda: clock[0])
+
+    def slow(request):
+        clock[0] += request.timeout
+        raise SLOW
+
+    network = FakeNetwork(hosts={"multi.example.com": ["8.8.8.8", "8.8.4.4", "1.1.1.1"]})
+    network.pages[URL] = slow
+
+    failing_fetch(network, URL)
+
+    assert [r.address for r in network.sent] == ["8.8.8.8", "8.8.4.4"]
+    assert sum(r.timeout for r in network.sent) <= 20.0
