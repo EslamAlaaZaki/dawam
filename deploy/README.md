@@ -226,6 +226,8 @@ service, go to **Admin > Web access**, add a SearXNG provider with base URL
 `http://searxng:8080`, test it, and pick it as the provider. It counts as internal,
 so internal-only Workspaces can use it too.
 
+SearXNG depends on public search engines (Google, Brave, DuckDuckGo and others) that can block it with rate limits or CAPTCHAs. Register a second provider (LangSearch, with an API key) in the same place and DAWAM falls back to it when SearXNG cannot answer. Internal-only Workspaces never use it.
+
 Day-to-day commands:
 
 ```sh

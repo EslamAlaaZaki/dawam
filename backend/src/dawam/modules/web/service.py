@@ -284,11 +284,65 @@ class WebService:
                 "Nothing is left of the query once values are removed: search for concepts, "
                 "never for data values.",
             )
+        size = max(1, min(limit, MAX_RESULTS))
+        failures: list[str] = []
+        for attempt in self._search_order(kind):
+            # Failover: re-check the kind right before the call (ADR 0008).
+            if (
+                attempt != kind
+                and self._internal_only(workspace_id)
+                and not KINDS[attempt].internal
+            ):
+                continue
+            provider = self._attempt(
+                workspace_id, actor_id, attempt, sent, first=attempt == kind, failures=failures
+            )
+            if provider is None:
+                continue
+            try:
+                return WebSearch(attempt, sent, provider.search(sent, limit=size))
+            except SearchError as exc:
+                failures.append(str(exc))
+        raise ApiError(
+            502,
+            "web_search_failed",
+            "Web search is unavailable right now. " + " ".join(failures),
+        )
+
+    def _search_order(self, chosen: str) -> list[str]:
+        """The chosen provider, then one other registered provider to fail over to."""
+        with Session(self._engine) as db:
+            others = [
+                r.kind
+                for r in db.scalars(sa.select(WebProviderRecord).order_by(WebProviderRecord.kind))
+                if r.kind != chosen and r.kind in KINDS
+            ]
+        return [chosen, *others[:1]]
+
+    def _attempt(
+        self,
+        workspace_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        kind: str,
+        sent: str,
+        *,
+        first: bool,
+        failures: list[str],
+    ) -> SearchProvider | None:
+        """Audit the attempt, then hand back its provider; ``None``: it cannot be tried. An
+        unreadable key is a failed attempt (its message joins ``failures``), so the search
+        can fail over."""
         with Session(self._engine) as db, db.begin():
             record = db.get(WebProviderRecord, kind)
             if record is None:
-                raise ApiError(403, "web_search_off", "Web search is not available here.")
-            provider = self._provider(record)
+                if first:
+                    raise ApiError(403, "web_search_off", "Web search is not available here.")
+                return None
+            try:
+                provider = self._provider(record)
+            except ApiError as exc:
+                failures.append(exc.message)
+                return None
             record_audit(
                 db,
                 workspace_id=workspace_id,
@@ -300,11 +354,7 @@ class WebService:
                 at=self._clock(),
                 via="ai",
             )
-        try:
-            results = provider.search(sent, limit=max(1, min(limit, MAX_RESULTS)))
-        except SearchError as exc:
-            raise ApiError(502, "web_search_failed", str(exc)) from None
-        return WebSearch(kind, sent, results)
+        return provider
 
     def fetch(self, actor_id: uuid.UUID, workspace_id: uuid.UUID, url: str) -> FetchedPage:
         if not self.fetch_available(workspace_id):
