@@ -25,6 +25,7 @@ from .network import HttpReply, HttpRequest, Network, NetworkError
 READER = "jina"
 READER_URL = "https://r.jina.ai/"
 READER_TIMEOUT_SECONDS = 30.0
+MAX_TITLE_CHARS = 300
 NOISE_HEADERS = {
     "X-Retain-Images": "none",
     "X-Md-Link-Style": "discarded",
@@ -84,7 +85,7 @@ def _page(got: HttpReply, url: str) -> FetchedPage:
     return FetchedPage(
         _source(header) or url,
         "text/markdown",
-        (title.group(1) or None) if title else None,
+        (title.group(1)[:MAX_TITLE_CHARS] or None) if title else None,
         text[:MAX_TEXT_CHARS],
         got.truncated or len(text) > MAX_TEXT_CHARS,
         reader=READER,

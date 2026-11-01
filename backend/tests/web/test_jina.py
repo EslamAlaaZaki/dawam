@@ -76,6 +76,12 @@ def test_the_text_is_cut_to_the_limit_and_flagged():
     assert page.truncated
 
 
+def test_a_very_long_title_is_cut():
+    page = read_through_jina(jina(jina_text(title="t" * 5_000)), PAGE)
+
+    assert page.title == "t" * 300
+
+
 def test_a_body_cut_at_the_size_cap_is_flagged():
     page = read_through_jina(jina(jina_text("x" * 2_000_100)), PAGE)
 
