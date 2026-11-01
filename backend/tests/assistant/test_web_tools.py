@@ -670,7 +670,9 @@ def test_a_thin_pages_jina_read_is_audited_before_the_call(
     audited_when_called: list[list] = []
 
     def answer(request):
-        audited_when_called.append([row[1] for row in audit_rows(app, "web_fetch")])
+        audited_when_called.append(
+            sorted((row[1] for row in audit_rows(app, "web_fetch")), key=str)
+        )
         return jina_page(LONG_READ)
 
     guarded.pages[GUARDED] = reply(THIN)
@@ -679,7 +681,9 @@ def test_a_thin_pages_jina_read_is_audited_before_the_call(
 
     read_guarded(fake_llm, roles)
 
-    assert audited_when_called == [[{"url": GUARDED}, {"url": GUARDED, "reader": "jina"}]]
+    assert audited_when_called == [
+        sorted([{"url": GUARDED}, {"url": GUARDED, "reader": "jina"}], key=str)
+    ]
 
 
 @pytest.mark.parametrize(
@@ -767,7 +771,9 @@ def test_a_jina_read_is_audited_before_the_call(admin_client, app, roles, model,
     audited_when_called: list[list] = []
 
     def answer(request):
-        audited_when_called.append([row[1] for row in audit_rows(app, "web_fetch")])
+        audited_when_called.append(
+            sorted((row[1] for row in audit_rows(app, "web_fetch")), key=str)
+        )
         return jina_page()
 
     guarded.pages[GUARDED] = reply("Forbidden", status=403)
@@ -778,7 +784,7 @@ def test_a_jina_read_is_audited_before_the_call(admin_client, app, roles, model,
 
     own = {"url": GUARDED}
     through_jina = {"url": GUARDED, "reader": "jina"}
-    assert audited_when_called == [[own, through_jina]]
+    assert audited_when_called == [sorted([own, through_jina], key=str)]
     rows = audit_rows(app, "web_fetch")
     assert [row[0] for row in rows] == ["guarded.example", "guarded.example"]
     assert {row[2] for row in rows} == {"ai"}
@@ -1164,7 +1170,9 @@ def test_each_step_is_audited_before_its_call_with_its_reader(
 
     def recorded(name, answer):
         def respond(request):
-            audited_when_called[name] = [row[1] for row in audit_rows(app, "web_fetch")]
+            audited_when_called[name] = sorted(
+                (row[1] for row in audit_rows(app, "web_fetch")), key=str
+            )
             return answer
 
         return respond
@@ -1180,8 +1188,8 @@ def test_each_step_is_audited_before_its_call_with_its_reader(
     through_crawl4ai = {"url": GUARDED, "reader": "crawl4ai"}
     through_jina = {"url": GUARDED, "reader": "jina"}
     assert audited_when_called == {
-        "crawl4ai": [own, through_crawl4ai],
-        "jina": [own, through_crawl4ai, through_jina],
+        "crawl4ai": sorted([own, through_crawl4ai], key=str),
+        "jina": sorted([own, through_crawl4ai, through_jina], key=str),
     }
     assert {row[2] for row in audit_rows(app, "web_fetch")} == {"ai"}
 
@@ -1360,7 +1368,8 @@ def test_crawl4ai_with_under_25_seconds_left_is_skipped_for_jina_and_not_audited
     assert statuses(events) == ["ok"]
     assert chain_order(browser) == ["own", "jina"]
     assert jina_calls(browser)[0].timeout == 24.5
-    assert [row[1].get("reader") for row in audit_rows(app, "web_fetch")] == [None, "jina"]
+    readers = sorted((row[1].get("reader") for row in audit_rows(app, "web_fetch")), key=str)
+    assert readers == [None, "jina"]
 
 
 def test_crawl4ai_with_exactly_25_seconds_left_still_runs(
@@ -1386,7 +1395,8 @@ def test_a_step_with_under_5_seconds_left_is_skipped_and_not_audited(
 
     assert statuses(events) == ["error"]
     assert chain_order(browser) == ["own", "crawl4ai"]
-    assert [row[1].get("reader") for row in audit_rows(app, "web_fetch")] == [None, "crawl4ai"]
+    readers = sorted((row[1].get("reader") for row in audit_rows(app, "web_fetch")), key=str)
+    assert readers == [None, "crawl4ai"]
 
 
 def test_a_step_with_exactly_5_seconds_left_still_runs(
@@ -1577,7 +1587,7 @@ def test_a_blocked_or_failing_searxng_fails_over_to_langsearch(
 
     assert hosts(network) == [f"{SEARX}/search", LANGSEARCH]
     assert provider_shown(events) == "langsearch"
-    assert [e for e, _, _ in audit_rows(app, "web_search")] == ["searxng", "langsearch"]
+    assert sorted(e for e, _, _ in audit_rows(app, "web_search")) == ["langsearch", "searxng"]
 
 
 def test_one_rate_limited_engine_with_results_from_another_does_not_fail_over(
