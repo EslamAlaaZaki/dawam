@@ -465,7 +465,7 @@ def test_a_url_with_a_query_string_is_not_sent_to_jina(
     assert jina_calls(guarded) == []
 
 
-def test_an_empty_page_with_a_query_string_stays_with_dawam(
+def test_an_empty_page_with_a_query_string_stays_with_dawam_and_is_a_failed_read(
     admin_client, roles, model, fake_llm, guarded
 ):
     url = f"{GUARDED}?token=member-secret"
@@ -474,9 +474,8 @@ def test_an_empty_page_with_a_query_string_stays_with_dawam(
 
     events = read_guarded(fake_llm, roles, url=url, question=f"Read {url}")
 
-    assert statuses(events) == ["ok"]
+    assert statuses(events) == ["error"]  # an empty page is a failed read (#539)
     assert jina_calls(guarded) == []
-    assert done(events)["run"]["tool_calls"][0]["result"]["reader"] == "dawam"
 
 
 def test_an_invalid_url_is_not_sent_to_jina(admin_client, roles, model, fake_llm, guarded):
@@ -929,3 +928,143 @@ def test_a_workspace_that_turns_internal_only_before_the_failover_call_never_lea
 
     assert hosts(network) == [f"{SEARX}/search"]
     assert [e for e, _, _ in audit_rows(app, "web_search")] == ["searxng"]
+
+
+# Recovery after a refused page (#539): the reply names the reason, the page's snippet and
+# unread results from other hosts, and a failed host is not tried twice.
+
+RIYADH = "https://guarded.example/riyadh"
+BBC = "https://bbc.example/weather/riyadh"
+AFTER = "https://guarded.example/riyadh/hourly"
+
+
+def searched(network: FakeNetwork, *results: tuple[str, str, str]) -> None:
+    value = [{"name": t, "url": u, "snippet": s} for t, u, s in results]
+    body = {"data": {"webPages": {"value": value}}}
+    network.pages[LANGSEARCH] = lambda request: reply(
+        json.dumps(body), content_type="application/json"
+    )
+
+
+def recovery_run(fake_llm, roles, *urls, final="Done."):
+    """The model searches, then fetches each of ``urls`` in turn."""
+    calls = [Reply(tool_calls=(tool("web_search", "s", query="weather riyadh", limit=5),))]
+    calls += [
+        Reply(tool_calls=(tool("web_fetch", f"f{n}", url=url),)) for n, url in enumerate(urls)
+    ]
+    fake_llm.script(*calls, Reply(text=final))
+    owner = roles.client("owner")
+    return ask(owner, roles, conversation(owner, roles), "What is the weather in Riyadh?")
+
+
+def tool_reply(fake_llm, n: int) -> str:
+    content = fake_llm.calls[n].messages[-1].content or ""
+    return content.removeprefix('<data source="tool:web_fetch">\n').removesuffix("\n</data>")
+
+
+@pytest.fixture
+def refused(guarded, admin_client) -> FakeNetwork:
+    guarded.hosts["bbc.example"] = [PUBLIC]
+    guarded.pages[RIYADH] = reply("Forbidden", status=403)
+    guarded.pages[f"{JINA}{RIYADH}"] = reply("oops", status=500)
+    guarded.pages[BBC] = reply("<p>Sunny, 34 degrees.</p>")
+    configure(admin_client)
+    return guarded
+
+
+def test_a_failed_read_returns_the_reason_its_snippet_and_unread_results_from_other_hosts(
+    roles, model, fake_llm, refused
+):
+    searched(
+        refused,
+        ("Riyadh", RIYADH, "Now: 34 C, clear."),
+        ("Same site", AFTER, "Hourly: 35 C."),
+        ("BBC", BBC, "BBC says sunny."),
+        ("Docs", "https://ifrs.example/9", "IFRS 9."),
+    )
+
+    events = recovery_run(fake_llm, roles, RIYADH, BBC)
+
+    assert statuses(events) == ["ok", "error", "ok"]
+    seen = tool_reply(fake_llm, 2)
+    assert seen.startswith("http_error: The server answered with HTTP 403.")
+    assert "Now: 34 C, clear." in seen
+    assert f"{BBC}: BBC says sunny." in seen and "https://ifrs.example/9: IFRS 9." in seen
+    assert AFTER not in seen  # the failed host is left out
+    assert "Answer from a snippet if it is enough" in seen
+    assert len(seen) <= 1500
+    assert "Sunny, 34 degrees." in tool_reply(fake_llm, 3)  # the run ends with another result
+
+
+def test_a_url_the_member_wrote_gets_the_reason_and_no_invented_snippet(
+    roles, model, fake_llm, refused
+):
+    events = read_guarded(fake_llm, roles, url=RIYADH, question=f"Read {RIYADH}")
+
+    assert statuses(events) == ["error"]
+    assert tool_reply(fake_llm, 1) == "http_error: The server answered with HTTP 403."
+
+
+def test_a_second_fetch_to_a_failed_host_sends_no_request_and_no_audit_entry(
+    app, roles, model, fake_llm, refused
+):
+    searched(refused, ("Riyadh", RIYADH, "Now: 34 C."), ("More", AFTER, "Hourly."))
+    refused.pages[AFTER] = reply("<p>Never read.</p>")
+
+    events = recovery_run(fake_llm, roles, RIYADH, AFTER)
+
+    assert statuses(events) == ["ok", "error", "error"]
+    assert not any(r.url == AFTER for r in refused.sent)
+    assert len(audit_rows(app, "web_fetch")) == 2  # DAWAM and the reader, once each
+    assert len(jina_calls(refused)) == 1
+    assert "failed earlier in this answer" in tool_reply(fake_llm, 3)
+
+
+def test_an_empty_page_the_reader_was_not_tried_on_gets_the_recovery_reply(
+    roles, model, fake_llm, refused
+):
+    url = f"{RIYADH}?q=1"
+    refused.pages[RIYADH] = reply("<html><body></body></html>")  # the fake ignores the query
+    searched(refused, ("Riyadh", url, "Now: 34 C."), ("BBC", BBC, "BBC says sunny."))
+
+    events = recovery_run(fake_llm, roles, url)
+
+    assert statuses(events) == ["ok", "error"]
+    assert jina_calls(refused) == []
+    seen = tool_reply(fake_llm, 2)
+    assert seen.startswith("empty_page:") and "Now: 34 C." in seen and BBC in seen
+
+
+def test_a_long_recovery_reply_stays_within_1500_characters(roles, model, fake_llm, refused):
+    long = "word " * 400
+    searched(
+        refused,
+        ("Riyadh", RIYADH, long),
+        *[(f"R{n}", f"https://bbc.example/{n}", long) for n in range(5)],
+    )
+
+    recovery_run(fake_llm, roles, RIYADH)
+
+    seen = tool_reply(fake_llm, 2)
+    assert len(seen) <= 1500 and "Answer from a snippet" in seen
+
+
+def test_other_refusals_keep_their_reply(admin_client, roles, model, fake_llm, network):
+    configure(admin_client)
+
+    read_guarded(
+        fake_llm,
+        roles,
+        url="http://intranet.example/admin",
+        question="Read http://intranet.example/admin",
+    )
+    blocked = tool_reply(fake_llm, 1)
+    fake_llm.calls.clear()
+    read_guarded(fake_llm, roles, url="https://ifrs.example/9", question="Tell me")
+    unknown = tool_reply(fake_llm, 1)
+
+    assert blocked.startswith("address_blocked: ") and "Answer from" not in blocked
+    assert unknown == (
+        "url_not_given: web_fetch reads only a URL the member wrote in the chat or one a "
+        "web_search returned in this answer. Ask the member for the link."
+    )

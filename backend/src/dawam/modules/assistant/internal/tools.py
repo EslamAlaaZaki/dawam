@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
@@ -149,6 +150,14 @@ class ToolContext:
     web_urls: set[str] = field(default_factory=set)
     """What ``web_fetch`` may read: URLs the member wrote and the run's web search results,
     never one the model made up (it could carry data out in its path or query)."""
+    web_results: dict[str, dict[str, str]] = field(default_factory=dict)
+    """This answer's web search results by ``web_urls`` key (title, url, snippet), in the order
+    they were found: what ``web_fetch`` falls back on when a page cannot be read."""
+    web_read: set[str] = field(default_factory=set)
+    """The ``web_urls`` keys ``web_fetch`` has read, so recovery offers only unread results."""
+    web_failed: dict[str, str] = field(default_factory=dict)
+    """Hosts whose page could not be read in this answer, with the reason; a second fetch to
+    one is not sent."""
     web_searches: Iterator[int] = field(default_factory=itertools.count)
     """Numbers this run's ``web_search`` calls (``next`` is atomic, and reads run in
     parallel): past ``MAX_WEB_SEARCHES`` a call is refused before reaching the provider."""
@@ -2544,7 +2553,10 @@ def _web_search(ctx: ToolContext, args: _WebSearch) -> Any:
     if next(ctx.web_searches) >= MAX_WEB_SEARCHES:  # before the provider and its audit
         raise ApiError(403, "search_limit", SEARCH_LIMIT_MESSAGE)
     found = _web(ctx).search(ctx.user.id, ctx.workspace_id, args.query, limit=args.limit)
-    ctx.web_urls.update(_url_key(r.url) for r in found.results)
+    for r in found.results:
+        key = _url_key(r.url)
+        ctx.web_urls.add(key)
+        ctx.web_results.setdefault(key, dataclasses.asdict(r))
     return Reported(
         {
             "query_sent": found.query,
@@ -2556,6 +2568,56 @@ def _web_search(ctx: ToolContext, args: _WebSearch) -> Any:
     )
 
 
+_FAILED_READS = frozenset({"http_error", "timeout", "unreachable", "empty_page"})
+RECOVERY_CHARS = 1500
+"""The most a failed read's reply to the model holds, the failure code and reason included."""
+RECOVERY_RESULTS = 3
+_SNIPPET_CHARS = 300
+RECOVERY_HINT = (
+    "Answer from a snippet if it is enough and cite its URL; otherwise open one of these "
+    "results with web_fetch."
+)
+
+
+def _host(url: str) -> str:
+    return (urlsplit(url).hostname or "").lower()
+
+
+def _snippet_line(result: dict[str, str]) -> str:
+    return f"- {result['url'][:200]}: {result['snippet'].strip()[:_SNIPPET_CHARS]}"
+
+
+def _recovery(
+    ctx: ToolContext, url: str, code: str, reason: str, *, retried: bool = True
+) -> ApiError:
+    """A failed read as the usual tool error, with what the model can do next: the failed
+    page's snippet (only when a search returned it, never one made up for a member's URL)
+    and up to ``RECOVERY_RESULTS`` unread results from hosts that have not failed."""
+    key = _url_key(url)
+    limit = RECOVERY_CHARS - len(code) - 2  # the reply is "<code>: <message>"
+    head = reason if retried else f"{reason} This site failed earlier in this answer."
+    own = ctx.web_results.get(key)
+    others = [
+        r
+        for k, r in ctx.web_results.items()
+        if k != key and k not in ctx.web_read and _host(r["url"]) not in ctx.web_failed
+    ][:RECOVERY_RESULTS]
+    lines = [head[:limit]]
+    if own and own["snippet"].strip():
+        lines += ["Snippet of the page you tried:", _snippet_line(own)]
+    if others:
+        lines.append("Other results from this answer's searches (not read yet):")
+        lines += [_snippet_line(r) for r in others]
+    room = limit - len(RECOVERY_HINT) - 1
+    kept: list[str] = []
+    for line in lines:  # whole lines only, the reason first; the hint always fits
+        if not kept or len("\n".join([*kept, line])) <= room:
+            kept.append(line)
+    if len(lines) > 1:
+        kept.append(RECOVERY_HINT)
+    return ApiError(502, code, "\n".join(kept)[:limit])
+
+
 def _web_fetch(ctx: ToolContext, args: _WebFetch) -> Any:
     if _url_key(args.url.strip()) not in ctx.web_urls:
         raise ApiError(
@@ -2564,7 +2626,20 @@ def _web_fetch(ctx: ToolContext, args: _WebFetch) -> Any:
             "web_fetch reads only a URL the member wrote in the chat or one a web_search "
             "returned in this answer. Ask the member for the link.",
         )
-    page = _web(ctx).fetch(ctx.user.id, ctx.workspace_id, args.url.strip())
+    url = args.url.strip()
+    host = _host(url)
+    if host in ctx.web_failed:
+        raise _recovery(ctx, url, "http_error", ctx.web_failed[host], retried=False)
+    try:
+        page = _web(ctx).fetch(ctx.user.id, ctx.workspace_id, url)
+        if not page.text:  # empty, and the reader was not tried (or is not allowed)
+            raise ApiError(502, "empty_page", "The page has no text to read.")
+    except ApiError as exc:
+        if exc.code not in _FAILED_READS:
+            raise  # address_blocked, web_fetch_off and the like keep their own reply
+        ctx.web_failed[host] = exc.message
+        raise _recovery(ctx, url, exc.code, exc.message) from None
+    ctx.web_read.add(_url_key(url))
     return Reported(
         {
             "url": page.url,

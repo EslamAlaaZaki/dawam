@@ -136,3 +136,15 @@ def test_the_search_strategy_rules():
     assert "Search at most 5 times for one question" in SYSTEM_PROMPT
     assert "say plainly what you could not find" in SYSTEM_PROMPT
     assert "Rephrase a query only when the results were off-topic" in SYSTEM_PROMPT
+
+
+def test_snippets_come_first_and_a_refused_page_falls_back_to_its_snippet_or_the_next_result():
+    assert "Answer from the search snippets when they are enough, without opening a page" in (
+        SYSTEM_PROMPT
+    )
+    assert "Use web_fetch to read a page only when the search snippets are not enough" in (
+        SYSTEM_PROMPT
+    )
+    assert "After a refused page" in SYSTEM_PROMPT
+    assert "use its snippet or the next result" in SYSTEM_PROMPT
+    assert "When an answer rests only on a snippet, say so and cite the URL" in SYSTEM_PROMPT
