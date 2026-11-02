@@ -322,3 +322,32 @@ def test_once_a_model_failed_the_last_fallback_is_not_retried_either(
     assert caught.value.message.startswith("No model could answer.")
     assert models_called(fake_llm) == ["big-model", "backup"]
     assert slept == []
+
+
+def test_a_saved_run_carries_on_with_the_model_that_took_over(
+    role_service, setup, backup, fake_llm
+):
+    fake_llm.script(LlmError(AUTH, "bad key"), Reply(text="one"), Reply(text="two"))
+    first = role_service.gateway_for_role("agent", workspace_id=setup)
+    assert text(first) == "one"
+
+    resumed = role_service.gateway_for_role("agent", workspace_id=setup)
+    resumed.resume_run(first.run_state())
+
+    assert text(resumed) == "two"
+    assert models_called(fake_llm) == ["big-model", "backup", "backup"]
+    assert resumed.fell_back and str(resumed.model_id) == backup["id"]
+
+
+def test_a_saved_model_no_longer_a_candidate_hands_over_as_usual(
+    role_service, setup, backup, fake_llm
+):
+    gateway = role_service.gateway_for_role("agent", workspace_id=setup)
+    gateway.resume_run({"serving": "00000000-0000-4000-8000-000000000000", "failed": []})
+    assert str(gateway.model_id) != backup["id"]  # unknown: the primary serves
+
+    gateway.resume_run(None)  # a checkpoint from before models were saved
+    fake_llm.script(Reply(text="fine"))
+
+    assert text(gateway) == "fine"
+    assert models_called(fake_llm) == ["big-model"]

@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -391,6 +391,39 @@ class MeteredGateway:
         self._current = left[0]
         if self.on_fall_back is not None:
             self.on_fall_back(failed._model_name, error, left[0]._model_name)
+
+    def run_state(self) -> dict[str, Any]:
+        """Which model serves the run and which failed (with their errors), JSON-safe: a job
+        keeps it in its checkpoint, so a resumed job carries on with the same model."""
+        return {
+            "serving": str(self._current._model_id) if self._current._model_id else None,
+            "failed": [
+                {"model_id": str(m._model_id), "code": e.code, "message": e.message}
+                for m, e in self._failed
+                if m._model_id
+            ],
+        }
+
+    def resume_run(self, state: Mapping[str, Any] | None) -> None:
+        """Carry on a run saved with ``run_state``: the models that failed stay out, and the
+        one that took over serves again while it is still a candidate (a Workspace model,
+        enabled and tested), else the first model left. No state, or one that leaves no
+        model, changes nothing: the run starts from the primary."""
+        if not state:
+            return
+        by_id = {str(m._model_id): m for m in self._chain if m._model_id}
+        failed: list[tuple[MeteredGateway, LlmError]] = []
+        for entry in state.get("failed") or []:
+            model = by_id.get(str(entry.get("model_id")))
+            if model is not None and all(model is not f for f, _ in failed):
+                error = LlmError(str(entry.get("code") or ""), str(entry.get("message") or ""))
+                failed.append((model, error))
+        left = [m for m in self._chain if all(m is not f for f, _ in failed)]
+        if not left:
+            return
+        serving = by_id.get(str(state.get("serving")))
+        self._failed = failed
+        self._current = serving if serving is not None and serving in left else left[0]
 
     def _candidates(self) -> list[MeteredGateway]:
         """The models still able to take over from the current one, in the admin's order."""

@@ -17,7 +17,7 @@ from tests.assistant.test_chat import (  # noqa: F401 (model and settings are fi
     used,
     workspace_agents,
 )
-from tests.assistant.test_jobs import jobs_of
+from tests.assistant.test_jobs import answer_job, jobs_of, submit
 from tests.llm.test_roles_budgets import BASE as LLM
 from tests.llm.test_roles_budgets import register
 from tests.roles import RoleClients
@@ -142,3 +142,28 @@ def test_a_light_model_falling_back_leaves_the_pick_alone(
     detail = owner.get(f"{base(roles)}/conversations/{cid}").json()
     assert detail["conversation"]["model_id"] is None
     assert detail["messages"][-1]["fell_back"] is True
+
+
+def test_a_resumed_job_stays_on_the_model_that_took_over(
+    app, services, roles: RoleClients, model, admin_client, fake_llm
+):
+    with_backup(admin_client, roles, model)
+    fake_llm.calls.clear()
+    fake_llm.script(
+        LlmError(AUTH, "bad key for ada@example.com"),
+        Reply(tool_calls=(tool("ask_member", "c1", question="Which tables?"),)),
+        Reply(text="Done."),  # after the answer
+    )
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+    job = submit(app, services, roles, cid=cid)
+    assert jobs_of(roles)[0]["status"] == "paused"
+    asked = len(fake_llm.calls)
+
+    assert answer_job(roles, job.id, "The customer ones.").status_code == 200
+
+    [resumed] = jobs_of(roles)
+    assert resumed["status"] == "succeeded"
+    assert [c.model for c in fake_llm.calls[asked:] if c.kind == "chat"] == ["backup"]
+    assert "ada@example.com" not in resumed["log"]  # the provider's error, redacted
+    assert "backup took over from assistant-model" in resumed["log"]

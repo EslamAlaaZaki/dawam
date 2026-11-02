@@ -776,13 +776,15 @@ class AssistantService:
         def handed_over(failed: str, error: LlmError, model: str) -> None:
             line = f"{model} took over from {failed}, which failed: {error.message}"
             took_over.append(line)
-            ctx.log(line[:500])
+            ctx.log(redact_text(line)[:500])
 
         try:
             gateway = self._roles.gateway_for_role(
                 "agent", workspace_id=workspace_id, user_id=user.id
             )
             gateway.on_fall_back = handed_over  # the rest of the job stays on that model
+            if resume and saved:  # a model that took over before the pause serves on
+                gateway.resume_run(saved.get("models"))
             tools = self._tools.bind(
                 user, workspace_id, self._ai.policy(workspace_id), conversation_id, job=True
             )
@@ -799,6 +801,7 @@ class AssistantService:
                     "run": latest["run"],
                     "proposals": tools.saved_proposals(),
                     "plan": redact_json(tools.saved_plan()),
+                    "models": redact_json(gateway.run_state()),
                 }
                 if supervisor is not None:  # with the specialist in progress
                     data["supervisor"] = redact_json(supervisor.saved())
