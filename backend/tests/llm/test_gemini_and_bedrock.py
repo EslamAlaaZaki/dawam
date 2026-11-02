@@ -160,6 +160,29 @@ def test_gemini_keeps_thoughts_out_of_the_reply_and_counts_them_as_output():
     assert events[-1].finish_reason == "length"
 
 
+def test_gemini_thought_only_reply_yields_no_text_but_keeps_usage_and_finish_reason():
+    body = {
+        "candidates": [
+            {
+                "content": {"role": "model", "parts": [{"text": "pondering", "thought": True}]},
+                "finishReason": "STOP",
+            }
+        ],
+        "usageMetadata": {"promptTokenCount": 5, "thoughtsTokenCount": 30},
+    }
+    adapter = GeminiAdapter(
+        base_url="https://g.test",
+        api_key="k",
+        timeout_seconds=9,
+        transport=Queue(**{"g.test": [reply(200, body)]}),
+    )
+
+    events = chat(adapter)
+
+    assert not [e for e in events if isinstance(e, TextDelta)]
+    assert events[-1].usage.completion_tokens == 30 and events[-1].finish_reason == "stop"
+
+
 def test_gemini_sends_structured_output_as_a_response_schema():
     transport = ReplayTransport(load(FIXTURES / "gemini", "chat_text"))
     adapter = GeminiAdapter(

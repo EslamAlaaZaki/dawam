@@ -87,6 +87,9 @@ APPROVALS = ("yes", "y", "approve", "approved", "ok", "okay", "go ahead", "proce
 NOT_APPROVED = "The member did not approve this action, so it was not run. Do not try it again."
 
 
+EMPTY_REPLY_MESSAGE = "The model returned an empty answer. Try again or pick another model."
+
+
 def is_approval(answer: str) -> bool:
     """Whether the member's answer to an approval question is a yes (a fixed word list: a
     doubtful answer is a no)."""
@@ -716,6 +719,7 @@ def run_agent(
     shortenable: list[tuple[Message, Message]] = []
     """The run's tool results, oldest first, each with its digest form."""
     retries = 0
+    empty_retried = False
     compaction_tried = summarize is None
     last_poll = timer()
     hand_over: Callable[[LlmError], None] | None = getattr(gateway, "fall_back_from", None)
@@ -899,6 +903,7 @@ def run_agent(
                 visible = all_specs
             offered = visible if under_cap else ()
             answer: list[str] = []
+            finish: str | None = None
             last_poll = float("-inf")  # always look at the flag when a model call begins
             extra = tools_prompt(offered) if prompted and offered else ""
             reserved = count(extra) if extra else schema_tokens(() if prompted else offered, count)
@@ -976,9 +981,28 @@ def run_agent(
                             asking = any(c.name == ASK_MEMBER for c in pending)
                             if not (asking and event.call.name == ASK_MEMBER):
                                 pending.append(event.call)
-                    elif isinstance(event, Done) and event.usage is not None:
-                        run.prompt += event.usage.prompt_tokens
-                        run.completion += event.usage.completion_tokens
+                    elif isinstance(event, Done):
+                        finish = event.finish_reason
+                        if event.usage is not None:
+                            run.prompt += event.usage.prompt_tokens
+                            run.completion += event.usage.completion_tokens
+            if not "".join(answer).strip() and not (pending and not prompted):
+                # No text and no tool call (thinking alone counts as nothing): never a silent
+                # answer. A safety stop fails with the provider's reason; anything else is
+                # asked once more, then the run fails.
+                if finish == "content_filter":
+                    yield run.finish(
+                        "failed",
+                        "content_filter",
+                        "The model's provider stopped the answer (content_filter).",
+                    )
+                    return
+                if empty_retried:
+                    yield run.finish("failed", "empty_reply", EMPTY_REPLY_MESSAGE)
+                    return
+                empty_retried = True
+                continue
+            empty_retried = False
             if prompted:
                 reply = "".join(answer)
                 verdict = parse_reply(reply, specs) if offered else None

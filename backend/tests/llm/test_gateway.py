@@ -152,6 +152,80 @@ def test_probe_marks_missing_features_without_failing_the_test():
     assert (caps.tool_calling, caps.streaming, caps.json_schema) == (False, False, False)
 
 
+# -- an agent or light model is only marked "no" when that is confirmed (#552) ------------
+
+PLAIN = Reply(text="OK")
+ECHO = Reply(tool_calls=(ToolCall("c1", "echo", {"text": "ping"}),))
+TEXT_ANSWER = Reply(text="ping")
+JSON_OK = Reply(text='{"ok": true}')
+
+
+def agent_probe(*script: Reply | LlmError, roles: bool = True):
+    llm, _ = gateway(FakeAdapter().script(*script))
+    return probe(llm, chat=True, embedding=False, confirmed_only=roles)
+
+
+@pytest.mark.parametrize("error", [LlmError("rate_limit", "slow down"), LlmError("auth", "bad")])
+def test_a_temporary_tool_error_leaves_tool_calling_unknown_with_a_warning(error):
+    outcomes = [PLAIN, PLAIN] + [error] * 8
+    result = agent_probe(*outcomes)
+
+    assert result.ok and result.capabilities.tool_calling is None
+    assert any("tool calling" in w.lower() and error.message in w for w in result.warnings)
+
+
+def test_a_provider_rejecting_tools_confirms_no_tool_calling():
+    result = agent_probe(PLAIN, PLAIN, LlmError("bad_request", "tools are not supported"))
+
+    assert result.capabilities.tool_calling is False and not result.warnings
+
+
+def test_text_answers_to_both_echo_attempts_confirm_no_tool_calling():
+    result = agent_probe(PLAIN, PLAIN, TEXT_ANSWER, TEXT_ANSWER)
+
+    assert result.capabilities.tool_calling is False
+
+
+def test_the_echo_call_on_the_second_attempt_is_enough():
+    result = agent_probe(PLAIN, PLAIN, TEXT_ANSWER, ECHO)
+
+    assert result.capabilities.tool_calling is True
+
+
+@pytest.mark.parametrize("error", [LlmError("unavailable", "overloaded"), LlmError("auth", "bad")])
+def test_a_temporary_schema_error_leaves_json_schema_unknown_with_a_warning(error):
+    result = agent_probe(PLAIN, PLAIN, ECHO, *[error] * 8)
+
+    assert result.capabilities.tool_calling is True and result.capabilities.json_schema is None
+    assert any("json schema" in w.lower() and error.message in w for w in result.warnings)
+
+
+def test_a_provider_rejecting_the_schema_confirms_no_json_schema():
+    result = agent_probe(PLAIN, PLAIN, ECHO, LlmError("bad_request", "response schema unsupported"))
+
+    assert result.capabilities.json_schema is False and not result.warnings
+
+
+def test_plain_answers_to_both_schema_attempts_confirm_no_json_schema():
+    result = agent_probe(PLAIN, PLAIN, ECHO, TEXT_ANSWER, TEXT_ANSWER)
+
+    assert result.capabilities.json_schema is False
+
+
+def test_json_on_the_second_schema_attempt_confirms_support():
+    result = agent_probe(PLAIN, PLAIN, ECHO, TEXT_ANSWER, JSON_OK)
+
+    assert result.capabilities.json_schema is True
+
+
+def test_other_roles_still_store_no_on_a_temporary_error():
+    llm, _ = gateway(FakeAdapter().script(PLAIN, PLAIN, LlmError("auth", "bad")))
+
+    result = probe(llm, chat=True, embedding=False)
+
+    assert result.capabilities.tool_calling is False and not result.warnings
+
+
 def test_the_admins_context_window_wins_over_the_servers():
     llm, _ = gateway(FakeAdapter(context_window=32768))
 

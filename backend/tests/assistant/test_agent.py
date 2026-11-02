@@ -1107,3 +1107,57 @@ def test_find_tools_says_when_a_named_tool_is_already_available():
 
     result = adapter.calls[1].messages[-1].content or ""
     assert "Already available to call: web_search" in result
+
+
+# -- empty replies are never silent (#552) ---------------------------------------------
+
+
+def test_an_empty_step_is_retried_once_in_native_mode():
+    adapter = FakeAdapter().script(Reply(text=""), Reply(text="Here it is"))
+
+    events = run(adapter)
+
+    assert len(adapter.calls) == 2
+    assert events[-1].status == "completed" and events[-1].text == "Here it is"
+
+
+def test_an_empty_step_is_retried_once_in_prompted_mode():
+    adapter = FakeAdapter().script(Reply(text="  "), Reply(text="Here it is"))
+
+    events = limited(adapter, Tools())
+
+    assert len(adapter.calls) == 2
+    assert events[-1].status == "completed" and events[-1].text == "Here it is"
+
+
+@pytest.mark.parametrize("prompted", [False, True])
+def test_two_empty_steps_fail_the_run_with_empty_reply(prompted):
+    adapter = FakeAdapter().script(Reply(text=""), Reply(text=""), Reply(text="never"))
+
+    events = limited(adapter, Tools()) if prompted else run(adapter)
+
+    assert len(adapter.calls) == 2
+    done = events[-1]
+    assert done.status == "failed" and done.error_code == "empty_reply"
+    assert done.error_message == (
+        "The model returned an empty answer. Try again or pick another model."
+    )
+
+
+def test_a_filtered_empty_reply_fails_with_the_providers_reason_without_a_retry():
+    adapter = FakeAdapter().script(Reply(text="", finish_reason="content_filter"))
+
+    events = run(adapter)
+
+    assert len(adapter.calls) == 1
+    assert events[-1].status == "failed" and events[-1].error_code == "content_filter"
+
+
+def test_a_thinking_only_step_counts_as_empty_but_its_tokens_are_kept():
+    adapter = FakeAdapter().script(
+        Reply(text="", reasoning="hmm", usage=Usage(10, 40)), Reply(text="ok", usage=Usage(10, 2))
+    )
+
+    events = run(adapter)
+
+    assert events[-1].status == "completed" and events[-1].completion_tokens == 42

@@ -428,6 +428,8 @@ class ProbeResult:
     capabilities: Capabilities
     error_code: str | None = None
     error: str | None = None
+    warnings: tuple[str, ...] = ()
+    """Features a temporary error left unconfirmed (``Capabilities`` holds ``None`` for them)."""
 
 
 _PROBE_TOOL = ToolSpec(
@@ -486,14 +488,19 @@ def probe(
     context_window: int | None = None,
     vision: bool = False,
     rerank: bool = False,
+    confirmed_only: bool = False,
 ) -> ProbeResult:
     """Run "Test connection": a short prompt, a streamed one, a dummy tool call, a
     JSON-schema request, for vision models a small image to read and, for embedding
     models, one embedding and for rerank models a two-document ranking. A failure of the short
     prompt (or of the image, the embedding or the ranking) fails the test with its error code;
     failures of the optional features just mean the model does not support them.
-    ``context_window`` (the admin's input) wins over the server's metadata."""
+    ``context_window`` (the admin's input) wins over the server's metadata.
+    ``confirmed_only`` (agent and light models): tool calling and JSON schema are ``False``
+    only when confirmed (the provider rejects them, or the model fails twice); a temporary
+    error leaves them ``None`` and adds a warning naming the error."""
     tool_calling = streaming = json_schema = dimension = None
+    warnings: list[str] = []
     try:
         if chat:
             reply, _ = _collect(
@@ -506,27 +513,12 @@ def probe(
                     _collect(gateway.chat([Message("user", "Say OK.")], stream=True))[0].strip()
                 )
             )
-            tool_calling = _supported(
-                lambda: any(
-                    call.name == _PROBE_TOOL.name
-                    for call in _collect(
-                        gateway.chat(
-                            [Message("user", "Call the echo tool with the text 'ping'.")],
-                            [_PROBE_TOOL],
-                        )
-                    )[1]
-                )
-            )
-            json_schema = _supported(
-                lambda: _is_probe_json(
-                    _collect(
-                        gateway.chat(
-                            [Message("user", 'Answer with JSON: {"ok": true}.')],
-                            json_schema=_PROBE_SCHEMA,
-                        )
-                    )[0]
-                )
-            )
+            if confirmed_only:
+                tool_calling = _confirmed(_try_tool_call(gateway), "tool calling", warnings)
+                json_schema = _confirmed(_try_json_schema(gateway), "JSON schema", warnings)
+            else:
+                tool_calling = _supported(_try_tool_call(gateway))
+                json_schema = _supported(_try_json_schema(gateway))
         if vision:
             seen, _ = _collect(
                 gateway.vision("What colour is this image? Answer in one word.", [_PROBE_IMAGE])
@@ -564,7 +556,51 @@ def probe(
             context_window=window,
             embedding_dimension=dimension,
         ),
+        warnings=tuple(warnings),
     )
+
+
+def _try_tool_call(gateway: Gateway) -> Callable[[], bool]:
+    def attempt() -> bool:
+        _, calls = _collect(
+            gateway.chat(
+                [Message("user", "Call the echo tool with the text 'ping'.")], [_PROBE_TOOL]
+            )
+        )
+        return any(call.name == _PROBE_TOOL.name for call in calls)
+
+    return attempt
+
+
+def _try_json_schema(gateway: Gateway) -> Callable[[], bool]:
+    def attempt() -> bool:
+        text, _ = _collect(
+            gateway.chat(
+                [Message("user", 'Answer with JSON: {"ok": true}.')], json_schema=_PROBE_SCHEMA
+            )
+        )
+        return _is_probe_json(text)
+
+    return attempt
+
+
+def _confirmed(attempt: Callable[[], bool], feature: str, warnings: list[str]) -> bool | None:
+    """``True`` when the feature worked, ``False`` only when that is confirmed (the provider
+    rejected the request as bad, or the model failed on both attempts), ``None`` after a
+    temporary error (rate limit, 5xx, timeout, network, auth), with a warning."""
+    for _ in range(2):
+        try:
+            if attempt():
+                return True
+        except LlmError as exc:
+            if exc.code == BAD_REQUEST:
+                return False
+            warnings.append(
+                f"{feature[0].upper()}{feature[1:]} could not be checked ({exc.code}: "
+                f"{exc.message}). Its previous value is kept; test the connection again."
+            )
+            return None
+    return False
 
 
 def _supported(attempt: Callable[[], bool]) -> bool:
