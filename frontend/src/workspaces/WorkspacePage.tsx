@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -44,7 +43,6 @@ import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceSettingsDialog } from "./WorkspaceSettingsDialog";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
-const CHAT_WIDTH_KEY = "dawam.assistantWidth";
 const CHAT_MIN_WIDTH = 360;
 
 /** The widest the chat may be: most of the window, leaving some of the page beside it. */
@@ -56,32 +54,9 @@ function clampChatWidth(width: number) {
   return Math.min(chatMaxWidth(), Math.max(CHAT_MIN_WIDTH, Math.round(width)));
 }
 
-/** The width the member dragged the chat to last, or null for the default. */
-function storedChatWidth(): number | null {
-  try {
-    const value = Number(localStorage.getItem(CHAT_WIDTH_KEY));
-    return value > 0 ? clampChatWidth(value) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The stored width never changes under the page, so there is nothing to subscribe to. */
-function noSubscription() {
-  return () => {};
-}
-
 /** The chat's default width: 680px, at most 55% of the window. */
 function defaultChatWidth() {
   return Math.round(Math.min(680, window.innerWidth * 0.55));
-}
-
-function storeChatWidth(width: number) {
-  try {
-    localStorage.setItem(CHAT_WIDTH_KEY, String(width));
-  } catch {
-    // Not remembered; the width still applies until the page reloads.
-  }
 }
 
 /**
@@ -94,7 +69,7 @@ function ChatResizer({
 }: {
   /** Null while the chat has its default width. */
   width: number | null;
-  onResize: (width: number, done: boolean) => void;
+  onResize: (width: number) => void;
 }) {
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -103,14 +78,14 @@ function ChatResizer({
   }
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      onResize(window.innerWidth - event.clientX, false);
+      onResize(window.innerWidth - event.clientX);
     }
   }
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
       document.body.style.userSelect = "";
-      onResize(window.innerWidth - event.clientX, true);
+      onResize(window.innerWidth - event.clientX);
     }
   }
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -120,7 +95,6 @@ function ChatResizer({
       onResize(
         (width ?? defaultChatWidth()) +
           (event.key === "ArrowLeft" ? step : -step),
-        true,
       );
     }
   }
@@ -154,24 +128,14 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const { folder, wanted, select, warehouse, systems, systemList } =
     useWorkspaceFolders(workspaceId, workspace.data?.name ?? "");
   const [assistantOpen, setAssistantOpen] = useState(false);
-  // The chat's width once the member has dragged it; null keeps the default.
-  // Read on the client only (the server renders the default), then kept in state.
-  const storedWidth = useSyncExternalStore(
-    noSubscription,
-    storedChatWidth,
-    () => null,
-  );
-  const [draggedWidth, setChatWidth] = useState<number | null>(null);
-  const chatWidth = draggedWidth ?? storedWidth;
+  // The chat's width once the member has dragged it; null keeps the default. Not kept
+  // across reloads.
+  const [chatWidth, setChatWidth] = useState<number | null>(null);
   const chatStyle = (
     chatWidth === null ? {} : { "--chat-width": `${chatWidth}px` }
   ) as CSSProperties;
-  function resizeChat(width: number, done: boolean) {
-    const clamped = clampChatWidth(width);
-    setChatWidth(clamped);
-    if (done) {
-      storeChatWidth(clamped);
-    }
+  function resizeChat(width: number) {
+    setChatWidth(clampChatWidth(width));
   }
   // The folder whose setup dialog was closed: it stays closed until another folder is
   // selected or the folder's button reopens it.

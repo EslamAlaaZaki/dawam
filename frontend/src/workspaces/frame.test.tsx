@@ -191,9 +191,8 @@ describe("the Assistant panel", () => {
     expect(toggle).toHaveFocus();
   });
 
-  it("resizes from its left edge, within limits, and remembers the width", async () => {
+  it("resizes from its left edge, within limits", async () => {
     window.innerWidth = 1024;
-    localStorage.removeItem("dawam.assistantWidth");
     renderApp(backend(), PATH);
 
     fireEvent.click(await screen.findByRole("button", { name: "Assistant" }));
@@ -206,7 +205,6 @@ describe("the Assistant panel", () => {
     fireEvent.keyDown(edge, { key: "ArrowLeft" });
     expect(edge).toHaveAttribute("aria-valuenow", "595");
     expect(panel.style.getPropertyValue("--chat-width")).toBe("595px");
-    expect(localStorage.getItem("dawam.assistantWidth")).toBe("595");
 
     // At most 80% of the window, at least 360px.
     for (let i = 0; i < 10; i++) {
@@ -217,7 +215,6 @@ describe("the Assistant panel", () => {
       fireEvent.keyDown(edge, { key: "ArrowRight", shiftKey: true });
     }
     expect(edge).toHaveAttribute("aria-valuenow", "360");
-    localStorage.removeItem("dawam.assistantWidth");
   });
 
   it("has no keyboard shortcut", async () => {
