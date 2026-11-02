@@ -271,13 +271,24 @@ const SEARCH_PROVIDERS: Record<string, string> = {
 };
 
 /** What a reply sent to the web: each search query (as sent, values removed) and each page read. */
-function webOf(tools: readonly ToolCall[]) {
-  return tools.flatMap((tool) => {
+interface WebStep {
+  kind: "search" | "page";
+  /** Past tense, for the finished list. */
+  label: string;
+  /** Present tense, for the live step. */
+  doing: string;
+  detail: string;
+}
+
+function webOf(tools: readonly ToolCall[]): WebStep[] {
+  return tools.flatMap((tool): WebStep[] => {
     if (tool.name === "web_search" && typeof tool.result?.query === "string") {
       const provider = String(tool.result.provider ?? "");
       return [
         {
+          kind: "search",
           label: `Searched the web (${SEARCH_PROVIDERS[provider] ?? provider})`,
+          doing: "Searching the web",
           detail: tool.result.query,
         },
       ];
@@ -289,10 +300,50 @@ function webOf(tools: readonly ToolCall[]) {
           : tool.result.reader === "crawl4ai"
             ? "Read a web page (Crawl4AI)"
             : "Read a web page";
-      return [{ label, detail: tool.result.url }];
+      return [
+        {
+          kind: "page",
+          label,
+          doing: "Reading a web page",
+          detail: tool.result.url,
+        },
+      ];
     }
     return [];
   });
+}
+
+/** "Searched the web 2 times · read 3 pages": a finished reply's web access, in one line. */
+function webSummary(web: readonly WebStep[]) {
+  const searches = web.filter((item) => item.kind === "search").length;
+  const pages = web.length - searches;
+  const text = [
+    searches > 0 &&
+      `searched the web ${searches} ${searches === 1 ? "time" : "times"}`,
+    pages > 0 && `read ${pages} ${pages === 1 ? "page" : "pages"}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** While a reply is written, its latest web step only: each one replaces the last. */
+function CurrentStep({ tools }: { tools: readonly ToolCall[] }) {
+  const step = webOf(tools).at(-1);
+  if (!step) {
+    return (
+      <p className="ai-shimmer w-fit text-sm font-medium">Thinking…</p>
+    );
+  }
+  return (
+    <p
+      aria-live="polite"
+      className="flex min-w-0 gap-1 text-sm text-muted-foreground"
+    >
+      <span className="ai-shimmer shrink-0 font-medium">{step.doing}…</span>
+      <span className="truncate text-foreground">{step.detail}</span>
+    </p>
+  );
 }
 
 /** Documents (or tools) whose text looked like a prompt injection; the model still saw it, with a warning. */
@@ -304,15 +355,19 @@ function flaggedOf(tools: readonly ToolCall[]) {
  * What a reply's tools left for the member to see: the jobs it started, what it sent to the
  * web, a warning when a Connection's user can write and the documents flagged as possible
  * injections. The tool
- * calls themselves are not shown.
+ * calls themselves are not shown. While the reply is `live`, its web steps are left to
+ * `CurrentStep`; once it is done they fold into one closed line that opens on the full list.
  */
 function ToolNotes({
   tools,
   workspaceId,
+  live = false,
 }: {
   tools: readonly ToolCall[];
   workspaceId: string;
+  live?: boolean;
 }) {
+  const web = webOf(tools);
   return (
     <>
       {jobsOf(tools).map((job) => (
@@ -323,18 +378,29 @@ function ToolNotes({
           title={job.title}
         />
       ))}
-      {webOf(tools).length > 0 && (
-        <ul
-          aria-label="Web access"
-          className="flex flex-col gap-1 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
-        >
-          {webOf(tools).map((item, index) => (
-            <li key={index}>
-              {item.label}:{" "}
-              <span className="break-all text-foreground">{item.detail}</span>
-            </li>
-          ))}
-        </ul>
+      {!live && web.length > 0 && (
+        <details className="group/web">
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-120 hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronRight
+              aria-hidden
+              className="size-3.5 transition-transform duration-120 group-open/web:rotate-90"
+            />
+            {webSummary(web)}
+          </summary>
+          <ul
+            aria-label="Web access"
+            className="mt-1.5 flex flex-col gap-1 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+          >
+            {web.map((item, index) => (
+              <li key={index}>
+                {item.label}:{" "}
+                <span className="break-all text-foreground">
+                  {item.detail}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {canWrite(tools) && (
         <p
@@ -1019,11 +1085,13 @@ export function AssistantPanel({
                   {draft.text ? (
                     <Markdown>{draft.text}</Markdown>
                   ) : (
-                    <p className="ai-shimmer w-fit text-sm font-medium">
-                      Thinking…
-                    </p>
+                    <CurrentStep tools={draft.tools} />
                   )}
-                  <ToolNotes tools={draft.tools} workspaceId={workspace.id} />
+                  <ToolNotes
+                    tools={draft.tools}
+                    workspaceId={workspace.id}
+                    live
+                  />
                 </Bubble>
               </>
             )}
