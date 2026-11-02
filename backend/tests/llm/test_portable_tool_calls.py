@@ -198,3 +198,35 @@ def test_ids_that_had_to_change_stay_distinct(one, other):
 
 def test_a_portable_id_is_sent_as_it_is():
     assert sent_call_id("call_abc-1") == "call_abc-1"
+
+
+def legacy_history() -> list[Message]:
+    """Two calls saved with empty ids (before ids were portable), then their results."""
+    calls = (ToolCall("", "lookup", {}), ToolCall("", "lookup", {"id": 2}))
+    return [
+        Message("user", "Go"),
+        Message("assistant", None, calls),
+        Message("tool", "first", tool_call_id=""),
+        Message("tool", "second", tool_call_id=""),
+    ]
+
+
+def test_two_empty_ids_in_one_history_stay_distinct_for_anthropic():
+    body = anthropic_body(legacy_history())
+
+    blocks = [b for m in body["messages"] for b in m["content"]]
+    uses = [b["id"] for b in blocks if b["type"] == "tool_use"]
+    results = [b["tool_use_id"] for b in blocks if b["type"] == "tool_result"]
+    assert len(set(uses)) == 2 and results == uses
+    assert all(PORTABLE.match(i) for i in uses)
+    assert anthropic_body(legacy_history()) == body  # the same on every send
+
+
+def test_two_empty_ids_in_one_history_stay_distinct_for_bedrock():
+    body = bedrock_body(legacy_history())
+
+    blocks = [b for m in body["messages"] for b in m["content"]]
+    uses = [b["toolUse"]["toolUseId"] for b in blocks if "toolUse" in b]
+    results = [b["toolResult"]["toolUseId"] for b in blocks if "toolResult" in b]
+    assert len(set(uses)) == 2 and results == uses
+    assert bedrock_body(legacy_history()) == body

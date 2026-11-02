@@ -33,11 +33,11 @@ from ..gateway import (
 from .transport import HttpResponse, Transport, TransportError
 from .wire import (
     MAX_LIST_PAGES,
+    SentCallIds,
     detail,
     error_for,
     json_body,
     received_call_id,
-    sent_call_id,
 )
 
 API_VERSION = "2023-06-01"
@@ -233,6 +233,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
     """System messages become the top-level ``system``; a tool result is a ``user`` block,
     and consecutive ``user`` turns merge (Anthropic wants the results in one message)."""
     system: list[str] = []
+    ids = SentCallIds()
     wire: list[dict[str, Any]] = []
 
     def add(role: str, blocks: list[dict[str, Any]]) -> None:
@@ -259,7 +260,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
                 [
                     {
                         "type": "tool_result",
-                        "tool_use_id": sent_call_id(message.tool_call_id),
+                        "tool_use_id": ids.result(message.tool_call_id),
                         "content": message.content or "",
                     }
                 ],
@@ -271,7 +272,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
             blocks.extend(
                 {
                     "type": "tool_use",
-                    "id": sent_call_id(c.id),
+                    "id": ids.call(c.id),
                     "name": c.name,
                     "input": c.arguments,
                 }

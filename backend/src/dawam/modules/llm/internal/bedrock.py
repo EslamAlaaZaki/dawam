@@ -50,11 +50,11 @@ from ..gateway import (
 from .transport import HttpResponse, Transport, TransportError
 from .wire import (
     MAX_LIST_PAGES,
+    SentCallIds,
     detail,
     error_for,
     json_body,
     received_call_id,
-    sent_call_id,
 )
 
 DEFAULT_MAX_TOKENS = 4096
@@ -441,6 +441,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
     """System messages become the top-level ``system``; a tool result is a ``user`` block,
     and consecutive ``user`` turns merge (Converse wants alternating roles)."""
     system: list[str] = []
+    ids = SentCallIds()
     wire: list[dict[str, Any]] = []
 
     def add(role: str, blocks: list[dict[str, Any]]) -> None:
@@ -471,7 +472,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
             )
         elif message.role == "tool":
             result = {
-                "toolUseId": sent_call_id(message.tool_call_id),
+                "toolUseId": ids.result(message.tool_call_id),
                 "content": [{"text": message.content or ""}],
             }
             add("user", [{"toolResult": result}])
@@ -480,7 +481,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
             if message.content:
                 blocks.append({"text": message.content})
             blocks.extend(
-                {"toolUse": {"toolUseId": sent_call_id(c.id), "name": c.name, "input": c.arguments}}
+                {"toolUse": {"toolUseId": ids.call(c.id), "name": c.name, "input": c.arguments}}
                 for c in message.tool_calls
             )
             add("assistant", blocks or [{"text": ""}])

@@ -66,6 +66,28 @@ def sent_call_id(call_id: str | None) -> str:
     return f"{cleaned[: MAX_CALL_ID_CHARS - _HASH_CHARS - 1]}_{digest}"
 
 
+class SentCallIds:
+    """The tool-call ids of one history as sent (``sent_call_id``). An empty id (a history
+    saved before ids were portable) gets a distinct one by position: the n-th call with an
+    empty id and the n-th result with one share ``call_empty_<n>``, the same on every send."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+        self._results = 0
+
+    def call(self, call_id: str | None) -> str:
+        if call_id:
+            return sent_call_id(call_id)
+        self._calls += 1
+        return f"call_empty_{self._calls}"
+
+    def result(self, call_id: str | None) -> str:
+        if call_id:
+            return sent_call_id(call_id)
+        self._results += 1
+        return f"call_empty_{self._results}"
+
+
 def json_body(response: HttpResponse) -> Any:
     try:
         return json.loads(response.read())
