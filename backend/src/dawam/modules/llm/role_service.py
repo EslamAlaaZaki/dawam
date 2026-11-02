@@ -26,7 +26,6 @@ from dawam.platform.errors import ApiError
 from dawam.platform.tracing import tracing
 
 from .gateway import (
-    UNAVAILABLE,
     Capabilities,
     ChatEvent,
     Done,
@@ -55,7 +54,13 @@ from .tables import (
     WorkspaceBudgetRecord,
     WorkspaceCostBudgetRecord,
 )
-from .workspace_ai import default_model_id, enabled_models, load_settings, model_is_internal
+from .workspace_ai import (
+    default_model_id,
+    enabled_models,
+    load_settings,
+    model_is_internal,
+    workspace_model_ids,
+)
 
 FALLBACK_ROLES = ("agent", "light")
 MAX_BUDGET = 10**15
@@ -253,9 +258,17 @@ def _check_cost_budget(budget: CostBudget) -> None:
         )
 
 
+FallBackListener = Callable[[str, LlmError, str], None]
+"""Told ``(failed model, its error, the model taking over)`` each time a model hands over."""
+
+
 class MeteredGateway:
     """A ``Gateway`` for one role that stops when a monthly budget is used up and
-    records the tokens of each call (reported, or estimated by the gateway)."""
+    records the tokens of each call (reported, or estimated by the gateway).
+
+    With fallbacks it serves one run (a chat answer or a job): a model that fails before it
+    produced anything hands over to the next fallback, and the one that answered serves the
+    rest of the run. ``model_id``, ``model_name`` and ``fell_back`` say which model that is."""
 
     def __init__(
         self,
@@ -268,33 +281,56 @@ class MeteredGateway:
         user_id: uuid.UUID | None,
         refuse_external: bool = False,
         fallbacks: Sequence[MeteredGateway] = (),
+        model_id: uuid.UUID | None = None,
     ) -> None:
         self._gateway = gateway
-        self._fallbacks = tuple(fallbacks)
+        self._chain: tuple[MeteredGateway, ...] = (self, *fallbacks)
+        self._current: MeteredGateway = self
+        self._failed: list[tuple[MeteredGateway, LlmError]] = []
         self._refuse_external = refuse_external
         self._service = service
         self._role = role
         self._model_name = model_name
+        self._model_id = model_id
         self._workspace_id = workspace_id
         self._user_id = user_id
+        self.on_fall_back: FallBackListener | None = None
 
     @property
     def role(self) -> str:
         """The role the call is metered under (``agent`` when ``light`` fell back)."""
         return self._role
 
+    @property
+    def model_id(self) -> uuid.UUID | None:
+        """The model that answered last (before any call: the one that will be asked)."""
+        return self._current._model_id
+
+    @property
+    def model_name(self) -> str:
+        return self._current._model_name
+
+    @property
+    def fell_back(self) -> bool:
+        """A fallback took over from the model this gateway was made for."""
+        return self._current is not self
+
     def capabilities(self) -> Capabilities:
-        return self._gateway.capabilities()
+        """The current model's: they change when a fallback takes over."""
+        return self._current._gateway.capabilities()
 
     def count_tokens(self, text: str) -> int:
         """Like ``Gateway.count_tokens``; an internal-only Workspace never reaches an
         external provider's count endpoint, so it gets the estimate."""
-        return estimate_tokens(text) if self._refuse_external else self._gateway.count_tokens(text)
+        model = self._current
+        if model._refuse_external:
+            return estimate_tokens(text)
+        return model._gateway.count_tokens(text)
 
     def local_token_counter(self) -> Callable[[str], int] | None:
         """Counts this model's tokens on this machine (a local tokenizer), or ``None`` when
         none is known. Never a network call, never metered."""
-        return local_counter(self._model_name)
+        return local_counter(self._current._model_name)
 
     def chat(
         self,
@@ -303,38 +339,62 @@ class MeteredGateway:
         stream: bool = False,
         *,
         json_schema: dict[str, Any] | None = None,
+        fall_back: bool = True,
     ) -> Iterator[ChatEvent]:
         """Like ``Gateway.chat``, but raises 429 ``token_budget_exhausted`` before the
         call when a budget is used up, and records the usage when the reply is done.
 
-        When the model is ``unavailable`` (timeouts included, after the gateway's retries)
-        before it produced anything, the role's fallback models are tried in order. A budget
-        or policy refusal is never a reason to fall back, and a reply already begun is never
-        restarted."""
-        self._ensure_allowed()
-        attempts = [
-            lambda: self._metered(
-                lambda: self._gateway.chat(messages, tools, stream, json_schema=json_schema),
+        Any ``LlmError`` before the model produced anything hands over to the next
+        candidate (``fall_back_from``) and the call is made again there; ``fall_back=False``
+        raises it instead, so the caller can fit the request to the next model first. While
+        a candidate is left the model is asked once, with no retry and no wait; the last one
+        gets the gateway's retries with backoff. A budget or policy refusal (``ApiError``) is
+        never a reason to fall back, and a reply already begun is never restarted."""
+        while True:
+            model = self._current
+            model._ensure_allowed()
+            retries = 0 if self._candidates() else None
+            events = model._metered(
+                lambda model=model, retries=retries: model._gateway.chat(
+                    messages, tools, stream, json_schema=json_schema, max_retries=retries
+                ),
                 messages,
-            ),
-            *(
-                (lambda fb=fb: fb.chat(messages, tools, stream, json_schema=json_schema))
-                for fb in self._fallbacks
-            ),
-        ]
-        for index, start in enumerate(attempts):
-            events = start()
+            )
             try:
                 first = next(events)
             except StopIteration:
                 return
             except LlmError as exc:
-                if exc.code == UNAVAILABLE and index < len(attempts) - 1:
-                    continue
-                raise
+                if not fall_back:
+                    raise
+                self.fall_back_from(exc)
+                continue
             yield first
             yield from events
             return
+
+    def fall_back_from(self, error: LlmError) -> None:
+        """The current model failed with ``error`` before answering: it is out for the rest of
+        the run and the next candidate takes over. With none left, raises ``error`` itself
+        when it was the only model tried, else one error naming each model and its failure."""
+        failed = self._current
+        self._failed.append((failed, error))
+        left = self._candidates()
+        if not left:
+            if len(self._failed) == 1:
+                raise error
+            tried = "; ".join(f"{m._model_name}: {e.message}" for m, e in self._failed)
+            raise LlmError(
+                error.code, f"No model could answer. {tried}", retry_after=error.retry_after
+            ) from error
+        self._current = left[0]
+        if self.on_fall_back is not None:
+            self.on_fall_back(failed._model_name, error, left[0]._model_name)
+
+    def _candidates(self) -> list[MeteredGateway]:
+        """The models still able to take over from the current one, in the admin's order."""
+        out = {id(m) for m, _ in self._failed} | {id(self._current)}
+        return [m for m in self._chain if id(m) not in out]
 
     def vision(self, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
         """Like ``Gateway.vision``, checked and metered like ``chat``: the images count
@@ -475,8 +535,9 @@ class RoleService:
     ) -> MeteredGateway:
         """A metered gateway for a specific registered model, used under ``role``. For an
         internal-only Workspace its calls are refused when the model's provider is external.
-        With ``with_fallbacks`` it carries the role's fallback models that pass the same
-        checks as any model the Workspace uses."""
+        With ``with_fallbacks`` it carries the role's fallback models that the Workspace uses
+        for the role (``_permitted_fallbacks``); make one per run, as the model that took
+        over keeps serving it."""
         fallbacks = (
             [
                 self.metered_gateway(m, role, workspace_id=workspace_id, user_id=user_id)
@@ -501,6 +562,7 @@ class RoleService:
             user_id=user_id,
             refuse_external=refuse,
             fallbacks=fallbacks,
+            model_id=model_id,
         )
 
     # -- fallbacks -------------------------------------------------------------------
@@ -540,14 +602,17 @@ class RoleService:
     def _permitted_fallbacks(
         self, role: str, workspace_id: uuid.UUID | None, *, exclude: uuid.UUID
     ) -> list[uuid.UUID]:
-        """The role's fallback models this Workspace may use: the primary is left out, and a
-        model is skipped when it is no longer enabled and tested for the role or, for an
-        internal-only Workspace, runs on an external provider. The data-sharing level is the
+        """The role's fallback models, in the admin's order, that this Workspace may use: the
+        primary is left out, and a model is skipped when the Workspace does not use it for the
+        role, when it is no longer enabled and tested for the role or, for an internal-only
+        Workspace, when it runs on an external provider. The data-sharing level is the
         Workspace's, not the model's, so every fallback sees exactly what the primary would."""
-        if role not in FALLBACK_ROLES:
+        if role not in FALLBACK_ROLES or workspace_id is None:
             return []
         with Session(self._engine) as db:
-            enabled = {m.id for m in enabled_models(db, role)}
+            enabled = {m.id for m in enabled_models(db, role)} & workspace_model_ids(
+                db, workspace_id, role
+            )
             internal_only = (
                 workspace_id is not None and load_settings(db, workspace_id).internal_only
             )
