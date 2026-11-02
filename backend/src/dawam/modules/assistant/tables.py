@@ -72,6 +72,9 @@ class MessageRecord(Base):
         sa.ForeignKey("llm_models.id", ondelete="SET NULL")
     )
     """On an answer: the model that wrote it."""
+    fell_back: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    """On an answer: ``model_id`` is a fallback model that took over because the model the run
+    was given failed."""
     content: Mapped[str] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 

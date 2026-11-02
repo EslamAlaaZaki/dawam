@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "f4a9c2d7e815"
+  "b8e3d1f6a924"
  ],
  "modules": [
   {
@@ -1166,6 +1166,21 @@ a.tlink:hover { text-decoration: underline; }
        "column": "id"
       }
      ]
+    },
+    {
+     "name": "fell_back",
+     "type": "boolean",
+     "nullable": false,
+     "default": "false",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "fell_back",
+     "app_default": "False",
+     "description": "On an answer: ``model_id`` is a fallback model that took over because the model the run\nwas given failed.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [

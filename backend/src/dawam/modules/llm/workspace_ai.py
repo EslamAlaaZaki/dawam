@@ -209,6 +209,18 @@ def default_model_id(db: Session, workspace_id: uuid.UUID, role: str) -> uuid.UU
     )
 
 
+def workspace_model_ids(db: Session, workspace_id: uuid.UUID, role: str) -> set[uuid.UUID]:
+    """Every model the Workspace uses for ``role``, its default among them."""
+    return set(
+        db.scalars(
+            sa.select(WorkspaceModelRecord.model_id).where(
+                WorkspaceModelRecord.workspace_id == workspace_id,
+                WorkspaceModelRecord.role == role,
+            )
+        )
+    )
+
+
 def workspace_embedding_model_id(engine: sa.Engine, workspace_id: uuid.UUID) -> uuid.UUID | None:
     """The Workspace's embedding model; ``None``: it has none."""
     return workspace_model_id(engine, workspace_id, "embedding")
@@ -496,17 +508,6 @@ class WorkspaceAiService:
     def policy(self, workspace_id: uuid.UUID) -> DataSharingPolicy:
         """The Workspace's data-sharing policy, for server-side callers."""
         return self.settings(workspace_id).policy
-
-    def agent_model_id(self, workspace_id: uuid.UUID) -> uuid.UUID | None:
-        """The model that answers by default: the Workspace's default agent model.
-        Authorizes nothing: callers have."""
-        with Session(self._engine) as db:
-            return default_model_id(db, workspace_id, "agent")
-
-    def light_model_id(self, workspace_id: uuid.UUID) -> uuid.UUID | None:
-        """The Workspace's default light model; ``None``: it has none."""
-        with Session(self._engine) as db:
-            return default_model_id(db, workspace_id, "light")
 
     def check_chat_model(self, workspace_id: uuid.UUID, model_id: uuid.UUID) -> None:
         """A model a member may pick for a message: one of the Workspace's agent models.

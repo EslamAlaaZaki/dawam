@@ -8561,6 +8561,12 @@ export interface components {
              * @description On a reply: the display name of the model that answered.
              */
             model: string | null;
+            /**
+             * Fell Back
+             * @description On a reply: a fallback model wrote it, because the model picked (or the Workspace's default) failed. Shown as `<model> (fallback)`.
+             * @default false
+             */
+            fell_back: boolean;
         };
         /** ModelChoice */
         ModelChoice: {
@@ -22337,7 +22343,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`). */
+            /** @description A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`), the model that answered (`model`, `model_id`) and `fell_back`: a fallback model answered, and the conversation's pick is now that model. */
             200: {
                 headers: {
                     [name: string]: unknown;

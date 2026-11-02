@@ -232,7 +232,13 @@ export type AnswerEvent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "tool"; call: ToolCall }
-  | { type: "done"; run: Run };
+  | {
+      type: "done";
+      run: Run;
+      /** The model that answered; with `fellBack`, a fallback that took over. */
+      modelId: string | null;
+      fellBack: boolean;
+    };
 
 interface Frame {
   event: string;
@@ -271,7 +277,12 @@ function toAnswerEvent({ event, data }: Frame): AnswerEvent | null {
     case "tool":
       return { type: "tool", call: body };
     case "done":
-      return { type: "done", run: body.run };
+      return {
+        type: "done",
+        run: body.run,
+        modelId: body.model_id ?? null,
+        fellBack: body.fell_back === true,
+      };
     default:
       return null;
   }
