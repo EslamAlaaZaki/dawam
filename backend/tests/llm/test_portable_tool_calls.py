@@ -13,6 +13,7 @@ from dawam.modules.llm.internal.anthropic import AnthropicAdapter
 from dawam.modules.llm.internal.bedrock import BedrockAdapter
 from dawam.modules.llm.internal.gemini import PLACEHOLDER_SIGNATURE, GeminiAdapter
 from dawam.modules.llm.internal.openai_compatible import OpenAICompatibleAdapter
+from dawam.modules.llm.internal.wire import received_call_id, sent_call_id
 from tests.llm.test_gemini_and_bedrock import NOW, Queue, reply
 
 PORTABLE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
@@ -180,3 +181,20 @@ def test_only_gemini_is_sent_a_thought_signature():
 
     assert "sig-1" not in json.dumps(anthropic_body(history(signed)))
     assert "sig-1" not in json.dumps(bedrock_body(history(signed)))
+
+
+@pytest.mark.parametrize(
+    ("one", "other"), [("a.b", "a:b"), ("x" * 64 + "1", "x" * 64 + "2"), ("a.b", "a_b")]
+)
+def test_ids_that_had_to_change_stay_distinct(one, other):
+    assert sent_call_id(one) != sent_call_id(other)
+    assert received_call_id(one) != received_call_id(other)
+    for call_id in (one, other):
+        sent = sent_call_id(call_id)
+        assert PORTABLE.match(sent) and len(sent) <= 64
+        assert sent_call_id(sent) == sent  # sent again unchanged
+        assert sent_call_id(call_id) == sent  # stable
+
+
+def test_a_portable_id_is_sent_as_it_is():
+    assert sent_call_id("call_abc-1") == "call_abc-1"

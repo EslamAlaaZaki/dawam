@@ -3,6 +3,7 @@ keeping tool-call ids portable between providers."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -25,6 +26,7 @@ MAX_LIST_PAGES = 20
 MAX_CALL_ID_CHARS = 64
 """Bedrock's limit on a ``toolUseId``."""
 _NOT_ID = re.compile(r"[^A-Za-z0-9_-]")
+_HASH_CHARS = 12
 """A cap on the pages read when listing a provider's models."""
 _CLOUDFLARE_BLOCK = "blocked access based on your browser's signature"
 _CONTEXT_MARKERS = (
@@ -52,8 +54,16 @@ def received_call_id(raw: Any) -> str:
 
 def sent_call_id(call_id: str | None) -> str:
     """``call_id`` as sent back to a provider that checks the form (Anthropic, Bedrock). The
-    same id always maps to the same text, so a call and its result still match."""
-    return _NOT_ID.sub("_", call_id or "")[:MAX_CALL_ID_CHARS] or "call"
+    same id always maps to the same text, so a call and its result still match; an id that
+    had to change ends with a short hash of the original, so two ids never become one."""
+    raw = call_id or ""
+    if not raw:
+        return "call"
+    cleaned = _NOT_ID.sub("_", raw)
+    if cleaned == raw and len(raw) <= MAX_CALL_ID_CHARS:
+        return raw
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:_HASH_CHARS]
+    return f"{cleaned[: MAX_CALL_ID_CHARS - _HASH_CHARS - 1]}_{digest}"
 
 
 def json_body(response: HttpResponse) -> Any:
